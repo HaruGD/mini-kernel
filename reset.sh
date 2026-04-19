@@ -1,0 +1,1 @@
+mkdosfs -F 12 -n "MYOS" bin/disk.img

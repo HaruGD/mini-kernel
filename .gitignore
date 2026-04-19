@@ -1,0 +1,11 @@
+build/
+bin/
+qemu.log
+
+*.o
+*.bin
+*.img
+*.iso
+*.log
+*.zip
+
