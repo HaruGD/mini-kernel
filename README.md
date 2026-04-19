@@ -53,4 +53,4 @@ This is not a production operating system. Interfaces, memory layout, drivers, a
 
 ## License
 
-No license has been selected yet.
+MIT
