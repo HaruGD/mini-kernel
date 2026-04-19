@@ -54,3 +54,7 @@ This is not a production operating system. Interfaces, memory layout, drivers, a
 ## License
 
 MIT
+
+## Edited
+
+with ChatGPT 5.4 / Codex
