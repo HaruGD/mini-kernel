@@ -13,7 +13,7 @@ extern void* notebook_ptr;
 #include "fs/fat12.h"
 #include "drivers/pit.h"
 #include "drivers/ata.h"
-#include "kernel.h"
+#include "kernel/kernel.h"
 
 // 순수 C로 작성된 헤더들은 extern "C"로 감싸서 인클루드 해야 해!
 extern "C" {

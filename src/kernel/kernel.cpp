@@ -14,7 +14,7 @@ extern "C" {
     #include "arch/x86/io.h"
 }
 #include "drivers/terminal.h"
-#include "kernel.h"
+#include "kernel/kernel.h"
 #include "drivers/keyboard.h"
 #include "drivers/ata.h"
 #include "fs/fat12.h"

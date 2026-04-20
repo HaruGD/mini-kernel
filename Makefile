@@ -37,9 +37,9 @@ all: ./bin/os.bin
 	dd if=/dev/zero bs=512 count=64 >> ./bin/os.bin
 
 # 부트로더 컴파일
-./bin/boot.bin: ./src/boot.asm
+./bin/boot.bin: ./src/boot/boot.asm
 	@mkdir -p ./bin
-	$(AS) -DKERNEL_SECTOR_COUNT=$(KERNEL_SECTORS) -f bin ./src/boot.asm -o ./bin/boot.bin
+	$(AS) -DKERNEL_SECTOR_COUNT=$(KERNEL_SECTORS) -f bin ./src/boot/boot.asm -o ./bin/boot.bin
 
 # 커널 링크 (링커 스크립트 사용)
 ./bin/kernel.bin: $(FILES)
@@ -53,12 +53,12 @@ all: ./bin/os.bin
 
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 
-./build/kernel.asm.o: ./src/kernel.asm
+./build/kernel.asm.o: ./src/boot/kernel.asm
 	@mkdir -p ./build
-	$(AS) -f elf -g ./src/kernel.asm -o ./build/kernel.asm.o
+	$(AS) -f elf -g ./src/boot/kernel.asm -o ./build/kernel.asm.o
 
-./build/kernel.o: ./src/kernel.cpp
-	$(CXX) $(CPPFLAGS) -c ./src/kernel.cpp -o ./build/kernel.o
+./build/kernel.o: ./src/kernel/kernel.cpp
+	$(CXX) $(CPPFLAGS) -c ./src/kernel/kernel.cpp -o ./build/kernel.o
 
 ./build/idt.o: ./src/arch/x86/idt.c
 	$(CC) $(CFLAGS) -c ./src/arch/x86/idt.c -o ./build/idt.o
@@ -69,8 +69,8 @@ all: ./bin/os.bin
 ./build/heap.o: ./src/heap.c
 	$(CC) $(CFLAGS) -c ./src/heap.c -o ./build/heap.o
 
-./build/cpprt.o: ./src/cpprt.cpp
-	$(CXX) $(CPPFLAGS) -c ./src/cpprt.cpp -o ./build/cpprt.o
+./build/cpprt.o: ./src/kernel/cpprt.cpp
+	$(CXX) $(CPPFLAGS) -c ./src/kernel/cpprt.cpp -o ./build/cpprt.o
 
 # 드라이버 폴더
 ./build/terminal.o: ./src/drivers/terminal.cpp
