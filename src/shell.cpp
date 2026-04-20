@@ -10,7 +10,7 @@ extern int buffer_index;
 extern void* notebook_ptr;
 
 // C++ 클래스 객체들을 사용하기 위해 헤더 포함
-#include "fat12.h"
+#include "fs/fat12.h"
 #include "drivers/pit.h"
 #include "drivers/ata.h"
 #include "kernel.h"
@@ -138,13 +138,13 @@ void execute_command() {
             // 8.3 형식으로 변환 (예: "hello.txt" → "HELLO   TXT")
             char name83[11];
             for (int i = 0; i < 11; i++) name83[i] = ' ';
-            
+
             int i = 0, j = 0;
             while (arg[i] != '.' && arg[i] != '\0' && j < 8) {
                 name83[j++] = arg[i] >= 'a' && arg[i] <= 'z' ? arg[i] - 32 : arg[i];
                 i++;
             }
-            
+
             if (arg[i] == '.') i++;
             j = 8;
             while (arg[i] != '\0' && j < 11) {
@@ -277,7 +277,7 @@ extern "C" void shell_recall_history(int direction) {
 
     while (buffer_index > 0) {
         buffer_index--;
-        terminal.putchar('\b'); // 또는 putchar('\b'); 
+        terminal.putchar('\b'); // 또는 putchar('\b');
     }
 
     int actual_idx = history_index % MAX_HISTORY;

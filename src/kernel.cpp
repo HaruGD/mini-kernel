@@ -17,7 +17,7 @@ extern "C" {
 #include "kernel.h"
 #include "drivers/keyboard.h"
 #include "drivers/ata.h"
-#include "fat12.h"
+#include "fs/fat12.h"
 #include "drivers/pit.h"
 
 PIT pit;
@@ -97,11 +97,11 @@ extern "C" void kernel_main() {
     __asm__ volatile("sti");
 
     terminal.print("sti done\n");
-    
+
     //dump_heap();
 
     fat.init();
-    
+
     terminal.print("fat done\n");
 
     terminal.print("Welcome to MyOS Shell!\n");
