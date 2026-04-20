@@ -111,13 +111,14 @@ void execute_command() {
         }
     }
     else if (strcmp(cmd, "help") == 0) {
-        terminal.print("\nAvailable commands: help, clear, version, write, read, free, dump, atatest, ls, load, save, rm, pagefault, uptime");
+        terminal.print("\nAvailable commands: help, clear, version, write");
+        terminal.print("read, free, dump, atatest, ls, load, save, rm, pagefault, uptime");
     }
     else if (strcmp(cmd, "clear") == 0) {
         terminal.clear();
     }
     else if (strcmp(cmd, "version") == 0) {
-        terminal.print("\n[OS-Kernel] v0.0.2 (32-bit Protected Mode, C++)");
+        terminal.print("\n[OS-Kernel] v0.0.x (32-bit Protected Mode, C++)");
         terminal.print("\nx86 ASM BootLoader");
     }
     else if (strcmp(cmd, "atatest") == 0) {
