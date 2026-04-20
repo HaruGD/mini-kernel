@@ -1,5 +1,5 @@
 #include "heap.h"
-#include "pmm.h"
+#include "arch/x86/pmm.h"
 
 void debug_print(const char* str);
 void debug_print_hex(uint32_t val);
@@ -9,7 +9,7 @@ struct heap_header* heap_start = NULL;
 void heap_init() {
     // 1. PMM에게 4KB 한 페이지를 빌려옵니다.
     heap_start = (struct heap_header*)pmm_alloc_block();
-    
+
     // 2. 초기 상태: 4KB 전체가 하나의 비어있는 블록입니다.
     heap_start->size = 4096;
     heap_start->is_free = 1;
@@ -45,7 +45,7 @@ void* kmalloc(size_t size) {
 
             // 딱 맞는 공간을 찾았다면 사용 중으로 표시!
             current->is_free = 0;
-            
+
             // 만약 남은 공간이 넉넉하다면, 블록을 쪼개서(Split) 다음 블록을 만듭니다.
             if (current->size >= total_size + sizeof(struct heap_header) + 4) {
                 debug_print("\nsplit: current->size=");
@@ -59,13 +59,13 @@ void* kmalloc(size_t size) {
                 debug_print_hex(next_block->size);
                 next_block->is_free = 1;
                 next_block->next = current->next;
-                
+
                 current->size = total_size;
                 debug_print("\ncurrent->size after update: ");
                 debug_print_hex(current->size);
                 current->next = next_block;
             }
-            
+
             // 실제 데이터가 시작되는 지점(헤더 바로 뒤)의 주소를 반환합니다.
             return (void*)((uint32_t)current + sizeof(struct heap_header));
         }
@@ -99,7 +99,7 @@ void heap_coalesce() {
 }
 
 void kfree(void* ptr) {
-    struct heap_header* header = 
+    struct heap_header* header =
         (struct heap_header*)((uint32_t)ptr - sizeof(struct heap_header));
     debug_print("\nkfree: header at ");
     debug_print_hex((uint32_t)header);

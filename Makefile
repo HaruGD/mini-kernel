@@ -44,7 +44,7 @@ all: ./bin/os.bin
 # 커널 링크 (링커 스크립트 사용)
 ./bin/kernel.bin: $(FILES)
 	$(LD) -g -relocatable $(FILES) -o ./build/completeKernel.o
-	$(LD) -T ./src/linkerScript.ld -o ./bin/kernel.bin ./build/completeKernel.o
+	$(LD) -T ./src/arch/x86/linkerScript.ld -o ./bin/kernel.bin ./build/completeKernel.o
 	@kernel_size=$$(stat -c%s ./bin/kernel.bin); \
 	if [ $$kernel_size -gt $(KERNEL_MAX_SIZE) ]; then \
 		echo "kernel.bin is $$kernel_size bytes, but bootloader loads only $(KERNEL_MAX_SIZE) bytes"; \
@@ -60,11 +60,11 @@ all: ./bin/os.bin
 ./build/kernel.o: ./src/kernel.cpp
 	$(CXX) $(CPPFLAGS) -c ./src/kernel.cpp -o ./build/kernel.o
 
-./build/idt.o: ./src/idt.c
-	$(CC) $(CFLAGS) -c ./src/idt.c -o ./build/idt.o
+./build/idt.o: ./src/arch/x86/idt.c
+	$(CC) $(CFLAGS) -c ./src/arch/x86/idt.c -o ./build/idt.o
 
-./build/pmm.o: ./src/pmm.c
-	$(CC) $(CFLAGS) -c ./src/pmm.c -o ./build/pmm.o
+./build/pmm.o: ./src/arch/x86/pmm.c
+	$(CC) $(CFLAGS) -c ./src/arch/x86/pmm.c -o ./build/pmm.o
 
 ./build/heap.o: ./src/heap.c
 	$(CC) $(CFLAGS) -c ./src/heap.c -o ./build/heap.o
@@ -89,8 +89,8 @@ all: ./bin/os.bin
 ./build/fat12.o: ./src/fs/fat12.cpp
 	$(CXX) $(CPPFLAGS) -c ./src/fs/fat12.cpp -o ./build/fat12.o
 
-./build/paging.o: ./src/paging.cpp
-	$(CXX) $(CPPFLAGS) -c ./src/paging.cpp -o ./build/paging.o
+./build/paging.o: ./src/arch/x86/paging.cpp
+	$(CXX) $(CPPFLAGS) -c ./src/arch/x86/paging.cpp -o ./build/paging.o
 
 ./build/shell.o: ./src/shell/shell.cpp
 	$(CXX) $(CPPFLAGS) -c ./src/shell/shell.cpp -o ./build/shell.o

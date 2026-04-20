@@ -1,5 +1,5 @@
 #include "drivers/keyboard.h"
-#include "io.h"
+#include "arch/x86/io.h"
 
 #include "shell/shell.h"
 

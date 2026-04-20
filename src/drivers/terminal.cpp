@@ -1,5 +1,5 @@
 #include "drivers/terminal.h"
-#include "io.h"
+#include "arch/x86/io.h"
 
 Terminal::Terminal() {
     vga = (volatile char*)0xB8000;
@@ -40,7 +40,7 @@ void Terminal::clear() {
 
 void Terminal::putchar(char c) {
     if (cursor >= 80 * 25) scroll();
-    
+
     if (c == '\n') {
         cursor = (cursor / 80 + 1) * 80;
     } else if (c == '\b') {

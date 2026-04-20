@@ -1,6 +1,6 @@
 #include <stddef.h>
 extern "C" {
-    #include "paging.h"
+    #include "arch/x86/paging.h"
 }
 
 #include "shell/shell.h"
@@ -8,10 +8,10 @@ extern "C" {
 inline void* operator new(size_t, void* ptr) { return ptr; }
 
 extern "C" {
-    #include "idt.h"
-    #include "pmm.h"
+    #include "arch/x86/idt.h"
+    #include "arch/x86/pmm.h"
     #include "heap.h"
-    #include "io.h"
+    #include "arch/x86/io.h"
 }
 #include "drivers/terminal.h"
 #include "kernel.h"

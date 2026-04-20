@@ -2,7 +2,7 @@
 #include "drivers/terminal.h"
 
 extern "C" {
-    #include "io.h"
+    #include "arch/x86/io.h"
 }
 
 extern Terminal terminal;

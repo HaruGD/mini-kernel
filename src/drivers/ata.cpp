@@ -1,5 +1,5 @@
 #include "drivers/ata.h"
-#include "io.h"
+#include "arch/x86/io.h"
 #include "drivers/terminal.h"
 
 void itoa(int num, char* str) {
@@ -65,7 +65,7 @@ void ATADriver::wait_ready() {
 
 void ATADriver::init() {
     outb(DRIVE_HEAD, drive);
-    
+
     // 드라이브 존재 확인
     uint8_t status = inb(STATUS);
     if (status == 0xFF) {
