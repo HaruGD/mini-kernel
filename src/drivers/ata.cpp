@@ -46,21 +46,41 @@ void itoa(int num, char* str) {
     }
 }
 
-ATADriver::ATADriver(uint8_t drive) : drive(drive) {}
+ATADriver::ATADriver(uint8_t drive)
+    : drive(drive), exists(false) {}
 Terminal terminal1;
 
 int test = 0;
 char ttt[32];
 
-void ATADriver::wait_ready() {
-    itoa(test, ttt);
-    test += 1;
-    //terminal1.print("\n");
-    //terminal1.print(ttt);
-    int timeout = 10000;  // 줄이기
-    while ((inb(STATUS) & 0x80) && timeout > 0) {
-        timeout--;
+bool ATADriver::wait_ready() {
+    for (int timeout = 100000; timeout > 0; timeout--) {
+        uint8_t status = inb(STATUS);
+
+        if (status & 0x01) return false; // ERR
+        if (status & 0x20) return false; // DF
+
+        if (!(status & 0x80)) {
+            return true; // BSY clear
+        }
     }
+
+    return false;
+}
+
+bool ATADriver::wait_drq() {
+    for (int timeout = 100000; timeout > 0; timeout--) {
+        uint8_t status = inb(STATUS);
+
+        if (status & 0x01) return false; // ERR
+        if (status & 0x20) return false; // DF
+
+        if (!(status & 0x80) && (status & 0x08)) {
+            return true; // ready for data
+        }
+    }
+
+    return false;
 }
 
 void ATADriver::init() {
@@ -74,12 +94,14 @@ void ATADriver::init() {
         return;
     }
     exists = true;
-    wait_ready();
+    if (!wait_ready()) {
+        exists = false;
+    }
 }
 
-void ATADriver::read_sector(uint32_t lba, uint8_t* buffer) {
-    if (!exists) return;
-    wait_ready();
+bool ATADriver::read_sector(uint32_t lba, uint8_t* buffer) {
+    if (!exists || buffer == 0) return false;
+    if (!wait_ready()) return false;
 
     outb(DRIVE_HEAD, drive | ((lba >> 24) & 0x0F));  // 0xE0 대신 drive 사용
     outb(SECTOR_COUNT, 1);
@@ -88,29 +110,34 @@ void ATADriver::read_sector(uint32_t lba, uint8_t* buffer) {
     outb(LBA_HIGH,     (lba >> 16) & 0xFF);
     outb(COMMAND,      0x20);  // READ SECTORS 명령
 
-    wait_ready();
+    if (!wait_drq()) return false;
 
-    // 512바이트 읽기 (2바이트씩 256번)
     uint16_t* buf16 = (uint16_t*)buffer;
     for (int i = 0; i < 256; i++) {
         buf16[i] = inw(DATA);
     }
+
+    return true;
 }
 
-void ATADriver::write_sector(uint32_t lba, uint8_t* buffer) {
-    wait_ready();
+bool ATADriver::write_sector(uint32_t lba, const uint8_t* buffer) {
+    if (!exists || buffer == 0) return false;
+    if (!wait_ready()) return false;
 
-    outb(DRIVE_HEAD,   drive | ((lba >> 24) & 0x0F));
+    outb(DRIVE_HEAD, drive | ((lba >> 24) & 0x0F));
     outb(SECTOR_COUNT, 1);
-    outb(LBA_LOW,      lba & 0xFF);
-    outb(LBA_MID,      (lba >> 8) & 0xFF);
-    outb(LBA_HIGH,     (lba >> 16) & 0xFF);
-    outb(COMMAND,      0x30);  // WRITE SECTORS 명령
+    outb(LBA_LOW,  lba & 0xFF);
+    outb(LBA_MID,  (lba >> 8) & 0xFF);
+    outb(LBA_HIGH, (lba >> 16) & 0xFF);
+    outb(COMMAND, 0x30);
 
-    wait_ready();
+    if (!wait_drq()) return false;
 
-    uint16_t* buf16 = (uint16_t*)buffer;
+    const uint16_t* buf16 = (const uint16_t*)buffer;
     for (int i = 0; i < 256; i++) {
         outw(DATA, buf16[i]);
     }
+
+    outb(COMMAND, 0xE7); // CACHE FLUSH
+    return wait_ready();
 }

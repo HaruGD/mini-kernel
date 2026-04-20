@@ -122,11 +122,14 @@ void execute_command() {
     }
     else if (strcmp(cmd, "atatest") == 0) {
         uint8_t buffer[512];
-        ata.read_sector(0, buffer);
-        terminal.print("\nSector 0:");
-        for (int i = 0; i < 16; i++) {
-            terminal.print_hex(buffer[i]);
-            terminal.print(" ");
+        if (!ata.read_sector(0, buffer)) {
+            terminal.print("\nATA read failed.");
+        } else {
+            terminal.print("\nSector 0:");
+            for (int i = 0; i < 16; i++) {
+                terminal.print_hex(buffer[i]);
+                terminal.print(" ");
+            }
         }
     }
     else if (strcmp(cmd, "ls") == 0) {
@@ -162,11 +165,16 @@ void execute_command() {
                 if (buffer == 0) {
                     terminal.print("\nOut of memory!");
                 } else {
-                    fat.read_file(&entry, buffer);
-                    buffer[entry.file_size] = '\0';
-                    terminal.print("\n");
-                    terminal.print((char*)buffer);
-                    kfree(buffer);
+                    int bytes_read = fat.read_file(&entry, buffer);
+                    if (bytes_read < 0) {
+                        terminal.print("\nFailed to read file.");
+                        kfree(buffer);
+                    } else {
+                        buffer[entry.file_size] = '\0';
+                        terminal.print("\n");
+                        terminal.print((char*)buffer);
+                        kfree(buffer);
+                    }
                 }
             } else {
                 terminal.print("\nFile not found.");

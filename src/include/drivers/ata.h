@@ -20,13 +20,14 @@ class ATADriver : public Driver {
     static const uint16_t STATUS       = 0x1F7;
     static const uint16_t COMMAND      = 0x1F7;
 
-    void wait_ready();
+    bool wait_ready();
+    bool wait_drq();
 
 public:
     ATADriver(uint8_t drive = 0xE0);
     void init() override;
-    void read_sector(uint32_t lba, uint8_t* buffer);
-    void write_sector(uint32_t lba, uint8_t* buffer);
+    bool read_sector(uint32_t lba, uint8_t* buffer);
+    bool write_sector(uint32_t lba, const uint8_t* buffer);
 };
 
 #endif

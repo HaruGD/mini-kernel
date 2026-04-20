@@ -24,7 +24,8 @@ const char KeyboardDriver::kbd_US_shift[128] = {
   '-', 0, 0, 0, '+', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-KeyboardDriver::KeyboardDriver() : shift_pressed(0) {}
+KeyboardDriver::KeyboardDriver()
+    : shift_pressed(0), caps_lock_on(0), is_extended(false) {}
 
 void KeyboardDriver::init() {
     // 키보드는 IDT에서 이미 초기화됨

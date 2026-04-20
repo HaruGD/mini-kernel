@@ -10,7 +10,7 @@ class KeyboardDriver : public Driver {
     static const char kbd_US_caps[128];
     int shift_pressed;
     int caps_lock_on = 0;
-    bool is_extended;
+    bool is_extended = false;
 
 public:
     KeyboardDriver();

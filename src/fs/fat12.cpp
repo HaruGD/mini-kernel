@@ -13,7 +13,10 @@ FAT12Driver::FAT12Driver(ATADriver* ata) : ata(ata) {}
 void FAT12Driver::init() {
     terminal.print("1\n");
     uint8_t buffer[512];
-    ata->read_sector(0, buffer);
+    if (!ata->read_sector(0, buffer)) {
+        terminal.print("FAT12: failed to read boot sector\n");
+        return;
+    }
 
     terminal.print("2\n");
     for (int i = 0; i < (int)sizeof(BPB); i++) {
@@ -36,7 +39,10 @@ void FAT12Driver::init() {
 
     terminal.print("5\n");
     for (int i = 0; i < bpb.sectors_per_fat; i++) {
-        ata->read_sector(fat_start + i, fat_table + i * 512);
+        if (!ata->read_sector(fat_start + i, fat_table + i * 512)) {
+            terminal.print("FAT12: failed to read FAT\n");
+            return;
+        }
     }
     terminal.print("6\n");
 }
@@ -60,7 +66,9 @@ bool FAT12Driver::find_file(const char* name, DirEntry* entry) {
     int root_sectors = (bpb.root_entry_count * 32) / 512;
 
     for (int s = 0; s < root_sectors; s++) {
-        ata->read_sector(root_start + s, buffer);
+        if (!ata->read_sector(root_start + s, buffer)) {
+            return false;
+        }
         DirEntry* dir = (DirEntry*)buffer;
 
         for (int i = 0; i < entries_per_sector; i++) {
@@ -91,7 +99,9 @@ int FAT12Driver::read_file(DirEntry* entry, uint8_t* buffer) {
 
     while (cluster >= 0x002 && cluster < 0xFF8 && limit < 100) {
         uint32_t sector = cluster_to_sector(cluster);
-        ata->read_sector(sector, buffer + offset);
+        if (!ata->read_sector(sector, buffer + offset)) {
+            return -1;
+        }
         offset += 512;
         cluster = get_fat_entry(cluster);
         limit++;
@@ -105,7 +115,10 @@ void FAT12Driver::list_files() {
     int root_sectors = (bpb.root_entry_count * 32) / 512;
 
     for (int s = 0; s < root_sectors; s++) {
-        ata->read_sector(root_start + s, buffer);
+        if (!ata->read_sector(root_start + s, buffer)) {
+            terminal.print("\nFAT12: failed to read root directory");
+            return;
+        }
         DirEntry* dir = (DirEntry*)buffer;
 
         for (int i = 0; i < entries_per_sector; i++) {
@@ -149,12 +162,16 @@ void FAT12Driver::set_fat_entry(uint16_t cluster, uint16_t value) {
     }
 }
 
-void FAT12Driver::flush_fat() {
+bool FAT12Driver::flush_fat() {
     for (int i = 0; i < bpb.sectors_per_fat; i++) {
-        ata->write_sector(fat_start + i, fat_table + i * 512);
-        // FAT2도 업데이트
-        ata->write_sector(fat_start + bpb.sectors_per_fat + i, fat_table + i * 512);
+        if (!ata->write_sector(fat_start + i, fat_table + i * 512)) {
+            return false;
+        }
+        if (!ata->write_sector(fat_start + bpb.sectors_per_fat + i, fat_table + i * 512)) {
+            return false;
+        }
     }
+    return true;
 }
 
 bool FAT12Driver::add_root_entry(const char* name83, uint16_t cluster, uint32_t size) {
@@ -163,7 +180,9 @@ bool FAT12Driver::add_root_entry(const char* name83, uint16_t cluster, uint32_t 
     int root_sectors = (bpb.root_entry_count * 32) / 512;
 
     for (int s = 0; s < root_sectors; s++) {
-        ata->read_sector(root_start + s, buffer);
+        if (!ata->read_sector(root_start + s, buffer)) {
+            return false;
+        }
         DirEntry* dir = (DirEntry*)buffer;
 
         for (int i = 0; i < entries_per_sector; i++) {
@@ -179,7 +198,9 @@ bool FAT12Driver::add_root_entry(const char* name83, uint16_t cluster, uint32_t 
                 for (int j = 0; j < 10; j++)
                     dir[i].reserved[j] = 0;
 
-                ata->write_sector(root_start + s, buffer);
+                if (!ata->write_sector(root_start + s, buffer)) {
+                    return false;
+                }
                 return true;
             }
         }
@@ -234,7 +255,9 @@ bool FAT12Driver::write_file(const char* name83, uint8_t* buffer, uint32_t size)
             set_fat_entry(cluster, 0x000);  // 클러스터 비우기
             cluster = next;
         }
-        flush_fat();
+        if (!flush_fat()) {
+            return false;
+        }
 
         // 루트 엔트리에서 기존 파일 삭제 (0xE5로 표시)
         uint8_t buf[512];
@@ -242,7 +265,9 @@ bool FAT12Driver::write_file(const char* name83, uint8_t* buffer, uint32_t size)
         int root_sectors = (bpb.root_entry_count * 32) / 512;
 
         for (int s = 0; s < root_sectors; s++) {
-            ata->read_sector(root_start + s, buf);
+            if (!ata->read_sector(root_start + s, buf)) {
+                return false;
+            }
             DirEntry* dir = (DirEntry*)buf;
             for (int i = 0; i < entries_per_sector; i++) {
                 bool match = true;
@@ -254,7 +279,9 @@ bool FAT12Driver::write_file(const char* name83, uint8_t* buffer, uint32_t size)
                 }
                 if (match) {
                     dir[i].name[0] = 0xE5;  // 삭제 표시
-                    ata->write_sector(root_start + s, buf);
+                    if (!ata->write_sector(root_start + s, buf)) {
+                        return false;
+                    }
                     goto done;
                 }
             }
@@ -281,15 +308,18 @@ bool FAT12Driver::write_file(const char* name83, uint8_t* buffer, uint32_t size)
         for (int i = 0; i < 512; i++)
             sector_buf[i] = (i < (int)bytes_left) ? buffer[offset + i] : 0;
 
-        ata->write_sector(cluster_to_sector(cluster), sector_buf);
+        if (!ata->write_sector(cluster_to_sector(cluster), sector_buf)) {
+            return false;
+        }
 
         prev_cluster = cluster;
         bytes_left = (bytes_left > 512) ? bytes_left - 512 : 0;
     }
 
-    flush_fat();
-    add_root_entry(name83, first_cluster, size);
-    return true;
+    if (!flush_fat()) {
+        return false;
+    }
+    return add_root_entry(name83, first_cluster, size);
 }
 
 bool FAT12Driver::delete_file(const char* name83) {
@@ -298,7 +328,9 @@ bool FAT12Driver::delete_file(const char* name83) {
     int root_sectors = (bpb.root_entry_count * 32) / 512;
 
     for (int s = 0; s < root_sectors; s++) {
-        ata->read_sector(root_start + s, buffer);
+        if (!ata->read_sector(root_start + s, buffer)) {
+            return false;
+        }
         DirEntry* dir = (DirEntry*)buffer;
 
         for (int i = 0; i < entries_per_sector; i++) {
@@ -322,11 +354,15 @@ bool FAT12Driver::delete_file(const char* name83) {
                     set_fat_entry(cluster, 0x000);  // 빈 클러스터로
                     cluster = next;
                 }
-                flush_fat();
+                if (!flush_fat()) {
+                    return false;
+                }
 
                 // 디렉토리 엔트리 삭제 표시
                 dir[i].name[0] = 0xE5;
-                ata->write_sector(root_start + s, buffer);
+                if (!ata->write_sector(root_start + s, buffer)) {
+                    return false;
+                }
                 return true;
             }
         }

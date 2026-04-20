@@ -47,7 +47,7 @@ class FAT12Driver : public Driver {
 
     uint16_t find_free_cluster();
     void set_fat_entry(uint16_t cluster, uint16_t value);
-    void flush_fat();
+    bool flush_fat();
     bool add_root_entry(const char* name83, uint16_t cluster, uint32_t size);
 
 public:
