@@ -52,10 +52,17 @@ global page_fault_asm
 extern page_fault_handler
 
 page_fault_asm:
+    cli
     pushad
     cld
+    mov eax, cr2
+    mov ebx, [esp + 32]
+    push ebx
+    push eax
     call page_fault_handler
+    add esp, 8
     popad
+    add esp, 4
     iretd
 
 global timer_handler_asm
@@ -67,3 +74,15 @@ timer_handler_asm:
     call timer_handler_c
     popad
     iretd
+
+global default_interrupt_handler_asm
+extern default_interrupt_handler
+
+default_interrupt_handler_asm:
+    cli
+    pushad
+    cld
+    call default_interrupt_handler
+.hang:
+    hlt
+    jmp .hang

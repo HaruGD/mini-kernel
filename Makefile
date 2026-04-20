@@ -128,6 +128,8 @@ CC = i686-elf-gcc
 CXX = i686-elf-g++
 LD = i686-elf-ld
 AS = nasm
+KERNEL_SECTORS = 32
+KERNEL_MAX_SIZE = $(shell expr $(KERNEL_SECTORS) \* 512)
 
 # 2. 경로 및 플래그 설정
 INCLUDES = -I./src/include -I./src
@@ -162,12 +164,17 @@ all: ./bin/os.bin
 # 부트로더 컴파일
 ./bin/boot.bin: ./src/boot.asm
 	@mkdir -p ./bin
-	$(AS) -f bin ./src/boot.asm -o ./bin/boot.bin
+	$(AS) -DKERNEL_SECTOR_COUNT=$(KERNEL_SECTORS) -f bin ./src/boot.asm -o ./bin/boot.bin
 
 # 커널 링크 (링커 스크립트 사용)
 ./bin/kernel.bin: $(FILES)
 	$(LD) -g -relocatable $(FILES) -o ./build/completeKernel.o
 	$(LD) -T ./src/linkerScript.ld -o ./bin/kernel.bin ./build/completeKernel.o
+	@kernel_size=$$(stat -c%s ./bin/kernel.bin); \
+	if [ $$kernel_size -gt $(KERNEL_MAX_SIZE) ]; then \
+		echo "kernel.bin is $$kernel_size bytes, but bootloader loads only $(KERNEL_MAX_SIZE) bytes"; \
+		exit 1; \
+	fi
 
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 

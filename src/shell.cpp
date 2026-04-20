@@ -265,9 +265,11 @@ void shell_input(char ascii) {
 extern "C" void shell_recall_history(int direction) {
     if (history_count == 0) return;
 
+    int available = history_count < MAX_HISTORY ? history_count : MAX_HISTORY;
+    int oldest_index = history_count - available;
     int new_index = history_index + direction;
 
-    if (new_index < 0) new_index = 0;
+    if (new_index < oldest_index) new_index = oldest_index;
     if (new_index >= history_count) new_index = history_count - 1;
 
     if (new_index == history_index) return;
@@ -282,7 +284,7 @@ extern "C" void shell_recall_history(int direction) {
     char* recalled_cmd = history[actual_idx];
 
     buffer_index = 0;
-    for (int i = 0; recalled_cmd[i] != '\0'; i++) {
+    for (int i = 0; recalled_cmd[i] != '\0' && buffer_index < MAX_BUFFER_SIZE - 1; i++) {
         shell_buffer[buffer_index] = recalled_cmd[i]; // 셸이 인식할 버퍼 업데이트
         terminal.putchar(recalled_cmd[i]);
         buffer_index++;
@@ -294,10 +296,15 @@ void shell_save_history() {
     if (buffer_index == 0) return;
 
     int save_idx = history_count % MAX_HISTORY;
-    for (int i = 0; i < buffer_index; i++) {
+    int copy_len = buffer_index;
+    if (copy_len >= MAX_CMD_LEN) {
+        copy_len = MAX_CMD_LEN - 1;
+    }
+
+    for (int i = 0; i < copy_len; i++) {
         history[save_idx][i] = shell_buffer[i];
     }
-    history[save_idx][buffer_index] = '\0';
+    history[save_idx][copy_len] = '\0';
 
     history_count++;
     history_index = history_count;

@@ -7,6 +7,10 @@ DATA_OFFSET equ 0x10
 KERNEL_LOAD_SEG equ 0x1000
 KERNEL_START_ADDR equ 0x1000
 
+%ifndef KERNEL_SECTOR_COUNT
+%define KERNEL_SECTOR_COUNT 32
+%endif
+
 start:
     cli  ;Clear interrupts
     mov ax, 0x00
@@ -14,19 +18,20 @@ start:
     mov es, ax
     mov ss, ax
     mov sp, 0x7c00
+    mov [boot_drive], dl
     sti  ; Enable interrupts
 
 ;Load Kernel
 
 mov ax, 0x0000
 mov es, ax
-mov bx, 0x1000
+mov bx, KERNEL_START_ADDR
 mov dh, 0x00
-mov dl, 0x80
+mov dl, [boot_drive]
 mov cl, 0x02
 mov ch, 0x00
 mov ah, 0x02
-mov al, 32      ; 32섹터 한번에
+mov al, KERNEL_SECTOR_COUNT
 int 0x13
 jc disk_read_error
 
@@ -69,6 +74,9 @@ gdt_end:
 gdt_descriptor:
     dw gdt_end - gdt_start - 1
     dd gdt_start
+
+boot_drive:
+    db 0
 
 [BITS 32]
 PModeMain:
