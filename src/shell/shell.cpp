@@ -1,5 +1,5 @@
-#include "shell.h"
-#include "drivers/terminal.hpp"
+#include "shell/shell.h"
+#include "drivers/terminal.h"
 
 #define MAX_BUFFER_SIZE 256
 #define MAX_HISTORY 10

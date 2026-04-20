@@ -1,7 +1,7 @@
 #include "drivers/keyboard.h"
 #include "io.h"
 
-#include "shell.h"
+#include "shell/shell.h"
 
 extern "C" void shell_recall_history(int direction);
 extern "C" void shell_input(char c);

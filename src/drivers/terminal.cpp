@@ -1,4 +1,4 @@
-#include "drivers/terminal.hpp"
+#include "drivers/terminal.h"
 #include "io.h"
 
 Terminal::Terminal() {

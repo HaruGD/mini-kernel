@@ -3,7 +3,7 @@ extern "C" {
     #include "paging.h"
 }
 
-#include "shell.h"
+#include "shell/shell.h"
 
 inline void* operator new(size_t, void* ptr) { return ptr; }
 
@@ -13,7 +13,7 @@ extern "C" {
     #include "heap.h"
     #include "io.h"
 }
-#include "drivers/terminal.hpp"
+#include "drivers/terminal.h"
 #include "kernel.h"
 #include "drivers/keyboard.h"
 #include "drivers/ata.h"

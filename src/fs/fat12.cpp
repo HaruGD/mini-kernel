@@ -1,5 +1,5 @@
 #include "fs/fat12.h"
-#include "drivers/terminal.hpp"
+#include "drivers/terminal.h"
 
 extern "C" {
     #include "io.h"

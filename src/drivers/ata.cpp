@@ -1,6 +1,6 @@
 #include "drivers/ata.h"
 #include "io.h"
-#include "drivers/terminal.hpp"
+#include "drivers/terminal.h"
 
 void itoa(int num, char* str) {
     int i = 0;

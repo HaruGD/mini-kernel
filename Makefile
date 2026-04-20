@@ -92,8 +92,8 @@ all: ./bin/os.bin
 ./build/paging.o: ./src/paging.cpp
 	$(CXX) $(CPPFLAGS) -c ./src/paging.cpp -o ./build/paging.o
 
-./build/shell.o: ./src/shell.cpp
-	$(CXX) $(CPPFLAGS) -c ./src/shell.cpp -o ./build/shell.o
+./build/shell.o: ./src/shell/shell.cpp
+	$(CXX) $(CPPFLAGS) -c ./src/shell/shell.cpp -o ./build/shell.o
 
 clean:
 	rm -rf ./bin/os.bin

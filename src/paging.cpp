@@ -1,5 +1,5 @@
 #include "paging.h"
-#include "drivers/terminal.hpp"
+#include "drivers/terminal.h"
 
 extern "C" {
     #include "pmm.h"
