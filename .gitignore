@@ -9,3 +9,4 @@ qemu.log
 *.log
 *.zip
 
+.env
