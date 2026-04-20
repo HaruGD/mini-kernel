@@ -10,3 +10,5 @@ qemu.log
 *.zip
 
 .env
+
+write_sector|.read_sector|.write_sector
