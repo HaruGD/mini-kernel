@@ -9,12 +9,17 @@ KERNEL_START_ADDR equ 0x1000
 BOOT_INFO_ADDR equ 0x8000
 BOOT_INFO_MAGIC equ 0x4649424D
 BOOT_INFO_VERSION equ 1
-BOOT_INFO_SIZE equ 32
+BOOT_INFO_SIZE equ 44
+E820_MEMORY_MAP_ADDR equ 0x8200
+E820_ENTRY_SIZE equ 24
+E820_MAX_ENTRIES equ 16
 REAL_MODE_STACK_TOP equ 0x7c00
 PROTECTED_MODE_STACK_TOP equ 0x9FC00
 SECTOR_SIZE equ 512
 
 DISK_READ_FN equ 0x02
+E820_FN equ 0xE820
+E820_MAGIC equ 0x534D4150
 BIOS_TTY_FN equ 0x0e
 VIDEO_PAGE equ 0x00
 TEXT_ATTR equ 0x07
@@ -81,6 +86,7 @@ load_kernel_loop:
     jmp load_kernel_loop
 
 kernel_loaded:
+    call collect_memory_map
     call write_boot_info
 
 load_pm:
@@ -104,6 +110,51 @@ disk_read_error:
     hlt
     jmp .hang
 
+collect_memory_map:
+    push es
+
+    xor ax, ax
+    mov es, ax
+    mov di, E820_MEMORY_MAP_ADDR
+    xor ebx, ebx
+    xor bp, bp
+
+.next_entry:
+    cmp bp, E820_MAX_ENTRIES
+    jae .done
+
+    mov dword [es:di + 20], 1
+    mov eax, E820_FN
+    mov edx, E820_MAGIC
+    mov ecx, E820_ENTRY_SIZE
+    int 0x15
+    jc .done
+
+    cmp eax, E820_MAGIC
+    jne .unsupported
+    cmp ecx, 20
+    jb .done
+
+    mov eax, [es:di + 8]
+    or eax, [es:di + 12]
+    jz .skip_entry
+
+    inc bp
+    add di, E820_ENTRY_SIZE
+
+.skip_entry:
+    test ebx, ebx
+    jnz .next_entry
+    jmp .done
+
+.unsupported:
+    xor bp, bp
+
+.done:
+    mov [memory_map_count], bp
+    pop es
+    ret
+
 write_boot_info:
     push ax
     push di
@@ -121,7 +172,12 @@ write_boot_info:
     mov dword [es:di + 16], KERNEL_START_ADDR
     mov dword [es:di + 20], KERNEL_SECTOR_COUNT
     mov dword [es:di + 24], STAGE2_PHYS_ADDR
-    mov dword [es:di + 28], 0
+    mov dword [es:di + 28], E820_MEMORY_MAP_ADDR
+    xor eax, eax
+    mov ax, [memory_map_count]
+    mov dword [es:di + 32], eax
+    mov dword [es:di + 36], E820_ENTRY_SIZE
+    mov dword [es:di + 40], 0
 
     pop di
     pop ax
@@ -195,6 +251,9 @@ current_lba:
     dw 0
 
 dest_offset:
+    dw 0
+
+memory_map_count:
     dw 0
 
 disk_error_msg:

@@ -101,7 +101,27 @@ static void print_boot_info(const BootInfo* boot_info) {
     terminal.print_hex(boot_info->kernel_load_addr);
     terminal.print("\nKernel sectors: ");
     terminal.print_hex(boot_info->kernel_sector_count);
+    terminal.print("\nE820 entries: ");
+    terminal.print_hex(boot_info->memory_map_entry_count);
     terminal.print("\n");
+
+    const E820Entry* entries = (const E820Entry*)boot_info->memory_map_addr;
+    uint32_t count = boot_info->memory_map_entry_count;
+    if (count > 3) {
+        count = 3;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        terminal.print("E820 base=");
+        terminal.print_hex(entries[i].base_high);
+        terminal.print_hex(entries[i].base_low);
+        terminal.print(" len=");
+        terminal.print_hex(entries[i].length_high);
+        terminal.print_hex(entries[i].length_low);
+        terminal.print(" type=");
+        terminal.print_hex(entries[i].type);
+        terminal.print("\n");
+    }
 }
 
 extern "C" void kernel_main(const BootInfo* boot_info) {
