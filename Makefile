@@ -3,7 +3,9 @@ CC = i686-elf-gcc
 CXX = i686-elf-g++
 LD = i686-elf-ld
 AS = nasm
-KERNEL_SECTORS = 32
+STAGE2_SECTORS = 4
+KERNEL_SECTORS = 96
+STAGE2_MAX_SIZE = $(shell expr $(STAGE2_SECTORS) \* 512)
 KERNEL_MAX_SIZE = $(shell expr $(KERNEL_SECTORS) \* 512)
 
 # 2. 경로 및 플래그 설정
@@ -32,14 +34,27 @@ FILES = ./build/kernel.asm.o \
 all: ./bin/os.bin
 
 # 최종 이미지 생성 (부트로더 + 커널 + 패딩)
-./bin/os.bin: ./bin/boot.bin ./bin/kernel.bin
-	cat ./bin/boot.bin ./bin/kernel.bin > ./bin/os.bin
+./bin/os.bin: ./bin/boot.bin ./bin/stage2.bin ./bin/kernel.bin
+	cat ./bin/boot.bin ./bin/stage2.bin ./bin/kernel.bin > ./bin/os.bin
 	dd if=/dev/zero bs=512 count=64 >> ./bin/os.bin
 
 # 부트로더 컴파일
 ./bin/boot.bin: ./src/boot/boot.asm
 	@mkdir -p ./bin
-	$(AS) -DKERNEL_SECTOR_COUNT=$(KERNEL_SECTORS) -f bin ./src/boot/boot.asm -o ./bin/boot.bin
+	$(AS) -DSTAGE2_SECTOR_COUNT=$(STAGE2_SECTORS) -f bin ./src/boot/boot.asm -o ./bin/boot.bin
+
+./bin/stage2.bin: ./src/boot/stage2.asm
+	@mkdir -p ./bin
+	$(AS) -DSTAGE2_SECTOR_COUNT=$(STAGE2_SECTORS) -DKERNEL_SECTOR_COUNT=$(KERNEL_SECTORS) -f bin ./src/boot/stage2.asm -o ./bin/stage2.bin
+	@stage2_size=$$(stat -c%s ./bin/stage2.bin); \
+	if [ $$stage2_size -gt $(STAGE2_MAX_SIZE) ]; then \
+		echo "stage2.bin is $$stage2_size bytes, but stage1 loads only $(STAGE2_MAX_SIZE) bytes"; \
+		exit 1; \
+	fi; \
+	padding=$$(($(STAGE2_MAX_SIZE) - $$stage2_size)); \
+	if [ $$padding -gt 0 ]; then \
+		dd if=/dev/zero bs=1 count=$$padding >> ./bin/stage2.bin 2>/dev/null; \
+	fi
 
 # 커널 링크 (링커 스크립트 사용)
 ./bin/kernel.bin: $(FILES)
@@ -99,4 +114,5 @@ clean:
 	rm -rf ./bin/os.bin
 	rm -rf ./bin/kernel.bin
 	rm -rf ./bin/boot.bin
+	rm -rf ./bin/stage2.bin
 	rm -rf ./build/*
