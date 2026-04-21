@@ -10,6 +10,8 @@ extern __init_array_start
 extern __init_array_end
 
 _start:
+    push eax
+
     ; .ctors 호출
     mov ebx, __ctors_start
 .ctors_loop:
@@ -28,7 +30,10 @@ _start:
     add ebx, 4
     jmp .ctor_loop
 .ctor_done:
+    pop eax
+    push eax
     call kernel_main
+    add esp, 4
     jmp $
 
 global idt_load

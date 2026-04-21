@@ -19,6 +19,7 @@ extern "C" {
 #include "drivers/ata.h"
 #include "fs/fat12.h"
 #include "drivers/pit.h"
+#include "kernel/boot_info.h"
 
 PIT pit;
 
@@ -80,8 +81,33 @@ extern "C" void keyboard_handler_c() {
     keyboard.handle();
 }
 
-extern "C" void kernel_main() {
+static void print_boot_info(const BootInfo* boot_info) {
+    if (!boot_info) {
+        terminal.print("BootInfo: null\n");
+        return;
+    }
+
+    if (boot_info->magic != BOOT_INFO_MAGIC) {
+        terminal.print("BootInfo: bad magic ");
+        terminal.print_hex(boot_info->magic);
+        terminal.print("\n");
+        return;
+    }
+
+    terminal.print("BootInfo ok\n");
+    terminal.print("Boot drive: ");
+    terminal.print_hex(boot_info->boot_drive);
+    terminal.print("\nKernel load: ");
+    terminal.print_hex(boot_info->kernel_load_addr);
+    terminal.print("\nKernel sectors: ");
+    terminal.print_hex(boot_info->kernel_sector_count);
+    terminal.print("\n");
+}
+
+extern "C" void kernel_main(const BootInfo* boot_info) {
     terminal.clear();
+    print_boot_info(boot_info);
+
     set_idt();
     pmm_init();
     heap_init();

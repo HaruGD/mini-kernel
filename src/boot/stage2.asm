@@ -6,6 +6,10 @@ DATA_OFFSET equ 0x10
 
 STAGE2_PHYS_ADDR equ 0x90000
 KERNEL_START_ADDR equ 0x1000
+BOOT_INFO_ADDR equ 0x8000
+BOOT_INFO_MAGIC equ 0x4649424D
+BOOT_INFO_VERSION equ 1
+BOOT_INFO_SIZE equ 32
 REAL_MODE_STACK_TOP equ 0x7c00
 PROTECTED_MODE_STACK_TOP equ 0x9FC00
 SECTOR_SIZE equ 512
@@ -46,7 +50,7 @@ stage2_start:
 
 load_kernel_loop:
     cmp si, 0
-    je load_pm
+    je kernel_loaded
 
     mov ax, [current_lba]
     xor dx, dx
@@ -76,6 +80,9 @@ load_kernel_loop:
     dec si
     jmp load_kernel_loop
 
+kernel_loaded:
+    call write_boot_info
+
 load_pm:
     cli
     lgdt [gdt_descriptor]
@@ -96,6 +103,29 @@ disk_read_error:
 .hang:
     hlt
     jmp .hang
+
+write_boot_info:
+    push ax
+    push di
+
+    xor ax, ax
+    mov es, ax
+    mov di, BOOT_INFO_ADDR
+
+    mov dword [es:di + 0], BOOT_INFO_MAGIC
+    mov dword [es:di + 4], BOOT_INFO_VERSION
+    mov dword [es:di + 8], BOOT_INFO_SIZE
+    xor eax, eax
+    mov al, [boot_drive]
+    mov dword [es:di + 12], eax
+    mov dword [es:di + 16], KERNEL_START_ADDR
+    mov dword [es:di + 20], KERNEL_SECTOR_COUNT
+    mov dword [es:di + 24], STAGE2_PHYS_ADDR
+    mov dword [es:di + 28], 0
+
+    pop di
+    pop ax
+    ret
 
 print_string:
     lodsb
@@ -188,4 +218,5 @@ protected_mode:
     or al, 2
     out 0x92, al
 
+    mov eax, BOOT_INFO_ADDR
     jmp CODE_OFFSET:KERNEL_START_ADDR
