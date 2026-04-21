@@ -6,8 +6,18 @@ DATA_OFFSET equ 0x10
 
 STAGE2_PHYS_ADDR equ 0x90000
 KERNEL_START_ADDR equ 0x1000
+REAL_MODE_STACK_TOP equ 0x7c00
+PROTECTED_MODE_STACK_TOP equ 0x9FC00
+SECTOR_SIZE equ 512
+
+DISK_READ_FN equ 0x02
+BIOS_TTY_FN equ 0x0e
+VIDEO_PAGE equ 0x00
+TEXT_ATTR equ 0x07
+
 SECTORS_PER_TRACK equ 63
 HEAD_COUNT equ 16
+SECTORS_PER_CYLINDER equ SECTORS_PER_TRACK * HEAD_COUNT
 
 %ifndef STAGE2_SECTOR_COUNT
 %define STAGE2_SECTOR_COUNT 4
@@ -26,7 +36,7 @@ stage2_start:
     xor ax, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7c00
+    mov sp, REAL_MODE_STACK_TOP
     sti
 
     mov [boot_drive], dl
@@ -40,7 +50,7 @@ load_kernel_loop:
 
     mov ax, [current_lba]
     xor dx, dx
-    mov bx, SECTORS_PER_TRACK * HEAD_COUNT
+    mov bx, SECTORS_PER_CYLINDER
     div bx
     mov ch, al
 
@@ -55,13 +65,13 @@ load_kernel_loop:
     xor ax, ax
     mov es, ax
     mov bx, [dest_offset]
-    mov ah, 0x02
+    mov ah, DISK_READ_FN
     mov al, 0x01
     mov dl, [boot_drive]
     int 0x13
     jc disk_read_error
 
-    add word [dest_offset], 512
+    add word [dest_offset], SECTOR_SIZE
     inc word [current_lba]
     dec si
     jmp load_kernel_loop
@@ -75,10 +85,52 @@ load_pm:
     jmp dword CODE_OFFSET:(STAGE2_PHYS_ADDR + protected_mode)
 
 disk_read_error:
+    mov [disk_error_code], ah
     cli
+    mov si, disk_error_msg
+    call print_string
+    mov al, [disk_error_code]
+    call print_hex8
+    mov si, newline_msg
+    call print_string
 .hang:
     hlt
     jmp .hang
+
+print_string:
+    lodsb
+    test al, al
+    jz .done
+    mov ah, BIOS_TTY_FN
+    mov bh, VIDEO_PAGE
+    mov bl, TEXT_ATTR
+    int 0x10
+    jmp print_string
+.done:
+    ret
+
+print_hex8:
+    push ax
+    shr al, 4
+    call print_hex_nibble
+    pop ax
+    and al, 0x0f
+    call print_hex_nibble
+    ret
+
+print_hex_nibble:
+    cmp al, 10
+    jb .digit
+    add al, 'A' - 10
+    jmp .emit
+.digit:
+    add al, '0'
+.emit:
+    mov ah, BIOS_TTY_FN
+    mov bh, VIDEO_PAGE
+    mov bl, TEXT_ATTR
+    int 0x10
+    ret
 
 gdt_start:
     dq 0
@@ -106,11 +158,20 @@ gdt_descriptor:
 boot_drive:
     db 0
 
+disk_error_code:
+    db 0
+
 current_lba:
     dw 0
 
 dest_offset:
     dw 0
+
+disk_error_msg:
+    db 'Stage2 disk read failed: 0x', 0
+
+newline_msg:
+    db 13, 10, 0
 
 [BITS 32]
 protected_mode:
@@ -120,7 +181,7 @@ protected_mode:
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    mov ebp, 0x9FC00
+    mov ebp, PROTECTED_MODE_STACK_TOP
     mov esp, ebp
 
     in al, 0x92
