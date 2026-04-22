@@ -129,7 +129,7 @@ extern "C" void kernel_main(const BootInfo* boot_info) {
     print_boot_info(boot_info);
 
     set_idt();
-    pmm_init();
+    pmm_init(boot_info);
     heap_init();
 
     paging.init();

@@ -2,6 +2,7 @@
 #define PMM_H
 
 #include <stdint.h>
+#include "kernel/boot_info.h"
 
 #define PAGE_SIZE 4096
 #define BLOCKS_PER_BYTE 8
@@ -11,7 +12,7 @@
 #define TOTAL_BLOCKS (MAX_RAM_SIZE / PAGE_SIZE)
 #define BITMAP_SIZE (TOTAL_BLOCKS / BLOCKS_PER_BYTE)
 
-void pmm_init();
+void pmm_init(const BootInfo* boot_info);
 void* pmm_alloc_block();
 void pmm_free_block(void* addr);
 
