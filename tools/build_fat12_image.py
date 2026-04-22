@@ -13,6 +13,7 @@ SECTORS_PER_FAT = 9
 MEDIA_DESCRIPTOR = 0xF0
 KERNEL_LOAD_ADDR = 0x1000
 STAGE2_LOAD_ADDR = 0x90000
+KERNEL_CLUSTER_STRIDE = 2
 
 
 def set_fat12_entry(fat, cluster, value):
@@ -56,9 +57,10 @@ def main():
     root_dir_sectors = (ROOT_ENTRY_COUNT * 32 + BYTES_PER_SECTOR - 1) // BYTES_PER_SECTOR
     root_start = reserved_sectors + FAT_COUNT * SECTORS_PER_FAT
     data_start = root_start + root_dir_sectors
-    first_cluster = 2
     kernel_clusters = max(1, math.ceil(len(kernel) / BYTES_PER_SECTOR))
-    last_data_sector = data_start + kernel_clusters
+    kernel_cluster_chain = [2 + i * KERNEL_CLUSTER_STRIDE for i in range(kernel_clusters)]
+    first_cluster = kernel_cluster_chain[0]
+    last_data_sector = data_start + (kernel_cluster_chain[-1] - 2) + 1
 
     if last_data_sector > TOTAL_SECTORS:
         raise SystemExit("kernel does not fit in the FAT12 image")
@@ -72,9 +74,8 @@ def main():
     fat[1] = 0xFF
     fat[2] = 0xFF
 
-    for i in range(kernel_clusters):
-        cluster = first_cluster + i
-        next_cluster = 0xFFF if i == kernel_clusters - 1 else cluster + 1
+    for i, cluster in enumerate(kernel_cluster_chain):
+        next_cluster = 0xFFF if i == kernel_clusters - 1 else kernel_cluster_chain[i + 1]
         set_fat12_entry(fat, cluster, next_cluster)
 
     for fat_index in range(FAT_COUNT):
@@ -89,8 +90,10 @@ def main():
     struct.pack_into("<I", entry, 28, len(kernel))
     image[root_offset:root_offset + 32] = entry
 
-    data_offset = data_start * BYTES_PER_SECTOR
-    image[data_offset:data_offset + len(kernel)] = kernel
+    for i, cluster in enumerate(kernel_cluster_chain):
+        chunk = kernel[i * BYTES_PER_SECTOR:(i + 1) * BYTES_PER_SECTOR]
+        offset = (data_start + (cluster - 2)) * BYTES_PER_SECTOR
+        image[offset:offset + len(chunk)] = chunk
 
     with open(args.output, "wb") as f:
         f.write(image)

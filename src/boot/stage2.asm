@@ -13,7 +13,7 @@ BOOT_INFO_SIZE equ 44
 E820_MEMORY_MAP_ADDR equ 0x8200
 E820_ENTRY_SIZE equ 24
 E820_MAX_ENTRIES equ 16
-SCRATCH_BUFFER equ 0x7000
+SCRATCH_BUFFER equ 0x8400
 REAL_MODE_STACK_TOP equ 0x7c00
 PROTECTED_MODE_STACK_TOP equ 0x9FC00
 SECTOR_SIZE equ 512
@@ -91,6 +91,16 @@ file_not_found_error:
     hlt
     jmp .hang
 
+cluster_chain_error:
+    cli
+    mov si, cluster_chain_error_msg
+    call print_string
+    mov si, newline_msg
+    call print_string
+.hang:
+    hlt
+    jmp .hang
+
 find_kernel_file:
     mov word [root_lba], ROOT_DIR_START_LBA
     mov word [root_sectors_left], ROOT_DIR_SECTORS
@@ -161,11 +171,67 @@ load_kernel_file:
     add ax, DATA_START_LBA
     call read_sector_to_kernel
 
-    inc word [current_cluster]
     dec word [sectors_left]
+    cmp word [sectors_left], 0
+    je .done
+
+    mov ax, [current_cluster]
+    call get_next_cluster
+    cmp ax, 0x0FF8
+    jae cluster_chain_error
+    cmp ax, 2
+    jb cluster_chain_error
+    mov [current_cluster], ax
     jmp .read_cluster
 
 .done:
+    ret
+
+get_next_cluster:
+    push bx
+    push dx
+
+    mov bx, ax
+    shr ax, 1
+    add ax, bx
+    mov [fat_entry_byte_offset], ax
+
+    xor dx, dx
+    mov bx, SECTOR_SIZE
+    div bx
+    add ax, FAT_START_LBA
+    mov [fat_entry_sector], ax
+    mov [fat_entry_sector_offset], dx
+
+    xor bx, bx
+    mov es, bx
+    mov bx, SCRATCH_BUFFER
+    call read_sector_lba
+
+    cmp word [fat_entry_sector_offset], SECTOR_SIZE - 1
+    jne .entry_loaded
+
+    mov ax, [fat_entry_sector]
+    inc ax
+    mov bx, SCRATCH_BUFFER + SECTOR_SIZE
+    call read_sector_lba
+
+.entry_loaded:
+    mov bx, SCRATCH_BUFFER
+    add bx, [fat_entry_sector_offset]
+    mov ax, [es:bx]
+
+    test word [current_cluster], 1
+    jz .even_cluster
+    shr ax, 4
+    jmp .done
+
+.even_cluster:
+    and ax, 0x0FFF
+
+.done:
+    pop dx
+    pop bx
     ret
 
 read_sector_to_kernel:
@@ -373,6 +439,15 @@ kernel_file_size:
 dest_addr:
     dd 0
 
+fat_entry_byte_offset:
+    dw 0
+
+fat_entry_sector:
+    dw 0
+
+fat_entry_sector_offset:
+    dw 0
+
 memory_map_count:
     dw 0
 
@@ -384,6 +459,9 @@ disk_error_msg:
 
 kernel_not_found_msg:
     db 'KERNEL.BIN not found', 0
+
+cluster_chain_error_msg:
+    db 'FAT12 cluster chain error', 0
 
 newline_msg:
     db 13, 10, 0
