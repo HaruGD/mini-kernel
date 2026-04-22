@@ -5,11 +5,35 @@ STAGE2_LOAD_SEG equ 0x9000
 STAGE2_LOAD_OFF equ 0x0000
 
 %ifndef STAGE2_SECTOR_COUNT
-%define STAGE2_SECTOR_COUNT 4
+%define STAGE2_SECTOR_COUNT 8
 %endif
+
+jmp short start
+nop
+
+db 'MINIKERN'
+dw 512
+db 1
+dw 1 + STAGE2_SECTOR_COUNT
+db 2
+dw 224
+dw 2880
+db 0xF0
+dw 9
+dw 63
+dw 16
+dd 0
+dd 0
+db 0
+db 0
+db 0x29
+dd 0x20260422
+db 'MINIKERNEL '
+db 'FAT12   '
 
 start:
     cli
+    cld
     xor ax, ax
     mov ds, ax
     mov es, ax

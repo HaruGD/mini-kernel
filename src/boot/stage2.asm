@@ -13,6 +13,7 @@ BOOT_INFO_SIZE equ 44
 E820_MEMORY_MAP_ADDR equ 0x8200
 E820_ENTRY_SIZE equ 24
 E820_MAX_ENTRIES equ 16
+SCRATCH_BUFFER equ 0x7000
 REAL_MODE_STACK_TOP equ 0x7c00
 PROTECTED_MODE_STACK_TOP equ 0x9FC00
 SECTOR_SIZE equ 512
@@ -27,19 +28,22 @@ TEXT_ATTR equ 0x07
 SECTORS_PER_TRACK equ 63
 HEAD_COUNT equ 16
 SECTORS_PER_CYLINDER equ SECTORS_PER_TRACK * HEAD_COUNT
+FAT_COUNT equ 2
+FAT_SECTORS equ 9
+ROOT_DIR_ENTRIES equ 224
+ROOT_DIR_SECTORS equ 14
 
 %ifndef STAGE2_SECTOR_COUNT
-%define STAGE2_SECTOR_COUNT 4
+%define STAGE2_SECTOR_COUNT 8
 %endif
 
-%ifndef KERNEL_SECTOR_COUNT
-%define KERNEL_SECTOR_COUNT 96
-%endif
-
-KERNEL_START_LBA equ 1 + STAGE2_SECTOR_COUNT
+FAT_START_LBA equ 1 + STAGE2_SECTOR_COUNT
+ROOT_DIR_START_LBA equ FAT_START_LBA + (FAT_COUNT * FAT_SECTORS)
+DATA_START_LBA equ ROOT_DIR_START_LBA + ROOT_DIR_SECTORS
 
 stage2_start:
     cli
+    cld
     mov ax, cs
     mov ds, ax
     xor ax, ax
@@ -49,41 +53,8 @@ stage2_start:
     sti
 
     mov [boot_drive], dl
-    mov word [current_lba], KERNEL_START_LBA
-    mov word [dest_offset], KERNEL_START_ADDR
-    mov si, KERNEL_SECTOR_COUNT
-
-load_kernel_loop:
-    cmp si, 0
-    je kernel_loaded
-
-    mov ax, [current_lba]
-    xor dx, dx
-    mov bx, SECTORS_PER_CYLINDER
-    div bx
-    mov ch, al
-
-    mov ax, dx
-    xor dx, dx
-    mov bx, SECTORS_PER_TRACK
-    div bx
-    mov dh, al
-    mov cl, dl
-    inc cl
-
-    xor ax, ax
-    mov es, ax
-    mov bx, [dest_offset]
-    mov ah, DISK_READ_FN
-    mov al, 0x01
-    mov dl, [boot_drive]
-    int 0x13
-    jc disk_read_error
-
-    add word [dest_offset], SECTOR_SIZE
-    inc word [current_lba]
-    dec si
-    jmp load_kernel_loop
+    call find_kernel_file
+    call load_kernel_file
 
 kernel_loaded:
     call collect_memory_map
@@ -109,6 +80,129 @@ disk_read_error:
 .hang:
     hlt
     jmp .hang
+
+file_not_found_error:
+    cli
+    mov si, kernel_not_found_msg
+    call print_string
+    mov si, newline_msg
+    call print_string
+.hang:
+    hlt
+    jmp .hang
+
+find_kernel_file:
+    mov word [root_lba], ROOT_DIR_START_LBA
+    mov word [root_sectors_left], ROOT_DIR_SECTORS
+
+.read_root_sector:
+    cmp word [root_sectors_left], 0
+    je file_not_found_error
+
+    xor ax, ax
+    mov es, ax
+    mov bx, SCRATCH_BUFFER
+    mov ax, [root_lba]
+    call read_sector_lba
+
+    mov di, SCRATCH_BUFFER
+    mov cx, 16
+
+.check_entry:
+    cmp byte [es:di], 0x00
+    je file_not_found_error
+    cmp byte [es:di], 0xE5
+    je .next_entry
+    cmp byte [es:di + 11], 0x0F
+    je .next_entry
+
+    push cx
+    push di
+    mov si, kernel_filename
+    mov cx, 11
+    repe cmpsb
+    pop di
+    pop cx
+    je .found
+
+.next_entry:
+    add di, 32
+    loop .check_entry
+
+    inc word [root_lba]
+    dec word [root_sectors_left]
+    jmp .read_root_sector
+
+.found:
+    mov ax, [es:di + 26]
+    mov [kernel_start_cluster], ax
+    mov eax, [es:di + 28]
+    mov [kernel_file_size], eax
+    add eax, SECTOR_SIZE - 1
+    shr eax, 9
+    mov [kernel_sector_count], ax
+    cmp ax, 0
+    je file_not_found_error
+    ret
+
+load_kernel_file:
+    mov ax, [kernel_start_cluster]
+    mov [current_cluster], ax
+    mov ax, [kernel_sector_count]
+    mov [sectors_left], ax
+    mov dword [dest_addr], KERNEL_START_ADDR
+
+.read_cluster:
+    cmp word [sectors_left], 0
+    je .done
+
+    mov ax, [current_cluster]
+    sub ax, 2
+    add ax, DATA_START_LBA
+    call read_sector_to_kernel
+
+    inc word [current_cluster]
+    dec word [sectors_left]
+    jmp .read_cluster
+
+.done:
+    ret
+
+read_sector_to_kernel:
+    push ax
+    mov eax, [dest_addr]
+    shr eax, 4
+    mov es, ax
+    xor bx, bx
+    pop ax
+    call read_sector_lba
+    add dword [dest_addr], SECTOR_SIZE
+    ret
+
+read_sector_lba:
+    mov [read_lba], ax
+    mov [read_buffer_offset], bx
+
+    xor dx, dx
+    mov bx, SECTORS_PER_CYLINDER
+    div bx
+    mov ch, al
+
+    mov ax, dx
+    xor dx, dx
+    mov bx, SECTORS_PER_TRACK
+    div bx
+    mov dh, al
+    mov cl, dl
+    inc cl
+
+    mov bx, [read_buffer_offset]
+    mov ah, DISK_READ_FN
+    mov al, 0x01
+    mov dl, [boot_drive]
+    int 0x13
+    jc disk_read_error
+    ret
 
 collect_memory_map:
     push es
@@ -170,7 +264,9 @@ write_boot_info:
     mov al, [boot_drive]
     mov dword [es:di + 12], eax
     mov dword [es:di + 16], KERNEL_START_ADDR
-    mov dword [es:di + 20], KERNEL_SECTOR_COUNT
+    xor eax, eax
+    mov ax, [kernel_sector_count]
+    mov dword [es:di + 20], eax
     mov dword [es:di + 24], STAGE2_PHYS_ADDR
     mov dword [es:di + 28], E820_MEMORY_MAP_ADDR
     xor eax, eax
@@ -247,17 +343,47 @@ boot_drive:
 disk_error_code:
     db 0
 
-current_lba:
+read_lba:
     dw 0
 
-dest_offset:
+read_buffer_offset:
     dw 0
+
+root_lba:
+    dw 0
+
+root_sectors_left:
+    dw 0
+
+kernel_start_cluster:
+    dw 0
+
+current_cluster:
+    dw 0
+
+kernel_sector_count:
+    dw 0
+
+sectors_left:
+    dw 0
+
+kernel_file_size:
+    dd 0
+
+dest_addr:
+    dd 0
 
 memory_map_count:
     dw 0
 
+kernel_filename:
+    db 'KERNEL  BIN'
+
 disk_error_msg:
     db 'Stage2 disk read failed: 0x', 0
+
+kernel_not_found_msg:
+    db 'KERNEL.BIN not found', 0
 
 newline_msg:
     db 13, 10, 0

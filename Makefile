@@ -3,10 +3,8 @@ CC = i686-elf-gcc
 CXX = i686-elf-g++
 LD = i686-elf-ld
 AS = nasm
-STAGE2_SECTORS = 4
-KERNEL_SECTORS = 96
+STAGE2_SECTORS = 8
 STAGE2_MAX_SIZE = $(shell expr $(STAGE2_SECTORS) \* 512)
-KERNEL_MAX_SIZE = $(shell expr $(KERNEL_SECTORS) \* 512)
 
 # 2. 경로 및 플래그 설정
 INCLUDES = -I./src/include -I./src
@@ -33,10 +31,14 @@ FILES = ./build/kernel.asm.o \
 # 4. 빌드 규칙
 all: ./bin/os.bin
 
-# 최종 이미지 생성 (부트로더 + 커널 + 패딩)
-./bin/os.bin: ./bin/boot.bin ./bin/stage2.bin ./bin/kernel.bin
-	cat ./bin/boot.bin ./bin/stage2.bin ./bin/kernel.bin > ./bin/os.bin
-	dd if=/dev/zero bs=512 count=64 >> ./bin/os.bin
+# 최종 이미지 생성 (FAT12 부트 이미지 + KERNEL.BIN)
+./bin/os.bin: ./bin/boot.bin ./bin/stage2.bin ./bin/kernel.bin ./tools/build_fat12_image.py
+	python3 ./tools/build_fat12_image.py \
+		--boot ./bin/boot.bin \
+		--stage2 ./bin/stage2.bin \
+		--kernel ./bin/kernel.bin \
+		--output ./bin/os.bin \
+		--stage2-sectors $(STAGE2_SECTORS)
 
 # 부트로더 컴파일
 ./bin/boot.bin: ./src/boot/boot.asm
@@ -45,7 +47,7 @@ all: ./bin/os.bin
 
 ./bin/stage2.bin: ./src/boot/stage2.asm
 	@mkdir -p ./bin
-	$(AS) -DSTAGE2_SECTOR_COUNT=$(STAGE2_SECTORS) -DKERNEL_SECTOR_COUNT=$(KERNEL_SECTORS) -f bin ./src/boot/stage2.asm -o ./bin/stage2.bin
+	$(AS) -DSTAGE2_SECTOR_COUNT=$(STAGE2_SECTORS) -f bin ./src/boot/stage2.asm -o ./bin/stage2.bin
 	@stage2_size=$$(stat -c%s ./bin/stage2.bin); \
 	if [ $$stage2_size -gt $(STAGE2_MAX_SIZE) ]; then \
 		echo "stage2.bin is $$stage2_size bytes, but stage1 loads only $(STAGE2_MAX_SIZE) bytes"; \
@@ -60,11 +62,6 @@ all: ./bin/os.bin
 ./bin/kernel.bin: $(FILES)
 	$(LD) -g -relocatable $(FILES) -o ./build/completeKernel.o
 	$(LD) -T ./src/arch/x86/linkerScript.ld -o ./bin/kernel.bin ./build/completeKernel.o
-	@kernel_size=$$(stat -c%s ./bin/kernel.bin); \
-	if [ $$kernel_size -gt $(KERNEL_MAX_SIZE) ]; then \
-		echo "kernel.bin is $$kernel_size bytes, but bootloader loads only $(KERNEL_MAX_SIZE) bytes"; \
-		exit 1; \
-	fi
 
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 
