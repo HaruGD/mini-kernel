@@ -11,9 +11,10 @@ FAT_COUNT = 2
 ROOT_ENTRY_COUNT = 224
 SECTORS_PER_FAT = 9
 MEDIA_DESCRIPTOR = 0xF0
-KERNEL_LOAD_ADDR = 0x1000
+KERNEL_LOAD_ADDR = 0x100000
 STAGE2_LOAD_ADDR = 0x90000
 KERNEL_CLUSTER_STRIDE = 2
+HMA_LOAD_LIMIT = 0x10FFF0
 
 
 def set_fat12_entry(fat, cluster, value):
@@ -50,8 +51,8 @@ def main():
     if len(stage2) != stage2_size:
         raise SystemExit(f"stage2 must be padded to {stage2_size} bytes")
 
-    if len(kernel) > STAGE2_LOAD_ADDR - KERNEL_LOAD_ADDR:
-        raise SystemExit("kernel is too large for the current low-memory loader")
+    if KERNEL_LOAD_ADDR + len(kernel) > HMA_LOAD_LIMIT:
+        raise SystemExit("kernel is too large for the current HMA real-mode loader")
 
     reserved_sectors = 1 + args.stage2_sectors
     root_dir_sectors = (ROOT_ENTRY_COUNT * 32 + BYTES_PER_SECTOR - 1) // BYTES_PER_SECTOR

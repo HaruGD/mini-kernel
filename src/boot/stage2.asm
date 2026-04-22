@@ -5,7 +5,9 @@ CODE_OFFSET equ 0x08
 DATA_OFFSET equ 0x10
 
 STAGE2_PHYS_ADDR equ 0x90000
-KERNEL_START_ADDR equ 0x1000
+KERNEL_START_ADDR equ 0x100000
+HMA_SEG equ 0xFFFF
+HMA_BASE equ 0xFFFF0
 BOOT_INFO_ADDR equ 0x8000
 BOOT_INFO_MAGIC equ 0x4649424D
 BOOT_INFO_VERSION equ 1
@@ -53,6 +55,7 @@ stage2_start:
     sti
 
     mov [boot_drive], dl
+    call enable_a20
     call find_kernel_file
     call load_kernel_file
 
@@ -236,13 +239,35 @@ get_next_cluster:
 
 read_sector_to_kernel:
     push ax
-    mov eax, [dest_addr]
-    shr eax, 4
+    xor ax, ax
     mov es, ax
-    xor bx, bx
+    mov bx, SCRATCH_BUFFER
     pop ax
     call read_sector_lba
+
+    push ds
+    push es
+
+    mov eax, [dest_addr]
+    sub eax, HMA_BASE
+    mov di, ax
+    xor ax, ax
+    mov ds, ax
+    mov ax, HMA_SEG
+    mov es, ax
+    mov si, SCRATCH_BUFFER
+    mov cx, SECTOR_SIZE / 2
+    rep movsw
+
+    pop es
+    pop ds
     add dword [dest_addr], SECTOR_SIZE
+    ret
+
+enable_a20:
+    in al, 0x92
+    or al, 2
+    out 0x92, al
     ret
 
 read_sector_lba:
@@ -476,10 +501,6 @@ protected_mode:
     mov ss, ax
     mov ebp, PROTECTED_MODE_STACK_TOP
     mov esp, ebp
-
-    in al, 0x92
-    or al, 2
-    out 0x92, al
 
     mov eax, BOOT_INFO_ADDR
     jmp CODE_OFFSET:KERNEL_START_ADDR
