@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // 메모리 블록의 정보를 담는 머리표(Header)
 struct heap_header {
     uint32_t size;     // 블록의 크기 (헤더 포함)
@@ -15,7 +19,13 @@ void heap_init();
 void* kmalloc(size_t size);
 void kfree(void* ptr);
 void heap_coalesce();
+uint64_t heap_total_free();
+uint64_t heap_total_used();
 
 extern struct heap_header* heap_start;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

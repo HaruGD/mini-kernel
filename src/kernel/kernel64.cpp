@@ -3,10 +3,15 @@
 
 extern "C" {
     #include "arch/x86/io.h"
+    #include "heap.h"
 }
 
+#include "arch/x86/idt64.h"
+#include "arch/x86/pmm64.h"
 #include "drivers/terminal.h"
 #include "drivers/ata.h"
+#include "drivers/keyboard.h"
+#include "drivers/pit.h"
 #include "fs/fat12.h"
 #include "kernel/boot_info.h"
 
@@ -14,11 +19,12 @@ extern "C" {
 #define MAX_HISTORY 10
 #define MAX_CMD_LEN 80
 #define NOTEBOOK_CAPACITY 4096
-#define FILE_BUFFER_CAPACITY 4096
 #define PROMPT "OS64> "
 
 Terminal terminal;
 ATADriver ata;
+KeyboardDriver keyboard;
+PIT pit;
 FAT12Driver fat(&ata);
 
 static const BootInfo* g_boot_info = 0;
@@ -26,48 +32,10 @@ static char shell_buffer[MAX_BUFFER_SIZE];
 static int buffer_index = 0;
 static char history[MAX_HISTORY][MAX_CMD_LEN];
 static int history_count = 0;
-static int history_index = 0;
-static char notebook[NOTEBOOK_CAPACITY];
+static int history_index = history_count;
+static char* notebook_ptr = 0;
 static uint32_t notebook_length = 0;
-static uint32_t boot_tsc_low = 0;
-
-inline void* operator new(size_t, void* ptr) { return ptr; }
-inline void* operator new[](size_t, void* ptr) { return ptr; }
-
-static void* kernel64_alloc_fail() {
-    while (1) {
-    }
-}
-
-void* operator new(size_t) { return kernel64_alloc_fail(); }
-void* operator new[](size_t) { return kernel64_alloc_fail(); }
-void operator delete(void*) {}
-void operator delete[](void*) {}
-void operator delete(void*, size_t) {}
-void operator delete[](void*, size_t) {}
-
-extern "C" void __cxa_pure_virtual() {
-    while (1) {
-    }
-}
-
-static const char kbd_us[128] = {
-    0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
-  '\t', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',
-    0,  'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
-    0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,
-  '*', 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  '-', 0, 0, 0, '+', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-};
-
-static const char kbd_us_shift[128] = {
-    0,  27, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b',
-  '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n',
-    0,  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
-    0,  '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,
-  '*', 0, ' ', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  '-', 0, 0, 0, '+', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-};
+static uint64_t boot_tsc = 0;
 
 static int strlen64(const char* str) {
     int len = 0;
@@ -99,10 +67,6 @@ static char to_lower_ascii(char c) {
     return c;
 }
 
-static int is_alpha(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
 static void serial_init() {
     outb(0x3F8 + 1, 0x00);
     outb(0x3F8 + 3, 0x80);
@@ -123,24 +87,22 @@ static void serial_putchar(char c) {
     outb(0x3F8, (unsigned char)c);
 }
 
-static void serial_print(const char* str) {
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\n') {
-            serial_putchar('\r');
-        }
-        serial_putchar(str[i]);
+static void putchar_both(char c) {
+    terminal.putchar(c);
+    if (c == '\n') {
+        serial_putchar('\r');
     }
+    serial_putchar(c);
 }
 
 static void print(const char* str) {
-    terminal.print(str);
-    serial_print(str);
+    for (int i = 0; str[i] != '\0'; i++) {
+        putchar_both(str[i]);
+    }
 }
 
-static void print_hex(uint32_t value) {
-    terminal.print_hex(value);
-
-    char hex_chars[] = "0123456789ABCDEF";
+static void print_hex32(uint32_t value) {
+    static const char hex_chars[] = "0123456789ABCDEF";
     char buffer[11];
     buffer[0] = '0';
     buffer[1] = 'x';
@@ -149,14 +111,39 @@ static void print_hex(uint32_t value) {
         value >>= 4;
     }
     buffer[10] = '\0';
-    serial_print(buffer);
+    print(buffer);
 }
 
-static uint32_t read_tsc_low() {
+static void print_hex64(uint64_t value) {
+    static const char hex_chars[] = "0123456789ABCDEF";
+    char buffer[19];
+    buffer[0] = '0';
+    buffer[1] = 'x';
+    for (int i = 17; i >= 2; i--) {
+        buffer[i] = hex_chars[(uint32_t)(value & 0x0F)];
+        value >>= 4;
+    }
+    buffer[18] = '\0';
+    print(buffer);
+}
+
+extern "C" void debug_print64(const char* str) {
+    print(str);
+}
+
+extern "C" void debug_print_hex64(uint32_t value) {
+    print_hex32(value);
+}
+
+extern "C" void debug_print_hex64_u64(uint64_t value) {
+    print_hex64(value);
+}
+
+static uint64_t read_tsc() {
     uint32_t lo;
     uint32_t hi;
     __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
-    return lo;
+    return ((uint64_t)hi << 32) | lo;
 }
 
 static void to_name83(const char* input, char output[11]) {
@@ -192,17 +179,23 @@ static char* get_argument(char* input) {
     return 0;
 }
 
+static uint64_t e820_base(const E820Entry* entry) {
+    return ((uint64_t)entry->base_high << 32) | entry->base_low;
+}
+
+static uint64_t e820_length(const E820Entry* entry) {
+    return ((uint64_t)entry->length_high << 32) | entry->length_low;
+}
+
 static void print_e820_entry(const E820Entry* entry, uint32_t index) {
     print("\n[");
-    print_hex(index);
+    print_hex32(index);
     print("] base=");
-    print_hex(entry->base_high);
-    print_hex(entry->base_low);
+    print_hex64(e820_base(entry));
     print(" len=");
-    print_hex(entry->length_high);
-    print_hex(entry->length_low);
+    print_hex64(e820_length(entry));
     print(" type=");
-    print_hex(entry->type);
+    print_hex32(entry->type);
 }
 
 static void print_boot_info() {
@@ -212,25 +205,25 @@ static void print_boot_info() {
     }
 
     print("\nBootInfo magic: ");
-    print_hex(g_boot_info->magic);
+    print_hex32(g_boot_info->magic);
     print("\nVersion: ");
-    print_hex(g_boot_info->version);
+    print_hex32(g_boot_info->version);
     print("\nBoot drive: ");
-    print_hex(g_boot_info->boot_drive);
+    print_hex32(g_boot_info->boot_drive);
     print("\nKernel load: ");
-    print_hex(g_boot_info->kernel_load_addr);
+    print_hex32(g_boot_info->kernel_load_addr);
     print("\nKernel sectors: ");
-    print_hex(g_boot_info->kernel_sector_count);
+    print_hex32(g_boot_info->kernel_sector_count);
     print("\nKernel bytes: ");
-    print_hex(g_boot_info->kernel_file_size);
+    print_hex32(g_boot_info->kernel_file_size);
     print("\nStage2 load: ");
-    print_hex(g_boot_info->stage2_load_addr);
+    print_hex32(g_boot_info->stage2_load_addr);
     print("\nMemory map addr: ");
-    print_hex(g_boot_info->memory_map_addr);
+    print_hex32(g_boot_info->memory_map_addr);
     print("\nMemory map entries: ");
-    print_hex(g_boot_info->memory_map_entry_count);
+    print_hex32(g_boot_info->memory_map_entry_count);
     print("\nMemory map entry size: ");
-    print_hex(g_boot_info->memory_map_entry_size);
+    print_hex32(g_boot_info->memory_map_entry_size);
 }
 
 static void print_memmap() {
@@ -248,13 +241,21 @@ static void print_memmap() {
 static void dump_state() {
     print("\n=== OS64 STATE ===");
     print("\nBootInfo ptr: ");
-    print_hex((uint32_t)(uintptr_t)g_boot_info);
+    print_hex64((uint64_t)(uintptr_t)g_boot_info);
     print("\nInput len: ");
-    print_hex((uint32_t)buffer_index);
+    print_hex32((uint32_t)buffer_index);
     print("\nHistory count: ");
-    print_hex((uint32_t)history_count);
+    print_hex32((uint32_t)history_count);
     print("\nNotebook bytes: ");
-    print_hex(notebook_length);
+    print_hex32(notebook_length);
+    print("\nPMM free pages: ");
+    print_hex32(pmm64_get_free_block_count());
+    print("\nHeap used bytes: ");
+    print_hex64(heap_total_used());
+    print("\nHeap free bytes: ");
+    print_hex64(heap_total_free());
+    print("\nPIT tick: ");
+    print_hex32(pit.get_tick());
     print("\n==================");
 }
 
@@ -300,7 +301,9 @@ extern "C" void shell_recall_history(int direction) {
     while (buffer_index > 0) {
         buffer_index--;
         terminal.putchar('\b');
-        serial_print("\b \b");
+        serial_putchar('\b');
+        serial_putchar(' ');
+        serial_putchar('\b');
     }
 
     history_index = new_index;
@@ -321,8 +324,19 @@ extern "C" void shell_recall_history(int direction) {
 }
 
 static void command_help() {
-    print("\nAvailable commands: help, clear, version, bootinfo, memmap, echo, write, read");
+    print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read");
     print("\nfree, dump, atatest, ls, load, save, rm, pagefault, uptime");
+}
+
+static void command_memstat() {
+    print("\nPMM total pages: ");
+    print_hex32(pmm64_get_total_block_count());
+    print("\nPMM free pages: ");
+    print_hex32(pmm64_get_free_block_count());
+    print("\nHeap used bytes: ");
+    print_hex64(heap_total_used());
+    print("\nHeap free bytes: ");
+    print_hex64(heap_total_free());
 }
 
 static void command_echo(char* arg) {
@@ -345,32 +359,47 @@ static void command_write(char* arg) {
         len = NOTEBOOK_CAPACITY - 1;
     }
 
-    for (int i = 0; i < len; i++) {
-        notebook[i] = arg[i];
+    if (notebook_ptr != 0) {
+        kfree(notebook_ptr);
+        notebook_ptr = 0;
     }
-    notebook[len] = '\0';
+
+    notebook_ptr = (char*)kmalloc((size_t)len + 1);
+    if (notebook_ptr == 0) {
+        print("\nOut of memory.");
+        notebook_length = 0;
+        return;
+    }
+
+    for (int i = 0; i < len; i++) {
+        notebook_ptr[i] = arg[i];
+    }
+    notebook_ptr[len] = '\0';
     notebook_length = (uint32_t)len;
     print("\nNotebook updated.");
 }
 
 static void command_read() {
-    if (notebook_length == 0) {
+    if (notebook_length == 0 || notebook_ptr == 0) {
         print("\nNotebook is empty.");
         return;
     }
     print("\nContent: ");
-    print(notebook);
+    print(notebook_ptr);
 }
 
 static void command_free() {
-    notebook[0] = '\0';
+    if (notebook_ptr != 0) {
+        kfree(notebook_ptr);
+        notebook_ptr = 0;
+    }
     notebook_length = 0;
     print("\nNotebook cleared.");
 }
 
 static void command_version() {
     print("\n[OS-Kernel] v0.0.x (64-bit Long Mode, C++)");
-    print("\nBIOS stage1/stage2 + FAT12 loader");
+    print("\nBIOS stage1/stage2 + FAT12 loader + IDT/IRQ");
 }
 
 static void command_atatest() {
@@ -383,7 +412,7 @@ static void command_atatest() {
     print("\nSector 0:");
     for (int i = 0; i < 16; i++) {
         print(" ");
-        print_hex(buffer[i]);
+        print_hex32(buffer[i]);
     }
 }
 
@@ -402,21 +431,28 @@ static void command_load(char* arg) {
         return;
     }
 
-    if (entry.file_size >= FILE_BUFFER_CAPACITY) {
-        print("\nFile too large for OS64 buffer.");
+    uint32_t buffer_size = entry.file_size + 1;
+    if (buffer_size < 512) {
+        buffer_size = 512;
+    }
+
+    uint8_t* file_buffer = (uint8_t*)kmalloc(buffer_size);
+    if (file_buffer == 0) {
+        print("\nOut of memory.");
         return;
     }
 
-    static uint8_t file_buffer[FILE_BUFFER_CAPACITY];
     int bytes_read = fat.read_file(&entry, file_buffer);
     if (bytes_read < 0) {
         print("\nFailed to read file.");
+        kfree(file_buffer);
         return;
     }
 
     file_buffer[entry.file_size] = '\0';
     print("\n");
     print((const char*)file_buffer);
+    kfree(file_buffer);
 }
 
 static void command_save(char* arg) {
@@ -432,7 +468,7 @@ static void command_save(char* arg) {
     char name83[11];
     to_name83(arg, name83);
 
-    if (fat.write_file(name83, (uint8_t*)notebook, notebook_length)) {
+    if (fat.write_file(name83, (uint8_t*)notebook_ptr, notebook_length)) {
         print("\nSaved: ");
         print(arg);
     } else {
@@ -458,9 +494,10 @@ static void command_rm(char* arg) {
 }
 
 static void command_uptime() {
-    uint32_t delta = read_tsc_low() - boot_tsc_low;
-    print("\nTSC delta(low32): ");
-    print_hex(delta);
+    print("\nTick: ");
+    print_hex32(pit.get_tick());
+    print("\nTSC delta: ");
+    print_hex64(read_tsc() - boot_tsc);
 }
 
 static void execute_command() {
@@ -480,13 +517,16 @@ static void execute_command() {
         command_help();
     } else if (strcmp64(cmd, "clear") == 0) {
         terminal.clear();
-        serial_print("\n");
+        serial_putchar('\r');
+        serial_putchar('\n');
     } else if (strcmp64(cmd, "version") == 0) {
         command_version();
     } else if (strcmp64(cmd, "bootinfo") == 0) {
         print_boot_info();
     } else if (strcmp64(cmd, "memmap") == 0) {
         print_memmap();
+    } else if (strcmp64(cmd, "memstat") == 0) {
+        command_memstat();
     } else if (strcmp64(cmd, "echo") == 0) {
         command_echo(arg);
     } else if (strcmp64(cmd, "write") == 0) {
@@ -530,7 +570,9 @@ extern "C" void shell_input(char ascii) {
             buffer_index--;
             shell_buffer[buffer_index] = '\0';
             terminal.putchar('\b');
-            serial_print("\b \b");
+            serial_putchar('\b');
+            serial_putchar(' ');
+            serial_putchar('\b');
         }
     } else if (ascii >= 32 && ascii <= 126) {
         if (buffer_index < MAX_BUFFER_SIZE - 1) {
@@ -542,72 +584,12 @@ extern "C" void shell_input(char ascii) {
     }
 }
 
-static void poll_keyboard() {
-    static int extended = 0;
-    static int left_shift = 0;
-    static int right_shift = 0;
-    static int caps_lock = 0;
+extern "C" void keyboard_handler64() {
+    keyboard.handle();
+}
 
-    if ((inb(0x64) & 1) == 0) {
-        return;
-    }
-
-    uint8_t scancode = inb(0x60);
-
-    if (scancode == 0xE0) {
-        extended = 1;
-        return;
-    }
-
-    if (extended) {
-        extended = 0;
-        if (scancode == 0x48) {
-            shell_recall_history(-1);
-        } else if (scancode == 0x50) {
-            shell_recall_history(1);
-        }
-        return;
-    }
-
-    if (scancode == 0x2A) {
-        left_shift = 1;
-        return;
-    }
-    if (scancode == 0x36) {
-        right_shift = 1;
-        return;
-    }
-    if (scancode == 0xAA) {
-        left_shift = 0;
-        return;
-    }
-    if (scancode == 0xB6) {
-        right_shift = 0;
-        return;
-    }
-    if (scancode == 0x3A) {
-        caps_lock = !caps_lock;
-        return;
-    }
-    if (scancode & 0x80) {
-        return;
-    }
-
-    int shifted = left_shift || right_shift;
-    char ascii = shifted ? kbd_us_shift[scancode] : kbd_us[scancode];
-    if (ascii == 0) {
-        return;
-    }
-
-    if (caps_lock && is_alpha(ascii)) {
-        if (ascii >= 'a' && ascii <= 'z') {
-            ascii = to_upper_ascii(ascii);
-        } else {
-            ascii = to_lower_ascii(ascii);
-        }
-    }
-
-    shell_input(ascii);
+extern "C" void timer_handler64() {
+    pit.handle();
 }
 
 extern "C" void kernel64_main(const BootInfo* boot_info) {
@@ -615,32 +597,39 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     terminal.clear();
 
     g_boot_info = boot_info;
-    boot_tsc_low = read_tsc_low();
+    boot_tsc = read_tsc();
 
     print("Long mode OK\n");
     if (g_boot_info != 0 && g_boot_info->magic == BOOT_INFO_MAGIC) {
         print("BootInfo magic: ");
-        print_hex(g_boot_info->magic);
+        print_hex32(g_boot_info->magic);
         print("\nKernel load: ");
-        print_hex(g_boot_info->kernel_load_addr);
+        print_hex32(g_boot_info->kernel_load_addr);
         print("\nKernel sectors: ");
-        print_hex(g_boot_info->kernel_sector_count);
+        print_hex32(g_boot_info->kernel_sector_count);
         print("\nKernel bytes: ");
-        print_hex(g_boot_info->kernel_file_size);
+        print_hex32(g_boot_info->kernel_file_size);
         print("\nE820 entries: ");
-        print_hex(g_boot_info->memory_map_entry_count);
+        print_hex32(g_boot_info->memory_map_entry_count);
         print("\n");
     } else {
         print("BootInfo invalid\n");
     }
 
+    pmm64_init(boot_info);
+    heap_init();
     ata.init();
     fat.init();
+    idt64_init();
+    keyboard.init();
+    pit.init();
+    __asm__ volatile("sti");
 
-    print("Keyboard polling ready\n");
+    print("Memory ready\n");
+    print("Interrupts ready\n");
     print(PROMPT);
 
     while (1) {
-        poll_keyboard();
+        __asm__ volatile("hlt");
     }
 }

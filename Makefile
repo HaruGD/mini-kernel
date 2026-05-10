@@ -114,8 +114,26 @@ all64: ./bin/os64.bin
 ./build/fat12_64.o: ./src/fs/fat12.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/fs/fat12.cpp -o ./build/fat12_64.o
 
-./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o
+./build/keyboard64.o: ./src/drivers/keyboard.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/keyboard.cpp -o ./build/keyboard64.o
+
+./build/pit64.o: ./src/drivers/pit.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/pit.cpp -o ./build/pit64.o
+
+./build/idt64.o: ./src/arch/x86/idt64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/arch/x86/idt64.cpp -o ./build/idt64.o
+
+./build/idt64_asm.o: ./src/boot/idt64.asm
+	$(AS) -f elf64 -g ./src/boot/idt64.asm -o ./build/idt64_asm.o
+
+./build/pmm64.o: ./src/arch/x86/pmm64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/arch/x86/pmm64.cpp -o ./build/pmm64.o
+
+./build/heap64.o: ./src/heap64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/heap64.cpp -o ./build/heap64.o
+
+./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/pmm64.o ./build/heap64.o
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/pmm64.o ./build/heap64.o
 
 ./bin/kernel64.bin: ./bin/kernel64.elf
 	$(HOST64_OBJCOPY) -O binary ./bin/kernel64.elf ./bin/kernel64.bin

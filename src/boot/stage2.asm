@@ -569,7 +569,17 @@ setup_page_tables:
 
     mov dword [PML4_ADDR], PDPT_ADDR | 0x03
     mov dword [PDPT_ADDR], PD_ADDR | 0x03
-    mov dword [PD_ADDR], 0x00000083
+
+    xor ebx, ebx
+    mov ecx, 64
+.map_2mb_pages:
+    mov eax, ebx
+    shl eax, 21
+    or eax, 0x83
+    mov [PD_ADDR + ebx * 8], eax
+    mov dword [PD_ADDR + ebx * 8 + 4], 0
+    inc ebx
+    loop .map_2mb_pages
 
     popad
     ret
