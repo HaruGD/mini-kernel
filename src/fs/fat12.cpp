@@ -11,40 +11,26 @@ extern Terminal terminal;  // 포인터 아닌 참조로
 FAT12Driver::FAT12Driver(ATADriver* ata) : ata(ata) {}
 
 void FAT12Driver::init() {
-    terminal.print("1\n");
     uint8_t buffer[512];
     if (!ata->read_sector(0, buffer)) {
-        terminal.print("FAT12: failed to read boot sector\n");
+        terminal.print("\nFAT12: failed to read boot sector");
         return;
     }
 
-    terminal.print("2\n");
     for (int i = 0; i < (int)sizeof(BPB); i++) {
         ((uint8_t*)&bpb)[i] = buffer[i];
     }
 
-    terminal.print("3\n");
     fat_start  = bpb.reserved_sectors;
     root_start = fat_start + (bpb.fat_count * bpb.sectors_per_fat);
     data_start = root_start + ((bpb.root_entry_count * 32) / bpb.bytes_per_sector);
 
-    terminal.print("4\n");
-    terminal.print("sectors_per_fat: ");
-    terminal.print_hex(bpb.sectors_per_fat);
-    terminal.print("\n");
-    //fat_table = (uint8_t*)kmalloc(512 * bpb.sectors_per_fat);
-    terminal.print("fat_table: ");
-    terminal.print_hex((uint32_t)fat_table);
-    terminal.print("\n");
-
-    terminal.print("5\n");
     for (int i = 0; i < bpb.sectors_per_fat; i++) {
         if (!ata->read_sector(fat_start + i, fat_table + i * 512)) {
-            terminal.print("FAT12: failed to read FAT\n");
+            terminal.print("\nFAT12: failed to read FAT");
             return;
         }
     }
-    terminal.print("6\n");
 }
 
 uint16_t FAT12Driver::get_fat_entry(uint16_t cluster) {

@@ -4,6 +4,7 @@ CXX = i686-elf-g++
 LD = i686-elf-ld
 AS = nasm
 HOST64_CC = gcc
+HOST64_CXX = g++
 HOST64_LD = ld
 HOST64_OBJCOPY = objcopy
 STAGE2_SECTORS = 8
@@ -17,6 +18,7 @@ FLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0
 CFLAGS = $(FLAGS) -std=gnu99 $(INCLUDES)
 CPPFLAGS = $(FLAGS) -fno-exceptions -fno-rtti -fno-use-cxa-atexit $(INCLUDES)
 HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
+HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
 
 # 3. 오브젝트 파일 목록 (★순서가 가장 중요합니다★)
 # kernel.asm.o가 무조건 맨 앞에 와야 EIP=0x2d 에러를 막을 수 있습니다.
@@ -100,11 +102,20 @@ all64: ./bin/os64.bin
 	@mkdir -p ./build
 	$(AS) -f elf64 -g ./src/boot/kernel64_entry.asm -o ./build/kernel64_entry.o
 
-./build/kernel64.o: ./src/kernel/kernel64.c
-	$(HOST64_CC) $(HOST64_CFLAGS) -c ./src/kernel/kernel64.c -o ./build/kernel64.o
+./build/kernel64.o: ./src/kernel/kernel64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/kernel64.cpp -o ./build/kernel64.o
 
-./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o
+./build/terminal64.o: ./src/drivers/terminal.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/terminal.cpp -o ./build/terminal64.o
+
+./build/ata64.o: ./src/drivers/ata.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/ata.cpp -o ./build/ata64.o
+
+./build/fat12_64.o: ./src/fs/fat12.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/fs/fat12.cpp -o ./build/fat12_64.o
+
+./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o
 
 ./bin/kernel64.bin: ./bin/kernel64.elf
 	$(HOST64_OBJCOPY) -O binary ./bin/kernel64.elf ./bin/kernel64.bin

@@ -1,6 +1,5 @@
 #include "drivers/ata.h"
 #include "arch/x86/io.h"
-#include "drivers/terminal.h"
 
 void itoa(int num, char* str) {
     int i = 0;
@@ -48,10 +47,6 @@ void itoa(int num, char* str) {
 
 ATADriver::ATADriver(uint8_t drive)
     : drive(drive), exists(false) {}
-Terminal terminal1;
-
-int test = 0;
-char ttt[32];
 
 bool ATADriver::wait_ready() {
     for (int timeout = 100000; timeout > 0; timeout--) {

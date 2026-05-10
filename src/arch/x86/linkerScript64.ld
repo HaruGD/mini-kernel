@@ -18,6 +18,13 @@ SECTIONS
         *(.data*)
     }
 
+    .init_array :
+    {
+        __init_array_start = .;
+        KEEP(*(.init_array*))
+        __init_array_end = .;
+    }
+
     .bss :
     {
         *(COMMON)

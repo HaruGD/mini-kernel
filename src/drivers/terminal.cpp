@@ -5,9 +5,6 @@ Terminal::Terminal() {
     vga = (volatile char*)0xB8000;
     cursor = 0;
     color = 0x0F;
-
-    vga[0] = 'T';
-    vga[1] = 0x0F;
 }
 
 void Terminal::update_cursor() {
