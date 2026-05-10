@@ -3,6 +3,7 @@
 
 CODE_OFFSET equ 0x08
 DATA_OFFSET equ 0x10
+CODE64_OFFSET equ 0x18
 
 STAGE2_PHYS_ADDR equ 0x90000
 KERNEL_START_ADDR equ 0x100000
@@ -11,7 +12,7 @@ HMA_BASE equ 0xFFFF0
 BOOT_INFO_ADDR equ 0x8000
 BOOT_INFO_MAGIC equ 0x4649424D
 BOOT_INFO_VERSION equ 1
-BOOT_INFO_SIZE equ 44
+BOOT_INFO_SIZE equ 48
 E820_MEMORY_MAP_ADDR equ 0x8200
 E820_ENTRY_SIZE equ 24
 E820_MAX_ENTRIES equ 16
@@ -34,6 +35,14 @@ FAT_COUNT equ 2
 FAT_SECTORS equ 9
 ROOT_DIR_ENTRIES equ 224
 ROOT_DIR_SECTORS equ 14
+
+%ifdef LONG_MODE_KERNEL
+PML4_ADDR equ 0x5000
+PDPT_ADDR equ 0x6000
+PD_ADDR equ 0x7000
+LONG_MODE_STACK_TOP equ 0x1FF000
+EFER_MSR equ 0xC0000080
+%endif
 
 %ifndef STAGE2_SECTOR_COUNT
 %define STAGE2_SECTOR_COUNT 8
@@ -74,10 +83,14 @@ load_pm:
 disk_read_error:
     mov [disk_error_code], ah
     cli
-    mov si, disk_error_msg
+    mov si, disk_read_error_msg
     call print_string
     mov al, [disk_error_code]
     call print_hex8
+    mov si, disk_read_lba_msg
+    call print_string
+    mov ax, [read_lba]
+    call print_hex16
     mov si, newline_msg
     call print_string
 .hang:
@@ -98,6 +111,8 @@ cluster_chain_error:
     cli
     mov si, cluster_chain_error_msg
     call print_string
+    mov ax, [current_cluster]
+    call print_hex16
     mov si, newline_msg
     call print_string
 .hang:
@@ -358,13 +373,15 @@ write_boot_info:
     xor eax, eax
     mov ax, [kernel_sector_count]
     mov dword [es:di + 20], eax
-    mov dword [es:di + 24], STAGE2_PHYS_ADDR
-    mov dword [es:di + 28], E820_MEMORY_MAP_ADDR
+    mov eax, [kernel_file_size]
+    mov dword [es:di + 24], eax
+    mov dword [es:di + 28], STAGE2_PHYS_ADDR
+    mov dword [es:di + 32], E820_MEMORY_MAP_ADDR
     xor eax, eax
     mov ax, [memory_map_count]
-    mov dword [es:di + 32], eax
-    mov dword [es:di + 36], E820_ENTRY_SIZE
-    mov dword [es:di + 40], 0
+    mov dword [es:di + 36], eax
+    mov dword [es:di + 40], E820_ENTRY_SIZE
+    mov dword [es:di + 44], 0
 
     pop di
     pop ax
@@ -389,6 +406,14 @@ print_hex8:
     pop ax
     and al, 0x0f
     call print_hex_nibble
+    ret
+
+print_hex16:
+    push ax
+    mov al, ah
+    call print_hex8
+    pop ax
+    call print_hex8
     ret
 
 print_hex_nibble:
@@ -421,6 +446,15 @@ gdt_start:
     db 10010010b
     db 11001111b
     db 0x00
+
+%ifdef LONG_MODE_KERNEL
+    dw 0x0000
+    dw 0x0000
+    db 0x00
+    db 10011010b
+    db 00100000b
+    db 0x00
+%endif
 
 gdt_end:
 
@@ -479,14 +513,17 @@ memory_map_count:
 kernel_filename:
     db 'KERNEL  BIN'
 
-disk_error_msg:
-    db 'Stage2 disk read failed: 0x', 0
+disk_read_error_msg:
+    db 'Stage2 disk read failed: code=0x', 0
+
+disk_read_lba_msg:
+    db ' lba=0x', 0
 
 kernel_not_found_msg:
     db 'KERNEL.BIN not found', 0
 
 cluster_chain_error_msg:
-    db 'FAT12 cluster chain error', 0
+    db 'FAT12 cluster chain error: cluster=0x', 0
 
 newline_msg:
     db 13, 10, 0
@@ -499,8 +536,61 @@ protected_mode:
     mov fs, ax
     mov gs, ax
     mov ss, ax
+
+%ifdef LONG_MODE_KERNEL
+    mov esp, PROTECTED_MODE_STACK_TOP
+    call setup_page_tables
+
+    mov eax, PML4_ADDR
+    mov cr3, eax
+
+    mov eax, cr4
+    or eax, 1 << 5
+    mov cr4, eax
+
+    mov ecx, EFER_MSR
+    rdmsr
+    or eax, 1 << 8
+    wrmsr
+
+    mov eax, cr0
+    or eax, 0x80000000
+    mov cr0, eax
+
+    jmp CODE64_OFFSET:(STAGE2_PHYS_ADDR + long_mode_entry)
+
+setup_page_tables:
+    pushad
+
+    xor eax, eax
+    mov edi, PML4_ADDR
+    mov ecx, (4096 * 3) / 4
+    rep stosd
+
+    mov dword [PML4_ADDR], PDPT_ADDR | 0x03
+    mov dword [PDPT_ADDR], PD_ADDR | 0x03
+    mov dword [PD_ADDR], 0x00000083
+
+    popad
+    ret
+
+[BITS 64]
+long_mode_entry:
+    mov ax, DATA_OFFSET
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    mov rsp, LONG_MODE_STACK_TOP
+    mov rbp, rsp
+    mov edi, BOOT_INFO_ADDR
+    mov rax, KERNEL_START_ADDR
+    jmp rax
+%else
     mov ebp, PROTECTED_MODE_STACK_TOP
     mov esp, ebp
 
     mov eax, BOOT_INFO_ADDR
     jmp CODE_OFFSET:KERNEL_START_ADDR
+%endif
