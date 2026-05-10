@@ -1,13 +1,31 @@
 #include "heap.h"
+#include "arch/x86/paging64.h"
 #include "arch/x86/pmm64.h"
 
 static struct heap_header* heap_tail = 0;
+static uint64_t heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
 
 static uintptr_t align_up_heap(uintptr_t value, uintptr_t align) {
     return (value + align - 1) & ~(align - 1);
 }
 
+static uintptr_t align_down_heap(uintptr_t value, uintptr_t align) {
+    return value & ~(align - 1);
+}
+
 struct heap_header* heap_start = 0;
+
+static struct heap_header* find_prev_block(struct heap_header* target) {
+    if (target == 0 || target == heap_start) {
+        return 0;
+    }
+
+    struct heap_header* current = heap_start;
+    while (current != 0 && current->next != target) {
+        current = current->next;
+    }
+    return current;
+}
 
 static void split_block(struct heap_header* block, uint32_t total_size) {
     if (block->size < total_size + sizeof(struct heap_header) + 16) {
@@ -29,12 +47,49 @@ static void split_block(struct heap_header* block, uint32_t total_size) {
 
 static struct heap_header* append_region(uint32_t bytes) {
     uint32_t page_count = (bytes + PMM64_PAGE_SIZE - 1) / PMM64_PAGE_SIZE;
-    uintptr_t region = (uintptr_t)pmm64_alloc_blocks(page_count);
-    if (region == 0) {
+    uint64_t region = heap_next_virtual;
+    uint64_t region_size = (uint64_t)page_count * PMM64_PAGE_SIZE;
+
+    if (region + region_size > PAGING64_KERNEL_HEAP_LIMIT) {
         return 0;
     }
 
-    struct heap_header* block = (struct heap_header*)region;
+    for (uint32_t i = 0; i < page_count; i++) {
+        uint64_t virt = region + ((uint64_t)i * PMM64_PAGE_SIZE);
+        uint64_t phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+        if (phys == 0) {
+            for (uint32_t rollback = 0; rollback < i; rollback++) {
+                uint64_t rollback_virt = region + ((uint64_t)rollback * PMM64_PAGE_SIZE);
+                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
+                paging64_unmap_page(rollback_virt);
+                if (rollback_phys != 0) {
+                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
+                }
+            }
+            return 0;
+        }
+
+        if (!paging64_map_page(virt, phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_GLOBAL)) {
+            pmm64_free_block((void*)(uintptr_t)phys);
+            for (uint32_t rollback = 0; rollback < i; rollback++) {
+                uint64_t rollback_virt = region + ((uint64_t)rollback * PMM64_PAGE_SIZE);
+                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
+                paging64_unmap_page(rollback_virt);
+                if (rollback_phys != 0) {
+                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
+                }
+            }
+            return 0;
+        }
+    }
+
+    heap_next_virtual += region_size;
+
+    for (uint64_t i = 0; i < region_size; i++) {
+        *((volatile uint8_t*)(uintptr_t)(region + i)) = 0;
+    }
+
+    struct heap_header* block = (struct heap_header*)(uintptr_t)region;
     block->size = page_count * PMM64_PAGE_SIZE;
     block->is_free = 1;
     block->next = 0;
@@ -50,9 +105,55 @@ static struct heap_header* append_region(uint32_t bytes) {
     return block;
 }
 
+static void shrink_heap_tail() {
+    while (heap_tail != 0 && heap_tail->is_free) {
+        uintptr_t block_start = (uintptr_t)heap_tail;
+        uintptr_t block_end = block_start + heap_tail->size;
+
+        if (block_end != heap_next_virtual) {
+            break;
+        }
+
+        uintptr_t releasable_start = align_up_heap(block_start + sizeof(struct heap_header), PMM64_PAGE_SIZE);
+        if (block_start == align_down_heap(block_start, PMM64_PAGE_SIZE) &&
+            heap_tail->size >= PMM64_PAGE_SIZE) {
+            releasable_start = block_start;
+        }
+
+        if (releasable_start >= block_end) {
+            break;
+        }
+
+        for (uintptr_t virt = releasable_start; virt < block_end; virt += PMM64_PAGE_SIZE) {
+            uint64_t phys = paging64_get_phys((uint64_t)virt) & 0x000FFFFFFFFFF000ULL;
+            if (phys != 0) {
+                paging64_unmap_page((uint64_t)virt);
+                pmm64_free_block((void*)(uintptr_t)phys);
+            }
+        }
+
+        heap_next_virtual = releasable_start;
+
+        if (releasable_start == block_start) {
+            struct heap_header* prev = find_prev_block(heap_tail);
+            if (prev != 0) {
+                prev->next = 0;
+            } else {
+                heap_start = 0;
+            }
+            heap_tail = prev;
+        } else {
+            heap_tail->size = releasable_start - block_start;
+            heap_tail->next = 0;
+            break;
+        }
+    }
+}
+
 extern "C" void heap_init() {
     heap_start = 0;
     heap_tail = 0;
+    heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
     append_region(PMM64_PAGE_SIZE * 4);
 }
 
@@ -114,6 +215,7 @@ extern "C" void kfree(void* ptr) {
     struct heap_header* header = (struct heap_header*)((uintptr_t)ptr - sizeof(struct heap_header));
     header->is_free = 1;
     heap_coalesce();
+    shrink_heap_tail();
 }
 
 extern "C" uint64_t heap_total_free() {
