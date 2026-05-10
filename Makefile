@@ -35,7 +35,8 @@ FILES = ./build/kernel.asm.o \
         ./build/shell.o
 
 # 4. 빌드 규칙
-all: ./bin/os.bin
+all: ./bin/os64.bin
+all32: ./bin/os.bin
 all64: ./bin/os64.bin
 
 # 최종 이미지 생성 (FAT12 부트 이미지 + KERNEL.BIN)

@@ -101,6 +101,8 @@ static void print_boot_info(const BootInfo* boot_info) {
     terminal.print_hex(boot_info->kernel_load_addr);
     terminal.print("\nKernel sectors: ");
     terminal.print_hex(boot_info->kernel_sector_count);
+    terminal.print("\nKernel bytes: ");
+    terminal.print_hex(boot_info->kernel_file_size);
     terminal.print("\nE820 entries: ");
     terminal.print_hex(boot_info->memory_map_entry_count);
     terminal.print("\n");

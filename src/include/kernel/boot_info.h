@@ -26,6 +26,7 @@ typedef struct BootInfo {
     uint32_t boot_drive;
     uint32_t kernel_load_addr;
     uint32_t kernel_sector_count;
+    uint32_t kernel_file_size;
     uint32_t stage2_load_addr;
     uint32_t memory_map_addr;
     uint32_t memory_map_entry_count;
