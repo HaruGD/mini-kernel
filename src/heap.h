@@ -21,6 +21,9 @@ void kfree(void* ptr);
 void heap_coalesce();
 uint64_t heap_total_free();
 uint64_t heap_total_used();
+uint64_t heap_total_mapped_bytes();
+uint32_t heap_mapped_page_count();
+uint32_t heap_region_count();
 
 extern struct heap_header* heap_start;
 

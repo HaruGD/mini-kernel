@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #include "arch/x86/idt64.h"
+#include "arch/x86/paging64.h"
 #include "arch/x86/pmm64.h"
 #include "drivers/terminal.h"
 #include "drivers/ata.h"
@@ -18,7 +19,7 @@ extern "C" {
 #define MAX_BUFFER_SIZE 256
 #define MAX_HISTORY 10
 #define MAX_CMD_LEN 80
-#define NOTEBOOK_CAPACITY 4096
+#define NOTEBOOK_CAPACITY 32768
 #define PROMPT "OS64> "
 
 Terminal terminal;
@@ -179,6 +180,16 @@ static char* get_argument(char* input) {
     return 0;
 }
 
+static uint32_t parse_uint32(const char* text) {
+    uint32_t value = 0;
+    int i = 0;
+    while (text[i] >= '0' && text[i] <= '9') {
+        value = value * 10 + (uint32_t)(text[i] - '0');
+        i++;
+    }
+    return value;
+}
+
 static uint64_t e820_base(const E820Entry* entry) {
     return ((uint64_t)entry->base_high << 32) | entry->base_low;
 }
@@ -250,10 +261,24 @@ static void dump_state() {
     print_hex32(notebook_length);
     print("\nPMM free pages: ");
     print_hex32(pmm64_get_free_block_count());
+    print("\nPaging root: ");
+    print_hex64(paging64_get_root_phys());
     print("\nHeap used bytes: ");
     print_hex64(heap_total_used());
     print("\nHeap free bytes: ");
     print_hex64(heap_total_free());
+    print("\nHeap mapped bytes: ");
+    print_hex64(heap_total_mapped_bytes());
+    print("\nHeap mapped pages: ");
+    print_hex32(heap_mapped_page_count());
+    print("\nHeap regions: ");
+    print_hex32(heap_region_count());
+    print("\nNotebook ptr: ");
+    print_hex64((uint64_t)(uintptr_t)notebook_ptr);
+    if (notebook_ptr != 0) {
+        print("\nNotebook phys: ");
+        print_hex64(paging64_get_phys((uint64_t)(uintptr_t)notebook_ptr));
+    }
     print("\nPIT tick: ");
     print_hex32(pit.get_tick());
     print("\n==================");
@@ -324,7 +349,7 @@ extern "C" void shell_recall_history(int direction) {
 }
 
 static void command_help() {
-    print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read");
+    print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, atatest, ls, load, save, rm, pagefault, uptime");
 }
 
@@ -333,10 +358,18 @@ static void command_memstat() {
     print_hex32(pmm64_get_total_block_count());
     print("\nPMM free pages: ");
     print_hex32(pmm64_get_free_block_count());
+    print("\nPaging root: ");
+    print_hex64(paging64_get_root_phys());
     print("\nHeap used bytes: ");
     print_hex64(heap_total_used());
     print("\nHeap free bytes: ");
     print_hex64(heap_total_free());
+    print("\nHeap mapped bytes: ");
+    print_hex64(heap_total_mapped_bytes());
+    print("\nHeap mapped pages: ");
+    print_hex32(heap_mapped_page_count());
+    print("\nHeap regions: ");
+    print_hex32(heap_region_count());
 }
 
 static void command_echo(char* arg) {
@@ -377,6 +410,49 @@ static void command_write(char* arg) {
     notebook_ptr[len] = '\0';
     notebook_length = (uint32_t)len;
     print("\nNotebook updated.");
+}
+
+static void command_fill(char* arg) {
+    if (arg == 0) {
+        print("\nUsage: fill [bytes] [char]");
+        return;
+    }
+
+    char* second = get_argument(arg);
+    if (second == 0 || second[0] == '\0') {
+        print("\nUsage: fill [bytes] [char]");
+        return;
+    }
+
+    uint32_t len = parse_uint32(arg);
+    if (len == 0) {
+        print("\nSize must be > 0.");
+        return;
+    }
+    if (len >= NOTEBOOK_CAPACITY) {
+        len = NOTEBOOK_CAPACITY - 1;
+    }
+
+    if (notebook_ptr != 0) {
+        kfree(notebook_ptr);
+        notebook_ptr = 0;
+    }
+
+    notebook_ptr = (char*)kmalloc((size_t)len + 1);
+    if (notebook_ptr == 0) {
+        print("\nOut of memory.");
+        notebook_length = 0;
+        return;
+    }
+
+    for (uint32_t i = 0; i < len; i++) {
+        notebook_ptr[i] = second[0];
+    }
+    notebook_ptr[len] = '\0';
+    notebook_length = len;
+    print("\nNotebook filled: ");
+    print_hex32(len);
+    print(" bytes");
 }
 
 static void command_read() {
@@ -531,6 +607,8 @@ static void execute_command() {
         command_echo(arg);
     } else if (strcmp64(cmd, "write") == 0) {
         command_write(arg);
+    } else if (strcmp64(cmd, "fill") == 0) {
+        command_fill(arg);
     } else if (strcmp64(cmd, "read") == 0) {
         command_read();
     } else if (strcmp64(cmd, "free") == 0) {
@@ -617,6 +695,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     }
 
     pmm64_init(boot_info);
+    paging64_init();
     heap_init();
     ata.init();
     fat.init();

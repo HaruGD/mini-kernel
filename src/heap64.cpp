@@ -4,6 +4,7 @@
 
 static struct heap_header* heap_tail = 0;
 static uint64_t heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
+static uint32_t heap_mapped_pages = 0;
 
 static uintptr_t align_up_heap(uintptr_t value, uintptr_t align) {
     return (value + align - 1) & ~(align - 1);
@@ -64,6 +65,9 @@ static struct heap_header* append_region(uint32_t bytes) {
                 paging64_unmap_page(rollback_virt);
                 if (rollback_phys != 0) {
                     pmm64_free_block((void*)(uintptr_t)rollback_phys);
+                    if (heap_mapped_pages > 0) {
+                        heap_mapped_pages--;
+                    }
                 }
             }
             return 0;
@@ -77,10 +81,15 @@ static struct heap_header* append_region(uint32_t bytes) {
                 paging64_unmap_page(rollback_virt);
                 if (rollback_phys != 0) {
                     pmm64_free_block((void*)(uintptr_t)rollback_phys);
+                    if (heap_mapped_pages > 0) {
+                        heap_mapped_pages--;
+                    }
                 }
             }
             return 0;
         }
+
+        heap_mapped_pages++;
     }
 
     heap_next_virtual += region_size;
@@ -129,6 +138,9 @@ static void shrink_heap_tail() {
             if (phys != 0) {
                 paging64_unmap_page((uint64_t)virt);
                 pmm64_free_block((void*)(uintptr_t)phys);
+                if (heap_mapped_pages > 0) {
+                    heap_mapped_pages--;
+                }
             }
         }
 
@@ -154,6 +166,7 @@ extern "C" void heap_init() {
     heap_start = 0;
     heap_tail = 0;
     heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
+    heap_mapped_pages = 0;
     append_region(PMM64_PAGE_SIZE * 4);
 }
 
@@ -240,6 +253,24 @@ extern "C" uint64_t heap_total_used() {
         current = current->next;
     }
     return total;
+}
+
+extern "C" uint64_t heap_total_mapped_bytes() {
+    return (uint64_t)heap_mapped_pages * PMM64_PAGE_SIZE;
+}
+
+extern "C" uint32_t heap_mapped_page_count() {
+    return heap_mapped_pages;
+}
+
+extern "C" uint32_t heap_region_count() {
+    uint32_t count = 0;
+    struct heap_header* current = heap_start;
+    while (current != 0) {
+        count++;
+        current = current->next;
+    }
+    return count;
 }
 
 inline void* operator new(size_t, void* ptr) { return ptr; }
