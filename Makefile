@@ -19,6 +19,9 @@ CFLAGS = $(FLAGS) -std=gnu99 $(INCLUDES)
 CPPFLAGS = $(FLAGS) -fno-exceptions -fno-rtti -fno-use-cxa-atexit $(INCLUDES)
 HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
 HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
+USER_ASM_SOURCES = $(wildcard ./src/user/*.asm)
+USER_BINS = $(patsubst ./src/user/%.asm,./bin/%.bin,$(USER_ASM_SOURCES))
+USER_EXTRA_ARGS = $(foreach file,$(USER_BINS),--extra-file-auto $(file))
 
 # 3. 오브젝트 파일 목록 (★순서가 가장 중요합니다★)
 # kernel.asm.o가 무조건 맨 앞에 와야 EIP=0x2d 에러를 막을 수 있습니다.
@@ -50,13 +53,12 @@ all64: ./bin/os64.bin
 		--output ./bin/os.bin \
 		--stage2-sectors $(STAGE2_SECTORS)
 
-./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin ./bin/usertest.bin ./bin/uinfo.bin ./tools/build_fat12_image.py
+./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin $(USER_BINS) ./tools/build_fat12_image.py
 	python3 ./tools/build_fat12_image.py \
 		--boot ./bin/boot64.bin \
 		--stage2 ./bin/stage2_64.bin \
 		--kernel ./bin/kernel64.bin \
-		--extra-file UTEST.BIN=./bin/usertest.bin \
-		--extra-file UINFO.BIN=./bin/uinfo.bin \
+		$(USER_EXTRA_ARGS) \
 		--output ./bin/os64.bin \
 		--stage2-sectors $(STAGE2_64_SECTORS)
 
@@ -152,13 +154,9 @@ all64: ./bin/os64.bin
 ./bin/kernel64.bin: ./bin/kernel64.elf
 	$(HOST64_OBJCOPY) -O binary ./bin/kernel64.elf ./bin/kernel64.bin
 
-./bin/usertest.bin: ./src/user/usertest.asm
+./bin/%.bin: ./src/user/%.asm
 	@mkdir -p ./bin
-	$(AS) -f bin -o ./bin/usertest.bin ./src/user/usertest.asm
-
-./bin/uinfo.bin: ./src/user/uinfo.asm
-	@mkdir -p ./bin
-	$(AS) -f bin -o ./bin/uinfo.bin ./src/user/uinfo.asm
+	$(AS) -f bin -o $@ $<
 
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 
@@ -214,6 +212,5 @@ clean:
 	rm -rf ./bin/boot64.bin
 	rm -rf ./bin/stage2.bin
 	rm -rf ./bin/stage2_64.bin
-	rm -rf ./bin/usertest.bin
-	rm -rf ./bin/uinfo.bin
+	rm -rf $(USER_BINS)
 	rm -rf ./build/*

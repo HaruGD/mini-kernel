@@ -46,6 +46,15 @@ def parse_extra_file(spec):
     return name83_bytes(name), path
 
 
+def parse_auto_extra_file(path):
+    filename = path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if "." not in filename:
+        raise SystemExit(f"{path}: auto extra file must have an extension")
+
+    stem, ext = filename.rsplit(".", 1)
+    return name83_bytes(f"{stem.upper()}.{ext.upper()}"), path
+
+
 def set_fat12_entry(fat, cluster, value):
     offset = cluster + (cluster // 2)
     value &= 0x0FFF
@@ -63,6 +72,7 @@ def main():
     parser.add_argument("--stage2", required=True)
     parser.add_argument("--kernel", required=True)
     parser.add_argument("--extra-file", action="append", default=[])
+    parser.add_argument("--extra-file-auto", action="append", default=[])
     parser.add_argument("--output", required=True)
     parser.add_argument("--stage2-sectors", required=True, type=int)
     args = parser.parse_args()
@@ -77,6 +87,10 @@ def main():
     for spec in args.extra_file:
         name83, path = parse_extra_file(spec)
         with open(path, "rb") as f:
+            extra_files.append((name83, f.read()))
+    for path in args.extra_file_auto:
+        name83, resolved_path = parse_auto_extra_file(path)
+        with open(resolved_path, "rb") as f:
             extra_files.append((name83, f.read()))
 
     if len(boot) != BYTES_PER_SECTOR:
