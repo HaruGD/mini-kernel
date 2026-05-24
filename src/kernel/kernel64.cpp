@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #include "arch/x86/idt64.h"
+#include "arch/x86/gdt64.h"
 #include "arch/x86/paging64.h"
 #include "arch/x86/pmm64.h"
 #include "drivers/terminal.h"
@@ -697,6 +698,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     pmm64_init(boot_info);
     paging64_init();
     heap_init();
+    gdt64_init();
     ata.init();
     fat.init();
     idt64_init();
@@ -705,6 +707,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     __asm__ volatile("sti");
 
     print("Memory ready\n");
+    print("GDT/TSS ready\n");
     print("Interrupts ready\n");
     print(PROMPT);
 
