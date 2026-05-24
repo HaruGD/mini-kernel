@@ -23,12 +23,16 @@ extern "C" {
 #define MAX_CMD_LEN 80
 #define NOTEBOOK_CAPACITY 32768
 #define PROMPT "OS64> "
-#define USER_PROGRAM_SLOT_COUNT 2
+#define USER_PROGRAM_SLOT_COUNT 4
 #define PROCESS_TABLE_SIZE 8
 #define USER_SLOT0_CODE_BASE  0x0000000009000000ULL
 #define USER_SLOT0_STACK_BASE 0x0000000009100000ULL
 #define USER_SLOT1_CODE_BASE  0x0000000009200000ULL
 #define USER_SLOT1_STACK_BASE 0x0000000009300000ULL
+#define USER_SLOT2_CODE_BASE  0x0000000009400000ULL
+#define USER_SLOT2_STACK_BASE 0x0000000009500000ULL
+#define USER_SLOT3_CODE_BASE  0x0000000009600000ULL
+#define USER_SLOT3_STACK_BASE 0x0000000009700000ULL
 #define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFEULL
 #define SYSCALL_YIELD_TO_KERNEL  0xFFFFFFFFFFFFFFFDULL
 #define SYS_WRITE 1
@@ -583,6 +587,8 @@ static void print_process_summary(const Process* process) {
     print(process->name);
     print(" parent=");
     print_hex32(process->parent_pid);
+    print(" slot=");
+    print_hex32(process->slot_index);
     print(" state=");
     print(process_state_name(process->state));
     print(" term=");
@@ -643,6 +649,57 @@ static int process_record_is_active(const Process* process) {
         }
     }
     return 0;
+}
+
+static int execution_slot_in_use(uint32_t slot_index) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        Process* process = &process_table[i];
+        if (process->pid == 0 || !process->active) {
+            continue;
+        }
+        if (process->slot_index == slot_index) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int allocate_execution_slot(uint32_t* slot_index_out) {
+    if (slot_index_out == 0) {
+        return 0;
+    }
+
+    for (uint32_t slot = 0; slot < USER_PROGRAM_SLOT_COUNT; slot++) {
+        if (!execution_slot_in_use(slot)) {
+            *slot_index_out = slot;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static void get_execution_slot_bases(uint32_t slot_index, uint64_t* code_base, uint64_t* stack_base) {
+    uint64_t code = USER_SLOT0_CODE_BASE;
+    uint64_t stack = USER_SLOT0_STACK_BASE;
+
+    if (slot_index == 1) {
+        code = USER_SLOT1_CODE_BASE;
+        stack = USER_SLOT1_STACK_BASE;
+    } else if (slot_index == 2) {
+        code = USER_SLOT2_CODE_BASE;
+        stack = USER_SLOT2_STACK_BASE;
+    } else if (slot_index == 3) {
+        code = USER_SLOT3_CODE_BASE;
+        stack = USER_SLOT3_STACK_BASE;
+    }
+
+    if (code_base != 0) {
+        *code_base = code;
+    }
+    if (stack_base != 0) {
+        *stack_base = stack;
+    }
 }
 
 static Process* allocate_process_record() {
@@ -995,16 +1052,14 @@ static int run_user_program(const char* filename) {
         return 0;
     }
 
-    uint32_t slot_index = user_program_depth;
-    uint64_t user_code_base;
-    uint64_t user_stack_base;
-    if (slot_index == 0) {
-        user_code_base = USER_SLOT0_CODE_BASE;
-        user_stack_base = USER_SLOT0_STACK_BASE;
-    } else {
-        user_code_base = USER_SLOT1_CODE_BASE;
-        user_stack_base = USER_SLOT1_STACK_BASE;
+    uint32_t slot_index = 0;
+    if (!allocate_execution_slot(&slot_index)) {
+        print("\nNo free execution slot. Resume or finish paused programs first.");
+        return 0;
     }
+    uint64_t user_code_base = 0;
+    uint64_t user_stack_base = 0;
+    get_execution_slot_bases(slot_index, &user_code_base, &user_stack_base);
     uint64_t user_stack_top = user_stack_base + PAGING64_PAGE_SIZE;
     Process* parent = current_process();
     Process* process = allocate_process_record();
@@ -1217,11 +1272,7 @@ static int resume_user_program(uint32_t pid) {
         return 0;
     }
 
-    uint32_t slot_index = user_program_depth;
-    if (slot_index != process->slot_index) {
-        print("\nPaused process is not resumable in the current slot.");
-        return 0;
-    }
+    uint32_t stack_index = user_program_depth;
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     uint8_t saved_pic1_mask = inb(0x21);
@@ -1265,11 +1316,11 @@ static int resume_user_program(uint32_t pid) {
     scheduler_mark_running(process);
     process->state = PROCESS_STATE_RUNNING;
     process->resumable = 0;
-    process_stack[slot_index] = process;
+    process_stack[stack_index] = process;
     user_program_depth++;
     resume_user_mode();
     user_program_depth--;
-    process_stack[slot_index] = 0;
+    process_stack[stack_index] = 0;
 
     outb(0x21, saved_pic1_mask);
     user_input_mode = saved_user_input_mode;
