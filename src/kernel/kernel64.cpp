@@ -40,6 +40,7 @@ extern "C" {
 #define SYS_MEMSTAT 10
 #define SYS_RM_FILE 11
 #define SYS_UPTIME 12
+#define SYS_TOUCH_FILE 13
 
 Terminal terminal;
 ATADriver ata;
@@ -1048,6 +1049,30 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         command_uptime();
         print("\n");
         return 0;
+    }
+
+    if (syscall_no == SYS_TOUCH_FILE) {
+        char file_name[32];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
+            print("\nInvalid user filename pointer.");
+            return (uint64_t)-1;
+        }
+
+        char name83[11];
+        uint8_t dummy = 0;
+        to_name83(file_name, name83);
+
+        if (fat.write_file(name83, &dummy, 0)) {
+            print("\nTouched: ");
+            print(file_name);
+            print("\n");
+            return 0;
+        }
+
+        print("\nFailed to touch file: ");
+        print(file_name);
+        print("\n");
+        return (uint64_t)-1;
     }
 
     print("\nUnknown syscall: ");

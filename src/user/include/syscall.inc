@@ -13,6 +13,7 @@
 %define SYS_MEMSTAT    10
 %define SYS_RM_FILE    11
 %define SYS_UPTIME     12
+%define SYS_TOUCH_FILE 13
 
 %macro sys_write 2
     mov rax, SYS_WRITE
@@ -89,6 +90,12 @@
 
 %macro sys_uptime 0
     mov rax, SYS_UPTIME
+    int 0x80
+%endmacro
+
+%macro sys_touch_reg 1
+    mov rdi, %1
+    mov rax, SYS_TOUCH_FILE
     int 0x80
 %endmacro
 
