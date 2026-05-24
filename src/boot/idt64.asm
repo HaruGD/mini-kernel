@@ -1,5 +1,7 @@
 [BITS 64]
 
+%define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFE
+
 global idt64_load
 global isr_default_asm
 global isr_page_fault_asm
@@ -158,7 +160,7 @@ syscall_asm:
     mov rdx, [rsp + 80]
     mov rcx, [rsp + 96]
     call syscall_dispatch64
-    cmp rax, 0xFFFFFFFFFFFFFFFF
+    cmp rax, SYSCALL_RETURN_TO_KERNEL
     je .syscall_exit
     mov [rsp + 120], rax
     add rsp, 8
