@@ -67,6 +67,13 @@ static uint32_t user_program_depth = 0;
 static uint32_t next_pid = 1;
 static Process process_table[PROCESS_SLOT_COUNT];
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
+extern "C" uint64_t kernel_user_return_rsp;
+extern "C" uint64_t kernel_user_saved_rbx;
+extern "C" uint64_t kernel_user_saved_rbp;
+extern "C" uint64_t kernel_user_saved_r12;
+extern "C" uint64_t kernel_user_saved_r13;
+extern "C" uint64_t kernel_user_saved_r14;
+extern "C" uint64_t kernel_user_saved_r15;
 
 static int strlen64(const char* str) {
     int len = 0;
@@ -619,6 +626,13 @@ static int run_user_program(const char* filename) {
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     uint8_t saved_pic1_mask = inb(0x21);
     int saved_user_input_mode = user_input_mode;
+    uint64_t saved_return_rsp = kernel_user_return_rsp;
+    uint64_t saved_rbx = kernel_user_saved_rbx;
+    uint64_t saved_rbp = kernel_user_saved_rbp;
+    uint64_t saved_r12 = kernel_user_saved_r12;
+    uint64_t saved_r13 = kernel_user_saved_r13;
+    uint64_t saved_r14 = kernel_user_saved_r14;
+    uint64_t saved_r15 = kernel_user_saved_r15;
     print("\nRunning user program: ");
     print(filename);
     print(" [pid=");
@@ -639,6 +653,13 @@ static int run_user_program(const char* filename) {
     user_input_mode = saved_user_input_mode;
     user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);
+    kernel_user_return_rsp = saved_return_rsp;
+    kernel_user_saved_rbx = saved_rbx;
+    kernel_user_saved_rbp = saved_rbp;
+    kernel_user_saved_r12 = saved_r12;
+    kernel_user_saved_r13 = saved_r13;
+    kernel_user_saved_r14 = saved_r14;
+    kernel_user_saved_r15 = saved_r15;
 
     paging64_unmap_page(user_code_base);
     paging64_unmap_page(user_stack_base);
