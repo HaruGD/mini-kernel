@@ -28,6 +28,8 @@ extern "C" {
 #define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFFULL
 #define SYS_WRITE 1
 #define SYS_EXIT 2
+#define SYS_PUTCHAR 3
+#define SYS_GETCHAR 4
 
 Terminal terminal;
 ATADriver ata;
@@ -46,9 +48,7 @@ static uint32_t notebook_length = 0;
 static uint64_t boot_tsc = 0;
 static uint32_t user_test_count = 0;
 static uint32_t syscall_count = 0;
-
-extern "C" uint8_t user_test_code_start[];
-extern "C" uint8_t user_test_code_end[];
+static volatile int user_input_mode = 0;
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 
 static int strlen64(const char* str) {
@@ -213,6 +213,9 @@ static void print_n(const char* str, uint64_t len) {
     for (uint64_t i = 0; i < len; i++) {
         putchar_both(str[i]);
     }
+}
+
+static void user_input_reset() {
 }
 
 static uint64_t e820_base(const E820Entry* entry) {
@@ -607,6 +610,37 @@ static void command_uptime() {
 }
 
 static void command_usertest() {
+    char user_name83[11];
+    to_name83("UTEST.BIN", user_name83);
+
+    DirEntry entry;
+    if (!fat.find_file(user_name83, &entry)) {
+        print("\nUser program UTEST.BIN not found.");
+        return;
+    }
+
+    if (entry.file_size == 0 || entry.file_size > PAGING64_PAGE_SIZE) {
+        print("\nUser program size is invalid for the current loader.");
+        return;
+    }
+
+    uint32_t program_buffer_size = entry.file_size;
+    if (program_buffer_size < 512) {
+        program_buffer_size = 512;
+    }
+
+    uint8_t* program_buffer = (uint8_t*)kmalloc(program_buffer_size);
+    if (program_buffer == 0) {
+        print("\nOut of memory for user program.");
+        return;
+    }
+
+    if (fat.read_file(&entry, program_buffer) < 0) {
+        print("\nFailed to read UTEST.BIN.");
+        kfree(program_buffer);
+        return;
+    }
+
     uint64_t code_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
     uint64_t stack_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
     if (code_phys == 0 || stack_phys == 0) {
@@ -616,6 +650,7 @@ static void command_usertest() {
         if (stack_phys != 0) {
             pmm64_free_block((void*)(uintptr_t)stack_phys);
         }
+        kfree(program_buffer);
         print("\nFailed to allocate user test pages.");
         return;
     }
@@ -623,6 +658,7 @@ static void command_usertest() {
     if (!paging64_map_page(USER_TEST_CODE_BASE, code_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
         pmm64_free_block((void*)(uintptr_t)code_phys);
         pmm64_free_block((void*)(uintptr_t)stack_phys);
+        kfree(program_buffer);
         print("\nFailed to map user code page.");
         return;
     }
@@ -631,20 +667,28 @@ static void command_usertest() {
         paging64_unmap_page(USER_TEST_CODE_BASE);
         pmm64_free_block((void*)(uintptr_t)code_phys);
         pmm64_free_block((void*)(uintptr_t)stack_phys);
+        kfree(program_buffer);
         print("\nFailed to map user stack page.");
         return;
     }
 
-    uint64_t code_size = (uint64_t)(user_test_code_end - user_test_code_start);
-    for (uint64_t i = 0; i < code_size; i++) {
-        *((volatile uint8_t*)(uintptr_t)(USER_TEST_CODE_BASE + i)) = user_test_code_start[i];
+    for (uint32_t i = 0; i < entry.file_size; i++) {
+        *((volatile uint8_t*)(uintptr_t)(USER_TEST_CODE_BASE + i)) = program_buffer[i];
     }
+    kfree(program_buffer);
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
-    print("\nEntering user mode test...");
+    uint8_t saved_pic1_mask = inb(0x21);
+    print("\nEntering user mode test...\n");
+    user_input_reset();
+    user_input_mode = 1;
+    outb(0x21, saved_pic1_mask | 0x02);
     gdt64_set_kernel_stack(current_rsp() - 8);
     enter_user_mode(USER_TEST_CODE_BASE, USER_TEST_STACK_TOP - 16);
 
+    outb(0x21, saved_pic1_mask);
+    user_input_mode = 0;
+    user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);
 
     paging64_unmap_page(USER_TEST_CODE_BASE);
@@ -747,6 +791,18 @@ extern "C" void keyboard_handler64() {
     keyboard.handle();
 }
 
+extern "C" int user_input_active64() {
+    return user_input_mode;
+}
+
+extern "C" void keyboard_deliver_char64(char ascii) {
+    if (user_input_mode) {
+        return;
+    }
+
+    shell_input(ascii);
+}
+
 extern "C" void timer_handler64() {
     pit.handle();
 }
@@ -787,6 +843,15 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     if (syscall_no == SYS_EXIT) {
         print("\nUser mode exit requested.");
         return SYSCALL_RETURN_TO_KERNEL;
+    }
+
+    if (syscall_no == SYS_PUTCHAR) {
+        putchar_both((char)(arg1 & 0xFF));
+        return 1;
+    }
+
+    if (syscall_no == SYS_GETCHAR) {
+        return (uint64_t)(unsigned char)keyboard.read_char_blocking();
     }
 
     print("\nUnknown syscall: ");
