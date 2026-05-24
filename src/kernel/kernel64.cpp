@@ -785,7 +785,13 @@ static int run_user_program(const char* filename) {
     }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
-    print("].\n");
+    print("] state=");
+    print(process_state_name(process->state));
+    print(" term=");
+    print(process_term_name(process->termination_reason));
+    print(" code=");
+    print_hex32(process->status_code);
+    print(".\n");
     process->active = 0;
     return 1;
 }
