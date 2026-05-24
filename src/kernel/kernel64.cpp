@@ -22,9 +22,11 @@ extern "C" {
 #define MAX_CMD_LEN 80
 #define NOTEBOOK_CAPACITY 32768
 #define PROMPT "OS64> "
-#define USER_TEST_CODE_BASE  0x0000000009000000ULL
-#define USER_TEST_STACK_BASE 0x0000000009100000ULL
-#define USER_TEST_STACK_TOP  (USER_TEST_STACK_BASE + PAGING64_PAGE_SIZE)
+#define USER_PROGRAM_SLOT_COUNT 2
+#define USER_SLOT0_CODE_BASE  0x0000000009000000ULL
+#define USER_SLOT0_STACK_BASE 0x0000000009100000ULL
+#define USER_SLOT1_CODE_BASE  0x0000000009200000ULL
+#define USER_SLOT1_STACK_BASE 0x0000000009300000ULL
 #define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFFULL
 #define SYS_WRITE 1
 #define SYS_EXIT 2
@@ -32,6 +34,7 @@ extern "C" {
 #define SYS_GETCHAR 4
 #define SYS_LIST_FILES 5
 #define SYS_CAT_FILE 6
+#define SYS_RUN_USER 7
 
 Terminal terminal;
 ATADriver ata;
@@ -51,6 +54,7 @@ static uint64_t boot_tsc = 0;
 static uint32_t user_test_count = 0;
 static uint32_t syscall_count = 0;
 static volatile int user_input_mode = 0;
+static uint32_t user_program_depth = 0;
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 
 static int strlen64(const char* str) {
@@ -437,6 +441,125 @@ static void command_echo(char* arg) {
     print(arg);
 }
 
+static int run_user_program(const char* filename) {
+    if (filename == 0 || filename[0] == '\0') {
+        print("\nUser program filename is empty.");
+        return 0;
+    }
+
+    if (user_program_depth >= USER_PROGRAM_SLOT_COUNT) {
+        print("\nUser program nesting limit reached.");
+        return 0;
+    }
+
+    uint64_t user_code_base;
+    uint64_t user_stack_base;
+    if (user_program_depth == 0) {
+        user_code_base = USER_SLOT0_CODE_BASE;
+        user_stack_base = USER_SLOT0_STACK_BASE;
+    } else {
+        user_code_base = USER_SLOT1_CODE_BASE;
+        user_stack_base = USER_SLOT1_STACK_BASE;
+    }
+    uint64_t user_stack_top = user_stack_base + PAGING64_PAGE_SIZE;
+
+    char user_name83[11];
+    to_name83(filename, user_name83);
+
+    DirEntry entry;
+    if (!fat.find_file(user_name83, &entry)) {
+        print("\nUser program not found: ");
+        print(filename);
+        return 0;
+    }
+
+    if (entry.file_size == 0 || entry.file_size > PAGING64_PAGE_SIZE) {
+        print("\nUser program size is invalid for the current loader.");
+        return 0;
+    }
+
+    uint32_t program_buffer_size = entry.file_size;
+    if (program_buffer_size < 512) {
+        program_buffer_size = 512;
+    }
+
+    uint8_t* program_buffer = (uint8_t*)kmalloc(program_buffer_size);
+    if (program_buffer == 0) {
+        print("\nOut of memory for user program.");
+        return 0;
+    }
+
+    if (fat.read_file(&entry, program_buffer) < 0) {
+        print("\nFailed to read user program: ");
+        print(filename);
+        kfree(program_buffer);
+        return 0;
+    }
+
+    uint64_t code_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+    uint64_t stack_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+    if (code_phys == 0 || stack_phys == 0) {
+        if (code_phys != 0) {
+            pmm64_free_block((void*)(uintptr_t)code_phys);
+        }
+        if (stack_phys != 0) {
+            pmm64_free_block((void*)(uintptr_t)stack_phys);
+        }
+        kfree(program_buffer);
+        print("\nFailed to allocate user program pages.");
+        return 0;
+    }
+
+    if (!paging64_map_page(user_code_base, code_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
+        pmm64_free_block((void*)(uintptr_t)code_phys);
+        pmm64_free_block((void*)(uintptr_t)stack_phys);
+        kfree(program_buffer);
+        print("\nFailed to map user code page.");
+        return 0;
+    }
+
+    if (!paging64_map_page(user_stack_base, stack_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
+        paging64_unmap_page(user_code_base);
+        pmm64_free_block((void*)(uintptr_t)code_phys);
+        pmm64_free_block((void*)(uintptr_t)stack_phys);
+        kfree(program_buffer);
+        print("\nFailed to map user stack page.");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < entry.file_size; i++) {
+        *((volatile uint8_t*)(uintptr_t)(user_code_base + i)) = program_buffer[i];
+    }
+    kfree(program_buffer);
+
+    uint64_t saved_rsp0 = gdt64_get_kernel_stack();
+    uint8_t saved_pic1_mask = inb(0x21);
+    int saved_user_input_mode = user_input_mode;
+    print("\nRunning user program: ");
+    print(filename);
+    print("\n");
+    user_input_reset();
+    user_input_mode = 1;
+    outb(0x21, saved_pic1_mask | 0x02);
+    gdt64_set_kernel_stack(current_rsp() - 8);
+    user_program_depth++;
+    enter_user_mode(user_code_base, user_stack_top - 16);
+    user_program_depth--;
+
+    outb(0x21, saved_pic1_mask);
+    user_input_mode = saved_user_input_mode;
+    user_input_reset();
+    gdt64_set_kernel_stack(saved_rsp0);
+
+    paging64_unmap_page(user_code_base);
+    paging64_unmap_page(user_stack_base);
+    pmm64_free_block((void*)(uintptr_t)code_phys);
+    pmm64_free_block((void*)(uintptr_t)stack_phys);
+
+    print("\nReturned from user program.\n");
+    return 1;
+}
+
 static void command_write(char* arg) {
     if (arg == 0) {
         print("\nUsage: write [message]");
@@ -637,98 +760,7 @@ static void command_run(char* arg) {
         print("\nUsage: run [filename]");
         return;
     }
-
-    char user_name83[11];
-    to_name83(arg, user_name83);
-
-    DirEntry entry;
-    if (!fat.find_file(user_name83, &entry)) {
-        print("\nUser program not found: ");
-        print(arg);
-        return;
-    }
-
-    if (entry.file_size == 0 || entry.file_size > PAGING64_PAGE_SIZE) {
-        print("\nUser program size is invalid for the current loader.");
-        return;
-    }
-
-    uint32_t program_buffer_size = entry.file_size;
-    if (program_buffer_size < 512) {
-        program_buffer_size = 512;
-    }
-
-    uint8_t* program_buffer = (uint8_t*)kmalloc(program_buffer_size);
-    if (program_buffer == 0) {
-        print("\nOut of memory for user program.");
-        return;
-    }
-
-    if (fat.read_file(&entry, program_buffer) < 0) {
-        print("\nFailed to read user program: ");
-        print(arg);
-        kfree(program_buffer);
-        return;
-    }
-
-    uint64_t code_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
-    uint64_t stack_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
-    if (code_phys == 0 || stack_phys == 0) {
-        if (code_phys != 0) {
-            pmm64_free_block((void*)(uintptr_t)code_phys);
-        }
-        if (stack_phys != 0) {
-            pmm64_free_block((void*)(uintptr_t)stack_phys);
-        }
-        kfree(program_buffer);
-        print("\nFailed to allocate user test pages.");
-        return;
-    }
-
-    if (!paging64_map_page(USER_TEST_CODE_BASE, code_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
-        pmm64_free_block((void*)(uintptr_t)code_phys);
-        pmm64_free_block((void*)(uintptr_t)stack_phys);
-        kfree(program_buffer);
-        print("\nFailed to map user code page.");
-        return;
-    }
-
-    if (!paging64_map_page(USER_TEST_STACK_BASE, stack_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
-        paging64_unmap_page(USER_TEST_CODE_BASE);
-        pmm64_free_block((void*)(uintptr_t)code_phys);
-        pmm64_free_block((void*)(uintptr_t)stack_phys);
-        kfree(program_buffer);
-        print("\nFailed to map user stack page.");
-        return;
-    }
-
-    for (uint32_t i = 0; i < entry.file_size; i++) {
-        *((volatile uint8_t*)(uintptr_t)(USER_TEST_CODE_BASE + i)) = program_buffer[i];
-    }
-    kfree(program_buffer);
-
-    uint64_t saved_rsp0 = gdt64_get_kernel_stack();
-    uint8_t saved_pic1_mask = inb(0x21);
-    print("\nRunning user program: ");
-    print(arg);
-    print("\n");
-    user_input_reset();
-    user_input_mode = 1;
-    outb(0x21, saved_pic1_mask | 0x02);
-    gdt64_set_kernel_stack(current_rsp() - 8);
-    enter_user_mode(USER_TEST_CODE_BASE, USER_TEST_STACK_TOP - 16);
-
-    outb(0x21, saved_pic1_mask);
-    user_input_mode = 0;
-    user_input_reset();
-    gdt64_set_kernel_stack(saved_rsp0);
-
-    paging64_unmap_page(USER_TEST_CODE_BASE);
-    paging64_unmap_page(USER_TEST_STACK_BASE);
-    pmm64_free_block((void*)(uintptr_t)code_phys);
-    pmm64_free_block((void*)(uintptr_t)stack_phys);
-
-    print("\nReturned from user program.");
+    run_user_program(arg);
 }
 
 static void command_usertest() {
@@ -951,6 +983,19 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         }
         kfree(file_buffer);
         return entry.file_size;
+    }
+
+    if (syscall_no == SYS_RUN_USER) {
+        char file_name[32];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
+            print("\nInvalid user program pointer.");
+            return (uint64_t)-1;
+        }
+
+        if (!run_user_program(file_name)) {
+            return (uint64_t)-1;
+        }
+        return 0;
     }
 
     print("\nUnknown syscall: ");
