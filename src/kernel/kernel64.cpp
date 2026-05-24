@@ -304,6 +304,8 @@ static Process* current_process() {
     return process_stack[user_program_depth - 1];
 }
 
+static int resume_user_program(uint32_t pid);
+
 static const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_LOADED) {
         return "loaded";
@@ -773,6 +775,30 @@ static Process* find_last_paused_child_process(uint32_t parent_pid) {
     return latest;
 }
 
+static Process* find_next_ready_child_process(uint32_t parent_pid, uint32_t exclude_pid) {
+    for (uint32_t i = 0; i < sched_queue_count; i++) {
+        uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
+        Process* process = sched_queue[index];
+        if (process == 0) {
+            continue;
+        }
+        if (process->pid == 0 || process->pid == exclude_pid) {
+            continue;
+        }
+        if (process->parent_pid != parent_pid) {
+            continue;
+        }
+        if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+            continue;
+        }
+        if (process->scheduler_state != SCHED_STATE_READY) {
+            continue;
+        }
+        return process;
+    }
+    return 0;
+}
+
 static Process* find_process_by_pid(uint32_t pid) {
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         if (process_table[i].pid == pid) {
@@ -1215,12 +1241,21 @@ static int run_user_program(const char* filename) {
     kernel_user_saved_r15 = saved_r15;
 
     if (process->state == PROCESS_STATE_PAUSED) {
-        if (parent != 0 && parent->active) {
-            scheduler_mark_running(parent);
-        }
         print("\nYielded from user program [pid=");
         print_hex32(process->pid);
         print("].\n");
+
+        Process* next_ready = parent != 0 ? find_next_ready_child_process(parent->pid, process->pid) : 0;
+        if (next_ready != 0) {
+            print("Auto-switching to ready child [pid=");
+            print_hex32(next_ready->pid);
+            print("].\n");
+            return resume_user_program(next_ready->pid);
+        }
+
+        if (parent != 0 && parent->active) {
+            scheduler_mark_running(parent);
+        }
         return 1;
     }
 
@@ -1335,10 +1370,19 @@ static int resume_user_program(uint32_t pid) {
     kernel_user_saved_r15 = saved_r15;
 
     if (process->state == PROCESS_STATE_PAUSED) {
-        scheduler_mark_running(parent);
         print("\nYielded from user program [pid=");
         print_hex32(process->pid);
         print("].\n");
+
+        Process* next_ready = find_next_ready_child_process(parent->pid, process->pid);
+        if (next_ready != 0) {
+            print("Auto-switching to ready child [pid=");
+            print_hex32(next_ready->pid);
+            print("].\n");
+            return resume_user_program(next_ready->pid);
+        }
+
+        scheduler_mark_running(parent);
         return 1;
     }
 
