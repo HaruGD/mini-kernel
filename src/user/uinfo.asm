@@ -20,7 +20,8 @@ _start:
     sys_write pressed_msg, pressed_msg_end - pressed_msg
     sys_putchar_mem8 [rel saved_char]
     sys_write newline_msg, newline_msg_end - newline_msg
-    sys_exit
+    movzx edi, byte [rel saved_char]
+    sys_exit_reg rdi
 
 .halt:
     jmp .halt

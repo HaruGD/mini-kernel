@@ -26,7 +26,8 @@ _start:
 
 .exit_user:
     sys_write user_exit_msg, user_exit_msg_end - user_exit_msg
-    sys_exit
+    movzx edi, byte [rel user_last_char]
+    sys_exit_reg rdi
 
 .halt:
     jmp .halt

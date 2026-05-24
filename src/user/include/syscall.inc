@@ -39,6 +39,12 @@
     int 0x80
 %endmacro
 
+%macro sys_exit_reg 1
+    mov rdi, %1
+    mov rax, SYS_EXIT
+    int 0x80
+%endmacro
+
 %macro sys_putchar_imm 1
     mov rdi, %1
     mov rax, SYS_PUTCHAR
