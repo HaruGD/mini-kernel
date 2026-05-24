@@ -479,7 +479,7 @@ static int run_user_program(const char* filename) {
     }
 
     if (entry.file_size == 0 || entry.file_size > PAGING64_PAGE_SIZE) {
-        print("\nUser program size is invalid for the current loader.");
+        print("\nUser program size is invalid for the current loader.\n");
         return 0;
     }
 
