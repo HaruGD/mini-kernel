@@ -7,6 +7,12 @@
 %define SYS_GETCHAR 4
 %define SYS_LIST_FILES 5
 %define SYS_CAT_FILE   6
+%define SYS_RUN_USER   7
+%define SYS_VERSION    8
+%define SYS_BOOTINFO   9
+%define SYS_MEMSTAT    10
+%define SYS_RM_FILE    11
+%define SYS_UPTIME     12
 
 %macro sys_write 2
     mov rax, SYS_WRITE
@@ -51,6 +57,38 @@
 %macro sys_cat_reg 1
     mov rdi, %1
     mov rax, SYS_CAT_FILE
+    int 0x80
+%endmacro
+
+%macro sys_run_reg 1
+    mov rdi, %1
+    mov rax, SYS_RUN_USER
+    int 0x80
+%endmacro
+
+%macro sys_version 0
+    mov rax, SYS_VERSION
+    int 0x80
+%endmacro
+
+%macro sys_bootinfo 0
+    mov rax, SYS_BOOTINFO
+    int 0x80
+%endmacro
+
+%macro sys_memstat 0
+    mov rax, SYS_MEMSTAT
+    int 0x80
+%endmacro
+
+%macro sys_rm_reg 1
+    mov rdi, %1
+    mov rax, SYS_RM_FILE
+    int 0x80
+%endmacro
+
+%macro sys_uptime 0
+    mov rax, SYS_UPTIME
     int 0x80
 %endmacro
 

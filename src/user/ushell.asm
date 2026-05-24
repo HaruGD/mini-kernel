@@ -93,6 +93,30 @@ _start:
     jnz .do_about
 
     lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_version]
+    call match_exact
+    test al, al
+    jnz .do_version
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_bootinfo]
+    call match_exact
+    test al, al
+    jnz .do_bootinfo
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_memstat]
+    call match_exact
+    test al, al
+    jnz .do_memstat
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_uptime]
+    call match_exact
+    test al, al
+    jnz .do_uptime
+
+    lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_ls]
     call match_exact
     test al, al
@@ -110,6 +134,18 @@ _start:
     test al, al
     jnz .do_cat
 
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_run]
+    call match_prefix
+    test al, al
+    jnz .do_run
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_rm]
+    call match_prefix
+    test al, al
+    jnz .do_rm
+
     sys_write unknown_msg, unknown_msg_end - unknown_msg
     lea rsi, [rel input_buffer]
     call print_cstring
@@ -122,6 +158,22 @@ _start:
 
 .do_about:
     sys_write about_msg, about_msg_end - about_msg
+    jmp .shell_loop
+
+.do_version:
+    sys_version
+    jmp .shell_loop
+
+.do_bootinfo:
+    sys_bootinfo
+    jmp .shell_loop
+
+.do_memstat:
+    sys_memstat
+    jmp .shell_loop
+
+.do_uptime:
+    sys_uptime
     jmp .shell_loop
 
 .do_ls:
@@ -151,6 +203,30 @@ _start:
 
 .cat_usage:
     sys_write cat_usage_msg, cat_usage_msg_end - cat_usage_msg
+    jmp .shell_loop
+
+.do_run:
+    lea rdi, [rel input_buffer]
+    add rdi, 4
+    cmp byte [rdi], 0
+    je .run_usage
+    sys_run_reg rdi
+    jmp .shell_loop
+
+.run_usage:
+    sys_write run_usage_msg, run_usage_msg_end - run_usage_msg
+    jmp .shell_loop
+
+.do_rm:
+    lea rdi, [rel input_buffer]
+    add rdi, 3
+    cmp byte [rdi], 0
+    je .rm_usage
+    sys_rm_reg rdi
+    jmp .shell_loop
+
+.rm_usage:
+    sys_write rm_usage_msg, rm_usage_msg_end - rm_usage_msg
     jmp .shell_loop
 
 .do_exit:
@@ -212,7 +288,8 @@ prompt_msg:
     db 'ush> '
 prompt_msg_end:
 help_msg:
-    db 'Commands: help, echo [text], about, clear, ls, cat [file], exit', 10
+    db 'Commands: help, echo [text], about, version, bootinfo, memstat, uptime', 10
+    db '          clear, ls, cat [file], run [file], rm [file], exit', 10
 help_msg_end:
 about_msg:
     db 'USHELL.BIN runs entirely in user mode using int 0x80 syscalls.', 10
@@ -220,6 +297,12 @@ about_msg_end:
 cat_usage_msg:
     db 'Usage: cat [filename]', 10
 cat_usage_msg_end:
+run_usage_msg:
+    db 'Usage: run [filename]', 10
+run_usage_msg_end:
+rm_usage_msg:
+    db 'Usage: rm [filename]', 10
+rm_usage_msg_end:
 unknown_msg:
     db 'Unknown command: '
 unknown_msg_end:
@@ -235,10 +318,22 @@ cmd_echo:
     db 'echo ', 0
 cmd_about:
     db 'about', 0
+cmd_version:
+    db 'version', 0
+cmd_bootinfo:
+    db 'bootinfo', 0
+cmd_memstat:
+    db 'memstat', 0
+cmd_uptime:
+    db 'uptime', 0
 cmd_ls:
     db 'ls', 0
 cmd_cat:
     db 'cat ', 0
+cmd_run:
+    db 'run ', 0
+cmd_rm:
+    db 'rm ', 0
 cmd_clear:
     db 'clear', 0
 cmd_exit:

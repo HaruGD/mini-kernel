@@ -35,6 +35,11 @@ extern "C" {
 #define SYS_LIST_FILES 5
 #define SYS_CAT_FILE 6
 #define SYS_RUN_USER 7
+#define SYS_VERSION 8
+#define SYS_BOOTINFO 9
+#define SYS_MEMSTAT 10
+#define SYS_RM_FILE 11
+#define SYS_UPTIME 12
 
 Terminal terminal;
 ATADriver ata;
@@ -995,6 +1000,53 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         if (!run_user_program(file_name)) {
             return (uint64_t)-1;
         }
+        return 0;
+    }
+
+    if (syscall_no == SYS_VERSION) {
+        command_version();
+        print("\n");
+        return 0;
+    }
+
+    if (syscall_no == SYS_BOOTINFO) {
+        print_boot_info();
+        print("\n");
+        return 0;
+    }
+
+    if (syscall_no == SYS_MEMSTAT) {
+        command_memstat();
+        print("\n");
+        return 0;
+    }
+
+    if (syscall_no == SYS_RM_FILE) {
+        char file_name[32];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
+            print("\nInvalid user filename pointer.");
+            return (uint64_t)-1;
+        }
+
+        char name83[11];
+        to_name83(file_name, name83);
+
+        if (fat.delete_file(name83)) {
+            print("\nDeleted: ");
+            print(file_name);
+            print("\n");
+            return 0;
+        }
+
+        print("\nFile not found: ");
+        print(file_name);
+        print("\n");
+        return (uint64_t)-1;
+    }
+
+    if (syscall_no == SYS_UPTIME) {
+        command_uptime();
+        print("\n");
         return 0;
     }
 
