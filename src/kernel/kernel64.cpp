@@ -41,6 +41,7 @@ extern "C" {
 #define SYS_RM_FILE 11
 #define SYS_UPTIME 12
 #define SYS_TOUCH_FILE 13
+#define SYS_SAVE_FILE 14
 
 Terminal terminal;
 ATADriver ata;
@@ -1070,6 +1071,34 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         }
 
         print("\nFailed to touch file: ");
+        print(file_name);
+        print("\n");
+        return (uint64_t)-1;
+    }
+
+    if (syscall_no == SYS_SAVE_FILE) {
+        char file_name[32];
+        char file_text[128];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
+            print("\nInvalid user filename pointer.");
+            return (uint64_t)-1;
+        }
+        if (!copy_user_cstring((const char*)(uintptr_t)arg2, file_text, sizeof(file_text))) {
+            print("\nInvalid user text pointer.");
+            return (uint64_t)-1;
+        }
+
+        char name83[11];
+        to_name83(file_name, name83);
+
+        if (fat.write_file(name83, (uint8_t*)file_text, (uint32_t)strlen64(file_text))) {
+            print("\nSaved: ");
+            print(file_name);
+            print("\n");
+            return 0;
+        }
+
+        print("\nFailed to save file: ");
         print(file_name);
         print("\n");
         return (uint64_t)-1;

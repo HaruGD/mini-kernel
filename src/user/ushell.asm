@@ -152,6 +152,12 @@ _start:
     test al, al
     jnz .do_touch
 
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_save]
+    call match_prefix
+    test al, al
+    jnz .do_save
+
     sys_write unknown_msg, unknown_msg_end - unknown_msg
     lea rsi, [rel input_buffer]
     call print_cstring
@@ -247,6 +253,34 @@ _start:
     sys_write touch_usage_msg, touch_usage_msg_end - touch_usage_msg
     jmp .shell_loop
 
+.do_save:
+    lea rdi, [rel input_buffer]
+    add rdi, 5
+    cmp byte [rdi], 0
+    je .save_usage
+    mov rsi, rdi
+
+.save_find_text:
+    mov al, [rsi]
+    cmp al, 0
+    je .save_usage
+    cmp al, ' '
+    je .save_split
+    inc rsi
+    jmp .save_find_text
+
+.save_split:
+    mov byte [rsi], 0
+    inc rsi
+    cmp byte [rsi], 0
+    je .save_usage
+    sys_save_regs rdi, rsi
+    jmp .shell_loop
+
+.save_usage:
+    sys_write save_usage_msg, save_usage_msg_end - save_usage_msg
+    jmp .shell_loop
+
 .do_exit:
     sys_write exit_msg, exit_msg_end - exit_msg
     sys_exit
@@ -307,7 +341,8 @@ prompt_msg:
 prompt_msg_end:
 help_msg:
     db 'Commands: help, echo [text], about, version, bootinfo, memstat, uptime', 10
-    db '          clear, ls, cat [file], run [file], rm [file], touch [file], exit', 10
+    db '          clear, ls, cat [file], run [file], rm [file], touch [file]', 10
+    db '          save [file] [text], exit', 10
 help_msg_end:
 about_msg:
     db 'USHELL.BIN runs entirely in user mode using int 0x80 syscalls.', 10
@@ -324,6 +359,9 @@ rm_usage_msg_end:
 touch_usage_msg:
     db 'Usage: touch [filename]', 10
 touch_usage_msg_end:
+save_usage_msg:
+    db 'Usage: save [filename] [text]', 10
+save_usage_msg_end:
 unknown_msg:
     db 'Unknown command: '
 unknown_msg_end:
@@ -357,6 +395,8 @@ cmd_rm:
     db 'rm ', 0
 cmd_touch:
     db 'touch ', 0
+cmd_save:
+    db 'save ', 0
 cmd_clear:
     db 'clear', 0
 cmd_exit:
