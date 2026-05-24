@@ -24,6 +24,7 @@ extern "C" {
 #define NOTEBOOK_CAPACITY 32768
 #define PROMPT "OS64> "
 #define USER_PROGRAM_SLOT_COUNT 2
+#define PROCESS_TABLE_SIZE 8
 #define USER_SLOT0_CODE_BASE  0x0000000009000000ULL
 #define USER_SLOT0_STACK_BASE 0x0000000009100000ULL
 #define USER_SLOT1_CODE_BASE  0x0000000009200000ULL
@@ -48,7 +49,6 @@ extern "C" {
 #define SYS_PS 17
 #define SYS_LAST_STATUS 18
 #define SYS_WAIT_CHILD 19
-#define PROCESS_SLOT_COUNT USER_PROGRAM_SLOT_COUNT
 
 Terminal terminal;
 ATADriver ata;
@@ -70,7 +70,8 @@ static uint32_t syscall_count = 0;
 static volatile int user_input_mode = 0;
 static uint32_t user_program_depth = 0;
 static uint32_t next_pid = 1;
-static Process process_table[PROCESS_SLOT_COUNT];
+static Process process_table[PROCESS_TABLE_SIZE];
+static Process* process_stack[USER_PROGRAM_SLOT_COUNT];
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 extern "C" uint64_t kernel_user_return_rsp;
 extern "C" uint64_t kernel_user_saved_rbx;
@@ -265,7 +266,7 @@ static Process* current_process() {
     if (user_program_depth == 0) {
         return 0;
     }
-    return &process_table[user_program_depth - 1];
+    return process_stack[user_program_depth - 1];
 }
 
 static const char* process_state_name(uint32_t state) {
@@ -386,7 +387,7 @@ static void print_process_summary(const Process* process) {
 }
 
 static void print_process_table() {
-    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         print("\n[");
         print_hex32(i);
         print("] ");
@@ -395,9 +396,42 @@ static void print_process_table() {
     print("\n");
 }
 
+static int process_record_is_active(const Process* process) {
+    if (process == 0) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < USER_PROGRAM_SLOT_COUNT; i++) {
+        if (process_stack[i] == process) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static Process* allocate_process_record() {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        if (process_table[i].pid == 0) {
+            process_clear(&process_table[i]);
+            return &process_table[i];
+        }
+    }
+
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        if (!process_record_is_active(&process_table[i]) &&
+            !process_table[i].active &&
+            process_table[i].reaped) {
+            process_clear(&process_table[i]);
+            return &process_table[i];
+        }
+    }
+
+    return 0;
+}
+
 static const Process* find_last_child_process(uint32_t parent_pid) {
     const Process* latest = 0;
-    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         const Process* process = &process_table[i];
         if (process->pid == 0 || process->parent_pid != parent_pid) {
             continue;
@@ -411,7 +445,7 @@ static const Process* find_last_child_process(uint32_t parent_pid) {
 
 static Process* find_waitable_child_process(uint32_t parent_pid) {
     Process* latest = 0;
-    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         Process* process = &process_table[i];
         if (process->pid == 0 || process->parent_pid != parent_pid) {
             continue;
@@ -552,7 +586,7 @@ static void dump_state() {
     }
     print("\nPIT tick: ");
     print_hex32(pit.get_tick());
-    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         print("\nProcess slot ");
         print_hex32(i);
         print(": ");
@@ -682,8 +716,11 @@ static int run_user_program(const char* filename) {
     }
     uint64_t user_stack_top = user_stack_base + PAGING64_PAGE_SIZE;
     Process* parent = current_process();
-    Process* process = &process_table[slot_index];
-    process_clear(process);
+    Process* process = allocate_process_record();
+    if (process == 0) {
+        print("\nProcess table is full. Reap finished child results with wait.");
+        return 0;
+    }
     process->pid = next_pid++;
     process->parent_pid = parent != 0 ? parent->pid : 0;
     copy_process_name(process->name, filename);
@@ -800,9 +837,11 @@ static int run_user_program(const char* filename) {
     outb(0x21, saved_pic1_mask | 0x02);
     gdt64_set_kernel_stack(current_rsp() - 8);
     process->state = PROCESS_STATE_RUNNING;
+    process_stack[slot_index] = process;
     user_program_depth++;
     enter_user_mode(user_code_base, user_stack_top - 16);
     user_program_depth--;
+    process_stack[slot_index] = 0;
 
     outb(0x21, saved_pic1_mask);
     user_input_mode = saved_user_input_mode;
