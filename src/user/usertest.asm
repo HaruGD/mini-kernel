@@ -1,5 +1,7 @@
 [BITS 64]
 
+%include "src/user/include/syscall.inc"
+
 section .text
 
 global _start
@@ -8,45 +10,23 @@ _start:
     mov ax, 0x23
     mov ds, ax
     mov es, ax
-    mov rax, 1
-    lea rdi, [rel user_msg]
-    mov rsi, user_msg_end - user_msg
-    int 0x80
-    mov rax, 1
-    lea rdi, [rel user_prompt]
-    mov rsi, user_prompt_end - user_prompt
-    int 0x80
-    mov rax, 1
-    lea rdi, [rel user_hint]
-    mov rsi, user_hint_end - user_hint
-    int 0x80
+    sys_write user_msg, user_msg_end - user_msg
+    sys_write user_prompt, user_prompt_end - user_prompt
+    sys_write user_hint, user_hint_end - user_hint
 
 .wait_key:
-    mov rax, 4
-    int 0x80
+    sys_getchar
     mov [rel user_last_char], al
     cmp byte [rel user_last_char], 'q'
     je .exit_user
-    mov rax, 1
-    lea rdi, [rel user_pressed_msg]
-    mov rsi, user_pressed_msg_end - user_pressed_msg
-    int 0x80
-    movzx rdi, byte [rel user_last_char]
-    mov rax, 3
-    int 0x80
-    mov rax, 1
-    lea rdi, [rel user_newline]
-    mov rsi, user_newline_end - user_newline
-    int 0x80
+    sys_write user_pressed_msg, user_pressed_msg_end - user_pressed_msg
+    sys_putchar_mem8 [rel user_last_char]
+    sys_write user_newline, user_newline_end - user_newline
     jmp .wait_key
 
 .exit_user:
-    mov rax, 1
-    lea rdi, [rel user_exit_msg]
-    mov rsi, user_exit_msg_end - user_exit_msg
-    int 0x80
-    mov rax, 2
-    int 0x80
+    sys_write user_exit_msg, user_exit_msg_end - user_exit_msg
+    sys_exit
 
 .halt:
     jmp .halt

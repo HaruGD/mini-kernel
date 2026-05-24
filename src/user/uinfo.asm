@@ -1,5 +1,7 @@
 [BITS 64]
 
+%include "src/user/include/syscall.inc"
+
 section .text
 
 global _start
@@ -9,41 +11,16 @@ _start:
     mov ds, ax
     mov es, ax
 
-    mov rax, 1
-    lea rdi, [rel title_msg]
-    mov rsi, title_msg_end - title_msg
-    int 0x80
-
-    mov rax, 1
-    lea rdi, [rel body_msg]
-    mov rsi, body_msg_end - body_msg
-    int 0x80
-
-    mov rax, 1
-    lea rdi, [rel prompt_msg]
-    mov rsi, prompt_msg_end - prompt_msg
-    int 0x80
-
-    mov rax, 4
-    int 0x80
+    sys_write title_msg, title_msg_end - title_msg
+    sys_write body_msg, body_msg_end - body_msg
+    sys_write prompt_msg, prompt_msg_end - prompt_msg
+    sys_getchar
     mov [rel saved_char], al
 
-    mov rax, 1
-    lea rdi, [rel pressed_msg]
-    mov rsi, pressed_msg_end - pressed_msg
-    int 0x80
-
-    movzx rdi, byte [rel saved_char]
-    mov rax, 3
-    int 0x80
-
-    mov rax, 1
-    lea rdi, [rel newline_msg]
-    mov rsi, newline_msg_end - newline_msg
-    int 0x80
-
-    mov rax, 2
-    int 0x80
+    sys_write pressed_msg, pressed_msg_end - pressed_msg
+    sys_putchar_mem8 [rel saved_char]
+    sys_write newline_msg, newline_msg_end - newline_msg
+    sys_exit
 
 .halt:
     jmp .halt

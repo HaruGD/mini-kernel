@@ -17,6 +17,7 @@ public:
     void init() override;
     void handle();
     char get_char(uint8_t scan_code);
+    char read_char_blocking();
 };
 
 #endif
