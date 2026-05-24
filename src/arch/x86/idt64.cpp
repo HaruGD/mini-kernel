@@ -17,6 +17,9 @@ extern "C" void isr_gp_fault_asm();
 extern "C" void isr_double_fault_asm();
 extern "C" void irq_keyboard_asm();
 extern "C" void irq_timer_asm();
+extern "C" void user_test_asm();
+extern "C" void user_exit_asm();
+extern "C" void syscall_asm();
 
 static void halt_forever() {
     while (1) {
@@ -25,10 +28,22 @@ static void halt_forever() {
 }
 
 static void set_idt64_gate(int n, uint64_t handler) {
+    uint8_t type_attr = 0x8E;
     idt64[n].offset_low = handler & 0xFFFF;
     idt64[n].selector = 0x18;
     idt64[n].ist = 0;
-    idt64[n].type_attr = 0x8E;
+    idt64[n].type_attr = type_attr;
+    idt64[n].offset_mid = (handler >> 16) & 0xFFFF;
+    idt64[n].offset_high = (handler >> 32) & 0xFFFFFFFF;
+    idt64[n].zero = 0;
+}
+
+static void set_idt64_gate_dpl(int n, uint64_t handler, uint8_t dpl) {
+    uint8_t type_attr = 0x8E | ((dpl & 0x3) << 5);
+    idt64[n].offset_low = handler & 0xFFFF;
+    idt64[n].selector = 0x18;
+    idt64[n].ist = 0;
+    idt64[n].type_attr = type_attr;
     idt64[n].offset_mid = (handler >> 16) & 0xFFFF;
     idt64[n].offset_high = (handler >> 32) & 0xFFFFFFFF;
     idt64[n].zero = 0;
@@ -60,6 +75,9 @@ extern "C" void idt64_init() {
     set_idt64_gate(14, (uint64_t)isr_page_fault_asm);
     set_idt64_gate(32, (uint64_t)irq_timer_asm);
     set_idt64_gate(33, (uint64_t)irq_keyboard_asm);
+    set_idt64_gate_dpl(0x81, (uint64_t)user_test_asm, 3);
+    set_idt64_gate_dpl(0x82, (uint64_t)user_exit_asm, 3);
+    set_idt64_gate_dpl(0x80, (uint64_t)syscall_asm, 3);
 
     pic_remap();
     idt64_load(&idtr);

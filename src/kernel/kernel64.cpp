@@ -22,6 +22,12 @@ extern "C" {
 #define MAX_CMD_LEN 80
 #define NOTEBOOK_CAPACITY 32768
 #define PROMPT "OS64> "
+#define USER_TEST_CODE_BASE  0x0000000009000000ULL
+#define USER_TEST_STACK_BASE 0x0000000009100000ULL
+#define USER_TEST_STACK_TOP  (USER_TEST_STACK_BASE + PAGING64_PAGE_SIZE)
+#define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFFULL
+#define SYS_WRITE 1
+#define SYS_EXIT 2
 
 Terminal terminal;
 ATADriver ata;
@@ -38,6 +44,12 @@ static int history_index = history_count;
 static char* notebook_ptr = 0;
 static uint32_t notebook_length = 0;
 static uint64_t boot_tsc = 0;
+static uint32_t user_test_count = 0;
+static uint32_t syscall_count = 0;
+
+extern "C" uint8_t user_test_code_start[];
+extern "C" uint8_t user_test_code_end[];
+extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 
 static int strlen64(const char* str) {
     int len = 0;
@@ -191,6 +203,18 @@ static uint32_t parse_uint32(const char* text) {
     return value;
 }
 
+static uint64_t current_rsp() {
+    uint64_t rsp;
+    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
+    return rsp;
+}
+
+static void print_n(const char* str, uint64_t len) {
+    for (uint64_t i = 0; i < len; i++) {
+        putchar_both(str[i]);
+    }
+}
+
 static uint64_t e820_base(const E820Entry* entry) {
     return ((uint64_t)entry->base_high << 32) | entry->base_low;
 }
@@ -258,6 +282,10 @@ static void dump_state() {
     print_hex32((uint32_t)buffer_index);
     print("\nHistory count: ");
     print_hex32((uint32_t)history_count);
+    print("\nUser tests: ");
+    print_hex32(user_test_count);
+    print("\nSyscalls: ");
+    print_hex32(syscall_count);
     print("\nNotebook bytes: ");
     print_hex32(notebook_length);
     print("\nPMM free pages: ");
@@ -352,6 +380,7 @@ extern "C" void shell_recall_history(int direction) {
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, atatest, ls, load, save, rm, pagefault, uptime");
+    print("\nusertest");
 }
 
 static void command_memstat() {
@@ -577,6 +606,55 @@ static void command_uptime() {
     print_hex64(read_tsc() - boot_tsc);
 }
 
+static void command_usertest() {
+    uint64_t code_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+    uint64_t stack_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+    if (code_phys == 0 || stack_phys == 0) {
+        if (code_phys != 0) {
+            pmm64_free_block((void*)(uintptr_t)code_phys);
+        }
+        if (stack_phys != 0) {
+            pmm64_free_block((void*)(uintptr_t)stack_phys);
+        }
+        print("\nFailed to allocate user test pages.");
+        return;
+    }
+
+    if (!paging64_map_page(USER_TEST_CODE_BASE, code_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
+        pmm64_free_block((void*)(uintptr_t)code_phys);
+        pmm64_free_block((void*)(uintptr_t)stack_phys);
+        print("\nFailed to map user code page.");
+        return;
+    }
+
+    if (!paging64_map_page(USER_TEST_STACK_BASE, stack_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
+        paging64_unmap_page(USER_TEST_CODE_BASE);
+        pmm64_free_block((void*)(uintptr_t)code_phys);
+        pmm64_free_block((void*)(uintptr_t)stack_phys);
+        print("\nFailed to map user stack page.");
+        return;
+    }
+
+    uint64_t code_size = (uint64_t)(user_test_code_end - user_test_code_start);
+    for (uint64_t i = 0; i < code_size; i++) {
+        *((volatile uint8_t*)(uintptr_t)(USER_TEST_CODE_BASE + i)) = user_test_code_start[i];
+    }
+
+    uint64_t saved_rsp0 = gdt64_get_kernel_stack();
+    print("\nEntering user mode test...");
+    gdt64_set_kernel_stack(current_rsp() - 8);
+    enter_user_mode(USER_TEST_CODE_BASE, USER_TEST_STACK_TOP - 16);
+
+    gdt64_set_kernel_stack(saved_rsp0);
+
+    paging64_unmap_page(USER_TEST_CODE_BASE);
+    paging64_unmap_page(USER_TEST_STACK_BASE);
+    pmm64_free_block((void*)(uintptr_t)code_phys);
+    pmm64_free_block((void*)(uintptr_t)stack_phys);
+
+    print("\nReturned from user mode.");
+}
+
 static void execute_command() {
     shell_buffer[buffer_index] = '\0';
     save_history();
@@ -629,6 +707,8 @@ static void execute_command() {
     } else if (strcmp64(cmd, "pagefault") == 0) {
         volatile uint32_t* bad_ptr = (uint32_t*)0x80000000;
         *bad_ptr = 0x1234;
+    } else if (strcmp64(cmd, "usertest") == 0) {
+        command_usertest();
     } else if (strcmp64(cmd, "uptime") == 0) {
         command_uptime();
     } else if (buffer_index > 0) {
@@ -669,6 +749,49 @@ extern "C" void keyboard_handler64() {
 
 extern "C" void timer_handler64() {
     pit.handle();
+}
+
+extern "C" void user_test_interrupt_handler64() {
+    user_test_count++;
+    print("\nUser mode reached.");
+}
+
+extern "C" void user_exit_interrupt_handler64() {
+    print("\nUser mode exit requested.");
+}
+
+extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t) {
+    syscall_count++;
+
+    if (syscall_no == SYS_WRITE) {
+        const char* user_ptr = (const char*)(uintptr_t)arg1;
+        uint64_t length = arg2;
+        if (length == 0) {
+            return 0;
+        }
+        if (length > 4096) {
+            length = 4096;
+        }
+
+        if (paging64_get_phys((uint64_t)(uintptr_t)user_ptr) == 0) {
+            return (uint64_t)-1;
+        }
+        if (paging64_get_phys((uint64_t)(uintptr_t)(user_ptr + length - 1)) == 0) {
+            return (uint64_t)-1;
+        }
+
+        print_n(user_ptr, length);
+        return length;
+    }
+
+    if (syscall_no == SYS_EXIT) {
+        print("\nUser mode exit requested.");
+        return SYSCALL_RETURN_TO_KERNEL;
+    }
+
+    print("\nUnknown syscall: ");
+    print_hex32((uint32_t)syscall_no);
+    return (uint64_t)-1;
 }
 
 extern "C" void kernel64_main(const BootInfo* boot_info) {

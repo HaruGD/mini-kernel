@@ -40,11 +40,14 @@ static uint64_t allocate_table() {
     return phys;
 }
 
-static uint64_t* get_or_create_next(uint64_t* table, uint16_t index) {
+static uint64_t* get_or_create_next(uint64_t* table, uint16_t index, uint64_t flags) {
     uint64_t entry = table[index];
     if (entry & PAGING64_FLAG_PRESENT) {
         if (entry & PAGING64_FLAG_HUGE) {
             return 0;
+        }
+        if ((flags & PAGING64_FLAG_USER) && !(entry & PAGING64_FLAG_USER)) {
+            table[index] = entry | PAGING64_FLAG_USER;
         }
         return entry_to_table(entry);
     }
@@ -54,7 +57,7 @@ static uint64_t* get_or_create_next(uint64_t* table, uint16_t index) {
         return 0;
     }
 
-    table[index] = phys | PAGING64_FLAG_PRESENT | PAGING64_FLAG_WRITABLE;
+    table[index] = phys | PAGING64_FLAG_PRESENT | PAGING64_FLAG_WRITABLE | (flags & PAGING64_FLAG_USER);
     return (uint64_t*)(uintptr_t)phys;
 }
 
@@ -69,12 +72,12 @@ extern "C" int paging64_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
         paging64_init();
     }
 
-    uint64_t* pdpt = get_or_create_next(pml4_table, pml4_index(virt));
+    uint64_t* pdpt = get_or_create_next(pml4_table, pml4_index(virt), flags);
     if (pdpt == 0) {
         return 0;
     }
 
-    uint64_t* pd = get_or_create_next(pdpt, pdpt_index(virt));
+    uint64_t* pd = get_or_create_next(pdpt, pdpt_index(virt), flags);
     if (pd == 0) {
         return 0;
     }
@@ -85,13 +88,16 @@ extern "C" int paging64_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
         if (entry & PAGING64_FLAG_HUGE) {
             return 0;
         }
+        if ((flags & PAGING64_FLAG_USER) && !(entry & PAGING64_FLAG_USER)) {
+            pd[pd_index(virt)] = entry | PAGING64_FLAG_USER;
+        }
         pt = entry_to_table(entry);
     } else {
         uint64_t pt_phys = allocate_table();
         if (pt_phys == 0) {
             return 0;
         }
-        pd[pd_index(virt)] = pt_phys | PAGING64_FLAG_PRESENT | PAGING64_FLAG_WRITABLE;
+        pd[pd_index(virt)] = pt_phys | PAGING64_FLAG_PRESENT | PAGING64_FLAG_WRITABLE | (flags & PAGING64_FLAG_USER);
         pt = (uint64_t*)(uintptr_t)pt_phys;
     }
 

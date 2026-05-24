@@ -7,6 +7,9 @@ global isr_gp_fault_asm
 global isr_double_fault_asm
 global irq_keyboard_asm
 global irq_timer_asm
+global user_test_asm
+global user_exit_asm
+global syscall_asm
 
 extern default_interrupt_handler64
 extern page_fault_handler64
@@ -14,6 +17,16 @@ extern gp_fault_handler64
 extern double_fault_handler64
 extern keyboard_handler64
 extern timer_handler64
+extern user_test_interrupt_handler64
+extern user_exit_interrupt_handler64
+extern kernel_user_return_rsp
+extern kernel_user_saved_rbx
+extern kernel_user_saved_rbp
+extern kernel_user_saved_r12
+extern kernel_user_saved_r13
+extern kernel_user_saved_r14
+extern kernel_user_saved_r15
+extern syscall_dispatch64
 
 %macro PUSH_GPRS 0
     push rax
@@ -115,5 +128,52 @@ irq_timer_asm:
     add rsp, 8
     POP_GPRS
     iretq
+
+user_test_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    call user_test_interrupt_handler64
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+user_exit_asm:
+    sub rsp, 8
+    call user_exit_interrupt_handler64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+syscall_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    mov rdi, [rsp + 120]
+    mov rsi, [rsp + 72]
+    mov rdx, [rsp + 80]
+    mov rcx, [rsp + 96]
+    call syscall_dispatch64
+    cmp rax, 0xFFFFFFFFFFFFFFFF
+    je .syscall_exit
+    mov [rsp + 120], rax
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+.syscall_exit:
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
 
 section .note.GNU-stack noalloc noexec nowrite progbits
