@@ -117,6 +117,24 @@ _start:
     jnz .do_uptime
 
     lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_pid]
+    call match_exact
+    test al, al
+    jnz .do_pid
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_ppid]
+    call match_exact
+    test al, al
+    jnz .do_ppid
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_ps]
+    call match_exact
+    test al, al
+    jnz .do_ps
+
+    lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_ls]
     call match_exact
     test al, al
@@ -186,6 +204,26 @@ _start:
 
 .do_uptime:
     sys_uptime
+    jmp .shell_loop
+
+.do_pid:
+    sys_write pid_msg, pid_msg_end - pid_msg
+    sys_get_pid
+    mov ebx, eax
+    call print_hex32_eax
+    sys_write newline_msg, newline_msg_end - newline_msg
+    jmp .shell_loop
+
+.do_ppid:
+    sys_write ppid_msg, ppid_msg_end - ppid_msg
+    sys_get_ppid
+    mov ebx, eax
+    call print_hex32_eax
+    sys_write newline_msg, newline_msg_end - newline_msg
+    jmp .shell_loop
+
+.do_ps:
+    sys_ps
     jmp .shell_loop
 
 .do_ls:
@@ -330,6 +368,29 @@ print_cstring:
 .print_done:
     ret
 
+print_hex32_eax:
+    mov eax, ebx
+    mov byte [rel hex_buffer], '0'
+    mov byte [rel hex_buffer + 1], 'x'
+    lea rdi, [rel hex_buffer + 9]
+    mov ecx, 8
+.hex_loop:
+    mov edx, eax
+    and edx, 0x0F
+    cmp dl, 9
+    jbe .hex_digit
+    add dl, 'A' - 10
+    jmp .hex_store
+.hex_digit:
+    add dl, '0'
+.hex_store:
+    mov [rdi], dl
+    shr eax, 4
+    dec rdi
+    loop .hex_loop
+    sys_write hex_buffer, 10
+    ret
+
 section .data
 
 banner_msg:
@@ -341,12 +402,18 @@ prompt_msg:
 prompt_msg_end:
 help_msg:
     db 'Commands: help, echo [text], about, version, bootinfo, memstat, uptime', 10
-    db '          clear, ls, cat [file], run [file], rm [file], touch [file]', 10
+    db '          pid, ppid, ps, clear, ls, cat [file], run [file], rm [file], touch [file]', 10
     db '          save [file] [text], exit', 10
 help_msg_end:
 about_msg:
     db 'USHELL.BIN runs entirely in user mode using int 0x80 syscalls.', 10
 about_msg_end:
+pid_msg:
+    db 'pid: '
+pid_msg_end:
+ppid_msg:
+    db 'ppid: '
+ppid_msg_end:
 cat_usage_msg:
     db 'Usage: cat [filename]', 10
 cat_usage_msg_end:
@@ -385,6 +452,12 @@ cmd_memstat:
     db 'memstat', 0
 cmd_uptime:
     db 'uptime', 0
+cmd_pid:
+    db 'pid', 0
+cmd_ppid:
+    db 'ppid', 0
+cmd_ps:
+    db 'ps', 0
 cmd_ls:
     db 'ls', 0
 cmd_cat:
@@ -408,3 +481,5 @@ input_buffer:
     resb INPUT_BUFFER_SIZE
 input_len:
     resb 1
+hex_buffer:
+    resb 10

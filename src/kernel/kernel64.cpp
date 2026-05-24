@@ -43,6 +43,9 @@ extern "C" {
 #define SYS_UPTIME 12
 #define SYS_TOUCH_FILE 13
 #define SYS_SAVE_FILE 14
+#define SYS_GET_PID 15
+#define SYS_GET_PPID 16
+#define SYS_PS 17
 #define PROCESS_SLOT_COUNT USER_PROGRAM_SLOT_COUNT
 
 Terminal terminal;
@@ -264,6 +267,9 @@ static Process* current_process() {
 }
 
 static const char* process_state_name(uint32_t state) {
+    if (state == PROCESS_STATE_LOADED) {
+        return "loaded";
+    }
     if (state == PROCESS_STATE_RUNNING) {
         return "running";
     }
@@ -287,6 +293,16 @@ static void print_process_summary(const Process* process) {
     print_hex32(process->parent_pid);
     print(" state=");
     print(process_state_name(process->state));
+}
+
+static void print_process_table() {
+    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+        print("\n[");
+        print_hex32(i);
+        print("] ");
+        print_process_summary(&process_table[i]);
+    }
+    print("\n");
 }
 
 static int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
@@ -620,7 +636,7 @@ static int run_user_program(const char* filename) {
     process->stack_base = user_stack_base;
     process->entry_point = user_code_base;
     process->image_size = entry.file_size;
-    process->state = PROCESS_STATE_RUNNING;
+    process->state = PROCESS_STATE_LOADED;
     process->active = 1;
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
@@ -645,6 +661,7 @@ static int run_user_program(const char* filename) {
     user_input_mode = 1;
     outb(0x21, saved_pic1_mask | 0x02);
     gdt64_set_kernel_stack(current_rsp() - 8);
+    process->state = PROCESS_STATE_RUNNING;
     user_program_depth++;
     enter_user_mode(user_code_base, user_stack_top - 16);
     user_program_depth--;
@@ -1209,6 +1226,21 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         print(file_name);
         print("\n");
         return (uint64_t)-1;
+    }
+
+    if (syscall_no == SYS_GET_PID) {
+        Process* process = current_process();
+        return process != 0 ? process->pid : 0;
+    }
+
+    if (syscall_no == SYS_GET_PPID) {
+        Process* process = current_process();
+        return process != 0 ? process->parent_pid : 0;
+    }
+
+    if (syscall_no == SYS_PS) {
+        print_process_table();
+        return 0;
     }
 
     print("\nUnknown syscall: ");

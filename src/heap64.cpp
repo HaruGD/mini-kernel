@@ -235,7 +235,7 @@ extern "C" uint64_t heap_total_free() {
     uint64_t total = 0;
     struct heap_header* current = heap_start;
     while (current != 0) {
-        if (current->is_free) {
+        if (current->is_free && current->size >= sizeof(struct heap_header)) {
             total += current->size - sizeof(struct heap_header);
         }
         current = current->next;
@@ -247,7 +247,7 @@ extern "C" uint64_t heap_total_used() {
     uint64_t total = 0;
     struct heap_header* current = heap_start;
     while (current != 0) {
-        if (!current->is_free) {
+        if (!current->is_free && current->size >= sizeof(struct heap_header)) {
             total += current->size - sizeof(struct heap_header);
         }
         current = current->next;

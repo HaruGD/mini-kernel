@@ -15,6 +15,9 @@
 %define SYS_UPTIME     12
 %define SYS_TOUCH_FILE 13
 %define SYS_SAVE_FILE  14
+%define SYS_GET_PID    15
+%define SYS_GET_PPID   16
+%define SYS_PS         17
 
 %macro sys_write 2
     mov rax, SYS_WRITE
@@ -104,6 +107,21 @@
     mov rdi, %1
     mov rsi, %2
     mov rax, SYS_SAVE_FILE
+    int 0x80
+%endmacro
+
+%macro sys_get_pid 0
+    mov rax, SYS_GET_PID
+    int 0x80
+%endmacro
+
+%macro sys_get_ppid 0
+    mov rax, SYS_GET_PPID
+    int 0x80
+%endmacro
+
+%macro sys_ps 0
+    mov rax, SYS_PS
     int 0x80
 %endmacro
 

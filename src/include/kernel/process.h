@@ -7,8 +7,9 @@
 
 enum ProcessState : uint32_t {
     PROCESS_STATE_EMPTY = 0,
-    PROCESS_STATE_RUNNING = 1,
-    PROCESS_STATE_RETURNED = 2,
+    PROCESS_STATE_LOADED = 1,
+    PROCESS_STATE_RUNNING = 2,
+    PROCESS_STATE_RETURNED = 3,
 };
 
 struct Process {
