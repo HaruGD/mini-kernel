@@ -26,9 +26,9 @@ void idt64_init();
 void idt64_load(struct idtr64* idtr);
 
 void default_interrupt_handler64();
-void page_fault_handler64(uint64_t fault_addr, uint64_t error_code);
-void gp_fault_handler64(uint64_t error_code);
-void double_fault_handler64(uint64_t error_code);
+uint64_t page_fault_handler64(uint64_t fault_addr, uint64_t error_code);
+uint64_t gp_fault_handler64(uint64_t error_code);
+uint64_t double_fault_handler64(uint64_t error_code);
 
 void keyboard_handler64();
 void timer_handler64();

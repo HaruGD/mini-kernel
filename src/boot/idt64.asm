@@ -1,6 +1,7 @@
 [BITS 64]
 
 %define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFE
+%define FAULT_RETURN_TO_KERNEL 1
 
 global idt64_load
 global isr_default_asm
@@ -88,6 +89,8 @@ isr_page_fault_asm:
     mov rsi, [rsp + 120]
     sub rsp, 8
     call page_fault_handler64
+    cmp rax, FAULT_RETURN_TO_KERNEL
+    je fault_exit_asm
 .hang_pf:
     cli
     hlt
@@ -99,6 +102,8 @@ isr_gp_fault_asm:
     mov rdi, [rsp + 120]
     sub rsp, 8
     call gp_fault_handler64
+    cmp rax, FAULT_RETURN_TO_KERNEL
+    je fault_exit_asm
 .hang_gp:
     cli
     hlt
@@ -110,6 +115,8 @@ isr_double_fault_asm:
     mov rdi, [rsp + 120]
     sub rsp, 8
     call double_fault_handler64
+    cmp rax, FAULT_RETURN_TO_KERNEL
+    je fault_exit_asm
 .hang_df:
     cli
     hlt
@@ -168,6 +175,17 @@ syscall_asm:
     iretq
 
 .syscall_exit:
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+fault_exit_asm:
     add rsp, 8
     mov rbx, [kernel_user_saved_rbx]
     mov rbp, [kernel_user_saved_rbp]

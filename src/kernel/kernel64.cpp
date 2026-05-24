@@ -354,6 +354,10 @@ extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
     process_mark_failed(current_process(), reason, status_code);
 }
 
+extern "C" uint64_t process_fault_returnable64() {
+    return current_process() != 0 ? 1 : 0;
+}
+
 static void print_process_summary(const Process* process) {
     if (process == 0 || process->pid == 0) {
         print("none");
@@ -658,6 +662,7 @@ static int run_user_program(const char* filename) {
         process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 1);
         print("\nUser program not found: ");
         print(filename);
+        print("\n");
         return 0;
     }
 
@@ -685,6 +690,7 @@ static int run_user_program(const char* filename) {
         process_mark_failed(process, PROCESS_TERM_READ_ERROR, 1);
         print("\nFailed to read user program: ");
         print(filename);
+        print("\n");
         kfree(program_buffer);
         return 0;
     }
