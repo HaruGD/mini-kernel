@@ -558,7 +558,7 @@ static void print_scheduler_info() {
         print("] ");
         print_process_summary(sched_queue[index]);
     }
-    print("\n=================");
+    print("\n=================\n");
 }
 
 static int process_record_is_active(const Process* process) {
