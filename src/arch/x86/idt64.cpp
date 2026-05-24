@@ -7,6 +7,11 @@ extern "C" {
 extern "C" void debug_print64(const char* str);
 extern "C" void debug_print_hex64(uint32_t value);
 extern "C" void debug_print_hex64_u64(uint64_t value);
+extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code);
+
+#define PROCESS_TERM_PAGE_FAULT 6
+#define PROCESS_TERM_GP_FAULT 7
+#define PROCESS_TERM_DOUBLE_FAULT 8
 
 static struct idt64_entry idt64[256];
 static struct idtr64 idtr;
@@ -89,6 +94,7 @@ extern "C" void default_interrupt_handler64() {
 }
 
 extern "C" void page_fault_handler64(uint64_t fault_addr, uint64_t error_code) {
+    process_record_fault64(PROCESS_TERM_PAGE_FAULT, (uint32_t)error_code);
     debug_print64("\n=== PAGE FAULT ===");
     debug_print64("\nFault addr: ");
     debug_print_hex64_u64(fault_addr);
@@ -98,6 +104,7 @@ extern "C" void page_fault_handler64(uint64_t fault_addr, uint64_t error_code) {
 }
 
 extern "C" void gp_fault_handler64(uint64_t error_code) {
+    process_record_fault64(PROCESS_TERM_GP_FAULT, (uint32_t)error_code);
     debug_print64("\n=== GENERAL PROTECTION FAULT ===");
     debug_print64("\nError code: ");
     debug_print_hex64_u64(error_code);
@@ -105,6 +112,7 @@ extern "C" void gp_fault_handler64(uint64_t error_code) {
 }
 
 extern "C" void double_fault_handler64(uint64_t error_code) {
+    process_record_fault64(PROCESS_TERM_DOUBLE_FAULT, (uint32_t)error_code);
     debug_print64("\n=== DOUBLE FAULT ===");
     debug_print64("\nError code: ");
     debug_print_hex64_u64(error_code);

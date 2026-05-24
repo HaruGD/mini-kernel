@@ -276,7 +276,82 @@ static const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_RETURNED) {
         return "returned";
     }
+    if (state == PROCESS_STATE_FAILED) {
+        return "failed";
+    }
     return "empty";
+}
+
+static const char* process_term_name(uint32_t reason) {
+    if (reason == PROCESS_TERM_EXIT) {
+        return "exit";
+    }
+    if (reason == PROCESS_TERM_LOAD_ERROR) {
+        return "load_error";
+    }
+    if (reason == PROCESS_TERM_READ_ERROR) {
+        return "read_error";
+    }
+    if (reason == PROCESS_TERM_MEMORY_ERROR) {
+        return "memory_error";
+    }
+    if (reason == PROCESS_TERM_MAP_ERROR) {
+        return "map_error";
+    }
+    if (reason == PROCESS_TERM_PAGE_FAULT) {
+        return "page_fault";
+    }
+    if (reason == PROCESS_TERM_GP_FAULT) {
+        return "gp_fault";
+    }
+    if (reason == PROCESS_TERM_DOUBLE_FAULT) {
+        return "double_fault";
+    }
+    return "none";
+}
+
+static void process_clear(Process* process) {
+    if (process == 0) {
+        return;
+    }
+
+    process->pid = 0;
+    process->parent_pid = 0;
+    process->name[0] = '\0';
+    process->code_base = 0;
+    process->stack_base = 0;
+    process->entry_point = 0;
+    process->image_size = 0;
+    process->state = PROCESS_STATE_EMPTY;
+    process->termination_reason = PROCESS_TERM_NONE;
+    process->status_code = 0;
+    process->active = 0;
+}
+
+static void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code) {
+    if (process == 0) {
+        return;
+    }
+
+    process->state = PROCESS_STATE_FAILED;
+    process->termination_reason = reason;
+    process->status_code = status_code;
+    process->active = 0;
+}
+
+static void process_mark_returned(Process* process, uint32_t reason, uint32_t status_code) {
+    if (process == 0) {
+        return;
+    }
+
+    process->state = PROCESS_STATE_RETURNED;
+    process->termination_reason = reason;
+    process->status_code = status_code;
+    process->active = 0;
+}
+
+extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
+    process_mark_failed(current_process(), reason, status_code);
 }
 
 static void print_process_summary(const Process* process) {
@@ -293,6 +368,10 @@ static void print_process_summary(const Process* process) {
     print_hex32(process->parent_pid);
     print(" state=");
     print(process_state_name(process->state));
+    print(" term=");
+    print(process_term_name(process->termination_reason));
+    print(" code=");
+    print_hex32(process->status_code);
 }
 
 static void print_process_table() {
@@ -559,21 +638,36 @@ static int run_user_program(const char* filename) {
     uint64_t user_stack_top = user_stack_base + PAGING64_PAGE_SIZE;
     Process* parent = current_process();
     Process* process = &process_table[slot_index];
+    process_clear(process);
+    process->pid = next_pid++;
+    process->parent_pid = parent != 0 ? parent->pid : 0;
+    copy_process_name(process->name, filename);
+    process->code_base = user_code_base;
+    process->stack_base = user_stack_base;
+    process->entry_point = user_code_base;
+    process->state = PROCESS_STATE_LOADED;
+    process->termination_reason = PROCESS_TERM_NONE;
+    process->status_code = 0;
+    process->active = 1;
 
     char user_name83[11];
     to_name83(filename, user_name83);
 
     DirEntry entry;
     if (!fat.find_file(user_name83, &entry)) {
+        process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 1);
         print("\nUser program not found: ");
         print(filename);
         return 0;
     }
 
     if (entry.file_size == 0 || entry.file_size > PAGING64_PAGE_SIZE) {
+        process->image_size = entry.file_size;
+        process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 2);
         print("\nUser program size is invalid for the current loader.\n");
         return 0;
     }
+    process->image_size = entry.file_size;
 
     uint32_t program_buffer_size = entry.file_size;
     if (program_buffer_size < 512) {
@@ -582,11 +676,13 @@ static int run_user_program(const char* filename) {
 
     uint8_t* program_buffer = (uint8_t*)kmalloc(program_buffer_size);
     if (program_buffer == 0) {
+        process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 1);
         print("\nOut of memory for user program.");
         return 0;
     }
 
     if (fat.read_file(&entry, program_buffer) < 0) {
+        process_mark_failed(process, PROCESS_TERM_READ_ERROR, 1);
         print("\nFailed to read user program: ");
         print(filename);
         kfree(program_buffer);
@@ -603,6 +699,7 @@ static int run_user_program(const char* filename) {
             pmm64_free_block((void*)(uintptr_t)stack_phys);
         }
         kfree(program_buffer);
+        process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 2);
         print("\nFailed to allocate user program pages.");
         return 0;
     }
@@ -611,6 +708,7 @@ static int run_user_program(const char* filename) {
         pmm64_free_block((void*)(uintptr_t)code_phys);
         pmm64_free_block((void*)(uintptr_t)stack_phys);
         kfree(program_buffer);
+        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 1);
         print("\nFailed to map user code page.");
         return 0;
     }
@@ -620,6 +718,7 @@ static int run_user_program(const char* filename) {
         pmm64_free_block((void*)(uintptr_t)code_phys);
         pmm64_free_block((void*)(uintptr_t)stack_phys);
         kfree(program_buffer);
+        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 2);
         print("\nFailed to map user stack page.");
         return 0;
     }
@@ -629,15 +728,7 @@ static int run_user_program(const char* filename) {
     }
     kfree(program_buffer);
 
-    process->pid = next_pid++;
-    process->parent_pid = parent != 0 ? parent->pid : 0;
-    copy_process_name(process->name, filename);
-    process->code_base = user_code_base;
-    process->stack_base = user_stack_base;
-    process->entry_point = user_code_base;
-    process->image_size = entry.file_size;
     process->state = PROCESS_STATE_LOADED;
-    process->active = 1;
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     uint8_t saved_pic1_mask = inb(0x21);
@@ -683,7 +774,9 @@ static int run_user_program(const char* filename) {
     pmm64_free_block((void*)(uintptr_t)code_phys);
     pmm64_free_block((void*)(uintptr_t)stack_phys);
 
-    process->state = PROCESS_STATE_RETURNED;
+    if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
+        process_mark_returned(process, PROCESS_TERM_NONE, 0);
+    }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
     print("].\n");
@@ -1050,6 +1143,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_EXIT) {
+        process_mark_returned(current_process(), PROCESS_TERM_EXIT, (uint32_t)arg1);
         print("\nUser mode exit requested.");
         return SYSCALL_RETURN_TO_KERNEL;
     }

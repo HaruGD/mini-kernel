@@ -27,6 +27,13 @@
 %endmacro
 
 %macro sys_exit 0
+    xor edi, edi
+    mov rax, SYS_EXIT
+    int 0x80
+%endmacro
+
+%macro sys_exit_code 1
+    mov rdi, %1
     mov rax, SYS_EXIT
     int 0x80
 %endmacro
