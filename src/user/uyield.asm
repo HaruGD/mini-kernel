@@ -1,0 +1,39 @@
+[BITS 64]
+
+%include "src/user/include/syscall.inc"
+
+section .text
+global _start
+
+_start:
+    mov ax, 0x23
+    mov ds, ax
+    mov es, ax
+
+    sys_write banner_msg, banner_msg_end - banner_msg
+
+    mov ecx, 3
+.yield_loop:
+    sys_write step_msg, step_msg_end - step_msg
+    mov eax, 4
+    sub eax, ecx
+    add al, '0'
+    sys_putchar_reg al
+    sys_write newline_msg, newline_msg_end - newline_msg
+    sys_yield
+    loop .yield_loop
+
+    mov edi, 3
+    sys_exit_reg rdi
+
+section .data
+banner_msg:
+    db '=== UYIELD.BIN ===', 10
+    db 'Yielding cooperatively three times...', 10
+banner_msg_end:
+step_msg:
+    db 'Yield step '
+step_msg_end:
+newline_msg:
+    db 10
+newline_msg_end:

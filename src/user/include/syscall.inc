@@ -21,6 +21,7 @@
 %define SYS_LAST_STATUS 18
 %define SYS_WAIT_CHILD 19
 %define SYS_SCHED_INFO 20
+%define SYS_YIELD 21
 
 %macro sys_write 2
     mov rax, SYS_WRITE
@@ -153,6 +154,11 @@
 
 %macro sys_sched 0
     mov rax, SYS_SCHED_INFO
+    int 0x80
+%endmacro
+
+%macro sys_yield 0
+    mov rax, SYS_YIELD
     int 0x80
 %endmacro
 

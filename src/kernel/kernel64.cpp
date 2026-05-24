@@ -50,6 +50,7 @@ extern "C" {
 #define SYS_LAST_STATUS 18
 #define SYS_WAIT_CHILD 19
 #define SYS_SCHED_INFO 20
+#define SYS_YIELD 21
 #define SCHED_QUEUE_SIZE PROCESS_TABLE_SIZE
 #define SCHED_DEFAULT_TIMESLICE 4
 
@@ -80,6 +81,7 @@ static uint32_t sched_queue_count = 0;
 static uint32_t sched_queue_head = 0;
 static uint32_t sched_last_pid = 0;
 static uint32_t sched_switch_count = 0;
+static uint32_t sched_yield_count = 0;
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 extern "C" uint64_t kernel_user_return_rsp;
 extern "C" uint64_t kernel_user_saved_rbx;
@@ -460,6 +462,21 @@ static void scheduler_mark_finished(Process* process) {
     process->timeslice_ticks = 0;
 }
 
+static void scheduler_yield_current() {
+    Process* process = current_process();
+    if (process == 0) {
+        return;
+    }
+
+    process->scheduler_state = SCHED_STATE_READY;
+    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    sched_yield_count++;
+
+    scheduler_remove(process);
+    scheduler_enqueue(process);
+    scheduler_mark_running(process);
+}
+
 static void scheduler_on_tick() {
     Process* process = current_process();
     if (process == 0) {
@@ -531,6 +548,8 @@ static void print_scheduler_info() {
     print_hex32(sched_last_pid);
     print("\nSwitches: ");
     print_hex32(sched_switch_count);
+    print("\nYields: ");
+    print_hex32(sched_yield_count);
 
     for (uint32_t i = 0; i < sched_queue_count; i++) {
         uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
@@ -738,6 +757,8 @@ static void dump_state() {
     print_hex32(sched_last_pid);
     print("\nSched switches: ");
     print_hex32(sched_switch_count);
+    print("\nSched yields: ");
+    print_hex32(sched_yield_count);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         print("\nProcess slot ");
         print_hex32(i);
@@ -1645,6 +1666,11 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
 
     if (syscall_no == SYS_SCHED_INFO) {
         print_scheduler_info();
+        return 0;
+    }
+
+    if (syscall_no == SYS_YIELD) {
+        scheduler_yield_current();
         return 0;
     }
 
