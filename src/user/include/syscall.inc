@@ -18,6 +18,7 @@
 %define SYS_GET_PID    15
 %define SYS_GET_PPID   16
 %define SYS_PS         17
+%define SYS_LAST_STATUS 18
 
 %macro sys_write 2
     mov rax, SYS_WRITE
@@ -129,6 +130,11 @@
 
 %macro sys_ps 0
     mov rax, SYS_PS
+    int 0x80
+%endmacro
+
+%macro sys_laststatus 0
+    mov rax, SYS_LAST_STATUS
     int 0x80
 %endmacro
 

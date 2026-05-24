@@ -135,6 +135,12 @@ _start:
     jnz .do_ps
 
     lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_laststatus]
+    call match_exact
+    test al, al
+    jnz .do_laststatus
+
+    lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_ls]
     call match_exact
     test al, al
@@ -224,6 +230,10 @@ _start:
 
 .do_ps:
     sys_ps
+    jmp .shell_loop
+
+.do_laststatus:
+    sys_laststatus
     jmp .shell_loop
 
 .do_ls:
@@ -402,7 +412,7 @@ prompt_msg:
 prompt_msg_end:
 help_msg:
     db 'Commands: help, echo [text], about, version, bootinfo, memstat, uptime', 10
-    db '          pid, ppid, ps, clear, ls, cat [file], run [file], rm [file], touch [file]', 10
+    db '          pid, ppid, ps, laststatus, clear, ls, cat [file], run [file], rm [file], touch [file]', 10
     db '          save [file] [text], exit', 10
 help_msg_end:
 about_msg:
@@ -458,6 +468,8 @@ cmd_ppid:
     db 'ppid', 0
 cmd_ps:
     db 'ps', 0
+cmd_laststatus:
+    db 'laststatus', 0
 cmd_ls:
     db 'ls', 0
 cmd_cat:

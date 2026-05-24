@@ -46,6 +46,7 @@ extern "C" {
 #define SYS_GET_PID 15
 #define SYS_GET_PPID 16
 #define SYS_PS 17
+#define SYS_LAST_STATUS 18
 #define PROCESS_SLOT_COUNT USER_PROGRAM_SLOT_COUNT
 
 Terminal terminal;
@@ -386,6 +387,20 @@ static void print_process_table() {
         print_process_summary(&process_table[i]);
     }
     print("\n");
+}
+
+static const Process* find_last_child_process(uint32_t parent_pid) {
+    const Process* latest = 0;
+    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+        const Process* process = &process_table[i];
+        if (process->pid == 0 || process->parent_pid != parent_pid) {
+            continue;
+        }
+        if (latest == 0 || process->pid > latest->pid) {
+            latest = process;
+        }
+    }
+    return latest;
 }
 
 static int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
@@ -1347,6 +1362,25 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     if (syscall_no == SYS_PS) {
         print_process_table();
         return 0;
+    }
+
+    if (syscall_no == SYS_LAST_STATUS) {
+        Process* process = current_process();
+        if (process == 0) {
+            print("\nNo current user process.\n");
+            return (uint64_t)-1;
+        }
+
+        const Process* child = find_last_child_process(process->pid);
+        if (child == 0) {
+            print("\nNo child program result.\n");
+            return 0;
+        }
+
+        print("\nLast child: ");
+        print_process_summary(child);
+        print("\n");
+        return child->status_code;
     }
 
     print("\nUnknown syscall: ");
