@@ -16,6 +16,7 @@ extern "C" {
 #include "drivers/pit.h"
 #include "fs/fat12.h"
 #include "kernel/boot_info.h"
+#include "kernel/process.h"
 
 #define MAX_BUFFER_SIZE 256
 #define MAX_HISTORY 10
@@ -42,6 +43,7 @@ extern "C" {
 #define SYS_UPTIME 12
 #define SYS_TOUCH_FILE 13
 #define SYS_SAVE_FILE 14
+#define PROCESS_SLOT_COUNT USER_PROGRAM_SLOT_COUNT
 
 Terminal terminal;
 ATADriver ata;
@@ -62,6 +64,8 @@ static uint32_t user_test_count = 0;
 static uint32_t syscall_count = 0;
 static volatile int user_input_mode = 0;
 static uint32_t user_program_depth = 0;
+static uint32_t next_pid = 1;
+static Process process_table[PROCESS_SLOT_COUNT];
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 
 static int strlen64(const char* str) {
@@ -228,6 +232,56 @@ static void print_n(const char* str, uint64_t len) {
     }
 }
 
+static void copy_process_name(char* dest, const char* src) {
+    if (dest == 0) {
+        return;
+    }
+
+    if (src == 0) {
+        dest[0] = '\0';
+        return;
+    }
+
+    uint32_t i = 0;
+    for (; i < PROCESS_NAME_MAX - 1 && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    dest[i] = '\0';
+}
+
+static Process* current_process() {
+    if (user_program_depth == 0) {
+        return 0;
+    }
+    return &process_table[user_program_depth - 1];
+}
+
+static const char* process_state_name(uint32_t state) {
+    if (state == PROCESS_STATE_RUNNING) {
+        return "running";
+    }
+    if (state == PROCESS_STATE_RETURNED) {
+        return "returned";
+    }
+    return "empty";
+}
+
+static void print_process_summary(const Process* process) {
+    if (process == 0 || process->pid == 0) {
+        print("none");
+        return;
+    }
+
+    print("pid=");
+    print_hex32(process->pid);
+    print(" name=");
+    print(process->name);
+    print(" parent=");
+    print_hex32(process->parent_pid);
+    print(" state=");
+    print(process_state_name(process->state));
+}
+
 static int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
     if (user_ptr == 0 || kernel_buf == 0 || max_len == 0) {
         return 0;
@@ -323,6 +377,10 @@ static void dump_state() {
     print_hex32(user_test_count);
     print("\nSyscalls: ");
     print_hex32(syscall_count);
+    print("\nNext PID: ");
+    print_hex32(next_pid);
+    print("\nCurrent process: ");
+    print_process_summary(current_process());
     print("\nNotebook bytes: ");
     print_hex32(notebook_length);
     print("\nPMM free pages: ");
@@ -347,6 +405,12 @@ static void dump_state() {
     }
     print("\nPIT tick: ");
     print_hex32(pit.get_tick());
+    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+        print("\nProcess slot ");
+        print_hex32(i);
+        print(": ");
+        print_process_summary(&process_table[i]);
+    }
     print("\n==================");
 }
 
@@ -459,9 +523,10 @@ static int run_user_program(const char* filename) {
         return 0;
     }
 
+    uint32_t slot_index = user_program_depth;
     uint64_t user_code_base;
     uint64_t user_stack_base;
-    if (user_program_depth == 0) {
+    if (slot_index == 0) {
         user_code_base = USER_SLOT0_CODE_BASE;
         user_stack_base = USER_SLOT0_STACK_BASE;
     } else {
@@ -469,6 +534,8 @@ static int run_user_program(const char* filename) {
         user_stack_base = USER_SLOT1_STACK_BASE;
     }
     uint64_t user_stack_top = user_stack_base + PAGING64_PAGE_SIZE;
+    Process* parent = current_process();
+    Process* process = &process_table[slot_index];
 
     char user_name83[11];
     to_name83(filename, user_name83);
@@ -539,11 +606,26 @@ static int run_user_program(const char* filename) {
     }
     kfree(program_buffer);
 
+    process->pid = next_pid++;
+    process->parent_pid = parent != 0 ? parent->pid : 0;
+    copy_process_name(process->name, filename);
+    process->code_base = user_code_base;
+    process->stack_base = user_stack_base;
+    process->entry_point = user_code_base;
+    process->image_size = entry.file_size;
+    process->state = PROCESS_STATE_RUNNING;
+    process->active = 1;
+
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     uint8_t saved_pic1_mask = inb(0x21);
     int saved_user_input_mode = user_input_mode;
     print("\nRunning user program: ");
     print(filename);
+    print(" [pid=");
+    print_hex32(process->pid);
+    print(" parent=");
+    print_hex32(process->parent_pid);
+    print("]");
     print("\n");
     user_input_reset();
     user_input_mode = 1;
@@ -563,7 +645,11 @@ static int run_user_program(const char* filename) {
     pmm64_free_block((void*)(uintptr_t)code_phys);
     pmm64_free_block((void*)(uintptr_t)stack_phys);
 
-    print("\nReturned from user program.\n");
+    process->state = PROCESS_STATE_RETURNED;
+    print("\nReturned from user program [pid=");
+    print_hex32(process->pid);
+    print("].\n");
+    process->active = 0;
     return 1;
 }
 
