@@ -37,6 +37,7 @@ struct Process {
     uint32_t termination_reason;
     uint32_t status_code;
     uint8_t active;
+    uint8_t reaped;
 };
 
 #endif

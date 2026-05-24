@@ -47,6 +47,7 @@ extern "C" {
 #define SYS_GET_PPID 16
 #define SYS_PS 17
 #define SYS_LAST_STATUS 18
+#define SYS_WAIT_CHILD 19
 #define PROCESS_SLOT_COUNT USER_PROGRAM_SLOT_COUNT
 
 Terminal terminal;
@@ -327,6 +328,7 @@ static void process_clear(Process* process) {
     process->termination_reason = PROCESS_TERM_NONE;
     process->status_code = 0;
     process->active = 0;
+    process->reaped = 0;
 }
 
 static void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code) {
@@ -338,6 +340,7 @@ static void process_mark_failed(Process* process, uint32_t reason, uint32_t stat
     process->termination_reason = reason;
     process->status_code = status_code;
     process->active = 0;
+    process->reaped = 0;
 }
 
 static void process_mark_returned(Process* process, uint32_t reason, uint32_t status_code) {
@@ -349,6 +352,7 @@ static void process_mark_returned(Process* process, uint32_t reason, uint32_t st
     process->termination_reason = reason;
     process->status_code = status_code;
     process->active = 0;
+    process->reaped = 0;
 }
 
 extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
@@ -377,6 +381,8 @@ static void print_process_summary(const Process* process) {
     print(process_term_name(process->termination_reason));
     print(" code=");
     print_hex32(process->status_code);
+    print(" reaped=");
+    print(process->reaped ? "yes" : "no");
 }
 
 static void print_process_table() {
@@ -394,6 +400,26 @@ static const Process* find_last_child_process(uint32_t parent_pid) {
     for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
         const Process* process = &process_table[i];
         if (process->pid == 0 || process->parent_pid != parent_pid) {
+            continue;
+        }
+        if (latest == 0 || process->pid > latest->pid) {
+            latest = process;
+        }
+    }
+    return latest;
+}
+
+static Process* find_waitable_child_process(uint32_t parent_pid) {
+    Process* latest = 0;
+    for (uint32_t i = 0; i < PROCESS_SLOT_COUNT; i++) {
+        Process* process = &process_table[i];
+        if (process->pid == 0 || process->parent_pid != parent_pid) {
+            continue;
+        }
+        if (process->active || process->reaped) {
+            continue;
+        }
+        if (process->state != PROCESS_STATE_RETURNED && process->state != PROCESS_STATE_FAILED) {
             continue;
         }
         if (latest == 0 || process->pid > latest->pid) {
@@ -1380,6 +1406,26 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         print("\nLast child: ");
         print_process_summary(child);
         print("\n");
+        return child->status_code;
+    }
+
+    if (syscall_no == SYS_WAIT_CHILD) {
+        Process* process = current_process();
+        if (process == 0) {
+            print("\nNo current user process.\n");
+            return (uint64_t)-1;
+        }
+
+        Process* child = find_waitable_child_process(process->pid);
+        if (child == 0) {
+            print("\nNo unreaped child result.\n");
+            return 0;
+        }
+
+        print("\nWait child: ");
+        print_process_summary(child);
+        print("\n");
+        child->reaped = 1;
         return child->status_code;
     }
 
