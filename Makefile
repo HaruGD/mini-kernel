@@ -50,12 +50,13 @@ all64: ./bin/os64.bin
 		--output ./bin/os.bin \
 		--stage2-sectors $(STAGE2_SECTORS)
 
-./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin ./bin/usertest.bin ./tools/build_fat12_image.py
+./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin ./bin/usertest.bin ./bin/uinfo.bin ./tools/build_fat12_image.py
 	python3 ./tools/build_fat12_image.py \
 		--boot ./bin/boot64.bin \
 		--stage2 ./bin/stage2_64.bin \
 		--kernel ./bin/kernel64.bin \
 		--extra-file UTEST.BIN=./bin/usertest.bin \
+		--extra-file UINFO.BIN=./bin/uinfo.bin \
 		--output ./bin/os64.bin \
 		--stage2-sectors $(STAGE2_64_SECTORS)
 
@@ -155,6 +156,10 @@ all64: ./bin/os64.bin
 	@mkdir -p ./bin
 	$(AS) -f bin -o ./bin/usertest.bin ./src/user/usertest.asm
 
+./bin/uinfo.bin: ./src/user/uinfo.asm
+	@mkdir -p ./bin
+	$(AS) -f bin -o ./bin/uinfo.bin ./src/user/uinfo.asm
+
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 
 ./build/kernel.asm.o: ./src/boot/kernel.asm
@@ -210,4 +215,5 @@ clean:
 	rm -rf ./bin/stage2.bin
 	rm -rf ./bin/stage2_64.bin
 	rm -rf ./bin/usertest.bin
+	rm -rf ./bin/uinfo.bin
 	rm -rf ./build/*
