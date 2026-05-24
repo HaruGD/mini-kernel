@@ -383,7 +383,7 @@ extern "C" void shell_recall_history(int direction) {
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, atatest, ls, load, save, rm, pagefault, uptime");
-    print("\nrun, usertest");
+    print("\nrun, usertest, ushell");
 }
 
 static void command_memstat() {
@@ -713,6 +713,11 @@ static void command_usertest() {
     command_run(default_program);
 }
 
+static void command_ushell() {
+    char default_program[] = "USHELL.BIN";
+    command_run(default_program);
+}
+
 static void execute_command() {
     shell_buffer[buffer_index] = '\0';
     save_history();
@@ -769,6 +774,8 @@ static void execute_command() {
         *bad_ptr = 0x1234;
     } else if (strcmp64(cmd, "usertest") == 0) {
         command_usertest();
+    } else if (strcmp64(cmd, "ushell") == 0) {
+        command_ushell();
     } else if (strcmp64(cmd, "uptime") == 0) {
         command_uptime();
     } else if (buffer_index > 0) {

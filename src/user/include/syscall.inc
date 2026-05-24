@@ -30,6 +30,12 @@
     int 0x80
 %endmacro
 
+%macro sys_putchar_reg 1
+    movzx rdi, %1
+    mov rax, SYS_PUTCHAR
+    int 0x80
+%endmacro
+
 %macro sys_getchar 0
     mov rax, SYS_GETCHAR
     int 0x80
