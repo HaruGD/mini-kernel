@@ -49,6 +49,9 @@ extern "C" {
 #define SYS_PS 17
 #define SYS_LAST_STATUS 18
 #define SYS_WAIT_CHILD 19
+#define SYS_SCHED_INFO 20
+#define SCHED_QUEUE_SIZE PROCESS_TABLE_SIZE
+#define SCHED_DEFAULT_TIMESLICE 4
 
 Terminal terminal;
 ATADriver ata;
@@ -72,6 +75,11 @@ static uint32_t user_program_depth = 0;
 static uint32_t next_pid = 1;
 static Process process_table[PROCESS_TABLE_SIZE];
 static Process* process_stack[USER_PROGRAM_SLOT_COUNT];
+static Process* sched_queue[SCHED_QUEUE_SIZE];
+static uint32_t sched_queue_count = 0;
+static uint32_t sched_queue_head = 0;
+static uint32_t sched_last_pid = 0;
+static uint32_t sched_switch_count = 0;
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 extern "C" uint64_t kernel_user_return_rsp;
 extern "C" uint64_t kernel_user_saved_rbx;
@@ -313,6 +321,22 @@ static const char* process_term_name(uint32_t reason) {
     return "none";
 }
 
+static const char* scheduler_state_name(uint32_t state) {
+    if (state == SCHED_STATE_READY) {
+        return "ready";
+    }
+    if (state == SCHED_STATE_RUNNING) {
+        return "running";
+    }
+    if (state == SCHED_STATE_WAITING) {
+        return "waiting";
+    }
+    if (state == SCHED_STATE_FINISHED) {
+        return "finished";
+    }
+    return "none";
+}
+
 static void process_clear(Process* process) {
     if (process == 0) {
         return;
@@ -328,6 +352,9 @@ static void process_clear(Process* process) {
     process->state = PROCESS_STATE_EMPTY;
     process->termination_reason = PROCESS_TERM_NONE;
     process->status_code = 0;
+    process->scheduler_state = SCHED_STATE_NONE;
+    process->runtime_ticks = 0;
+    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
     process->active = 0;
     process->reaped = 0;
 }
@@ -340,6 +367,7 @@ static void process_mark_failed(Process* process, uint32_t reason, uint32_t stat
     process->state = PROCESS_STATE_FAILED;
     process->termination_reason = reason;
     process->status_code = status_code;
+    process->scheduler_state = SCHED_STATE_FINISHED;
     process->active = 0;
     process->reaped = 0;
 }
@@ -352,8 +380,99 @@ static void process_mark_returned(Process* process, uint32_t reason, uint32_t st
     process->state = PROCESS_STATE_RETURNED;
     process->termination_reason = reason;
     process->status_code = status_code;
+    process->scheduler_state = SCHED_STATE_FINISHED;
     process->active = 0;
     process->reaped = 0;
+}
+
+static int scheduler_queue_contains(const Process* process) {
+    for (uint32_t i = 0; i < sched_queue_count; i++) {
+        uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
+        if (sched_queue[index] == process) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void scheduler_enqueue(Process* process) {
+    if (process == 0 || scheduler_queue_contains(process) || sched_queue_count >= SCHED_QUEUE_SIZE) {
+        return;
+    }
+
+    uint32_t index = (sched_queue_head + sched_queue_count) % SCHED_QUEUE_SIZE;
+    sched_queue[index] = process;
+    sched_queue_count++;
+    process->scheduler_state = SCHED_STATE_READY;
+    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+}
+
+static void scheduler_remove(Process* process) {
+    if (process == 0 || sched_queue_count == 0) {
+        return;
+    }
+
+    Process* compacted[SCHED_QUEUE_SIZE];
+    uint32_t kept = 0;
+    for (uint32_t i = 0; i < sched_queue_count; i++) {
+        uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
+        if (sched_queue[index] != process) {
+            compacted[kept++] = sched_queue[index];
+        }
+    }
+
+    for (uint32_t i = 0; i < kept; i++) {
+        sched_queue[i] = compacted[i];
+    }
+    for (uint32_t i = kept; i < SCHED_QUEUE_SIZE; i++) {
+        sched_queue[i] = 0;
+    }
+    sched_queue_head = 0;
+    sched_queue_count = kept;
+}
+
+static void scheduler_mark_running(Process* process) {
+    if (process == 0) {
+        return;
+    }
+
+    process->scheduler_state = SCHED_STATE_RUNNING;
+    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    sched_last_pid = process->pid;
+    sched_switch_count++;
+}
+
+static void scheduler_mark_waiting(Process* process) {
+    if (process == 0) {
+        return;
+    }
+
+    process->scheduler_state = SCHED_STATE_WAITING;
+}
+
+static void scheduler_mark_finished(Process* process) {
+    if (process == 0) {
+        return;
+    }
+
+    scheduler_remove(process);
+    process->scheduler_state = SCHED_STATE_FINISHED;
+    process->timeslice_ticks = 0;
+}
+
+static void scheduler_on_tick() {
+    Process* process = current_process();
+    if (process == 0) {
+        return;
+    }
+
+    process->runtime_ticks++;
+    if (process->timeslice_ticks > 0) {
+        process->timeslice_ticks--;
+    }
+    if (process->timeslice_ticks == 0) {
+        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    }
 }
 
 extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
@@ -382,6 +501,12 @@ static void print_process_summary(const Process* process) {
     print(process_term_name(process->termination_reason));
     print(" code=");
     print_hex32(process->status_code);
+    print(" sched=");
+    print(scheduler_state_name(process->scheduler_state));
+    print(" ticks=");
+    print_hex32(process->runtime_ticks);
+    print(" slice=");
+    print_hex32(process->timeslice_ticks);
     print(" reaped=");
     print(process->reaped ? "yes" : "no");
 }
@@ -394,6 +519,27 @@ static void print_process_table() {
         print_process_summary(&process_table[i]);
     }
     print("\n");
+}
+
+static void print_scheduler_info() {
+    print("\n=== SCHEDULER ===");
+    print("\nQueue count: ");
+    print_hex32(sched_queue_count);
+    print("\nHead: ");
+    print_hex32(sched_queue_head);
+    print("\nLast PID: ");
+    print_hex32(sched_last_pid);
+    print("\nSwitches: ");
+    print_hex32(sched_switch_count);
+
+    for (uint32_t i = 0; i < sched_queue_count; i++) {
+        uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
+        print("\nQ[");
+        print_hex32(i);
+        print("] ");
+        print_process_summary(sched_queue[index]);
+    }
+    print("\n=================");
 }
 
 static int process_record_is_active(const Process* process) {
@@ -586,6 +732,12 @@ static void dump_state() {
     }
     print("\nPIT tick: ");
     print_hex32(pit.get_tick());
+    print("\nSched queue count: ");
+    print_hex32(sched_queue_count);
+    print("\nSched last pid: ");
+    print_hex32(sched_last_pid);
+    print("\nSched switches: ");
+    print_hex32(sched_switch_count);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         print("\nProcess slot ");
         print_hex32(i);
@@ -661,7 +813,7 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, atatest, ls, load, save, rm, pagefault, uptime");
+    print("\nfree, dump, sched, atatest, ls, load, save, rm, pagefault, uptime");
     print("\nrun, usertest, ushell");
 }
 
@@ -682,6 +834,10 @@ static void command_memstat() {
     print_hex32(heap_mapped_page_count());
     print("\nHeap regions: ");
     print_hex32(heap_region_count());
+}
+
+static void command_sched() {
+    print_scheduler_info();
 }
 
 static void command_echo(char* arg) {
@@ -731,6 +887,7 @@ static int run_user_program(const char* filename) {
     process->termination_reason = PROCESS_TERM_NONE;
     process->status_code = 0;
     process->active = 1;
+    scheduler_enqueue(process);
 
     char user_name83[11];
     to_name83(filename, user_name83);
@@ -738,6 +895,7 @@ static int run_user_program(const char* filename) {
     DirEntry entry;
     if (!fat.find_file(user_name83, &entry)) {
         process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 1);
+        scheduler_mark_finished(process);
         print("\nUser program not found: ");
         print(filename);
         print("\n");
@@ -747,6 +905,7 @@ static int run_user_program(const char* filename) {
     if (entry.file_size == 0 || entry.file_size > PAGING64_PAGE_SIZE) {
         process->image_size = entry.file_size;
         process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 2);
+        scheduler_mark_finished(process);
         print("\nUser program size is invalid for the current loader.\n");
         return 0;
     }
@@ -760,12 +919,14 @@ static int run_user_program(const char* filename) {
     uint8_t* program_buffer = (uint8_t*)kmalloc(program_buffer_size);
     if (program_buffer == 0) {
         process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 1);
+        scheduler_mark_finished(process);
         print("\nOut of memory for user program.");
         return 0;
     }
 
     if (fat.read_file(&entry, program_buffer) < 0) {
         process_mark_failed(process, PROCESS_TERM_READ_ERROR, 1);
+        scheduler_mark_finished(process);
         print("\nFailed to read user program: ");
         print(filename);
         print("\n");
@@ -784,6 +945,7 @@ static int run_user_program(const char* filename) {
         }
         kfree(program_buffer);
         process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 2);
+        scheduler_mark_finished(process);
         print("\nFailed to allocate user program pages.");
         return 0;
     }
@@ -793,6 +955,7 @@ static int run_user_program(const char* filename) {
         pmm64_free_block((void*)(uintptr_t)stack_phys);
         kfree(program_buffer);
         process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 1);
+        scheduler_mark_finished(process);
         print("\nFailed to map user code page.");
         return 0;
     }
@@ -803,6 +966,7 @@ static int run_user_program(const char* filename) {
         pmm64_free_block((void*)(uintptr_t)stack_phys);
         kfree(program_buffer);
         process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 2);
+        scheduler_mark_finished(process);
         print("\nFailed to map user stack page.");
         return 0;
     }
@@ -837,6 +1001,10 @@ static int run_user_program(const char* filename) {
     outb(0x21, saved_pic1_mask | 0x02);
     gdt64_set_kernel_stack(current_rsp() - 8);
     process->state = PROCESS_STATE_RUNNING;
+    if (parent != 0) {
+        scheduler_mark_waiting(parent);
+    }
+    scheduler_mark_running(process);
     process_stack[slot_index] = process;
     user_program_depth++;
     enter_user_mode(user_code_base, user_stack_top - 16);
@@ -862,6 +1030,10 @@ static int run_user_program(const char* filename) {
 
     if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
         process_mark_returned(process, PROCESS_TERM_NONE, 0);
+    }
+    scheduler_mark_finished(process);
+    if (parent != 0 && parent->active) {
+        scheduler_mark_running(parent);
     }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
@@ -1128,6 +1300,8 @@ static void execute_command() {
         command_free();
     } else if (strcmp64(cmd, "dump") == 0) {
         dump_state();
+    } else if (strcmp64(cmd, "sched") == 0) {
+        command_sched();
     } else if (strcmp64(cmd, "atatest") == 0) {
         command_atatest();
     } else if (strcmp64(cmd, "ls") == 0) {
@@ -1199,6 +1373,7 @@ extern "C" void keyboard_deliver_char64(char ascii) {
 
 extern "C" void timer_handler64() {
     pit.handle();
+    scheduler_on_tick();
 }
 
 extern "C" void user_test_interrupt_handler64() {
@@ -1466,6 +1641,11 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         print("\n");
         child->reaped = 1;
         return child->status_code;
+    }
+
+    if (syscall_no == SYS_SCHED_INFO) {
+        print_scheduler_info();
+        return 0;
     }
 
     print("\nUnknown syscall: ");

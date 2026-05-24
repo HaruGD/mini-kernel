@@ -25,6 +25,14 @@ enum ProcessTerminationReason : uint32_t {
     PROCESS_TERM_DOUBLE_FAULT = 8,
 };
 
+enum SchedulerState : uint32_t {
+    SCHED_STATE_NONE = 0,
+    SCHED_STATE_READY = 1,
+    SCHED_STATE_RUNNING = 2,
+    SCHED_STATE_WAITING = 3,
+    SCHED_STATE_FINISHED = 4,
+};
+
 struct Process {
     uint32_t pid;
     uint32_t parent_pid;
@@ -36,6 +44,9 @@ struct Process {
     uint32_t state;
     uint32_t termination_reason;
     uint32_t status_code;
+    uint32_t scheduler_state;
+    uint32_t runtime_ticks;
+    uint32_t timeslice_ticks;
     uint8_t active;
     uint8_t reaped;
 };
