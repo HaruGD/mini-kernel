@@ -93,10 +93,22 @@ _start:
     jnz .do_about
 
     lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_ls]
+    call match_exact
+    test al, al
+    jnz .do_ls
+
+    lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_echo]
     call match_prefix
     test al, al
     jnz .do_echo
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_cat]
+    call match_prefix
+    test al, al
+    jnz .do_cat
 
     sys_write unknown_msg, unknown_msg_end - unknown_msg
     lea rsi, [rel input_buffer]
@@ -112,6 +124,10 @@ _start:
     sys_write about_msg, about_msg_end - about_msg
     jmp .shell_loop
 
+.do_ls:
+    sys_list_files
+    jmp .shell_loop
+
 .do_clear:
     mov ecx, 24
 .clear_loop:
@@ -123,6 +139,18 @@ _start:
     lea rsi, [rel input_buffer + 5]
     call print_cstring
     sys_write newline_msg, newline_msg_end - newline_msg
+    jmp .shell_loop
+
+.do_cat:
+    lea rdi, [rel input_buffer]
+    add rdi, 4
+    cmp byte [rdi], 0
+    je .cat_usage
+    sys_cat_reg rdi
+    jmp .shell_loop
+
+.cat_usage:
+    sys_write cat_usage_msg, cat_usage_msg_end - cat_usage_msg
     jmp .shell_loop
 
 .do_exit:
@@ -184,11 +212,14 @@ prompt_msg:
     db 'ush> '
 prompt_msg_end:
 help_msg:
-    db 'Commands: help, echo [text], about, clear, exit', 10
+    db 'Commands: help, echo [text], about, clear, ls, cat [file], exit', 10
 help_msg_end:
 about_msg:
     db 'USHELL.BIN runs entirely in user mode using int 0x80 syscalls.', 10
 about_msg_end:
+cat_usage_msg:
+    db 'Usage: cat [filename]', 10
+cat_usage_msg_end:
 unknown_msg:
     db 'Unknown command: '
 unknown_msg_end:
@@ -204,6 +235,10 @@ cmd_echo:
     db 'echo ', 0
 cmd_about:
     db 'about', 0
+cmd_ls:
+    db 'ls', 0
+cmd_cat:
+    db 'cat ', 0
 cmd_clear:
     db 'clear', 0
 cmd_exit:

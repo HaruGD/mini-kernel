@@ -30,6 +30,8 @@ extern "C" {
 #define SYS_EXIT 2
 #define SYS_PUTCHAR 3
 #define SYS_GETCHAR 4
+#define SYS_LIST_FILES 5
+#define SYS_CAT_FILE 6
 
 Terminal terminal;
 ATADriver ata;
@@ -213,6 +215,27 @@ static void print_n(const char* str, uint64_t len) {
     for (uint64_t i = 0; i < len; i++) {
         putchar_both(str[i]);
     }
+}
+
+static int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
+    if (user_ptr == 0 || kernel_buf == 0 || max_len == 0) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < max_len - 1; i++) {
+        if (paging64_get_phys((uint64_t)(uintptr_t)(user_ptr + i)) == 0) {
+            return 0;
+        }
+
+        char c = user_ptr[i];
+        kernel_buf[i] = c;
+        if (c == '\0') {
+            return 1;
+        }
+    }
+
+    kernel_buf[max_len - 1] = '\0';
+    return 1;
 }
 
 static void user_input_reset() {
@@ -875,6 +898,59 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
 
     if (syscall_no == SYS_GETCHAR) {
         return (uint64_t)(unsigned char)keyboard.read_char_blocking();
+    }
+
+    if (syscall_no == SYS_LIST_FILES) {
+        fat.list_files();
+        print("\n");
+        return 0;
+    }
+
+    if (syscall_no == SYS_CAT_FILE) {
+        char file_name[32];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
+            print("\nInvalid user filename pointer.");
+            return (uint64_t)-1;
+        }
+
+        char name83[11];
+        to_name83(file_name, name83);
+
+        DirEntry entry;
+        if (!fat.find_file(name83, &entry)) {
+            print("\nFile not found: ");
+            print(file_name);
+            print("\n");
+            return (uint64_t)-1;
+        }
+
+        uint32_t buffer_size = entry.file_size + 1;
+        if (buffer_size < 512) {
+            buffer_size = 512;
+        }
+
+        uint8_t* file_buffer = (uint8_t*)kmalloc(buffer_size);
+        if (file_buffer == 0) {
+            print("\nOut of memory reading file.\n");
+            return (uint64_t)-1;
+        }
+
+        int bytes_read = fat.read_file(&entry, file_buffer);
+        if (bytes_read < 0) {
+            kfree(file_buffer);
+            print("\nFailed to read file: ");
+            print(file_name);
+            print("\n");
+            return (uint64_t)-1;
+        }
+
+        file_buffer[entry.file_size] = '\0';
+        print((const char*)file_buffer);
+        if (entry.file_size == 0 || file_buffer[entry.file_size - 1] != '\n') {
+            print("\n");
+        }
+        kfree(file_buffer);
+        return entry.file_size;
     }
 
     print("\nUnknown syscall: ");
