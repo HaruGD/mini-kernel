@@ -22,6 +22,7 @@
 %define SYS_WAIT_CHILD 19
 %define SYS_SCHED_INFO 20
 %define SYS_YIELD 21
+%define SYS_RESUME_USER 22
 
 %macro sys_write 2
     mov rax, SYS_WRITE
@@ -159,6 +160,18 @@
 
 %macro sys_yield 0
     mov rax, SYS_YIELD
+    int 0x80
+%endmacro
+
+%macro sys_resume 0
+    xor edi, edi
+    mov rax, SYS_RESUME_USER
+    int 0x80
+%endmacro
+
+%macro sys_resume_reg 1
+    mov rdi, %1
+    mov rax, SYS_RESUME_USER
     int 0x80
 %endmacro
 

@@ -30,6 +30,7 @@ extern "C" {
 #define USER_SLOT1_CODE_BASE  0x0000000009200000ULL
 #define USER_SLOT1_STACK_BASE 0x0000000009300000ULL
 #define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFEULL
+#define SYSCALL_YIELD_TO_KERNEL  0xFFFFFFFFFFFFFFFDULL
 #define SYS_WRITE 1
 #define SYS_EXIT 2
 #define SYS_PUTCHAR 3
@@ -51,6 +52,7 @@ extern "C" {
 #define SYS_WAIT_CHILD 19
 #define SYS_SCHED_INFO 20
 #define SYS_YIELD 21
+#define SYS_RESUME_USER 22
 #define SCHED_QUEUE_SIZE PROCESS_TABLE_SIZE
 #define SCHED_DEFAULT_TIMESLICE 4
 
@@ -83,6 +85,7 @@ static uint32_t sched_last_pid = 0;
 static uint32_t sched_switch_count = 0;
 static uint32_t sched_yield_count = 0;
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
+extern "C" void resume_user_mode();
 extern "C" uint64_t kernel_user_return_rsp;
 extern "C" uint64_t kernel_user_saved_rbx;
 extern "C" uint64_t kernel_user_saved_rbp;
@@ -90,6 +93,24 @@ extern "C" uint64_t kernel_user_saved_r12;
 extern "C" uint64_t kernel_user_saved_r13;
 extern "C" uint64_t kernel_user_saved_r14;
 extern "C" uint64_t kernel_user_saved_r15;
+extern "C" uint64_t kernel_user_resume_rax;
+extern "C" uint64_t kernel_user_resume_rbx;
+extern "C" uint64_t kernel_user_resume_rcx;
+extern "C" uint64_t kernel_user_resume_rdx;
+extern "C" uint64_t kernel_user_resume_rbp;
+extern "C" uint64_t kernel_user_resume_rsi;
+extern "C" uint64_t kernel_user_resume_rdi;
+extern "C" uint64_t kernel_user_resume_r8;
+extern "C" uint64_t kernel_user_resume_r9;
+extern "C" uint64_t kernel_user_resume_r10;
+extern "C" uint64_t kernel_user_resume_r11;
+extern "C" uint64_t kernel_user_resume_r12;
+extern "C" uint64_t kernel_user_resume_r13;
+extern "C" uint64_t kernel_user_resume_r14;
+extern "C" uint64_t kernel_user_resume_r15;
+extern "C" uint64_t kernel_user_resume_rip;
+extern "C" uint64_t kernel_user_resume_rsp;
+extern "C" uint64_t kernel_user_resume_rflags;
 
 static int strlen64(const char* str) {
     int len = 0;
@@ -292,6 +313,9 @@ static const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_FAILED) {
         return "failed";
     }
+    if (state == PROCESS_STATE_PAUSED) {
+        return "paused";
+    }
     return "empty";
 }
 
@@ -357,8 +381,28 @@ static void process_clear(Process* process) {
     process->scheduler_state = SCHED_STATE_NONE;
     process->runtime_ticks = 0;
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    process->slot_index = 0;
     process->active = 0;
     process->reaped = 0;
+    process->resumable = 0;
+    process->saved_rax = 0;
+    process->saved_rbx = 0;
+    process->saved_rcx = 0;
+    process->saved_rdx = 0;
+    process->saved_rbp = 0;
+    process->saved_rsi = 0;
+    process->saved_rdi = 0;
+    process->saved_r8 = 0;
+    process->saved_r9 = 0;
+    process->saved_r10 = 0;
+    process->saved_r11 = 0;
+    process->saved_r12 = 0;
+    process->saved_r13 = 0;
+    process->saved_r14 = 0;
+    process->saved_r15 = 0;
+    process->saved_rip = 0;
+    process->saved_rsp = 0;
+    process->saved_rflags = 0;
 }
 
 static void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code) {
@@ -468,13 +512,11 @@ static void scheduler_yield_current() {
         return;
     }
 
+    sched_yield_count++;
     process->scheduler_state = SCHED_STATE_READY;
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
-    sched_yield_count++;
-
     scheduler_remove(process);
     scheduler_enqueue(process);
-    scheduler_mark_running(process);
 }
 
 static void scheduler_on_tick() {
@@ -498,6 +540,35 @@ extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
 
 extern "C" uint64_t process_fault_returnable64() {
     return current_process() != 0 ? 1 : 0;
+}
+
+extern "C" void save_yield_context64(uint64_t* frame) {
+    Process* process = current_process();
+    if (process == 0 || frame == 0) {
+        return;
+    }
+
+    process->saved_r15 = frame[0];
+    process->saved_r14 = frame[1];
+    process->saved_r13 = frame[2];
+    process->saved_r12 = frame[3];
+    process->saved_r11 = frame[4];
+    process->saved_r10 = frame[5];
+    process->saved_r9  = frame[6];
+    process->saved_r8  = frame[7];
+    process->saved_rdi = frame[8];
+    process->saved_rsi = frame[9];
+    process->saved_rbp = frame[10];
+    process->saved_rdx = frame[11];
+    process->saved_rcx = frame[12];
+    process->saved_rbx = frame[13];
+    process->saved_rax = 0;
+    process->saved_rip = frame[15];
+    process->saved_rflags = frame[17];
+    process->saved_rsp = frame[18];
+    process->state = PROCESS_STATE_PAUSED;
+    process->resumable = 1;
+    scheduler_yield_current();
 }
 
 static void print_process_summary(const Process* process) {
@@ -626,6 +697,49 @@ static Process* find_waitable_child_process(uint32_t parent_pid) {
         }
     }
     return latest;
+}
+
+static Process* find_last_paused_child_process(uint32_t parent_pid) {
+    Process* latest = 0;
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        Process* process = &process_table[i];
+        if (process->pid == 0 || process->parent_pid != parent_pid) {
+            continue;
+        }
+        if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+            continue;
+        }
+        if (latest == 0 || process->pid > latest->pid) {
+            latest = process;
+        }
+    }
+    return latest;
+}
+
+static Process* find_process_by_pid(uint32_t pid) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        if (process_table[i].pid == pid) {
+            return &process_table[i];
+        }
+    }
+    return 0;
+}
+
+static void cleanup_user_process_mapping(Process* process) {
+    if (process == 0) {
+        return;
+    }
+
+    uint64_t code_phys = paging64_get_phys(process->code_base);
+    uint64_t stack_phys = paging64_get_phys(process->stack_base);
+    if (code_phys != 0) {
+        paging64_unmap_page(process->code_base);
+        pmm64_free_block((void*)(uintptr_t)code_phys);
+    }
+    if (stack_phys != 0) {
+        paging64_unmap_page(process->stack_base);
+        pmm64_free_block((void*)(uintptr_t)stack_phys);
+    }
 }
 
 static int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
@@ -835,7 +949,7 @@ extern "C" void shell_recall_history(int direction) {
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, sched, atatest, ls, load, save, rm, pagefault, uptime");
-    print("\nrun, usertest, ushell");
+    print("\nrun, resume, usertest, ushell");
 }
 
 static void command_memstat() {
@@ -900,6 +1014,7 @@ static int run_user_program(const char* filename) {
     }
     process->pid = next_pid++;
     process->parent_pid = parent != 0 ? parent->pid : 0;
+    process->slot_index = slot_index;
     copy_process_name(process->name, filename);
     process->code_base = user_code_base;
     process->stack_base = user_stack_base;
@@ -1044,14 +1159,22 @@ static int run_user_program(const char* filename) {
     kernel_user_saved_r14 = saved_r14;
     kernel_user_saved_r15 = saved_r15;
 
-    paging64_unmap_page(user_code_base);
-    paging64_unmap_page(user_stack_base);
-    pmm64_free_block((void*)(uintptr_t)code_phys);
-    pmm64_free_block((void*)(uintptr_t)stack_phys);
+    if (process->state == PROCESS_STATE_PAUSED) {
+        if (parent != 0 && parent->active) {
+            scheduler_mark_running(parent);
+        }
+        print("\nYielded from user program [pid=");
+        print_hex32(process->pid);
+        print("].\n");
+        return 1;
+    }
+
+    cleanup_user_process_mapping(process);
 
     if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
         process_mark_returned(process, PROCESS_TERM_NONE, 0);
     }
+    process->resumable = 0;
     scheduler_mark_finished(process);
     if (parent != 0 && parent->active) {
         scheduler_mark_running(parent);
@@ -1066,6 +1189,124 @@ static int run_user_program(const char* filename) {
     print_hex32(process->status_code);
     print(".\n");
     process->active = 0;
+    return 1;
+}
+
+static int resume_user_program(uint32_t pid) {
+    Process* parent = current_process();
+    if (parent == 0) {
+        print("\nNo current parent process.");
+        return 0;
+    }
+
+    Process* process = pid == 0 ? find_last_paused_child_process(parent->pid) : find_process_by_pid(pid);
+    if (process == 0) {
+        print("\nProcess not found.");
+        return 0;
+    }
+    if (process->parent_pid != parent->pid) {
+        print("\nProcess is not a child of the current process.");
+        return 0;
+    }
+    if (!process->resumable || process->state != PROCESS_STATE_PAUSED) {
+        print("\nProcess is not paused.");
+        return 0;
+    }
+    if (user_program_depth >= USER_PROGRAM_SLOT_COUNT) {
+        print("\nUser program nesting limit reached.");
+        return 0;
+    }
+
+    uint32_t slot_index = user_program_depth;
+    if (slot_index != process->slot_index) {
+        print("\nPaused process is not resumable in the current slot.");
+        return 0;
+    }
+
+    uint64_t saved_rsp0 = gdt64_get_kernel_stack();
+    uint8_t saved_pic1_mask = inb(0x21);
+    int saved_user_input_mode = user_input_mode;
+    uint64_t saved_return_rsp = kernel_user_return_rsp;
+    uint64_t saved_rbx = kernel_user_saved_rbx;
+    uint64_t saved_rbp = kernel_user_saved_rbp;
+    uint64_t saved_r12 = kernel_user_saved_r12;
+    uint64_t saved_r13 = kernel_user_saved_r13;
+    uint64_t saved_r14 = kernel_user_saved_r14;
+    uint64_t saved_r15 = kernel_user_saved_r15;
+
+    print("\nResuming user program [pid=");
+    print_hex32(process->pid);
+    print("].\n");
+
+    kernel_user_resume_rax = process->saved_rax;
+    kernel_user_resume_rbx = process->saved_rbx;
+    kernel_user_resume_rcx = process->saved_rcx;
+    kernel_user_resume_rdx = process->saved_rdx;
+    kernel_user_resume_rbp = process->saved_rbp;
+    kernel_user_resume_rsi = process->saved_rsi;
+    kernel_user_resume_rdi = process->saved_rdi;
+    kernel_user_resume_r8 = process->saved_r8;
+    kernel_user_resume_r9 = process->saved_r9;
+    kernel_user_resume_r10 = process->saved_r10;
+    kernel_user_resume_r11 = process->saved_r11;
+    kernel_user_resume_r12 = process->saved_r12;
+    kernel_user_resume_r13 = process->saved_r13;
+    kernel_user_resume_r14 = process->saved_r14;
+    kernel_user_resume_r15 = process->saved_r15;
+    kernel_user_resume_rip = process->saved_rip;
+    kernel_user_resume_rsp = process->saved_rsp;
+    kernel_user_resume_rflags = process->saved_rflags;
+
+    user_input_reset();
+    user_input_mode = 1;
+    outb(0x21, saved_pic1_mask | 0x02);
+    gdt64_set_kernel_stack(current_rsp() - 8);
+    scheduler_mark_waiting(parent);
+    scheduler_mark_running(process);
+    process->state = PROCESS_STATE_RUNNING;
+    process->resumable = 0;
+    process_stack[slot_index] = process;
+    user_program_depth++;
+    resume_user_mode();
+    user_program_depth--;
+    process_stack[slot_index] = 0;
+
+    outb(0x21, saved_pic1_mask);
+    user_input_mode = saved_user_input_mode;
+    user_input_reset();
+    gdt64_set_kernel_stack(saved_rsp0);
+    kernel_user_return_rsp = saved_return_rsp;
+    kernel_user_saved_rbx = saved_rbx;
+    kernel_user_saved_rbp = saved_rbp;
+    kernel_user_saved_r12 = saved_r12;
+    kernel_user_saved_r13 = saved_r13;
+    kernel_user_saved_r14 = saved_r14;
+    kernel_user_saved_r15 = saved_r15;
+
+    if (process->state == PROCESS_STATE_PAUSED) {
+        scheduler_mark_running(parent);
+        print("\nYielded from user program [pid=");
+        print_hex32(process->pid);
+        print("].\n");
+        return 1;
+    }
+
+    cleanup_user_process_mapping(process);
+    if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
+        process_mark_returned(process, PROCESS_TERM_NONE, 0);
+    }
+    process->resumable = 0;
+    scheduler_mark_finished(process);
+    scheduler_mark_running(parent);
+    print("\nReturned from user program [pid=");
+    print_hex32(process->pid);
+    print("] state=");
+    print(process_state_name(process->state));
+    print(" term=");
+    print(process_term_name(process->termination_reason));
+    print(" code=");
+    print_hex32(process->status_code);
+    print(".\n");
     return 1;
 }
 
@@ -1282,6 +1523,10 @@ static void command_ushell() {
     command_run(default_program);
 }
 
+static void command_resume() {
+    resume_user_program(0);
+}
+
 static void execute_command() {
     shell_buffer[buffer_index] = '\0';
     save_history();
@@ -1335,6 +1580,8 @@ static void execute_command() {
         command_rm(arg);
     } else if (strcmp64(cmd, "run") == 0) {
         command_run(arg);
+    } else if (strcmp64(cmd, "resume") == 0) {
+        command_resume();
     } else if (strcmp64(cmd, "pagefault") == 0) {
         volatile uint32_t* bad_ptr = (uint32_t*)0x80000000;
         *bad_ptr = 0x1234;
@@ -1670,7 +1917,14 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_YIELD) {
-        scheduler_yield_current();
+        return SYSCALL_YIELD_TO_KERNEL;
+    }
+
+    if (syscall_no == SYS_RESUME_USER) {
+        uint32_t pid = (uint32_t)arg1;
+        if (!resume_user_program(pid)) {
+            return (uint64_t)-1;
+        }
         return 0;
     }
 

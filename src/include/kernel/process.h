@@ -11,6 +11,7 @@ enum ProcessState : uint32_t {
     PROCESS_STATE_RUNNING = 2,
     PROCESS_STATE_RETURNED = 3,
     PROCESS_STATE_FAILED = 4,
+    PROCESS_STATE_PAUSED = 5,
 };
 
 enum ProcessTerminationReason : uint32_t {
@@ -47,8 +48,28 @@ struct Process {
     uint32_t scheduler_state;
     uint32_t runtime_ticks;
     uint32_t timeslice_ticks;
+    uint32_t slot_index;
     uint8_t active;
     uint8_t reaped;
+    uint8_t resumable;
+    uint64_t saved_rax;
+    uint64_t saved_rbx;
+    uint64_t saved_rcx;
+    uint64_t saved_rdx;
+    uint64_t saved_rbp;
+    uint64_t saved_rsi;
+    uint64_t saved_rdi;
+    uint64_t saved_r8;
+    uint64_t saved_r9;
+    uint64_t saved_r10;
+    uint64_t saved_r11;
+    uint64_t saved_r12;
+    uint64_t saved_r13;
+    uint64_t saved_r14;
+    uint64_t saved_r15;
+    uint64_t saved_rip;
+    uint64_t saved_rsp;
+    uint64_t saved_rflags;
 };
 
 #endif

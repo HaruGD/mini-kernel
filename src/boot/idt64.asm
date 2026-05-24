@@ -1,6 +1,7 @@
 [BITS 64]
 
 %define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFE
+%define SYSCALL_YIELD_TO_KERNEL  0xFFFFFFFFFFFFFFFD
 %define FAULT_RETURN_TO_KERNEL 1
 
 global idt64_load
@@ -30,6 +31,7 @@ extern kernel_user_saved_r13
 extern kernel_user_saved_r14
 extern kernel_user_saved_r15
 extern syscall_dispatch64
+extern save_yield_context64
 
 %macro PUSH_GPRS 0
     push rax
@@ -169,12 +171,27 @@ syscall_asm:
     call syscall_dispatch64
     cmp rax, SYSCALL_RETURN_TO_KERNEL
     je .syscall_exit
+    cmp rax, SYSCALL_YIELD_TO_KERNEL
+    je .syscall_yield
     mov [rsp + 120], rax
     add rsp, 8
     POP_GPRS
     iretq
 
 .syscall_exit:
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+.syscall_yield:
+    lea rdi, [rsp + 8]
+    call save_yield_context64
     add rsp, 8
     mov rbx, [kernel_user_saved_rbx]
     mov rbp, [kernel_user_saved_rbp]
