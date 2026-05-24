@@ -43,6 +43,8 @@ user_test_code_start:
     mov rax, 4
     int 0x80
     mov [rel user_last_char], al
+    cmp byte [rel user_last_char], 'q'
+    je .exit_user
     mov rax, 1
     lea rdi, [rel user_pressed_msg]
     mov rsi, user_pressed_msg_end - user_pressed_msg
@@ -54,8 +56,8 @@ user_test_code_start:
     lea rdi, [rel user_newline]
     mov rsi, user_newline_end - user_newline
     int 0x80
-    cmp byte [rel user_last_char], 'q'
-    jne .wait_key
+    jmp .wait_key
+.exit_user:
     mov rax, 1
     lea rdi, [rel user_exit_msg]
     mov rsi, user_exit_msg_end - user_exit_msg
