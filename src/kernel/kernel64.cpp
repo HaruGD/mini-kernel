@@ -383,7 +383,7 @@ extern "C" void shell_recall_history(int direction) {
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, atatest, ls, load, save, rm, pagefault, uptime");
-    print("\nusertest");
+    print("\nrun, usertest");
 }
 
 static void command_memstat() {
@@ -609,13 +609,19 @@ static void command_uptime() {
     print_hex64(read_tsc() - boot_tsc);
 }
 
-static void command_usertest() {
+static void command_run(char* arg) {
+    if (arg == 0 || arg[0] == '\0') {
+        print("\nUsage: run [filename]");
+        return;
+    }
+
     char user_name83[11];
-    to_name83("UTEST.BIN", user_name83);
+    to_name83(arg, user_name83);
 
     DirEntry entry;
     if (!fat.find_file(user_name83, &entry)) {
-        print("\nUser program UTEST.BIN not found.");
+        print("\nUser program not found: ");
+        print(arg);
         return;
     }
 
@@ -636,7 +642,8 @@ static void command_usertest() {
     }
 
     if (fat.read_file(&entry, program_buffer) < 0) {
-        print("\nFailed to read UTEST.BIN.");
+        print("\nFailed to read user program: ");
+        print(arg);
         kfree(program_buffer);
         return;
     }
@@ -679,7 +686,9 @@ static void command_usertest() {
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     uint8_t saved_pic1_mask = inb(0x21);
-    print("\nEntering user mode test...\n");
+    print("\nRunning user program: ");
+    print(arg);
+    print("\n");
     user_input_reset();
     user_input_mode = 1;
     outb(0x21, saved_pic1_mask | 0x02);
@@ -696,7 +705,12 @@ static void command_usertest() {
     pmm64_free_block((void*)(uintptr_t)code_phys);
     pmm64_free_block((void*)(uintptr_t)stack_phys);
 
-    print("\nReturned from user mode.");
+    print("\nReturned from user program.");
+}
+
+static void command_usertest() {
+    char default_program[] = "UTEST.BIN";
+    command_run(default_program);
 }
 
 static void execute_command() {
@@ -748,6 +762,8 @@ static void execute_command() {
         command_save(arg);
     } else if (strcmp64(cmd, "rm") == 0) {
         command_rm(arg);
+    } else if (strcmp64(cmd, "run") == 0) {
+        command_run(arg);
     } else if (strcmp64(cmd, "pagefault") == 0) {
         volatile uint32_t* bad_ptr = (uint32_t*)0x80000000;
         *bad_ptr = 0x1234;
