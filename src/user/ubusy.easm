@@ -1,0 +1,73 @@
+BITS 64
+default rel
+
+%include "src/user/include/syscall.inc"
+
+section .text
+global _start
+
+_start:
+    mov ax, 0x23
+    mov ds, ax
+    mov es, ax
+
+    sys_get_pid
+    mov [rel saved_pid], eax
+    mov bl, al
+    and bl, 0x0F
+    cmp bl, 9
+    jbe .pid_digit
+    add bl, 'A' - 10
+    jmp .pid_done
+.pid_digit:
+    add bl, '0'
+.pid_done:
+    mov [rel pid_char], bl
+
+    sys_write banner_msg, banner_msg_end - banner_msg
+    sys_write setup_msg, setup_msg_end - setup_msg
+    sys_putchar_mem8 [rel pid_char]
+    sys_write newline_msg, newline_msg_end - newline_msg
+    sys_yield
+
+    mov ecx, 3
+.busy_loop:
+    mov r8d, 0x02000000
+.spin:
+    dec r8d
+    jnz .spin
+
+    mov eax, 4
+    sub eax, ecx
+    add al, '0'
+    mov [rel step_char], al
+    mov al, [rel pid_char]
+    mov [rel line_msg + 9], al
+    mov al, [rel step_char]
+    mov [rel line_msg + 16], al
+    sys_write line_msg, line_msg_end - line_msg
+    loop .busy_loop
+
+    movzx edi, byte [rel pid_char]
+    sys_exit_reg rdi
+
+section .data
+banner_msg:
+    db '=== UBUSY.ELF ===', 10
+    db 'Preemptive scheduling ELF demo: one setup yield, then busy work without sys_yield.', 10
+banner_msg_end:
+setup_msg:
+    db 'Busy worker pid nibble='
+setup_msg_end:
+newline_msg:
+    db 10
+newline_msg_end:
+line_msg:
+    db 'Busy pid ? step ?', 10
+line_msg_end:
+saved_pid:
+    dd 0
+pid_char:
+    db 0
+step_char:
+    db 0

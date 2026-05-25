@@ -16,6 +16,7 @@ extern "C" {
 #include "drivers/pit.h"
 #include "fs/fat12.h"
 #include "kernel/boot_info.h"
+#include "kernel/elf64.h"
 #include "kernel/process.h"
 
 #define MAX_BUFFER_SIZE 256
@@ -35,6 +36,8 @@ extern "C" {
 #define USER_SLOT3_STACK_BASE 0x0000000009700000ULL
 #define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFFFFFFFFFEULL
 #define SYSCALL_YIELD_TO_KERNEL  0xFFFFFFFFFFFFFFFDULL
+#define TIMER_PREEMPT_TO_KERNEL  0xFFFFFFFFFFFFFFFCULL
+#define SYSCALL_SLEEP_TO_KERNEL  0xFFFFFFFFFFFFFFFBULL
 #define SYS_WRITE 1
 #define SYS_EXIT 2
 #define SYS_PUTCHAR 3
@@ -57,8 +60,12 @@ extern "C" {
 #define SYS_SCHED_INFO 20
 #define SYS_YIELD 21
 #define SYS_RESUME_USER 22
+#define SYS_KILL_USER 23
+#define SYS_REAP_ALL_CHILDREN 24
+#define SYS_JOBS 25
+#define SYS_SLEEP 26
 #define SCHED_QUEUE_SIZE PROCESS_TABLE_SIZE
-#define SCHED_DEFAULT_TIMESLICE 4
+#define SCHED_DEFAULT_TIMESLICE 6
 
 Terminal terminal;
 ATADriver ata;
@@ -280,6 +287,150 @@ static void print_n(const char* str, uint64_t len) {
     }
 }
 
+static int elf64_has_magic(const uint8_t* image, uint32_t size) {
+    if (image == 0 || size < ELF64_EI_NIDENT) {
+        return 0;
+    }
+
+    return image[ELF64_EI_MAG0] == ELF64_ELFMAG0 &&
+           image[ELF64_EI_MAG1] == ELF64_ELFMAG1 &&
+           image[ELF64_EI_MAG2] == ELF64_ELFMAG2 &&
+           image[ELF64_EI_MAG3] == ELF64_ELFMAG3;
+}
+
+static int elf64_validate_supported_image(const uint8_t* image, uint32_t size, const Elf64_Ehdr** out_header) {
+    if (!elf64_has_magic(image, size) || size < sizeof(Elf64_Ehdr)) {
+        return 0;
+    }
+
+    const Elf64_Ehdr* header = (const Elf64_Ehdr*)(const void*)image;
+    if (header->e_ident[ELF64_EI_CLASS] != ELF64_CLASS_64) {
+        return 0;
+    }
+    if (header->e_ident[ELF64_EI_DATA] != ELF64_DATA_LSB) {
+        return 0;
+    }
+    if (header->e_ident[ELF64_EI_VERSION] != ELF64_VERSION_CURRENT) {
+        return 0;
+    }
+    if (header->e_ident[ELF64_EI_OSABI] != ELF64_OSABI_SYSTEM_V) {
+        return 0;
+    }
+    if (header->e_type != ELF64_TYPE_EXEC) {
+        return 0;
+    }
+    if (header->e_machine != ELF64_MACHINE_X86_64) {
+        return 0;
+    }
+    if (header->e_version != ELF64_VERSION_CURRENT) {
+        return 0;
+    }
+    if (header->e_ehsize != sizeof(Elf64_Ehdr)) {
+        return 0;
+    }
+    if (header->e_phnum == 0) {
+        return 0;
+    }
+    if (header->e_phentsize != sizeof(Elf64_Phdr)) {
+        return 0;
+    }
+    if (header->e_phoff > size) {
+        return 0;
+    }
+    if ((uint64_t)header->e_phoff + ((uint64_t)header->e_phnum * sizeof(Elf64_Phdr)) > size) {
+        return 0;
+    }
+
+    if (out_header != 0) {
+        *out_header = header;
+    }
+    return 1;
+}
+
+static int elf64_collect_load_info(const uint8_t* image,
+                                   uint32_t size,
+                                   const Elf64_Ehdr* header,
+                                   uint32_t* out_load_count,
+                                   uint64_t* out_first_vaddr,
+                                   uint64_t* out_last_vaddr) {
+    if (image == 0 || header == 0) {
+        return 0;
+    }
+
+    const Elf64_Phdr* phdrs = (const Elf64_Phdr*)(const void*)(image + header->e_phoff);
+    uint32_t load_count = 0;
+    uint64_t first_vaddr = 0xFFFFFFFFFFFFFFFFULL;
+    uint64_t last_vaddr = 0;
+    int entry_covered = 0;
+
+    for (uint16_t i = 0; i < header->e_phnum; i++) {
+        const Elf64_Phdr* phdr = &phdrs[i];
+        if (phdr->p_type != ELF64_PT_LOAD) {
+            continue;
+        }
+
+        if (phdr->p_memsz == 0) {
+            return 0;
+        }
+        if (phdr->p_filesz > phdr->p_memsz) {
+            return 0;
+        }
+        if (phdr->p_offset > size) {
+            return 0;
+        }
+        if (phdr->p_offset + phdr->p_filesz > size) {
+            return 0;
+        }
+        if (phdr->p_align != 0 && ((phdr->p_vaddr ^ phdr->p_offset) & (phdr->p_align - 1)) != 0) {
+            return 0;
+        }
+
+        uint64_t seg_start = phdr->p_vaddr;
+        uint64_t seg_end = phdr->p_vaddr + phdr->p_memsz;
+        if (seg_end < seg_start) {
+            return 0;
+        }
+
+        if (seg_start < first_vaddr) {
+            first_vaddr = seg_start;
+        }
+        if (seg_end > last_vaddr) {
+            last_vaddr = seg_end;
+        }
+        if (header->e_entry >= seg_start && header->e_entry < seg_end) {
+            entry_covered = 1;
+        }
+
+        load_count++;
+    }
+
+    if (load_count == 0 || !entry_covered) {
+        return 0;
+    }
+
+    if (out_load_count != 0) {
+        *out_load_count = load_count;
+    }
+    if (out_first_vaddr != 0) {
+        *out_first_vaddr = first_vaddr;
+    }
+    if (out_last_vaddr != 0) {
+        *out_last_vaddr = last_vaddr;
+    }
+    return 1;
+}
+
+static uint64_t elf64_segment_page_flags(uint32_t segment_flags) {
+    uint64_t flags = PAGING64_FLAG_USER;
+    if (segment_flags & ELF64_PF_W) {
+        flags |= PAGING64_FLAG_WRITABLE;
+    }
+    if (!(segment_flags & ELF64_PF_X)) {
+        flags |= PAGING64_FLAG_NX;
+    }
+    return flags;
+}
+
 static void copy_process_name(char* dest, const char* src) {
     if (dest == 0) {
         return;
@@ -304,6 +455,8 @@ static Process* current_process() {
     return process_stack[user_program_depth - 1];
 }
 
+static Process* find_next_ready_process(uint32_t exclude_pid);
+static Process* find_process_by_pid(uint32_t pid);
 static int resume_user_program(uint32_t pid);
 
 static const char* process_state_name(uint32_t state) {
@@ -350,6 +503,9 @@ static const char* process_term_name(uint32_t reason) {
     if (reason == PROCESS_TERM_DOUBLE_FAULT) {
         return "double_fault";
     }
+    if (reason == PROCESS_TERM_KILLED) {
+        return "killed";
+    }
     return "none";
 }
 
@@ -381,6 +537,7 @@ static void process_clear(Process* process) {
     process->stack_base = 0;
     process->entry_point = 0;
     process->image_size = 0;
+    process->code_page_count = 0;
     process->state = PROCESS_STATE_EMPTY;
     process->termination_reason = PROCESS_TERM_NONE;
     process->status_code = 0;
@@ -391,6 +548,8 @@ static void process_clear(Process* process) {
     process->active = 0;
     process->reaped = 0;
     process->resumable = 0;
+    process->pause_reason = PROCESS_PAUSE_NONE;
+    process->wake_tick = 0;
     process->saved_rax = 0;
     process->saved_rbx = 0;
     process->saved_rcx = 0;
@@ -502,6 +661,16 @@ static void scheduler_mark_waiting(Process* process) {
     process->scheduler_state = SCHED_STATE_WAITING;
 }
 
+static void scheduler_mark_sleeping(Process* process, uint32_t wake_tick) {
+    if (process == 0) {
+        return;
+    }
+
+    scheduler_remove(process);
+    process->scheduler_state = SCHED_STATE_WAITING;
+    process->wake_tick = wake_tick;
+}
+
 static void scheduler_mark_finished(Process* process) {
     if (process == 0) {
         return;
@@ -535,9 +704,48 @@ static void scheduler_on_tick() {
     if (process->timeslice_ticks > 0) {
         process->timeslice_ticks--;
     }
-    if (process->timeslice_ticks == 0) {
+}
+
+static void scheduler_wake_sleeping_processes(uint32_t tick_now) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        Process* process = &process_table[i];
+        if (process->pid == 0 || !process->active) {
+            continue;
+        }
+        if (process->pause_reason != PROCESS_PAUSE_SLEEP) {
+            continue;
+        }
+        if (process->scheduler_state != SCHED_STATE_WAITING) {
+            continue;
+        }
+        if (tick_now < process->wake_tick) {
+            continue;
+        }
+
+        process->wake_tick = 0;
+        process->scheduler_state = SCHED_STATE_READY;
         process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+        if (!scheduler_queue_contains(process)) {
+            scheduler_enqueue(process);
+        }
     }
+}
+
+static int scheduler_should_preempt_current() {
+    Process* process = current_process();
+    if (process == 0) {
+        return 0;
+    }
+    if (process->parent_pid == 0) {
+        return 0;
+    }
+    if (process->scheduler_state != SCHED_STATE_RUNNING) {
+        return 0;
+    }
+    if (process->timeslice_ticks != 0) {
+        return 0;
+    }
+    return find_next_ready_process(process->pid) != 0;
 }
 
 extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
@@ -574,7 +782,78 @@ extern "C" void save_yield_context64(uint64_t* frame) {
     process->saved_rsp = frame[18];
     process->state = PROCESS_STATE_PAUSED;
     process->resumable = 1;
+    process->pause_reason = PROCESS_PAUSE_YIELD;
     scheduler_yield_current();
+}
+
+extern "C" void save_preempt_context64(uint64_t* frame) {
+    Process* process = current_process();
+    if (process == 0 || frame == 0) {
+        return;
+    }
+
+    process->saved_r15 = frame[0];
+    process->saved_r14 = frame[1];
+    process->saved_r13 = frame[2];
+    process->saved_r12 = frame[3];
+    process->saved_r11 = frame[4];
+    process->saved_r10 = frame[5];
+    process->saved_r9  = frame[6];
+    process->saved_r8  = frame[7];
+    process->saved_rdi = frame[8];
+    process->saved_rsi = frame[9];
+    process->saved_rbp = frame[10];
+    process->saved_rdx = frame[11];
+    process->saved_rcx = frame[12];
+    process->saved_rbx = frame[13];
+    process->saved_rax = 0;
+    process->saved_rip = frame[15];
+    process->saved_rflags = frame[17];
+    process->saved_rsp = frame[18];
+    process->state = PROCESS_STATE_PAUSED;
+    process->resumable = 1;
+    process->pause_reason = PROCESS_PAUSE_PREEMPT;
+    scheduler_yield_current();
+}
+
+extern "C" void save_sleep_context64(uint64_t* frame, uint32_t sleep_ticks) {
+    Process* process = current_process();
+    if (process == 0 || frame == 0) {
+        return;
+    }
+
+    process->saved_r15 = frame[0];
+    process->saved_r14 = frame[1];
+    process->saved_r13 = frame[2];
+    process->saved_r12 = frame[3];
+    process->saved_r11 = frame[4];
+    process->saved_r10 = frame[5];
+    process->saved_r9  = frame[6];
+    process->saved_r8  = frame[7];
+    process->saved_rdi = frame[8];
+    process->saved_rsi = frame[9];
+    process->saved_rbp = frame[10];
+    process->saved_rdx = frame[11];
+    process->saved_rcx = frame[12];
+    process->saved_rbx = frame[13];
+    process->saved_rax = 0;
+    process->saved_rip = frame[15];
+    process->saved_rflags = frame[17];
+    process->saved_rsp = frame[18];
+    process->state = PROCESS_STATE_PAUSED;
+    process->resumable = 1;
+    process->pause_reason = PROCESS_PAUSE_SLEEP;
+    scheduler_mark_sleeping(process, pit.get_tick() + sleep_ticks);
+}
+
+static const char* pause_action_name(const Process* process) {
+    if (process != 0 && process->pause_reason == PROCESS_PAUSE_PREEMPT) {
+        return "Preempted";
+    }
+    if (process != 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+        return "Sleeping";
+    }
+    return "Yielded";
 }
 
 static void print_process_summary(const Process* process) {
@@ -615,6 +894,36 @@ static void print_process_table() {
         print_process_summary(&process_table[i]);
     }
     print("\n");
+}
+
+static void print_jobs_for_process(const Process* parent) {
+    print("\n=== JOBS ===");
+    if (parent == 0) {
+        print("\nNo current user process.");
+        print("\n============");
+        return;
+    }
+
+    print("\nself: ");
+    print_process_summary(parent);
+
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        const Process* process = &process_table[i];
+        if (process->pid == 0 || process->parent_pid != parent->pid) {
+            continue;
+        }
+        print("\njob[");
+        print_hex32(count);
+        print("] ");
+        print_process_summary(process);
+        count++;
+    }
+
+    if (count == 0) {
+        print("\n(no child jobs)");
+    }
+    print("\n============\n");
 }
 
 static void print_scheduler_info() {
@@ -758,6 +1067,25 @@ static Process* find_waitable_child_process(uint32_t parent_pid) {
     return latest;
 }
 
+static uint32_t reap_all_child_processes(uint32_t parent_pid) {
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        Process* process = &process_table[i];
+        if (process->pid == 0 || process->parent_pid != parent_pid) {
+            continue;
+        }
+        if (process->active || process->reaped) {
+            continue;
+        }
+        if (process->state != PROCESS_STATE_RETURNED && process->state != PROCESS_STATE_FAILED) {
+            continue;
+        }
+        process->reaped = 1;
+        count++;
+    }
+    return count;
+}
+
 static Process* find_last_paused_child_process(uint32_t parent_pid) {
     Process* latest = 0;
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
@@ -775,7 +1103,7 @@ static Process* find_last_paused_child_process(uint32_t parent_pid) {
     return latest;
 }
 
-static Process* find_next_ready_child_process(uint32_t parent_pid, uint32_t exclude_pid) {
+static Process* find_next_ready_process(uint32_t exclude_pid) {
     for (uint32_t i = 0; i < sched_queue_count; i++) {
         uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
         Process* process = sched_queue[index];
@@ -783,9 +1111,6 @@ static Process* find_next_ready_child_process(uint32_t parent_pid, uint32_t excl
             continue;
         }
         if (process->pid == 0 || process->pid == exclude_pid) {
-            continue;
-        }
-        if (process->parent_pid != parent_pid) {
             continue;
         }
         if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
@@ -797,6 +1122,43 @@ static Process* find_next_ready_child_process(uint32_t parent_pid, uint32_t excl
         return process;
     }
     return 0;
+}
+
+static int resume_user_program_internal(Process* parent, Process* process, int print_banner);
+static int idle_until_ready_process();
+
+static int parent_should_resume_immediately(const Process* parent) {
+    if (parent == 0 || !parent->active) {
+        return 0;
+    }
+    if (parent->pause_reason == PROCESS_PAUSE_SLEEP &&
+        parent->scheduler_state == SCHED_STATE_WAITING) {
+        return 0;
+    }
+    return 1;
+}
+
+static int continue_ready_processes(uint32_t exclude_pid) {
+    Process* next_ready = find_next_ready_process(exclude_pid);
+    if (next_ready == 0) {
+        return 0;
+    }
+
+    Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
+
+    print("Auto-switching to ready process [pid=");
+    print_hex32(next_ready->pid);
+    print("].\n");
+    return resume_user_program_internal(parent, next_ready, 1);
+}
+
+static int idle_until_ready_process() {
+    while (1) {
+        if (continue_ready_processes(0)) {
+            return 1;
+        }
+        __asm__ volatile("sti; hlt; cli");
+    }
 }
 
 static Process* find_process_by_pid(uint32_t pid) {
@@ -813,12 +1175,16 @@ static void cleanup_user_process_mapping(Process* process) {
         return;
     }
 
-    uint64_t code_phys = paging64_get_phys(process->code_base);
-    uint64_t stack_phys = paging64_get_phys(process->stack_base);
-    if (code_phys != 0) {
-        paging64_unmap_page(process->code_base);
-        pmm64_free_block((void*)(uintptr_t)code_phys);
+    for (uint32_t page = 0; page < process->code_page_count; page++) {
+        uint64_t virt = process->code_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
+        uint64_t code_phys = paging64_get_phys(virt);
+        if (code_phys != 0) {
+            paging64_unmap_page(virt);
+            pmm64_free_block((void*)(uintptr_t)code_phys);
+        }
     }
+
+    uint64_t stack_phys = paging64_get_phys(process->stack_base);
     if (stack_phys != 0) {
         paging64_unmap_page(process->stack_base);
         pmm64_free_block((void*)(uintptr_t)stack_phys);
@@ -1083,6 +1449,7 @@ static int run_user_program(const char* filename) {
         print("\nNo free execution slot. Resume or finish paused programs first.");
         return 0;
     }
+    uint32_t stack_index = user_program_depth;
     uint64_t user_code_base = 0;
     uint64_t user_stack_base = 0;
     get_execution_slot_bases(slot_index, &user_code_base, &user_stack_base);
@@ -1119,7 +1486,8 @@ static int run_user_program(const char* filename) {
         return 0;
     }
 
-    if (entry.file_size == 0 || entry.file_size > PAGING64_PAGE_SIZE) {
+    uint32_t max_user_image_size = (uint32_t)(user_stack_base - user_code_base);
+    if (entry.file_size == 0 || entry.file_size > max_user_image_size) {
         process->image_size = entry.file_size;
         process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 2);
         scheduler_mark_finished(process);
@@ -1151,45 +1519,205 @@ static int run_user_program(const char* filename) {
         return 0;
     }
 
-    uint64_t code_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
-    uint64_t stack_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
-    if (code_phys == 0 || stack_phys == 0) {
-        if (code_phys != 0) {
+    const Elf64_Ehdr* elf_header = 0;
+    uint32_t code_page_count = 1;
+    int is_elf_image = 0;
+    uint64_t elf_first_vaddr = 0;
+    uint64_t elf_last_vaddr = 0;
+    if (elf64_has_magic(program_buffer, entry.file_size)) {
+        if (!elf64_validate_supported_image(program_buffer, entry.file_size, &elf_header)) {
+            process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 3);
+            scheduler_mark_finished(process);
+            print("\nInvalid or unsupported ELF64 user program: ");
+            print(filename);
+            print("\n");
+            kfree(program_buffer);
+            return 0;
+        }
+
+        uint32_t elf_load_count = 0;
+        if (!elf64_collect_load_info(program_buffer,
+                                     entry.file_size,
+                                     elf_header,
+                                     &elf_load_count,
+                                     &elf_first_vaddr,
+                                     &elf_last_vaddr)) {
+            process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 4);
+            scheduler_mark_finished(process);
+            print("\nInvalid ELF64 loadable segments: ");
+            print(filename);
+            print("\n");
+            kfree(program_buffer);
+            return 0;
+        }
+
+        uint64_t elf_load_size = elf_last_vaddr - elf_first_vaddr;
+        if (elf_load_size == 0 || elf_load_size > (user_stack_base - user_code_base)) {
+            process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 5);
+            scheduler_mark_finished(process);
+            print("\nELF64 load range is too large: ");
+            print(filename);
+            print("\n");
+            kfree(program_buffer);
+            return 0;
+        }
+
+        code_page_count = (uint32_t)((elf_load_size + PAGING64_PAGE_SIZE - 1) / PAGING64_PAGE_SIZE);
+        process->entry_point = user_code_base + (elf_header->e_entry - elf_first_vaddr);
+        is_elf_image = 1;
+    } else {
+        if (entry.file_size > PAGING64_PAGE_SIZE) {
+            process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 6);
+            scheduler_mark_finished(process);
+            print("\nFlat user program is too large for the current loader.\n");
+            kfree(program_buffer);
+            return 0;
+        }
+
+        process->entry_point = user_code_base;
+    }
+
+    uint64_t* elf_page_flags = 0;
+    if (is_elf_image) {
+        elf_page_flags = (uint64_t*)kmalloc(sizeof(uint64_t) * code_page_count);
+        if (elf_page_flags == 0) {
+            kfree(program_buffer);
+            process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 3);
+            scheduler_mark_finished(process);
+            print("\nOut of memory for ELF page permissions.");
+            return 0;
+        }
+        for (uint32_t i = 0; i < code_page_count; i++) {
+            elf_page_flags[i] = PAGING64_FLAG_USER | PAGING64_FLAG_NX;
+        }
+
+        const Elf64_Phdr* phdrs = (const Elf64_Phdr*)(const void*)(program_buffer + elf_header->e_phoff);
+        for (uint16_t i = 0; i < elf_header->e_phnum; i++) {
+            const Elf64_Phdr* phdr = &phdrs[i];
+            if (phdr->p_type != ELF64_PT_LOAD) {
+                continue;
+            }
+
+            uint64_t seg_start = phdr->p_vaddr - elf_first_vaddr;
+            uint64_t seg_end = seg_start + phdr->p_memsz;
+            uint32_t first_page = (uint32_t)(seg_start / PAGING64_PAGE_SIZE);
+            uint32_t last_page = (uint32_t)((seg_end - 1) / PAGING64_PAGE_SIZE);
+            uint64_t final_flags = elf64_segment_page_flags(phdr->p_flags);
+            for (uint32_t page = first_page; page <= last_page; page++) {
+                elf_page_flags[page] |= (final_flags & PAGING64_FLAG_WRITABLE);
+                if (!(final_flags & PAGING64_FLAG_NX)) {
+                    elf_page_flags[page] &= ~PAGING64_FLAG_NX;
+                }
+            }
+        }
+    }
+
+    uint32_t mapped_code_pages = 0;
+    for (uint32_t page = 0; page < code_page_count; page++) {
+        uint64_t code_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+        if (code_phys == 0) {
+            process->code_page_count = mapped_code_pages;
+            cleanup_user_process_mapping(process);
+            kfree(program_buffer);
+            if (elf_page_flags != 0) {
+                kfree(elf_page_flags);
+            }
+            process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 2);
+            scheduler_mark_finished(process);
+            print("\nFailed to allocate user program pages.");
+            return 0;
+        }
+
+        uint64_t virt = user_code_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
+        if (!paging64_map_page(virt, code_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
             pmm64_free_block((void*)(uintptr_t)code_phys);
+            process->code_page_count = mapped_code_pages;
+            cleanup_user_process_mapping(process);
+            kfree(program_buffer);
+            if (elf_page_flags != 0) {
+                kfree(elf_page_flags);
+            }
+            process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 1);
+            scheduler_mark_finished(process);
+            print("\nFailed to map user code page.");
+            return 0;
         }
-        if (stack_phys != 0) {
-            pmm64_free_block((void*)(uintptr_t)stack_phys);
+
+        for (uint64_t i = 0; i < PAGING64_PAGE_SIZE; i++) {
+            *((volatile uint8_t*)(uintptr_t)(virt + i)) = 0;
         }
+        mapped_code_pages++;
+    }
+    process->code_page_count = code_page_count;
+
+    uint64_t stack_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+    if (stack_phys == 0) {
+        cleanup_user_process_mapping(process);
+        process->code_page_count = 0;
         kfree(program_buffer);
+        if (elf_page_flags != 0) {
+            kfree(elf_page_flags);
+        }
         process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 2);
         scheduler_mark_finished(process);
         print("\nFailed to allocate user program pages.");
         return 0;
     }
 
-    if (!paging64_map_page(user_code_base, code_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
-        pmm64_free_block((void*)(uintptr_t)code_phys);
-        pmm64_free_block((void*)(uintptr_t)stack_phys);
-        kfree(program_buffer);
-        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 1);
-        scheduler_mark_finished(process);
-        print("\nFailed to map user code page.");
-        return 0;
-    }
-
     if (!paging64_map_page(user_stack_base, stack_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
-        paging64_unmap_page(user_code_base);
-        pmm64_free_block((void*)(uintptr_t)code_phys);
         pmm64_free_block((void*)(uintptr_t)stack_phys);
+        cleanup_user_process_mapping(process);
+        process->code_page_count = 0;
         kfree(program_buffer);
+        if (elf_page_flags != 0) {
+            kfree(elf_page_flags);
+        }
         process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 2);
         scheduler_mark_finished(process);
         print("\nFailed to map user stack page.");
         return 0;
     }
 
-    for (uint32_t i = 0; i < entry.file_size; i++) {
-        *((volatile uint8_t*)(uintptr_t)(user_code_base + i)) = program_buffer[i];
+    for (uint64_t i = 0; i < PAGING64_PAGE_SIZE; i++) {
+        *((volatile uint8_t*)(uintptr_t)(user_stack_base + i)) = 0;
+    }
+
+    if (is_elf_image) {
+        const Elf64_Phdr* phdrs = (const Elf64_Phdr*)(const void*)(program_buffer + elf_header->e_phoff);
+        for (uint16_t i = 0; i < elf_header->e_phnum; i++) {
+            const Elf64_Phdr* phdr = &phdrs[i];
+            if (phdr->p_type != ELF64_PT_LOAD) {
+                continue;
+            }
+
+            uint64_t dest = user_code_base + (phdr->p_vaddr - elf_first_vaddr);
+            for (uint64_t j = 0; j < phdr->p_filesz; j++) {
+                *((volatile uint8_t*)(uintptr_t)(dest + j)) = program_buffer[phdr->p_offset + j];
+            }
+            for (uint64_t j = phdr->p_filesz; j < phdr->p_memsz; j++) {
+                *((volatile uint8_t*)(uintptr_t)(dest + j)) = 0;
+            }
+        }
+
+        for (uint32_t page = 0; page < code_page_count; page++) {
+            uint64_t virt = user_code_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
+            uint64_t phys = paging64_get_phys(virt);
+            if (phys == 0 || !paging64_map_page(virt, phys & 0x000FFFFFFFFFF000ULL, elf_page_flags[page])) {
+                cleanup_user_process_mapping(process);
+                process->code_page_count = 0;
+                kfree(program_buffer);
+                kfree(elf_page_flags);
+                process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 3);
+                scheduler_mark_finished(process);
+                print("\nFailed to apply ELF page permissions.");
+                return 0;
+            }
+        }
+        kfree(elf_page_flags);
+    } else {
+        for (uint32_t i = 0; i < entry.file_size; i++) {
+            *((volatile uint8_t*)(uintptr_t)(user_code_base + i)) = program_buffer[i];
+        }
     }
     kfree(program_buffer);
 
@@ -1222,11 +1750,11 @@ static int run_user_program(const char* filename) {
         scheduler_mark_waiting(parent);
     }
     scheduler_mark_running(process);
-    process_stack[slot_index] = process;
+    process_stack[stack_index] = process;
     user_program_depth++;
-    enter_user_mode(user_code_base, user_stack_top - 16);
+    enter_user_mode(process->entry_point, user_stack_top - 16);
     user_program_depth--;
-    process_stack[slot_index] = 0;
+    process_stack[stack_index] = 0;
 
     outb(0x21, saved_pic1_mask);
     user_input_mode = saved_user_input_mode;
@@ -1241,25 +1769,25 @@ static int run_user_program(const char* filename) {
     kernel_user_saved_r15 = saved_r15;
 
     if (process->state == PROCESS_STATE_PAUSED) {
-        print("\nYielded from user program [pid=");
+        print("\n");
+        print(pause_action_name(process));
+        print(" from user program [pid=");
         print_hex32(process->pid);
         print("].\n");
 
-        Process* next_ready = parent != 0 ? find_next_ready_child_process(parent->pid, process->pid) : 0;
-        if (next_ready != 0) {
-            print("Auto-switching to ready child [pid=");
-            print_hex32(next_ready->pid);
-            print("].\n");
-            return resume_user_program(next_ready->pid);
+        if (continue_ready_processes(process->pid)) {
+            return 1;
         }
 
-        if (parent != 0 && parent->active) {
+        if (parent_should_resume_immediately(parent)) {
             scheduler_mark_running(parent);
+            return 1;
         }
-        return 1;
+        return idle_until_ready_process();
     }
 
     cleanup_user_process_mapping(process);
+    process->code_page_count = 0;
 
     if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
         process_mark_returned(process, PROCESS_TERM_NONE, 0);
@@ -1279,34 +1807,22 @@ static int run_user_program(const char* filename) {
     print_hex32(process->status_code);
     print(".\n");
     process->active = 0;
-    return 1;
+
+    if (continue_ready_processes(process->pid)) {
+        return 1;
+    }
+
+    if (parent_should_resume_immediately(parent)) {
+        scheduler_mark_running(parent);
+        return 1;
+    }
+    return idle_until_ready_process();
 }
 
-static int resume_user_program(uint32_t pid) {
-    Process* parent = current_process();
-    if (parent == 0) {
-        print("\nNo current parent process.");
-        return 0;
-    }
-
-    Process* process = pid == 0 ? find_last_paused_child_process(parent->pid) : find_process_by_pid(pid);
+static int resume_user_program_internal(Process* parent, Process* process, int print_banner) {
     if (process == 0) {
-        print("\nProcess not found.");
         return 0;
     }
-    if (process->parent_pid != parent->pid) {
-        print("\nProcess is not a child of the current process.");
-        return 0;
-    }
-    if (!process->resumable || process->state != PROCESS_STATE_PAUSED) {
-        print("\nProcess is not paused.");
-        return 0;
-    }
-    if (user_program_depth >= USER_PROGRAM_SLOT_COUNT) {
-        print("\nUser program nesting limit reached.");
-        return 0;
-    }
-
     uint32_t stack_index = user_program_depth;
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
@@ -1320,9 +1836,11 @@ static int resume_user_program(uint32_t pid) {
     uint64_t saved_r14 = kernel_user_saved_r14;
     uint64_t saved_r15 = kernel_user_saved_r15;
 
-    print("\nResuming user program [pid=");
-    print_hex32(process->pid);
-    print("].\n");
+    if (print_banner) {
+        print("\nResuming user program [pid=");
+        print_hex32(process->pid);
+        print("].\n");
+    }
 
     kernel_user_resume_rax = process->saved_rax;
     kernel_user_resume_rbx = process->saved_rbx;
@@ -1370,29 +1888,33 @@ static int resume_user_program(uint32_t pid) {
     kernel_user_saved_r15 = saved_r15;
 
     if (process->state == PROCESS_STATE_PAUSED) {
-        print("\nYielded from user program [pid=");
+        print("\n");
+        print(pause_action_name(process));
+        print(" from user program [pid=");
         print_hex32(process->pid);
         print("].\n");
 
-        Process* next_ready = find_next_ready_child_process(parent->pid, process->pid);
-        if (next_ready != 0) {
-            print("Auto-switching to ready child [pid=");
-            print_hex32(next_ready->pid);
-            print("].\n");
-            return resume_user_program(next_ready->pid);
+        if (continue_ready_processes(process->pid)) {
+            return 1;
         }
 
-        scheduler_mark_running(parent);
-        return 1;
+        if (parent_should_resume_immediately(parent)) {
+            scheduler_mark_running(parent);
+            return 1;
+        }
+        return idle_until_ready_process();
     }
 
     cleanup_user_process_mapping(process);
+    process->code_page_count = 0;
     if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
         process_mark_returned(process, PROCESS_TERM_NONE, 0);
     }
     process->resumable = 0;
     scheduler_mark_finished(process);
-    scheduler_mark_running(parent);
+    if (parent_should_resume_immediately(parent)) {
+        scheduler_mark_running(parent);
+    }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
     print("] state=");
@@ -1402,6 +1924,81 @@ static int resume_user_program(uint32_t pid) {
     print(" code=");
     print_hex32(process->status_code);
     print(".\n");
+
+    if (continue_ready_processes(process->pid)) {
+        return 1;
+    }
+
+    if (parent_should_resume_immediately(parent)) {
+        scheduler_mark_running(parent);
+        return 1;
+    }
+    return idle_until_ready_process();
+}
+
+static int resume_user_program(uint32_t pid) {
+    Process* parent = current_process();
+    if (parent == 0) {
+        print("\nNo current parent process.");
+        return 0;
+    }
+
+    Process* process = pid == 0 ? find_last_paused_child_process(parent->pid) : find_process_by_pid(pid);
+    if (process == 0) {
+        print("\nProcess not found.\n");
+        return 0;
+    }
+    if (process->parent_pid != parent->pid) {
+        print("\nProcess is not a child of the current process.\n");
+        return 0;
+    }
+    if (process->scheduler_state == SCHED_STATE_WAITING && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+        print("\nProcess is sleeping.\n");
+        return 0;
+    }
+    if (!process->resumable || process->state != PROCESS_STATE_PAUSED) {
+        print("\nProcess is not paused.\n");
+        return 0;
+    }
+    if (user_program_depth >= USER_PROGRAM_SLOT_COUNT) {
+        print("\nUser program nesting limit reached.");
+        return 0;
+    }
+
+    return resume_user_program_internal(parent, process, 1);
+}
+
+static int kill_user_program(uint32_t pid) {
+    Process* parent = current_process();
+    if (parent == 0) {
+        print("\nNo current parent process.");
+        return 0;
+    }
+
+    Process* process = find_process_by_pid(pid);
+    if (process == 0) {
+        print("\nProcess not found.\n");
+        return 0;
+    }
+    if (process->parent_pid != parent->pid) {
+        print("\nProcess is not a child of the current process.\n");
+        return 0;
+    }
+    if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+        print("\nProcess is not paused.\n");
+        return 0;
+    }
+
+    cleanup_user_process_mapping(process);
+    process->resumable = 0;
+    process->pause_reason = PROCESS_PAUSE_NONE;
+    process_mark_failed(process, PROCESS_TERM_KILLED, 0);
+    scheduler_mark_finished(process);
+    process->active = 0;
+
+    print("\nKilled user program [pid=");
+    print_hex32(process->pid);
+    print("].\n");
     return 1;
 }
 
@@ -1614,7 +2211,7 @@ static void command_usertest() {
 }
 
 static void command_ushell() {
-    char default_program[] = "USHELL.BIN";
+    char default_program[] = "USHELL.ELF";
     command_run(default_program);
 }
 
@@ -1734,9 +2331,18 @@ extern "C" void keyboard_deliver_char64(char ascii) {
     shell_input(ascii);
 }
 
-extern "C" void timer_handler64() {
+extern "C" uint64_t timer_handler64() {
     pit.handle();
+    scheduler_wake_sleeping_processes(pit.get_tick());
     scheduler_on_tick();
+    if (scheduler_should_preempt_current()) {
+        return TIMER_PREEMPT_TO_KERNEL;
+    }
+    Process* process = current_process();
+    if (process != 0 && process->timeslice_ticks == 0) {
+        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    }
+    return 0;
 }
 
 extern "C" void user_test_interrupt_handler64() {
@@ -2021,6 +2627,42 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return (uint64_t)-1;
         }
         return 0;
+    }
+
+    if (syscall_no == SYS_KILL_USER) {
+        uint32_t pid = (uint32_t)arg1;
+        if (!kill_user_program(pid)) {
+            return (uint64_t)-1;
+        }
+        return 0;
+    }
+
+    if (syscall_no == SYS_REAP_ALL_CHILDREN) {
+        Process* process = current_process();
+        if (process == 0) {
+            print("\nNo current user process.\n");
+            return (uint64_t)-1;
+        }
+
+        uint32_t count = reap_all_child_processes(process->pid);
+        print("\nReaped children: ");
+        print_hex32(count);
+        print("\n");
+        return count;
+    }
+
+    if (syscall_no == SYS_JOBS) {
+        Process* process = current_process();
+        print_jobs_for_process(process);
+        return 0;
+    }
+
+    if (syscall_no == SYS_SLEEP) {
+        uint32_t ticks = (uint32_t)arg1;
+        if (ticks == 0) {
+            ticks = 1;
+        }
+        return SYSCALL_SLEEP_TO_KERNEL;
     }
 
     print("\nUnknown syscall: ");

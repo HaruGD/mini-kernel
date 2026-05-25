@@ -1,0 +1,27 @@
+BITS 64
+default rel
+
+%define SYS_WRITE 1
+%define SYS_EXIT  2
+
+section .text
+global _start
+
+_start:
+    mov rax, SYS_WRITE
+    lea rdi, [rel hello_msg]
+    mov rsi, hello_msg_end - hello_msg
+    int 0x80
+
+    mov rdi, 0x2A
+    mov rax, SYS_EXIT
+    int 0x80
+
+.hang:
+    jmp .hang
+
+section .rodata
+hello_msg:
+    db "=== UHELLO.ELF ===", 10
+    db "Hello from the first ELF user program!", 10
+hello_msg_end:

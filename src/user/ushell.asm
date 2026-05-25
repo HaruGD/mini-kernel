@@ -135,6 +135,12 @@ _start:
     jnz .do_ps
 
     lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_jobs]
+    call match_exact
+    test al, al
+    jnz .do_jobs
+
+    lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_laststatus]
     call match_exact
     test al, al
@@ -159,10 +165,28 @@ _start:
     jnz .do_yield
 
     lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_sleep]
+    call match_prefix
+    test al, al
+    jnz .do_sleep
+
+    lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_resume]
     call match_exact
     test al, al
-    jnz .do_resume
+    jnz .do_resume_default
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_resume_prefix]
+    call match_prefix
+    test al, al
+    jnz .do_resume_arg
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_reapall]
+    call match_exact
+    test al, al
+    jnz .do_reapall
 
     lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_ls]
@@ -193,6 +217,12 @@ _start:
     call match_prefix
     test al, al
     jnz .do_rm
+
+    lea rsi, [rel input_buffer]
+    lea rdi, [rel cmd_kill]
+    call match_prefix
+    test al, al
+    jnz .do_kill
 
     lea rsi, [rel input_buffer]
     lea rdi, [rel cmd_touch]
@@ -256,6 +286,10 @@ _start:
     sys_ps
     jmp .shell_loop
 
+.do_jobs:
+    sys_jobs
+    jmp .shell_loop
+
 .do_laststatus:
     sys_laststatus
     jmp .shell_loop
@@ -272,8 +306,44 @@ _start:
     sys_yield
     jmp .shell_loop
 
-.do_resume:
+.do_sleep:
+    lea rsi, [rel input_buffer]
+    add rsi, 6
+    cmp byte [rsi], 0
+    je .sleep_usage
+    call parse_uint32_arg
+    test al, al
+    jz .sleep_usage
+    mov edi, ebx
+    sys_sleep_ticks rdi
+    jmp .shell_loop
+
+.sleep_usage:
+    sys_write sleep_usage_msg, sleep_usage_msg_end - sleep_usage_msg
+    jmp .shell_loop
+
+.do_resume_default:
     sys_resume
+    jmp .shell_loop
+
+.do_resume_arg:
+    lea rsi, [rel input_buffer]
+    add rsi, 7
+    cmp byte [rsi], 0
+    je .resume_usage
+    call parse_uint32_arg
+    test al, al
+    jz .resume_usage
+    mov edi, ebx
+    sys_resume_reg rdi
+    jmp .shell_loop
+
+.resume_usage:
+    sys_write resume_usage_msg, resume_usage_msg_end - resume_usage_msg
+    jmp .shell_loop
+
+.do_reapall:
+    sys_reapall
     jmp .shell_loop
 
 .do_ls:
@@ -327,6 +397,22 @@ _start:
 
 .rm_usage:
     sys_write rm_usage_msg, rm_usage_msg_end - rm_usage_msg
+    jmp .shell_loop
+
+.do_kill:
+    lea rsi, [rel input_buffer]
+    add rsi, 5
+    cmp byte [rsi], 0
+    je .kill_usage
+    call parse_uint32_arg
+    test al, al
+    jz .kill_usage
+    mov edi, ebx
+    sys_kill_reg rdi
+    jmp .shell_loop
+
+.kill_usage:
+    sys_write kill_usage_msg, kill_usage_msg_end - kill_usage_msg
     jmp .shell_loop
 
 .do_touch:
@@ -441,10 +527,78 @@ print_hex32_eax:
     sys_write hex_buffer, 10
     ret
 
+parse_uint32_arg:
+    xor ebx, ebx
+    mov ecx, 10
+    mov al, [rsi]
+    test al, al
+    je .parse_fail
+    cmp al, '0'
+    jne .parse_loop
+    mov al, [rsi + 1]
+    cmp al, 'x'
+    je .parse_hex
+    cmp al, 'X'
+    je .parse_hex
+    jmp .parse_loop
+
+.parse_hex:
+    add rsi, 2
+    mov ecx, 16
+    mov al, [rsi]
+    test al, al
+    je .parse_fail
+
+.parse_loop:
+    mov al, [rsi]
+    test al, al
+    je .parse_ok
+    cmp al, '0'
+    jb .parse_fail
+    cmp al, '9'
+    jbe .parse_digit
+    cmp ecx, 16
+    jne .parse_fail
+    cmp al, 'a'
+    jb .parse_upper
+    cmp al, 'f'
+    jbe .parse_lower_ok
+    jmp .parse_fail
+
+.parse_upper:
+    cmp al, 'A'
+    jb .parse_fail
+    cmp al, 'F'
+    ja .parse_fail
+    sub al, 'A' - 10
+    jmp .parse_accum
+
+.parse_lower_ok:
+    sub al, 'a' - 10
+    jmp .parse_accum
+
+.parse_digit:
+    sub al, '0'
+
+.parse_accum:
+    movzx edx, al
+    imul ebx, ecx
+    add ebx, edx
+    inc rsi
+    jmp .parse_loop
+
+.parse_ok:
+    mov al, 1
+    ret
+
+.parse_fail:
+    xor eax, eax
+    ret
+
 section .data
 
 banner_msg:
-    db '=== USHELL.BIN ===', 10
+    db '=== USHELL.ELF ===', 10
     db 'User shell ready. Type help for commands.', 10
 banner_msg_end:
 prompt_msg:
@@ -452,11 +606,11 @@ prompt_msg:
 prompt_msg_end:
 help_msg:
     db 'Commands: help, echo [text], about, version, bootinfo, memstat, uptime', 10
-    db '          pid, ppid, ps, laststatus, wait, sched, yield, resume, clear, ls, cat [file], run [file], rm [file], touch [file]', 10
+    db '          pid, ppid, ps, jobs, laststatus, wait, reapall, sched, yield, sleep [ticks], resume [pid], kill [pid], clear, ls, cat [file], run [file], rm [file], touch [file]', 10
     db '          save [file] [text], exit', 10
 help_msg_end:
 about_msg:
-    db 'USHELL.BIN runs entirely in user mode using int 0x80 syscalls.', 10
+    db 'USHELL.ELF runs entirely in user mode using int 0x80 syscalls.', 10
 about_msg_end:
 pid_msg:
     db 'pid: '
@@ -473,12 +627,21 @@ run_usage_msg_end:
 rm_usage_msg:
     db 'Usage: rm [filename]', 10
 rm_usage_msg_end:
+kill_usage_msg:
+    db 'Usage: kill [pid]', 10
+kill_usage_msg_end:
 touch_usage_msg:
     db 'Usage: touch [filename]', 10
 touch_usage_msg_end:
 save_usage_msg:
     db 'Usage: save [filename] [text]', 10
 save_usage_msg_end:
+sleep_usage_msg:
+    db 'Usage: sleep [ticks]', 10
+sleep_usage_msg_end:
+resume_usage_msg:
+    db 'Usage: resume [pid]', 10
+resume_usage_msg_end:
 unknown_msg:
     db 'Unknown command: '
 unknown_msg_end:
@@ -508,6 +671,8 @@ cmd_ppid:
     db 'ppid', 0
 cmd_ps:
     db 'ps', 0
+cmd_jobs:
+    db 'jobs', 0
 cmd_laststatus:
     db 'laststatus', 0
 cmd_wait:
@@ -516,8 +681,14 @@ cmd_sched:
     db 'sched', 0
 cmd_yield:
     db 'yield', 0
+cmd_sleep:
+    db 'sleep ', 0
 cmd_resume:
     db 'resume', 0
+cmd_resume_prefix:
+    db 'resume ', 0
+cmd_reapall:
+    db 'reapall', 0
 cmd_ls:
     db 'ls', 0
 cmd_cat:
@@ -526,6 +697,8 @@ cmd_run:
     db 'run ', 0
 cmd_rm:
     db 'rm ', 0
+cmd_kill:
+    db 'kill ', 0
 cmd_touch:
     db 'touch ', 0
 cmd_save:

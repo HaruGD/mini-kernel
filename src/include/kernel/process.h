@@ -24,6 +24,7 @@ enum ProcessTerminationReason : uint32_t {
     PROCESS_TERM_PAGE_FAULT = 6,
     PROCESS_TERM_GP_FAULT = 7,
     PROCESS_TERM_DOUBLE_FAULT = 8,
+    PROCESS_TERM_KILLED = 9,
 };
 
 enum SchedulerState : uint32_t {
@@ -34,6 +35,13 @@ enum SchedulerState : uint32_t {
     SCHED_STATE_FINISHED = 4,
 };
 
+enum ProcessPauseReason : uint32_t {
+    PROCESS_PAUSE_NONE = 0,
+    PROCESS_PAUSE_YIELD = 1,
+    PROCESS_PAUSE_PREEMPT = 2,
+    PROCESS_PAUSE_SLEEP = 3,
+};
+
 struct Process {
     uint32_t pid;
     uint32_t parent_pid;
@@ -42,6 +50,7 @@ struct Process {
     uint64_t stack_base;
     uint64_t entry_point;
     uint32_t image_size;
+    uint32_t code_page_count;
     uint32_t state;
     uint32_t termination_reason;
     uint32_t status_code;
@@ -52,6 +61,8 @@ struct Process {
     uint8_t active;
     uint8_t reaped;
     uint8_t resumable;
+    uint8_t pause_reason;
+    uint32_t wake_tick;
     uint64_t saved_rax;
     uint64_t saved_rbx;
     uint64_t saved_rcx;

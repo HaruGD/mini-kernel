@@ -21,7 +21,10 @@ HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -
 HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
 USER_ASM_SOURCES = $(wildcard ./src/user/*.asm)
 USER_BINS = $(patsubst ./src/user/%.asm,./bin/%.bin,$(USER_ASM_SOURCES))
-USER_EXTRA_ARGS = $(foreach file,$(USER_BINS),--extra-file-auto $(file))
+USER_EASM_SOURCES = $(wildcard ./src/user/*.easm)
+USER_ELF_OBJECTS = $(patsubst ./src/user/%.easm,./build/user_elf_%.o,$(USER_EASM_SOURCES))
+USER_ELFS = $(patsubst ./src/user/%.easm,./bin/%.elf,$(USER_EASM_SOURCES))
+USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS),--extra-file-auto $(file))
 
 # 3. 오브젝트 파일 목록 (★순서가 가장 중요합니다★)
 # kernel.asm.o가 무조건 맨 앞에 와야 EIP=0x2d 에러를 막을 수 있습니다.
@@ -53,7 +56,7 @@ all64: ./bin/os64.bin
 		--output ./bin/os.bin \
 		--stage2-sectors $(STAGE2_SECTORS)
 
-./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin $(USER_BINS) ./tools/build_fat12_image.py
+./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin $(USER_BINS) $(USER_ELFS) ./tools/build_fat12_image.py
 	python3 ./tools/build_fat12_image.py \
 		--boot ./bin/boot64.bin \
 		--stage2 ./bin/stage2_64.bin \
@@ -158,6 +161,16 @@ all64: ./bin/os64.bin
 	@mkdir -p ./bin
 	$(AS) -f bin -o $@ $<
 
+./build/user_elf_%.o: ./src/user/%.easm
+	@mkdir -p ./build
+	$(AS) -f elf64 -g -o $@ $<
+
+./build/user_elf_ushell.o: ./src/user/ushell.asm
+
+./bin/%.elf: ./build/user_elf_%.o ./src/user/user_elf.ld
+	@mkdir -p ./bin
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/user/user_elf.ld -o $@ $<
+
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 
 ./build/kernel.asm.o: ./src/boot/kernel.asm
@@ -213,4 +226,6 @@ clean:
 	rm -rf ./bin/stage2.bin
 	rm -rf ./bin/stage2_64.bin
 	rm -rf $(USER_BINS)
+	rm -rf $(USER_ELFS)
+	rm -rf $(USER_ELF_OBJECTS)
 	rm -rf ./build/*

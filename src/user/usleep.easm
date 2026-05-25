@@ -1,0 +1,50 @@
+BITS 64
+default rel
+
+%define SYS_WRITE 1
+%define SYS_EXIT  2
+%define SYS_SLEEP 26
+
+section .text
+global _start
+
+_start:
+    mov rax, SYS_WRITE
+    lea rdi, [rel banner_msg]
+    mov rsi, banner_msg_end - banner_msg
+    int 0x80
+
+    mov rax, SYS_WRITE
+    lea rdi, [rel sleep_msg]
+    mov rsi, sleep_msg_end - sleep_msg
+    int 0x80
+
+    mov rdi, 8
+    mov rax, SYS_SLEEP
+    int 0x80
+
+    mov rax, SYS_WRITE
+    lea rdi, [rel wake_msg]
+    mov rsi, wake_msg_end - wake_msg
+    int 0x80
+
+    mov rdi, 8
+    mov rax, SYS_EXIT
+    int 0x80
+
+.hang:
+    jmp .hang
+
+section .rodata
+banner_msg:
+    db "=== USLEEP.ELF ===", 10
+    db "This is the ELF version of USLEEP.", 10
+banner_msg_end:
+
+sleep_msg:
+    db "ELF sleep now", 10
+sleep_msg_end:
+
+wake_msg:
+    db "ELF wake done", 10
+wake_msg_end:
