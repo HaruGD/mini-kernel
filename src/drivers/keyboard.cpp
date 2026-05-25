@@ -66,47 +66,61 @@ char KeyboardDriver::get_char(uint8_t scan_code) {
 }
 
 char KeyboardDriver::read_char_blocking() {
+    char ascii = 0;
     while (1) {
-        if ((inb(0x64) & 0x01) == 0) {
-            continue;
-        }
-
-        uint8_t scan_code = inb(0x60);
-
-        if (scan_code == 0xE0) {
-            is_extended = true;
-            continue;
-        }
-
-        if (is_extended) {
-            is_extended = false;
-            continue;
-        }
-
-        if (scan_code == 0x2A || scan_code == 0x36) {
-            shift_pressed = 1;
-            continue;
-        }
-
-        if (scan_code == 0xAA || scan_code == 0xB6) {
-            shift_pressed = 0;
-            continue;
-        }
-
-        if (scan_code == 0x3A) {
-            caps_lock_on = !caps_lock_on;
-            continue;
-        }
-
-        if (scan_code & 0x80) {
-            continue;
-        }
-
-        char ascii = get_char(scan_code);
-        if (ascii != 0) {
+        if (try_read_char(&ascii)) {
             return ascii;
         }
     }
+}
+
+bool KeyboardDriver::try_read_char(char* out_char) {
+    if (out_char == 0) {
+        return false;
+    }
+
+    if ((inb(0x64) & 0x01) == 0) {
+        return false;
+    }
+
+    uint8_t scan_code = inb(0x60);
+
+    if (scan_code == 0xE0) {
+        is_extended = true;
+        return false;
+    }
+
+    if (is_extended) {
+        is_extended = false;
+        return false;
+    }
+
+    if (scan_code == 0x2A || scan_code == 0x36) {
+        shift_pressed = 1;
+        return false;
+    }
+
+    if (scan_code == 0xAA || scan_code == 0xB6) {
+        shift_pressed = 0;
+        return false;
+    }
+
+    if (scan_code == 0x3A) {
+        caps_lock_on = !caps_lock_on;
+        return false;
+    }
+
+    if (scan_code & 0x80) {
+        return false;
+    }
+
+    char ascii = get_char(scan_code);
+    if (ascii == 0) {
+        return false;
+    }
+
+    *out_char = ascii;
+    return true;
 }
 
 void KeyboardDriver::handle() {

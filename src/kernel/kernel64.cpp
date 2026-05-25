@@ -949,6 +949,33 @@ static void print_scheduler_info() {
     print("\n=================\n");
 }
 
+static const char* current_process_shell_prompt() {
+    Process* process = current_process();
+    if (process == 0) {
+        return 0;
+    }
+
+    if (strcmp64(process->name, "USHELL.ELF") == 0 ||
+        strcmp64(process->name, "USHELL.BIN") == 0) {
+        return "ush> ";
+    }
+
+    if (strcmp64(process->name, "USHELL_C.ELF") == 0) {
+        return "csh> ";
+    }
+
+    return 0;
+}
+
+static void redraw_user_shell_prompt_if_needed() {
+    const char* prompt = current_process_shell_prompt();
+    if (prompt == 0) {
+        return;
+    }
+
+    print(prompt);
+}
+
 static int process_record_is_active(const Process* process) {
     if (process == 0) {
         return 0;
@@ -1398,7 +1425,7 @@ extern "C" void shell_recall_history(int direction) {
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, sched, atatest, ls, load, save, rm, pagefault, uptime");
-    print("\nrun, resume, usertest, ushell");
+    print("\nrun, resume, usertest, ushell, ushellc");
 }
 
 static void command_memstat() {
@@ -2215,6 +2242,11 @@ static void command_ushell() {
     command_run(default_program);
 }
 
+static void command_ushellc() {
+    char default_program[] = "USHELL_C.ELF";
+    command_run(default_program);
+}
+
 static void command_resume() {
     resume_user_program(0);
 }
@@ -2281,6 +2313,8 @@ static void execute_command() {
         command_usertest();
     } else if (strcmp64(cmd, "ushell") == 0) {
         command_ushell();
+    } else if (strcmp64(cmd, "ushellc") == 0) {
+        command_ushellc();
     } else if (strcmp64(cmd, "uptime") == 0) {
         command_uptime();
     } else if (buffer_index > 0) {
@@ -2390,7 +2424,19 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_GETCHAR) {
-        return (uint64_t)(unsigned char)keyboard.read_char_blocking();
+        while (1) {
+            char ascii = 0;
+            if (keyboard.try_read_char(&ascii)) {
+                return (uint64_t)(unsigned char)ascii;
+            }
+
+            if (continue_ready_processes(0)) {
+                redraw_user_shell_prompt_if_needed();
+                continue;
+            }
+
+            __asm__ volatile("sti; hlt; cli");
+        }
     }
 
     if (syscall_no == SYS_LIST_FILES) {
