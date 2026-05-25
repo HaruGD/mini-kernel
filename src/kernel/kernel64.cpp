@@ -153,6 +153,21 @@ static char to_lower_ascii(char c) {
     return c;
 }
 
+static int startswith64(const char* text, const char* prefix) {
+    if (text == 0 || prefix == 0) {
+        return 0;
+    }
+
+    while (*prefix != '\0') {
+        if (*text != *prefix) {
+            return 0;
+        }
+        text++;
+        prefix++;
+    }
+    return 1;
+}
+
 static void serial_init() {
     outb(0x3F8 + 1, 0x00);
     outb(0x3F8 + 3, 0x80);
@@ -955,13 +970,12 @@ static const char* current_process_shell_prompt() {
         return 0;
     }
 
-    if (strcmp64(process->name, "USHELL.ELF") == 0 ||
-        strcmp64(process->name, "USHELL.BIN") == 0) {
-        return "ush> ";
+    if (startswith64(process->name, "USHELL_C")) {
+        return "csh> ";
     }
 
-    if (strcmp64(process->name, "USHELL_C.ELF") == 0) {
-        return "csh> ";
+    if (startswith64(process->name, "USHELL")) {
+        return "ush> ";
     }
 
     return 0;
