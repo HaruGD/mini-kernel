@@ -19,11 +19,19 @@ CFLAGS = $(FLAGS) -std=gnu99 $(INCLUDES)
 CPPFLAGS = $(FLAGS) -fno-exceptions -fno-rtti -fno-use-cxa-atexit $(INCLUDES)
 HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
 HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
+USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -I./src/user/include
 USER_ASM_SOURCES = $(wildcard ./src/user/*.asm)
 USER_BINS = $(patsubst ./src/user/%.asm,./bin/%.bin,$(USER_ASM_SOURCES))
-USER_EASM_SOURCES = $(wildcard ./src/user/*.easm)
+USER_EASM_SOURCES = $(filter-out ./src/user/user_crt0.easm,$(wildcard ./src/user/*.easm))
 USER_ELF_OBJECTS = $(patsubst ./src/user/%.easm,./build/user_elf_%.o,$(USER_EASM_SOURCES))
-USER_ELFS = $(patsubst ./src/user/%.easm,./bin/%.elf,$(USER_EASM_SOURCES))
+USER_EASM_ELFS = $(patsubst ./src/user/%.easm,./bin/%.elf,$(USER_EASM_SOURCES))
+# Reserve user_*.c for shared/runtime support so future helpers do not become
+# standalone FAT12 apps by accident.
+USER_C_RUNTIME_SOURCES = $(wildcard ./src/user/user_*.c)
+USER_C_SOURCES = $(filter-out $(USER_C_RUNTIME_SOURCES),$(wildcard ./src/user/*.c))
+USER_C_OBJECTS = $(patsubst ./src/user/%.c,./build/user_c_%.o,$(USER_C_SOURCES))
+USER_C_ELFS = $(patsubst ./src/user/%.c,./bin/%.elf,$(USER_C_SOURCES))
+USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS),--extra-file-auto $(file))
 
 # 3. 오브젝트 파일 목록 (★순서가 가장 중요합니다★)
@@ -167,9 +175,21 @@ all64: ./bin/os64.bin
 
 ./build/user_elf_ushell.o: ./src/user/ushell.asm
 
-./bin/%.elf: ./build/user_elf_%.o ./src/user/user_elf.ld
+./build/user_c_%.o: ./src/user/%.c
+	@mkdir -p ./build
+	$(HOST64_CC) $(USER64_CFLAGS) -c $< -o $@
+
+./build/user_crt0.o: ./src/user/user_crt0.easm
+	@mkdir -p ./build
+	$(AS) -f elf64 -g -o $@ $<
+
+$(USER_EASM_ELFS): ./bin/%.elf: ./build/user_elf_%.o ./src/user/user_elf.ld
 	@mkdir -p ./bin
 	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/user/user_elf.ld -o $@ $<
+
+$(USER_C_ELFS): ./bin/%.elf: ./build/user_c_%.o ./build/user_crt0.o ./src/user/user_elf.ld
+	@mkdir -p ./bin
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/user/user_elf.ld -o $@ ./build/user_crt0.o $<
 
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 
@@ -228,4 +248,6 @@ clean:
 	rm -rf $(USER_BINS)
 	rm -rf $(USER_ELFS)
 	rm -rf $(USER_ELF_OBJECTS)
+	rm -rf $(USER_C_OBJECTS)
+	rm -rf ./build/user_crt0.o
 	rm -rf ./build/*

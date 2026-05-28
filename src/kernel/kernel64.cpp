@@ -153,21 +153,6 @@ static char to_lower_ascii(char c) {
     return c;
 }
 
-static int startswith64(const char* text, const char* prefix) {
-    if (text == 0 || prefix == 0) {
-        return 0;
-    }
-
-    while (*prefix != '\0') {
-        if (*text != *prefix) {
-            return 0;
-        }
-        text++;
-        prefix++;
-    }
-    return 1;
-}
-
 static void serial_init() {
     outb(0x3F8 + 1, 0x00);
     outb(0x3F8 + 3, 0x80);
@@ -463,6 +448,22 @@ static void copy_process_name(char* dest, const char* src) {
     dest[i] = '\0';
 }
 
+static uint32_t infer_shell_prompt_kind(const char* filename) {
+    if (filename == 0) {
+        return SHELL_PROMPT_NONE;
+    }
+
+    if (strcmp64(filename, "USHELL_C.ELF") == 0) {
+        return SHELL_PROMPT_CSH;
+    }
+
+    if (strcmp64(filename, "USHELL.ELF") == 0 || strcmp64(filename, "USHELL.BIN") == 0) {
+        return SHELL_PROMPT_USH;
+    }
+
+    return SHELL_PROMPT_NONE;
+}
+
 static Process* current_process() {
     if (user_program_depth == 0) {
         return 0;
@@ -560,6 +561,7 @@ static void process_clear(Process* process) {
     process->runtime_ticks = 0;
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
     process->slot_index = 0;
+    process->shell_prompt_kind = SHELL_PROMPT_NONE;
     process->active = 0;
     process->reaped = 0;
     process->resumable = 0;
@@ -970,11 +972,11 @@ static const char* current_process_shell_prompt() {
         return 0;
     }
 
-    if (startswith64(process->name, "USHELL_C")) {
+    if (process->shell_prompt_kind == SHELL_PROMPT_CSH) {
         return "csh> ";
     }
 
-    if (startswith64(process->name, "USHELL")) {
+    if (process->shell_prompt_kind == SHELL_PROMPT_USH) {
         return "ush> ";
     }
 
@@ -1505,6 +1507,7 @@ static int run_user_program(const char* filename) {
     process->parent_pid = parent != 0 ? parent->pid : 0;
     process->slot_index = slot_index;
     copy_process_name(process->name, filename);
+    process->shell_prompt_kind = infer_shell_prompt_kind(filename);
     process->code_base = user_code_base;
     process->stack_base = user_stack_base;
     process->entry_point = user_code_base;
@@ -1853,6 +1856,10 @@ static int run_user_program(const char* filename) {
         return 1;
     }
 
+    if (parent == 0) {
+        return 1;
+    }
+
     if (parent_should_resume_immediately(parent)) {
         scheduler_mark_running(parent);
         return 1;
@@ -1967,6 +1974,10 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     print(".\n");
 
     if (continue_ready_processes(process->pid)) {
+        return 1;
+    }
+
+    if (parent == 0) {
         return 1;
     }
 

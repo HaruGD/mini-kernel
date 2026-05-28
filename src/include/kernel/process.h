@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define PROCESS_NAME_MAX 12
+#define PROCESS_NAME_MAX 32
 
 enum ProcessState : uint32_t {
     PROCESS_STATE_EMPTY = 0,
@@ -42,6 +42,12 @@ enum ProcessPauseReason : uint32_t {
     PROCESS_PAUSE_SLEEP = 3,
 };
 
+enum ShellPromptKind : uint32_t {
+    SHELL_PROMPT_NONE = 0,
+    SHELL_PROMPT_USH = 1,
+    SHELL_PROMPT_CSH = 2,
+};
+
 struct Process {
     uint32_t pid;
     uint32_t parent_pid;
@@ -58,6 +64,7 @@ struct Process {
     uint32_t runtime_ticks;
     uint32_t timeslice_ticks;
     uint32_t slot_index;
+    uint32_t shell_prompt_kind;
     uint8_t active;
     uint8_t reaped;
     uint8_t resumable;
