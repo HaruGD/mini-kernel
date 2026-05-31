@@ -23,6 +23,22 @@
 %define SYS_SCHED_INFO 20
 %define SYS_YIELD 21
 %define SYS_RESUME_USER 22
+%define SYS_KILL_USER 23
+%define SYS_REAP_ALL_CHILDREN 24
+%define SYS_JOBS 25
+%define SYS_SLEEP 26
+%define SYS_SET_BACKGROUND 27
+%define SYS_CHILDREN_ACTIVE 28
+%define SYS_REAP_ALL_CHILDREN_SILENT 29
+%define SYS_RM_FILE_SILENT 30
+%define SYS_TOUCH_FILE_SILENT 31
+%define SYS_SAVE_FILE_SILENT 32
+%define SYS_VFS_MOUNTS 33
+%define SYS_LIST_FILES_AT 34
+%define SYS_VFS_OPEN 35
+%define SYS_VFS_READ 36
+%define SYS_VFS_WRITE 37
+%define SYS_VFS_CLOSE 38
 
 %macro sys_write 2
     mov rax, SYS_WRITE
@@ -172,6 +188,28 @@
 %macro sys_resume_reg 1
     mov rdi, %1
     mov rax, SYS_RESUME_USER
+    int 0x80
+%endmacro
+
+%macro sys_kill_reg 1
+    mov rdi, %1
+    mov rax, SYS_KILL_USER
+    int 0x80
+%endmacro
+
+%macro sys_reapall 0
+    mov rax, SYS_REAP_ALL_CHILDREN
+    int 0x80
+%endmacro
+
+%macro sys_jobs 0
+    mov rax, SYS_JOBS
+    int 0x80
+%endmacro
+
+%macro sys_sleep_ticks 1
+    mov rdi, %1
+    mov rax, SYS_SLEEP
     int 0x80
 %endmacro
 

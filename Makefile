@@ -118,7 +118,7 @@ all64: ./bin/os64.bin
 	$(AS) -f elf64 -g ./src/boot/kernel64_entry.asm -o ./build/kernel64_entry.o
 
 ./build/kernel64.o: ./src/kernel/kernel64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/kernel64.cpp -o ./build/kernel64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/kernel64.cpp -o ./build/kernel64.o
 
 ./build/terminal64.o: ./src/drivers/terminal.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/terminal.cpp -o ./build/terminal64.o
@@ -128,6 +128,9 @@ all64: ./bin/os64.bin
 
 ./build/fat12_64.o: ./src/fs/fat12.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/fs/fat12.cpp -o ./build/fat12_64.o
+
+./build/vfs64.o: ./src/fs/vfs.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/fs/vfs.cpp -o ./build/vfs64.o
 
 ./build/keyboard64.o: ./src/drivers/keyboard.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/keyboard.cpp -o ./build/keyboard64.o
@@ -159,8 +162,8 @@ all64: ./bin/os64.bin
 ./build/heap64.o: ./src/heap64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/heap64.cpp -o ./build/heap64.o
 
-./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
 
 ./bin/kernel64.bin: ./bin/kernel64.elf
 	$(HOST64_OBJCOPY) -O binary ./bin/kernel64.elf ./bin/kernel64.bin
@@ -185,11 +188,11 @@ all64: ./bin/os64.bin
 
 $(USER_EASM_ELFS): ./bin/%.elf: ./build/user_elf_%.o ./src/user/user_elf.ld
 	@mkdir -p ./bin
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/user/user_elf.ld -o $@ $<
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -z max-page-size=0x1000 -T ./src/user/user_elf.ld -o $@ $<
 
 $(USER_C_ELFS): ./bin/%.elf: ./build/user_c_%.o ./build/user_crt0.o ./src/user/user_elf.ld
 	@mkdir -p ./bin
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/user/user_elf.ld -o $@ ./build/user_crt0.o $<
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -z max-page-size=0x1000 -T ./src/user/user_elf.ld -o $@ ./build/user_crt0.o $<
 
 # --- 개별 소스 컴파일 (폴더 구조 반영) ---
 

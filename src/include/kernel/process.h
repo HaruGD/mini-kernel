@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #define PROCESS_NAME_MAX 32
+#define PROCESS_ARG_MAX 8
+#define PROCESS_CMDLINE_MAX 96
 
 enum ProcessState : uint32_t {
     PROCESS_STATE_EMPTY = 0,
@@ -65,11 +67,14 @@ struct Process {
     uint32_t timeslice_ticks;
     uint32_t slot_index;
     uint32_t shell_prompt_kind;
+    uint32_t argc;
     uint8_t active;
     uint8_t reaped;
     uint8_t resumable;
+    uint8_t background;
     uint8_t pause_reason;
     uint32_t wake_tick;
+    char command_line[PROCESS_CMDLINE_MAX];
     uint64_t saved_rax;
     uint64_t saved_rbx;
     uint64_t saved_rcx;

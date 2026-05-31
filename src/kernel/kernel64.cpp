@@ -15,6 +15,7 @@ extern "C" {
 #include "drivers/keyboard.h"
 #include "drivers/pit.h"
 #include "fs/fat12.h"
+#include "fs/vfs.h"
 #include "kernel/boot_info.h"
 #include "kernel/elf64.h"
 #include "kernel/process.h"
@@ -64,6 +65,18 @@ extern "C" {
 #define SYS_REAP_ALL_CHILDREN 24
 #define SYS_JOBS 25
 #define SYS_SLEEP 26
+#define SYS_SET_BACKGROUND 27
+#define SYS_CHILDREN_ACTIVE 28
+#define SYS_REAP_ALL_CHILDREN_SILENT 29
+#define SYS_RM_FILE_SILENT 30
+#define SYS_TOUCH_FILE_SILENT 31
+#define SYS_SAVE_FILE_SILENT 32
+#define SYS_VFS_MOUNTS 33
+#define SYS_LIST_FILES_AT 34
+#define SYS_VFS_OPEN 35
+#define SYS_VFS_READ 36
+#define SYS_VFS_WRITE 37
+#define SYS_VFS_CLOSE 38
 #define SCHED_QUEUE_SIZE PROCESS_TABLE_SIZE
 #define SCHED_DEFAULT_TIMESLICE 6
 
@@ -95,6 +108,11 @@ static uint32_t sched_queue_head = 0;
 static uint32_t sched_last_pid = 0;
 static uint32_t sched_switch_count = 0;
 static uint32_t sched_yield_count = 0;
+
+struct UserLaunchInfo {
+    uint32_t argc;
+    char* argv[PROCESS_ARG_MAX];
+};
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 extern "C" void resume_user_mode();
 extern "C" uint64_t kernel_user_return_rsp;
@@ -139,11 +157,16 @@ static int strcmp64(const char* a, const char* b) {
     return ((unsigned char)*a) - ((unsigned char)*b);
 }
 
-static char to_upper_ascii(char c) {
-    if (c >= 'a' && c <= 'z') {
-        return (char)(c - ('a' - 'A'));
+static void copy_string64(char* dest, uint32_t capacity, const char* src) {
+    uint32_t i = 0;
+    if (capacity == 0) {
+        return;
     }
-    return c;
+    while (src != 0 && src[i] != '\0' && i + 1 < capacity) {
+        dest[i] = src[i];
+        i++;
+    }
+    dest[i] = '\0';
 }
 
 static char to_lower_ascii(char c) {
@@ -151,6 +174,10 @@ static char to_lower_ascii(char c) {
         return (char)(c + ('a' - 'A'));
     }
     return c;
+}
+
+static int is_space64(char c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
 static void serial_init() {
@@ -232,29 +259,6 @@ static uint64_t read_tsc() {
     return ((uint64_t)hi << 32) | lo;
 }
 
-static void to_name83(const char* input, char output[11]) {
-    for (int i = 0; i < 11; i++) {
-        output[i] = ' ';
-    }
-
-    int i = 0;
-    int j = 0;
-    while (input[i] != '.' && input[i] != '\0' && j < 8) {
-        output[j++] = to_upper_ascii(input[i]);
-        i++;
-    }
-
-    if (input[i] == '.') {
-        i++;
-    }
-
-    j = 8;
-    while (input[i] != '\0' && j < 11) {
-        output[j++] = to_upper_ascii(input[i]);
-        i++;
-    }
-}
-
 static char* get_argument(char* input) {
     while (*input != ' ' && *input != '\0') {
         input++;
@@ -273,6 +277,76 @@ static uint32_t parse_uint32(const char* text) {
         i++;
     }
     return value;
+}
+
+static uint32_t parse_launch_command(char* command_line, UserLaunchInfo* launch) {
+    if (command_line == 0 || launch == 0) {
+        return 0;
+    }
+
+    launch->argc = 0;
+    for (uint32_t i = 0; i < PROCESS_ARG_MAX; i++) {
+        launch->argv[i] = 0;
+    }
+
+    char* cursor = command_line;
+    while (*cursor != '\0') {
+        while (is_space64(*cursor)) {
+            cursor++;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+        if (launch->argc >= PROCESS_ARG_MAX) {
+            break;
+        }
+
+        launch->argv[launch->argc++] = cursor;
+        while (*cursor != '\0' && !is_space64(*cursor)) {
+            cursor++;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+        *cursor++ = '\0';
+    }
+
+    return launch->argc;
+}
+
+static uint64_t prepare_user_stack_with_argv(Process* process, uint64_t user_stack_top, const UserLaunchInfo* launch) {
+    if (process == 0 || launch == 0) {
+        return user_stack_top - 16;
+    }
+
+    uint64_t string_addrs[PROCESS_ARG_MAX];
+    uint64_t rsp = user_stack_top;
+    uint32_t argc = launch->argc;
+
+    for (int32_t i = (int32_t)argc - 1; i >= 0; i--) {
+        const char* arg = launch->argv[i] != 0 ? launch->argv[i] : "";
+        uint32_t len = (uint32_t)strlen64(arg) + 1;
+        rsp -= len;
+        for (uint32_t j = 0; j < len; j++) {
+            *((volatile uint8_t*)(uintptr_t)(rsp + j)) = (uint8_t)arg[j];
+        }
+        string_addrs[i] = rsp;
+    }
+
+    rsp &= ~0x7ULL;
+    rsp -= 8;
+    *((volatile uint64_t*)(uintptr_t)rsp) = 0;
+
+    for (int32_t i = (int32_t)argc - 1; i >= 0; i--) {
+        rsp -= 8;
+        *((volatile uint64_t*)(uintptr_t)rsp) = string_addrs[i];
+    }
+
+    rsp -= 8;
+    *((volatile uint64_t*)(uintptr_t)rsp) = argc;
+    rsp &= ~0xFULL;
+    process->argc = argc;
+    return rsp;
 }
 
 static uint64_t current_rsp() {
@@ -352,8 +426,12 @@ static int elf64_collect_load_info(const uint8_t* image,
                                    const Elf64_Ehdr* header,
                                    uint32_t* out_load_count,
                                    uint64_t* out_first_vaddr,
-                                   uint64_t* out_last_vaddr) {
+                                   uint64_t* out_last_vaddr,
+                                   uint32_t* out_error_code) {
     if (image == 0 || header == 0) {
+        if (out_error_code != 0) {
+            *out_error_code = 1;
+        }
         return 0;
     }
 
@@ -370,24 +448,38 @@ static int elf64_collect_load_info(const uint8_t* image,
         }
 
         if (phdr->p_memsz == 0) {
+            if (phdr->p_filesz == 0) {
+                continue;
+            }
+            if (out_error_code != 0) {
+                *out_error_code = 2;
+            }
             return 0;
         }
         if (phdr->p_filesz > phdr->p_memsz) {
+            if (out_error_code != 0) {
+                *out_error_code = 3;
+            }
             return 0;
         }
         if (phdr->p_offset > size) {
+            if (out_error_code != 0) {
+                *out_error_code = 4;
+            }
             return 0;
         }
         if (phdr->p_offset + phdr->p_filesz > size) {
+            if (out_error_code != 0) {
+                *out_error_code = 5;
+            }
             return 0;
         }
-        if (phdr->p_align != 0 && ((phdr->p_vaddr ^ phdr->p_offset) & (phdr->p_align - 1)) != 0) {
-            return 0;
-        }
-
         uint64_t seg_start = phdr->p_vaddr;
         uint64_t seg_end = phdr->p_vaddr + phdr->p_memsz;
         if (seg_end < seg_start) {
+            if (out_error_code != 0) {
+                *out_error_code = 6;
+            }
             return 0;
         }
 
@@ -405,6 +497,9 @@ static int elf64_collect_load_info(const uint8_t* image,
     }
 
     if (load_count == 0 || !entry_covered) {
+        if (out_error_code != 0) {
+            *out_error_code = load_count == 0 ? 7 : 8;
+        }
         return 0;
     }
 
@@ -417,6 +512,9 @@ static int elf64_collect_load_info(const uint8_t* image,
     if (out_last_vaddr != 0) {
         *out_last_vaddr = last_vaddr;
     }
+    if (out_error_code != 0) {
+        *out_error_code = 0;
+    }
     return 1;
 }
 
@@ -424,9 +522,6 @@ static uint64_t elf64_segment_page_flags(uint32_t segment_flags) {
     uint64_t flags = PAGING64_FLAG_USER;
     if (segment_flags & ELF64_PF_W) {
         flags |= PAGING64_FLAG_WRITABLE;
-    }
-    if (!(segment_flags & ELF64_PF_X)) {
-        flags |= PAGING64_FLAG_NX;
     }
     return flags;
 }
@@ -541,6 +636,19 @@ static const char* scheduler_state_name(uint32_t state) {
     return "none";
 }
 
+static const char* pause_reason_name(uint32_t reason) {
+    if (reason == PROCESS_PAUSE_YIELD) {
+        return "yield";
+    }
+    if (reason == PROCESS_PAUSE_PREEMPT) {
+        return "preempt";
+    }
+    if (reason == PROCESS_PAUSE_SLEEP) {
+        return "sleep";
+    }
+    return "none";
+}
+
 static void process_clear(Process* process) {
     if (process == 0) {
         return;
@@ -562,11 +670,14 @@ static void process_clear(Process* process) {
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
     process->slot_index = 0;
     process->shell_prompt_kind = SHELL_PROMPT_NONE;
+    process->argc = 0;
     process->active = 0;
     process->reaped = 0;
     process->resumable = 0;
+    process->background = 0;
     process->pause_reason = PROCESS_PAUSE_NONE;
     process->wake_tick = 0;
+    process->command_line[0] = '\0';
     process->saved_rax = 0;
     process->saved_rbx = 0;
     process->saved_rcx = 0;
@@ -596,6 +707,9 @@ static void process_mark_failed(Process* process, uint32_t reason, uint32_t stat
     process->termination_reason = reason;
     process->status_code = status_code;
     process->scheduler_state = SCHED_STATE_FINISHED;
+    process->pause_reason = PROCESS_PAUSE_NONE;
+    process->wake_tick = 0;
+    process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
 }
@@ -609,6 +723,9 @@ static void process_mark_returned(Process* process, uint32_t reason, uint32_t st
     process->termination_reason = reason;
     process->status_code = status_code;
     process->scheduler_state = SCHED_STATE_FINISHED;
+    process->pause_reason = PROCESS_PAUSE_NONE;
+    process->wake_tick = 0;
+    process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
 }
@@ -665,6 +782,8 @@ static void scheduler_mark_running(Process* process) {
     }
 
     process->scheduler_state = SCHED_STATE_RUNNING;
+    process->pause_reason = PROCESS_PAUSE_NONE;
+    process->wake_tick = 0;
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
     sched_last_pid = process->pid;
     sched_switch_count++;
@@ -895,10 +1014,22 @@ static void print_process_summary(const Process* process) {
     print_hex32(process->status_code);
     print(" sched=");
     print(scheduler_state_name(process->scheduler_state));
+    print(" pause=");
+    print(pause_reason_name(process->pause_reason));
+    print(" mode=");
+    print(process->background ? "bg" : "fg");
     print(" ticks=");
     print_hex32(process->runtime_ticks);
     print(" slice=");
     print_hex32(process->timeslice_ticks);
+    if (process->scheduler_state == SCHED_STATE_WAITING && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+        uint32_t tick_now = pit.get_tick();
+        uint32_t remaining = process->wake_tick > tick_now ? (process->wake_tick - tick_now) : 0;
+        print(" wake=");
+        print_hex32(process->wake_tick);
+        print(" remain=");
+        print_hex32(remaining);
+    }
     print(" reaped=");
     print(process->reaped ? "yes" : "no");
 }
@@ -913,6 +1044,88 @@ static void print_process_table() {
     print("\n");
 }
 
+static void print_job_compact(const char* label, const Process* process) {
+    if (process == 0 || process->pid == 0) {
+        print("\n");
+        print(label);
+        print(": none");
+        return;
+    }
+
+    print("\n");
+    print(label);
+    print(": pid=");
+    print_hex32(process->pid);
+    print(" ");
+    print(process_state_name(process->state));
+    print(" ");
+    print(process->background ? "bg" : "fg");
+
+    if (process->scheduler_state != SCHED_STATE_RUNNING) {
+        print(" ");
+        print(scheduler_state_name(process->scheduler_state));
+    }
+
+    if (process->pause_reason != PROCESS_PAUSE_NONE) {
+        print("/");
+        print(pause_reason_name(process->pause_reason));
+    }
+
+    if (process->termination_reason != PROCESS_TERM_NONE) {
+        print(" ");
+        print(process_term_name(process->termination_reason));
+        if (process->termination_reason == PROCESS_TERM_EXIT ||
+            process->termination_reason == PROCESS_TERM_PAGE_FAULT ||
+            process->termination_reason == PROCESS_TERM_LOAD_ERROR ||
+            process->termination_reason == PROCESS_TERM_KILLED) {
+            print(" code=");
+            print_hex32(process->status_code);
+        }
+    }
+
+    if (process->scheduler_state == SCHED_STATE_WAITING &&
+        process->pause_reason == PROCESS_PAUSE_SLEEP) {
+        uint32_t tick_now = pit.get_tick();
+        uint32_t remaining = process->wake_tick > tick_now ? (process->wake_tick - tick_now) : 0;
+        print(" remain=");
+        print_hex32(remaining);
+    }
+
+    print(" ");
+    print(process->name);
+}
+
+static void print_child_result_compact(const char* label, const Process* process) {
+    if (process == 0 || process->pid == 0) {
+        print("\n");
+        print(label);
+        print(": none");
+        return;
+    }
+
+    print("\n");
+    print(label);
+    print(": pid=");
+    print_hex32(process->pid);
+    print(" ");
+    print(process_state_name(process->state));
+
+    if (process->termination_reason != PROCESS_TERM_NONE) {
+        print(" ");
+        print(process_term_name(process->termination_reason));
+    }
+
+    print(" code=");
+    print_hex32(process->status_code);
+
+    if (process->reaped) {
+        print(" reaped");
+    }
+
+    print(" ");
+    print(process->name);
+}
+
 static void print_jobs_for_process(const Process* parent) {
     print("\n=== JOBS ===");
     if (parent == 0) {
@@ -921,8 +1134,7 @@ static void print_jobs_for_process(const Process* parent) {
         return;
     }
 
-    print("\nself: ");
-    print_process_summary(parent);
+    print_job_compact("self", parent);
 
     uint32_t count = 0;
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
@@ -930,16 +1142,22 @@ static void print_jobs_for_process(const Process* parent) {
         if (process->pid == 0 || process->parent_pid != parent->pid) {
             continue;
         }
-        print("\njob[");
-        print_hex32(count);
-        print("] ");
-        print_process_summary(process);
+        char label[16];
+        label[0] = 'j';
+        label[1] = 'o';
+        label[2] = 'b';
+        label[3] = '[';
+        label[4] = (char)('0' + (count % 10));
+        label[5] = ']';
+        label[6] = '\0';
+        print_job_compact(label, process);
         count++;
     }
 
     if (count == 0) {
         print("\n(no child jobs)");
     }
+    print("\n(use ps for full details)");
     print("\n============\n");
 }
 
@@ -964,6 +1182,35 @@ static void print_scheduler_info() {
         print_process_summary(sched_queue[index]);
     }
     print("\n=================\n");
+}
+
+static void print_vfs_mounts() {
+    print("\n=== VFS MOUNTS ===");
+
+    uint32_t count = vfs_mount_count();
+    if (count == 0) {
+        print("\n(no mounts)");
+        print("\n==================\n");
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        VFSMountInfo info;
+        if (vfs_get_mount_info(i, &info) != VFS_OK) {
+            continue;
+        }
+
+        print("\nmount[");
+        print_hex32(i);
+        print("] ");
+        print(info.mount_path);
+        print(" fs=");
+        print(info.fs_name);
+        print(" backend=");
+        print_hex32(info.backend_kind);
+    }
+
+    print("\n==================\n");
 }
 
 static const char* current_process_shell_prompt() {
@@ -1129,6 +1376,21 @@ static uint32_t reap_all_child_processes(uint32_t parent_pid) {
     return count;
 }
 
+static uint32_t count_unfinished_child_processes(uint32_t parent_pid) {
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        const Process* process = &process_table[i];
+        if (process->pid == 0 || process->parent_pid != parent_pid) {
+            continue;
+        }
+        if (process->state == PROCESS_STATE_RETURNED || process->state == PROCESS_STATE_FAILED) {
+            continue;
+        }
+        count++;
+    }
+    return count;
+}
+
 static Process* find_last_paused_child_process(uint32_t parent_pid) {
     Process* latest = 0;
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
@@ -1167,6 +1429,54 @@ static Process* find_next_ready_process(uint32_t exclude_pid) {
     return 0;
 }
 
+static Process* find_next_background_ready_process(uint32_t exclude_pid) {
+    for (uint32_t i = 0; i < sched_queue_count; i++) {
+        uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
+        Process* process = sched_queue[index];
+        if (process == 0) {
+            continue;
+        }
+        if (process->pid == 0 || process->pid == exclude_pid) {
+            continue;
+        }
+        if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+            continue;
+        }
+        if (process->scheduler_state != SCHED_STATE_READY) {
+            continue;
+        }
+        if (!process->background) {
+            continue;
+        }
+        return process;
+    }
+    return 0;
+}
+
+static Process* find_next_woken_process(uint32_t exclude_pid) {
+    for (uint32_t i = 0; i < sched_queue_count; i++) {
+        uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
+        Process* process = sched_queue[index];
+        if (process == 0) {
+            continue;
+        }
+        if (process->pid == 0 || process->pid == exclude_pid) {
+            continue;
+        }
+        if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+            continue;
+        }
+        if (process->scheduler_state != SCHED_STATE_READY) {
+            continue;
+        }
+        if (process->pause_reason != PROCESS_PAUSE_SLEEP) {
+            continue;
+        }
+        return process;
+    }
+    return 0;
+}
+
 static int resume_user_program_internal(Process* parent, Process* process, int print_banner);
 static int idle_until_ready_process();
 
@@ -1190,6 +1500,34 @@ static int continue_ready_processes(uint32_t exclude_pid) {
     Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
 
     print("Auto-switching to ready process [pid=");
+    print_hex32(next_ready->pid);
+    print("].\n");
+    return resume_user_program_internal(parent, next_ready, 1);
+}
+
+static int continue_woken_processes(uint32_t exclude_pid) {
+    Process* next_ready = find_next_woken_process(exclude_pid);
+    if (next_ready == 0) {
+        return 0;
+    }
+
+    Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
+
+    print("Auto-switching to ready process [pid=");
+    print_hex32(next_ready->pid);
+    print("].\n");
+    return resume_user_program_internal(parent, next_ready, 1);
+}
+
+static int continue_background_processes(uint32_t exclude_pid) {
+    Process* next_ready = find_next_background_ready_process(exclude_pid);
+    if (next_ready == 0) {
+        return 0;
+    }
+
+    Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
+
+    print("Auto-switching to background process [pid=");
     print_hex32(next_ready->pid);
     print("].\n");
     return resume_user_program_internal(parent, next_ready, 1);
@@ -1252,6 +1590,34 @@ static int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t ma
     }
 
     kernel_buf[max_len - 1] = '\0';
+    return 1;
+}
+
+static int copy_user_buffer(const uint8_t* user_ptr, uint8_t* kernel_buf, uint32_t size) {
+    if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < size; i++) {
+        if (paging64_get_phys((uint64_t)(uintptr_t)(user_ptr + i)) == 0) {
+            return 0;
+        }
+        kernel_buf[i] = user_ptr[i];
+    }
+    return 1;
+}
+
+static int copy_kernel_to_user_buffer(uint8_t* user_ptr, const uint8_t* kernel_buf, uint32_t size) {
+    if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < size; i++) {
+        if (paging64_get_phys((uint64_t)(uintptr_t)(user_ptr + i)) == 0) {
+            return 0;
+        }
+        user_ptr[i] = kernel_buf[i];
+    }
     return 1;
 }
 
@@ -1440,7 +1806,7 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, atatest, ls, load, save, rm, pagefault, uptime");
+    print("\nfree, dump, sched, mounts, atatest, ls [path], load, save, rm, pagefault, uptime");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
 
@@ -1467,6 +1833,18 @@ static void command_sched() {
     print_scheduler_info();
 }
 
+static void command_mounts() {
+    print_vfs_mounts();
+}
+
+static void command_ls(char* arg) {
+    if (arg == 0 || arg[0] == '\0') {
+        vfs_list_files();
+        return;
+    }
+    vfs_list_files_at(arg);
+}
+
 static void command_echo(char* arg) {
     if (arg == 0) {
         print("\nUsage: echo [text]");
@@ -1476,8 +1854,8 @@ static void command_echo(char* arg) {
     print(arg);
 }
 
-static int run_user_program(const char* filename) {
-    if (filename == 0 || filename[0] == '\0') {
+static int run_user_program(const char* command_line) {
+    if (command_line == 0 || command_line[0] == '\0') {
         print("\nUser program filename is empty.");
         return 0;
     }
@@ -1506,6 +1884,15 @@ static int run_user_program(const char* filename) {
     process->pid = next_pid++;
     process->parent_pid = parent != 0 ? parent->pid : 0;
     process->slot_index = slot_index;
+    copy_string64(process->command_line, sizeof(process->command_line), command_line);
+    UserLaunchInfo launch;
+    if (parse_launch_command(process->command_line, &launch) == 0 || launch.argv[0] == 0) {
+        process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 7);
+        scheduler_mark_finished(process);
+        print("\nUser program filename is empty.");
+        return 0;
+    }
+    const char* filename = launch.argv[0];
     copy_process_name(process->name, filename);
     process->shell_prompt_kind = infer_shell_prompt_kind(filename);
     process->code_base = user_code_base;
@@ -1517,11 +1904,8 @@ static int run_user_program(const char* filename) {
     process->active = 1;
     scheduler_enqueue(process);
 
-    char user_name83[11];
-    to_name83(filename, user_name83);
-
-    DirEntry entry;
-    if (!fat.find_file(user_name83, &entry)) {
+    VFSFileInfo file_info;
+    if (vfs_get_file_info(filename, &file_info) != VFS_OK) {
         process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 1);
         scheduler_mark_finished(process);
         print("\nUser program not found: ");
@@ -1531,16 +1915,16 @@ static int run_user_program(const char* filename) {
     }
 
     uint32_t max_user_image_size = (uint32_t)(user_stack_base - user_code_base);
-    if (entry.file_size == 0 || entry.file_size > max_user_image_size) {
-        process->image_size = entry.file_size;
+    if (file_info.size == 0 || file_info.size > max_user_image_size) {
+        process->image_size = file_info.size;
         process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 2);
         scheduler_mark_finished(process);
         print("\nUser program size is invalid for the current loader.\n");
         return 0;
     }
-    process->image_size = entry.file_size;
+    process->image_size = file_info.size;
 
-    uint32_t program_buffer_size = entry.file_size;
+    uint32_t program_buffer_size = file_info.size;
     if (program_buffer_size < 512) {
         program_buffer_size = 512;
     }
@@ -1553,7 +1937,8 @@ static int run_user_program(const char* filename) {
         return 0;
     }
 
-    if (fat.read_file(&entry, program_buffer) < 0) {
+    uint32_t bytes_read = 0;
+    if (vfs_read_file(filename, program_buffer, program_buffer_size, &bytes_read) != VFS_OK) {
         process_mark_failed(process, PROCESS_TERM_READ_ERROR, 1);
         scheduler_mark_finished(process);
         print("\nFailed to read user program: ");
@@ -1568,8 +1953,9 @@ static int run_user_program(const char* filename) {
     int is_elf_image = 0;
     uint64_t elf_first_vaddr = 0;
     uint64_t elf_last_vaddr = 0;
-    if (elf64_has_magic(program_buffer, entry.file_size)) {
-        if (!elf64_validate_supported_image(program_buffer, entry.file_size, &elf_header)) {
+    uint32_t elf_load_error = 0;
+    if (elf64_has_magic(program_buffer, file_info.size)) {
+        if (!elf64_validate_supported_image(program_buffer, file_info.size, &elf_header)) {
             process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 3);
             scheduler_mark_finished(process);
             print("\nInvalid or unsupported ELF64 user program: ");
@@ -1581,15 +1967,19 @@ static int run_user_program(const char* filename) {
 
         uint32_t elf_load_count = 0;
         if (!elf64_collect_load_info(program_buffer,
-                                     entry.file_size,
+                                     file_info.size,
                                      elf_header,
                                      &elf_load_count,
                                      &elf_first_vaddr,
-                                     &elf_last_vaddr)) {
+                                     &elf_last_vaddr,
+                                     &elf_load_error)) {
             process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 4);
             scheduler_mark_finished(process);
             print("\nInvalid ELF64 loadable segments: ");
             print(filename);
+            print(" [reason=");
+            print_hex32(elf_load_error);
+            print("]");
             print("\n");
             kfree(program_buffer);
             return 0;
@@ -1610,7 +2000,7 @@ static int run_user_program(const char* filename) {
         process->entry_point = user_code_base + (elf_header->e_entry - elf_first_vaddr);
         is_elf_image = 1;
     } else {
-        if (entry.file_size > PAGING64_PAGE_SIZE) {
+        if (file_info.size > PAGING64_PAGE_SIZE) {
             process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 6);
             scheduler_mark_finished(process);
             print("\nFlat user program is too large for the current loader.\n");
@@ -1632,7 +2022,7 @@ static int run_user_program(const char* filename) {
             return 0;
         }
         for (uint32_t i = 0; i < code_page_count; i++) {
-            elf_page_flags[i] = PAGING64_FLAG_USER | PAGING64_FLAG_NX;
+            elf_page_flags[i] = PAGING64_FLAG_USER;
         }
 
         const Elf64_Phdr* phdrs = (const Elf64_Phdr*)(const void*)(program_buffer + elf_header->e_phoff);
@@ -1649,9 +2039,6 @@ static int run_user_program(const char* filename) {
             uint64_t final_flags = elf64_segment_page_flags(phdr->p_flags);
             for (uint32_t page = first_page; page <= last_page; page++) {
                 elf_page_flags[page] |= (final_flags & PAGING64_FLAG_WRITABLE);
-                if (!(final_flags & PAGING64_FLAG_NX)) {
-                    elf_page_flags[page] &= ~PAGING64_FLAG_NX;
-                }
             }
         }
     }
@@ -1759,7 +2146,7 @@ static int run_user_program(const char* filename) {
         }
         kfree(elf_page_flags);
     } else {
-        for (uint32_t i = 0; i < entry.file_size; i++) {
+        for (uint32_t i = 0; i < file_info.size; i++) {
             *((volatile uint8_t*)(uintptr_t)(user_code_base + i)) = program_buffer[i];
         }
     }
@@ -1796,7 +2183,8 @@ static int run_user_program(const char* filename) {
     scheduler_mark_running(process);
     process_stack[stack_index] = process;
     user_program_depth++;
-    enter_user_mode(process->entry_point, user_stack_top - 16);
+    uint64_t initial_user_rsp = prepare_user_stack_with_argv(process, user_stack_top, &launch);
+    enter_user_mode(process->entry_point, initial_user_rsp);
     user_program_depth--;
     process_stack[stack_index] = 0;
 
@@ -2054,6 +2442,36 @@ static int kill_user_program(uint32_t pid) {
     return 1;
 }
 
+static int set_user_program_background(uint32_t pid, uint32_t enabled) {
+    Process* parent = current_process();
+    if (parent == 0) {
+        print("\nNo current parent process.\n");
+        return 0;
+    }
+
+    Process* process = pid == 0 ? find_last_paused_child_process(parent->pid) : find_process_by_pid(pid);
+    if (process == 0) {
+        print("\nProcess not found.\n");
+        return 0;
+    }
+    if (process->parent_pid != parent->pid) {
+        print("\nProcess is not a child of the current process.\n");
+        return 0;
+    }
+    if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+        print("\nProcess is not paused.\n");
+        return 0;
+    }
+
+    process->background = enabled ? 1 : 0;
+    print("\nSet user program [pid=");
+    print_hex32(process->pid);
+    print("] mode=");
+    print(process->background ? "bg" : "fg");
+    print(".\n");
+    return 1;
+}
+
 static void command_write(char* arg) {
     if (arg == 0) {
         print("\nUsage: write [message]");
@@ -2171,16 +2589,13 @@ static void command_load(char* arg) {
         return;
     }
 
-    char name83[11];
-    to_name83(arg, name83);
-
-    DirEntry entry;
-    if (!fat.find_file(name83, &entry)) {
+    VFSFileInfo file_info;
+    if (vfs_get_file_info(arg, &file_info) != VFS_OK) {
         print("\nFile not found.");
         return;
     }
 
-    uint32_t buffer_size = entry.file_size + 1;
+    uint32_t buffer_size = file_info.size + 1;
     if (buffer_size < 512) {
         buffer_size = 512;
     }
@@ -2191,14 +2606,14 @@ static void command_load(char* arg) {
         return;
     }
 
-    int bytes_read = fat.read_file(&entry, file_buffer);
-    if (bytes_read < 0) {
+    uint32_t bytes_read = 0;
+    if (vfs_read_file(arg, file_buffer, buffer_size, &bytes_read) != VFS_OK) {
         print("\nFailed to read file.");
         kfree(file_buffer);
         return;
     }
 
-    file_buffer[entry.file_size] = '\0';
+    file_buffer[bytes_read] = '\0';
     print("\n");
     print((const char*)file_buffer);
     kfree(file_buffer);
@@ -2214,10 +2629,7 @@ static void command_save(char* arg) {
         return;
     }
 
-    char name83[11];
-    to_name83(arg, name83);
-
-    if (fat.write_file(name83, (uint8_t*)notebook_ptr, notebook_length)) {
+    if (vfs_write_file(arg, (uint8_t*)notebook_ptr, notebook_length) == VFS_OK) {
         print("\nSaved: ");
         print(arg);
     } else {
@@ -2231,10 +2643,7 @@ static void command_rm(char* arg) {
         return;
     }
 
-    char name83[11];
-    to_name83(arg, name83);
-
-    if (fat.delete_file(name83)) {
+    if (vfs_delete_file(arg) == VFS_OK) {
         print("\nDeleted: ");
         print(arg);
     } else {
@@ -2263,7 +2672,7 @@ static void command_usertest() {
 }
 
 static void command_ushell() {
-    char default_program[] = "USHELL.ELF";
+    char default_program[] = "USHELL_C.ELF";
     command_run(default_program);
 }
 
@@ -2317,10 +2726,12 @@ static void execute_command() {
         dump_state();
     } else if (strcmp64(cmd, "sched") == 0) {
         command_sched();
+    } else if (strcmp64(cmd, "mounts") == 0) {
+        command_mounts();
     } else if (strcmp64(cmd, "atatest") == 0) {
         command_atatest();
     } else if (strcmp64(cmd, "ls") == 0) {
-        fat.list_files();
+        command_ls(arg);
     } else if (strcmp64(cmd, "load") == 0) {
         command_load(arg);
     } else if (strcmp64(cmd, "save") == 0) {
@@ -2413,7 +2824,7 @@ extern "C" void user_exit_interrupt_handler64() {
     print("\nUser mode exit requested.");
 }
 
-extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t) {
+extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
     syscall_count++;
 
     if (syscall_no == SYS_WRITE) {
@@ -2455,7 +2866,12 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
                 return (uint64_t)(unsigned char)ascii;
             }
 
-            if (continue_ready_processes(0)) {
+            if (continue_woken_processes(0)) {
+                redraw_user_shell_prompt_if_needed();
+                continue;
+            }
+
+            if (continue_background_processes(0)) {
                 redraw_user_shell_prompt_if_needed();
                 continue;
             }
@@ -2465,9 +2881,92 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_LIST_FILES) {
-        fat.list_files();
+        vfs_list_files();
         print("\n");
         return 0;
+    }
+
+    if (syscall_no == SYS_LIST_FILES_AT) {
+        char file_path[32];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_path, sizeof(file_path))) {
+            print("\nInvalid user path pointer.");
+            return (uint64_t)-1;
+        }
+
+        if (vfs_list_files_at(file_path) != VFS_OK) {
+            print("\nFailed to list path: ");
+            print(file_path);
+            print("\n");
+            return (uint64_t)-1;
+        }
+        print("\n");
+        return 0;
+    }
+
+    if (syscall_no == SYS_VFS_OPEN) {
+        char file_name[32];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
+            print("\nInvalid user filename pointer.");
+            return (uint64_t)-1;
+        }
+
+        return (uint64_t)vfs_open(file_name, (uint32_t)arg2);
+    }
+
+    if (syscall_no == SYS_VFS_READ) {
+        uint32_t requested = (uint32_t)arg3;
+        if (requested == 0) {
+            return 0;
+        }
+        if (requested > 4096) {
+            requested = 4096;
+        }
+
+        uint8_t* temp = (uint8_t*)kmalloc(requested);
+        if (temp == 0) {
+            return (uint64_t)-1;
+        }
+
+        uint32_t bytes_read = 0;
+        int result = vfs_read((int)arg1, temp, requested, &bytes_read);
+        if (result != VFS_OK || !copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg2, temp, bytes_read)) {
+            kfree(temp);
+            return (uint64_t)-1;
+        }
+
+        kfree(temp);
+        return bytes_read;
+    }
+
+    if (syscall_no == SYS_VFS_WRITE) {
+        uint32_t requested = (uint32_t)arg3;
+        if (requested == 0) {
+            return 0;
+        }
+        if (requested > 4096) {
+            requested = 4096;
+        }
+
+        uint8_t* temp = (uint8_t*)kmalloc(requested);
+        if (temp == 0) {
+            return (uint64_t)-1;
+        }
+        if (!copy_user_buffer((const uint8_t*)(uintptr_t)arg2, temp, requested)) {
+            kfree(temp);
+            return (uint64_t)-1;
+        }
+
+        uint32_t bytes_written = 0;
+        int result = vfs_write((int)arg1, temp, requested, &bytes_written);
+        kfree(temp);
+        if (result != VFS_OK) {
+            return (uint64_t)-1;
+        }
+        return bytes_written;
+    }
+
+    if (syscall_no == SYS_VFS_CLOSE) {
+        return vfs_close((int)arg1) == VFS_OK ? 0 : (uint64_t)-1;
     }
 
     if (syscall_no == SYS_CAT_FILE) {
@@ -2477,18 +2976,15 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return (uint64_t)-1;
         }
 
-        char name83[11];
-        to_name83(file_name, name83);
-
-        DirEntry entry;
-        if (!fat.find_file(name83, &entry)) {
+        VFSFileInfo file_info;
+        if (vfs_get_file_info(file_name, &file_info) != VFS_OK) {
             print("\nFile not found: ");
             print(file_name);
             print("\n");
             return (uint64_t)-1;
         }
 
-        uint32_t buffer_size = entry.file_size + 1;
+        uint32_t buffer_size = file_info.size + 1;
         if (buffer_size < 512) {
             buffer_size = 512;
         }
@@ -2499,8 +2995,8 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return (uint64_t)-1;
         }
 
-        int bytes_read = fat.read_file(&entry, file_buffer);
-        if (bytes_read < 0) {
+        uint32_t bytes_read = 0;
+        if (vfs_read_file(file_name, file_buffer, buffer_size, &bytes_read) != VFS_OK) {
             kfree(file_buffer);
             print("\nFailed to read file: ");
             print(file_name);
@@ -2508,13 +3004,13 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return (uint64_t)-1;
         }
 
-        file_buffer[entry.file_size] = '\0';
+        file_buffer[bytes_read] = '\0';
         print((const char*)file_buffer);
-        if (entry.file_size == 0 || file_buffer[entry.file_size - 1] != '\n') {
+        if (bytes_read == 0 || file_buffer[bytes_read - 1] != '\n') {
             print("\n");
         }
         kfree(file_buffer);
-        return entry.file_size;
+        return bytes_read;
     }
 
     if (syscall_no == SYS_RUN_USER) {
@@ -2548,26 +3044,30 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return 0;
     }
 
-    if (syscall_no == SYS_RM_FILE) {
+    if (syscall_no == SYS_RM_FILE || syscall_no == SYS_RM_FILE_SILENT) {
+        int noisy = syscall_no == SYS_RM_FILE;
         char file_name[32];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
-            print("\nInvalid user filename pointer.");
+            if (noisy) {
+                print("\nInvalid user filename pointer.");
+            }
             return (uint64_t)-1;
         }
 
-        char name83[11];
-        to_name83(file_name, name83);
-
-        if (fat.delete_file(name83)) {
-            print("\nDeleted: ");
-            print(file_name);
-            print("\n");
+        if (vfs_delete_file(file_name) == VFS_OK) {
+            if (noisy) {
+                print("\nDeleted: ");
+                print(file_name);
+                print("\n");
+            }
             return 0;
         }
 
-        print("\nFile not found: ");
-        print(file_name);
-        print("\n");
+        if (noisy) {
+            print("\nFile not found: ");
+            print(file_name);
+            print("\n");
+        }
         return (uint64_t)-1;
     }
 
@@ -2577,55 +3077,64 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return 0;
     }
 
-    if (syscall_no == SYS_TOUCH_FILE) {
+    if (syscall_no == SYS_TOUCH_FILE || syscall_no == SYS_TOUCH_FILE_SILENT) {
+        int noisy = syscall_no == SYS_TOUCH_FILE;
         char file_name[32];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
-            print("\nInvalid user filename pointer.");
+            if (noisy) {
+                print("\nInvalid user filename pointer.");
+            }
             return (uint64_t)-1;
         }
 
-        char name83[11];
-        uint8_t dummy = 0;
-        to_name83(file_name, name83);
-
-        if (fat.write_file(name83, &dummy, 0)) {
-            print("\nTouched: ");
-            print(file_name);
-            print("\n");
+        if (vfs_touch_file(file_name) == VFS_OK) {
+            if (noisy) {
+                print("\nTouched: ");
+                print(file_name);
+                print("\n");
+            }
             return 0;
         }
 
-        print("\nFailed to touch file: ");
-        print(file_name);
-        print("\n");
+        if (noisy) {
+            print("\nFailed to touch file: ");
+            print(file_name);
+            print("\n");
+        }
         return (uint64_t)-1;
     }
 
-    if (syscall_no == SYS_SAVE_FILE) {
+    if (syscall_no == SYS_SAVE_FILE || syscall_no == SYS_SAVE_FILE_SILENT) {
+        int noisy = syscall_no == SYS_SAVE_FILE;
         char file_name[32];
         char file_text[128];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
-            print("\nInvalid user filename pointer.");
+            if (noisy) {
+                print("\nInvalid user filename pointer.");
+            }
             return (uint64_t)-1;
         }
         if (!copy_user_cstring((const char*)(uintptr_t)arg2, file_text, sizeof(file_text))) {
-            print("\nInvalid user text pointer.");
+            if (noisy) {
+                print("\nInvalid user text pointer.");
+            }
             return (uint64_t)-1;
         }
 
-        char name83[11];
-        to_name83(file_name, name83);
-
-        if (fat.write_file(name83, (uint8_t*)file_text, (uint32_t)strlen64(file_text))) {
-            print("\nSaved: ");
-            print(file_name);
-            print("\n");
+        if (vfs_write_file(file_name, (uint8_t*)file_text, (uint32_t)strlen64(file_text)) == VFS_OK) {
+            if (noisy) {
+                print("\nSaved: ");
+                print(file_name);
+                print("\n");
+            }
             return 0;
         }
 
-        print("\nFailed to save file: ");
-        print(file_name);
-        print("\n");
+        if (noisy) {
+            print("\nFailed to save file: ");
+            print(file_name);
+            print("\n");
+        }
         return (uint64_t)-1;
     }
 
@@ -2657,8 +3166,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return 0;
         }
 
-        print("\nLast child: ");
-        print_process_summary(child);
+        print_child_result_compact("Last child", child);
         print("\n");
         return child->status_code;
     }
@@ -2676,8 +3184,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return 0;
         }
 
-        print("\nWait child: ");
-        print_process_summary(child);
+        print_child_result_compact("Wait child", child);
         print("\n");
         child->reaped = 1;
         return child->status_code;
@@ -2685,6 +3192,11 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
 
     if (syscall_no == SYS_SCHED_INFO) {
         print_scheduler_info();
+        return 0;
+    }
+
+    if (syscall_no == SYS_VFS_MOUNTS) {
+        print_vfs_mounts();
         return 0;
     }
 
@@ -2736,6 +3248,31 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return SYSCALL_SLEEP_TO_KERNEL;
     }
 
+    if (syscall_no == SYS_SET_BACKGROUND) {
+        uint32_t pid = (uint32_t)arg1;
+        uint32_t enabled = (uint32_t)arg2;
+        if (!set_user_program_background(pid, enabled)) {
+            return (uint64_t)-1;
+        }
+        return 0;
+    }
+
+    if (syscall_no == SYS_CHILDREN_ACTIVE) {
+        Process* process = current_process();
+        if (process == 0) {
+            return 0;
+        }
+        return count_unfinished_child_processes(process->pid);
+    }
+
+    if (syscall_no == SYS_REAP_ALL_CHILDREN_SILENT) {
+        Process* process = current_process();
+        if (process == 0) {
+            return 0;
+        }
+        return reap_all_child_processes(process->pid);
+    }
+
     print("\nUnknown syscall: ");
     print_hex32((uint32_t)syscall_no);
     return (uint64_t)-1;
@@ -2771,6 +3308,9 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     gdt64_init();
     ata.init();
     fat.init();
+    vfs_init();
+    vfs_mount_fat12_root(&fat);
+    vfs_mount_memfs("/mem");
     idt64_init();
     keyboard.init();
     pit.init();

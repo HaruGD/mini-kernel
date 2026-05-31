@@ -1,7 +1,7 @@
 BITS 64
 default rel
 
-extern user_main
+extern main
 
 section .text
 global _start
@@ -11,7 +11,9 @@ _start:
     mov ds, ax
     mov es, ax
 
-    call user_main
+    mov edi, dword [rsp]
+    lea rsi, [rsp + 8]
+    call main
 
     mov edi, eax
     mov eax, 2
