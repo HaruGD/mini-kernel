@@ -53,6 +53,7 @@
 #define SYS_VFS_TELL 40
 #define SYS_MKDIR 41
 #define SYS_RMDIR 42
+#define SYS_VFS_INFO 43
 
 extern KeyboardDriver keyboard;
 extern PIT pit;

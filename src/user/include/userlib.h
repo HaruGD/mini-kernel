@@ -14,6 +14,15 @@
 #define USER_VFS_SEEK_CUR 1u
 #define USER_VFS_SEEK_END 2u
 
+#define USER_VFS_NODE_NONE 0u
+#define USER_VFS_NODE_FILE 1u
+#define USER_VFS_NODE_DIR  2u
+
+typedef struct UserVFSInfo {
+    uint32_t type;
+    uint32_t size;
+} UserVFSInfo;
+
 static inline long user_syscall0(long number) {
     long result;
     __asm__ volatile(
@@ -222,6 +231,10 @@ static inline long user_mkdir(const char* path) {
 
 static inline long user_rmdir(const char* path) {
     return user_syscall1(42, (long)path);
+}
+
+static inline long user_get_file_info(const char* path, UserVFSInfo* info) {
+    return user_syscall2(43, (long)path, (long)info);
 }
 
 static inline uint64_t user_strlen(const char* text) {
@@ -487,6 +500,106 @@ static inline int user_parse_u32_strict(const char* text, uint32_t* value_out) {
     if (value_out != 0) {
         *value_out = value;
     }
+    return 1;
+}
+
+static inline int user_normalize_path(const char* cwd, const char* input, char* out, uint32_t capacity) {
+    char segments[8][16];
+    uint32_t segment_count = 0;
+    const char* cursor;
+
+    if (out == 0 || capacity < 2 || input == 0 || input[0] == '\0') {
+        return 0;
+    }
+
+    out[0] = '\0';
+
+    if (input[0] == '/') {
+        cursor = input;
+    } else {
+        cursor = cwd != 0 && cwd[0] != '\0' ? cwd : "/";
+        while (*cursor != '\0') {
+            while (*cursor == '/') {
+                cursor++;
+            }
+            if (*cursor == '\0') {
+                break;
+            }
+
+            uint32_t len = 0;
+            while (cursor[len] != '\0' && cursor[len] != '/') {
+                if (len + 1 >= sizeof(segments[0])) {
+                    return 0;
+                }
+                segments[segment_count][len] = cursor[len];
+                len++;
+            }
+            segments[segment_count][len] = '\0';
+            if (segment_count + 1 >= 8) {
+                return 0;
+            }
+            segment_count++;
+            cursor += len;
+        }
+        cursor = input;
+    }
+
+    while (*cursor != '\0') {
+        while (*cursor == '/') {
+            cursor++;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        char segment[16];
+        uint32_t len = 0;
+        while (cursor[len] != '\0' && cursor[len] != '/') {
+            if (len + 1 >= sizeof(segment)) {
+                return 0;
+            }
+            segment[len] = cursor[len];
+            len++;
+        }
+        segment[len] = '\0';
+
+        if (user_str_eq(segment, ".")) {
+        } else if (user_str_eq(segment, "..")) {
+            if (segment_count > 0) {
+                segment_count--;
+            }
+        } else {
+            if (segment_count >= 8) {
+                return 0;
+            }
+            for (uint32_t i = 0; i <= len; i++) {
+                segments[segment_count][i] = segment[i];
+            }
+            segment_count++;
+        }
+
+        cursor += len;
+    }
+
+    {
+        uint32_t offset = 0;
+        out[offset++] = '/';
+
+        for (uint32_t i = 0; i < segment_count; i++) {
+            uint32_t len = (uint32_t)user_strlen(segments[i]);
+            if (offset + len + (i + 1 < segment_count ? 1u : 0u) + 1u > capacity) {
+                return 0;
+            }
+            for (uint32_t j = 0; j < len; j++) {
+                out[offset++] = segments[i][j];
+            }
+            if (i + 1 < segment_count) {
+                out[offset++] = '/';
+            }
+        }
+        out[offset] = '\0';
+    }
+
     return 1;
 }
 

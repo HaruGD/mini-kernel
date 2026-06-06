@@ -43,6 +43,7 @@
 %define SYS_VFS_TELL 40
 %define SYS_MKDIR 41
 %define SYS_RMDIR 42
+%define SYS_VFS_INFO 43
 
 %macro sys_write 2
     mov rax, SYS_WRITE

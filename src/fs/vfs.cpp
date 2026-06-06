@@ -904,6 +904,13 @@ int vfs_get_file_info(const char* path, VFSFileInfo* info) {
     if (relative_path == 0) {
         relative_path = "";
     }
+    if (relative_path[0] == '\0') {
+        if (info != 0) {
+            info->type = VFS_NODE_DIR;
+            info->size = 0;
+        }
+        return VFS_OK;
+    }
     return mount->ops->get_file_info(mount->backend_ctx, relative_path, info);
 }
 

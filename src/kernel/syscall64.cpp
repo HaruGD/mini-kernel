@@ -203,6 +203,24 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return (uint64_t)-1;
     }
 
+    if (syscall_no == SYS_VFS_INFO) {
+        char file_path[USER_PATH_MAX];
+        VFSFileInfo info;
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_path, sizeof(file_path))) {
+            return (uint64_t)-1;
+        }
+        if (arg2 == 0) {
+            return (uint64_t)-1;
+        }
+        if (vfs_get_file_info(file_path, &info) != VFS_OK) {
+            return (uint64_t)-1;
+        }
+        if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg2, (const uint8_t*)&info, sizeof(info))) {
+            return (uint64_t)-1;
+        }
+        return 0;
+    }
+
     if (syscall_no == SYS_CAT_FILE) {
         char file_name[USER_PATH_MAX];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {

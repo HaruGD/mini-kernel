@@ -9,6 +9,9 @@ qemu.log
 *.log
 *.zip
 
+--command
+name
+
 .env
 
 write_sector|.read_sector|.write_sector
