@@ -1,0 +1,264 @@
+548:    process->pid = 0;
+549:    process->parent_pid = 0;
+550:    process->name[0] = '\0';
+551:    process->code_base = 0;
+552:    process->stack_base = 0;
+553:    process->entry_point = 0;
+554:    process->image_size = 0;
+555:    process->code_page_count = 0;
+556:    process->state = PROCESS_STATE_EMPTY;
+557:    process->termination_reason = PROCESS_TERM_NONE;
+558:    process->status_code = 0;
+559:    process->scheduler_state = SCHED_STATE_NONE;
+560:    process->runtime_ticks = 0;
+561:    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+562:    process->slot_index = 0;
+563:    process->active = 0;
+564:    process->reaped = 0;
+565:    process->resumable = 0;
+566:    process->pause_reason = PROCESS_PAUSE_NONE;
+567:    process->wake_tick = 0;
+568:    process->saved_rax = 0;
+569:    process->saved_rbx = 0;
+570:    process->saved_rcx = 0;
+571:    process->saved_rdx = 0;
+572:    process->saved_rbp = 0;
+573:    process->saved_rsi = 0;
+574:    process->saved_rdi = 0;
+575:    process->saved_r8 = 0;
+576:    process->saved_r9 = 0;
+577:    process->saved_r10 = 0;
+578:    process->saved_r11 = 0;
+579:    process->saved_r12 = 0;
+580:    process->saved_r13 = 0;
+581:    process->saved_r14 = 0;
+582:    process->saved_r15 = 0;
+583:    process->saved_rip = 0;
+584:    process->saved_rsp = 0;
+585:    process->saved_rflags = 0;
+593:    process->state = PROCESS_STATE_FAILED;
+594:    process->termination_reason = reason;
+595:    process->status_code = status_code;
+596:    process->scheduler_state = SCHED_STATE_FINISHED;
+597:    process->active = 0;
+598:    process->reaped = 0;
+606:    process->state = PROCESS_STATE_RETURNED;
+607:    process->termination_reason = reason;
+608:    process->status_code = status_code;
+609:    process->scheduler_state = SCHED_STATE_FINISHED;
+610:    process->active = 0;
+611:    process->reaped = 0;
+632:    process->scheduler_state = SCHED_STATE_READY;
+633:    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+665:    process->scheduler_state = SCHED_STATE_RUNNING;
+666:    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+667:    sched_last_pid = process->pid;
+676:    process->scheduler_state = SCHED_STATE_WAITING;
+685:    process->scheduler_state = SCHED_STATE_WAITING;
+686:    process->wake_tick = wake_tick;
+695:    process->scheduler_state = SCHED_STATE_FINISHED;
+696:    process->timeslice_ticks = 0;
+706:    process->scheduler_state = SCHED_STATE_READY;
+707:    process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+718:    process->runtime_ticks++;
+719:    if (process->timeslice_ticks > 0) {
+720:        process->timeslice_ticks--;
+727:        if (process->pid == 0 || !process->active) {
+730:        if (process->pause_reason != PROCESS_PAUSE_SLEEP) {
+733:        if (process->scheduler_state != SCHED_STATE_WAITING) {
+736:        if (tick_now < process->wake_tick) {
+740:        process->wake_tick = 0;
+741:        process->scheduler_state = SCHED_STATE_READY;
+742:        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+754:    if (process->parent_pid == 0) {
+757:    if (process->scheduler_state != SCHED_STATE_RUNNING) {
+760:    if (process->timeslice_ticks != 0) {
+763:    return find_next_ready_process(process->pid) != 0;
+780:    process->saved_r15 = frame[0];
+781:    process->saved_r14 = frame[1];
+782:    process->saved_r13 = frame[2];
+783:    process->saved_r12 = frame[3];
+784:    process->saved_r11 = frame[4];
+785:    process->saved_r10 = frame[5];
+786:    process->saved_r9  = frame[6];
+787:    process->saved_r8  = frame[7];
+788:    process->saved_rdi = frame[8];
+789:    process->saved_rsi = frame[9];
+790:    process->saved_rbp = frame[10];
+791:    process->saved_rdx = frame[11];
+792:    process->saved_rcx = frame[12];
+793:    process->saved_rbx = frame[13];
+794:    process->saved_rax = 0;
+795:    process->saved_rip = frame[15];
+796:    process->saved_rflags = frame[17];
+797:    process->saved_rsp = frame[18];
+798:    process->state = PROCESS_STATE_PAUSED;
+799:    process->resumable = 1;
+800:    process->pause_reason = PROCESS_PAUSE_YIELD;
+810:    process->saved_r15 = frame[0];
+811:    process->saved_r14 = frame[1];
+812:    process->saved_r13 = frame[2];
+813:    process->saved_r12 = frame[3];
+814:    process->saved_r11 = frame[4];
+815:    process->saved_r10 = frame[5];
+816:    process->saved_r9  = frame[6];
+817:    process->saved_r8  = frame[7];
+818:    process->saved_rdi = frame[8];
+819:    process->saved_rsi = frame[9];
+820:    process->saved_rbp = frame[10];
+821:    process->saved_rdx = frame[11];
+822:    process->saved_rcx = frame[12];
+823:    process->saved_rbx = frame[13];
+824:    process->saved_rax = 0;
+825:    process->saved_rip = frame[15];
+826:    process->saved_rflags = frame[17];
+827:    process->saved_rsp = frame[18];
+828:    process->state = PROCESS_STATE_PAUSED;
+829:    process->resumable = 1;
+830:    process->pause_reason = PROCESS_PAUSE_PREEMPT;
+840:    process->saved_r15 = frame[0];
+841:    process->saved_r14 = frame[1];
+842:    process->saved_r13 = frame[2];
+843:    process->saved_r12 = frame[3];
+844:    process->saved_r11 = frame[4];
+845:    process->saved_r10 = frame[5];
+846:    process->saved_r9  = frame[6];
+847:    process->saved_r8  = frame[7];
+848:    process->saved_rdi = frame[8];
+849:    process->saved_rsi = frame[9];
+850:    process->saved_rbp = frame[10];
+851:    process->saved_rdx = frame[11];
+852:    process->saved_rcx = frame[12];
+853:    process->saved_rbx = frame[13];
+854:    process->saved_rax = 0;
+855:    process->saved_rip = frame[15];
+856:    process->saved_rflags = frame[17];
+857:    process->saved_rsp = frame[18];
+858:    process->state = PROCESS_STATE_PAUSED;
+859:    process->resumable = 1;
+860:    process->pause_reason = PROCESS_PAUSE_SLEEP;
+865:    if (process != 0 && process->pause_reason == PROCESS_PAUSE_PREEMPT) {
+868:    if (process != 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+875:    if (process == 0 || process->pid == 0) {
+881:    print_hex32(process->pid);
+883:    print(process->name);
+885:    print_hex32(process->parent_pid);
+887:    print_hex32(process->slot_index);
+889:    print(process_state_name(process->state));
+891:    print(process_term_name(process->termination_reason));
+893:    print_hex32(process->status_code);
+895:    print(scheduler_state_name(process->scheduler_state));
+897:    print_hex32(process->runtime_ticks);
+899:    print_hex32(process->timeslice_ticks);
+901:    print(process->reaped ? "yes" : "no");
+928:        if (process->pid == 0 || process->parent_pid != parent->pid) {
+973:    if (startswith64(process->name, "USHELL_C")) {
+977:    if (startswith64(process->name, "USHELL")) {
+1009:        if (process->pid == 0 || !process->active) {
+1012:        if (process->slot_index == slot_index) {
+1081:        if (process->pid == 0 || process->parent_pid != parent_pid) {
+1084:        if (latest == 0 || process->pid > latest->pid) {
+1095:        if (process->pid == 0 || process->parent_pid != parent_pid) {
+1098:        if (process->active || process->reaped) {
+1101:        if (process->state != PROCESS_STATE_RETURNED && process->state != PROCESS_STATE_FAILED) {
+1104:        if (latest == 0 || process->pid > latest->pid) {
+1115:        if (process->pid == 0 || process->parent_pid != parent_pid) {
+1118:        if (process->active || process->reaped) {
+1121:        if (process->state != PROCESS_STATE_RETURNED && process->state != PROCESS_STATE_FAILED) {
+1124:        process->reaped = 1;
+1134:        if (process->pid == 0 || process->parent_pid != parent_pid) {
+1137:        if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+1140:        if (latest == 0 || process->pid > latest->pid) {
+1154:        if (process->pid == 0 || process->pid == exclude_pid) {
+1157:        if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+1160:        if (process->scheduler_state != SCHED_STATE_READY) {
+1219:    for (uint32_t page = 0; page < process->code_page_count; page++) {
+1220:        uint64_t virt = process->code_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
+1228:    uint64_t stack_phys = paging64_get_phys(process->stack_base);
+1230:        paging64_unmap_page(process->stack_base);
+1504:    process->pid = next_pid++;
+1505:    process->parent_pid = parent != 0 ? parent->pid : 0;
+1506:    process->slot_index = slot_index;
+1507:    copy_process_name(process->name, filename);
+1508:    process->code_base = user_code_base;
+1509:    process->stack_base = user_stack_base;
+1510:    process->entry_point = user_code_base;
+1511:    process->state = PROCESS_STATE_LOADED;
+1512:    process->termination_reason = PROCESS_TERM_NONE;
+1513:    process->status_code = 0;
+1514:    process->active = 1;
+1532:        process->image_size = entry.file_size;
+1538:    process->image_size = entry.file_size;
+1607:        process->entry_point = user_code_base + (elf_header->e_entry - elf_first_vaddr);
+1618:        process->entry_point = user_code_base;
+1660:            process->code_page_count = mapped_code_pages;
+1675:            process->code_page_count = mapped_code_pages;
+1692:    process->code_page_count = code_page_count;
+1697:        process->code_page_count = 0;
+1711:        process->code_page_count = 0;
+1748:                process->code_page_count = 0;
+1765:    process->state = PROCESS_STATE_LOADED;
+1780:    print_hex32(process->pid);
+1782:    print_hex32(process->parent_pid);
+1789:    process->state = PROCESS_STATE_RUNNING;
+1796:    enter_user_mode(process->entry_point, user_stack_top - 16);
+1812:    if (process->state == PROCESS_STATE_PAUSED) {
+1816:        print_hex32(process->pid);
+1819:        if (continue_ready_processes(process->pid)) {
+1831:    process->code_page_count = 0;
+1833:    if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
+1836:    process->resumable = 0;
+1842:    print_hex32(process->pid);
+1844:    print(process_state_name(process->state));
+1846:    print(process_term_name(process->termination_reason));
+1848:    print_hex32(process->status_code);
+1850:    process->active = 0;
+1852:    if (continue_ready_processes(process->pid)) {
+1886:        print_hex32(process->pid);
+1890:    kernel_user_resume_rax = process->saved_rax;
+1891:    kernel_user_resume_rbx = process->saved_rbx;
+1892:    kernel_user_resume_rcx = process->saved_rcx;
+1893:    kernel_user_resume_rdx = process->saved_rdx;
+1894:    kernel_user_resume_rbp = process->saved_rbp;
+1895:    kernel_user_resume_rsi = process->saved_rsi;
+1896:    kernel_user_resume_rdi = process->saved_rdi;
+1897:    kernel_user_resume_r8 = process->saved_r8;
+1898:    kernel_user_resume_r9 = process->saved_r9;
+1899:    kernel_user_resume_r10 = process->saved_r10;
+1900:    kernel_user_resume_r11 = process->saved_r11;
+1901:    kernel_user_resume_r12 = process->saved_r12;
+1902:    kernel_user_resume_r13 = process->saved_r13;
+1903:    kernel_user_resume_r14 = process->saved_r14;
+1904:    kernel_user_resume_r15 = process->saved_r15;
+1905:    kernel_user_resume_rip = process->saved_rip;
+1906:    kernel_user_resume_rsp = process->saved_rsp;
+1907:    kernel_user_resume_rflags = process->saved_rflags;
+1915:    process->state = PROCESS_STATE_RUNNING;
+1916:    process->resumable = 0;
+1935:    if (process->state == PROCESS_STATE_PAUSED) {
+1939:        print_hex32(process->pid);
+1942:        if (continue_ready_processes(process->pid)) {
+1954:    process->code_page_count = 0;
+1955:    if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
+1958:    process->resumable = 0;
+1964:    print_hex32(process->pid);
+1966:    print(process_state_name(process->state));
+1968:    print(process_term_name(process->termination_reason));
+1970:    print_hex32(process->status_code);
+1973:    if (continue_ready_processes(process->pid)) {
+2000:    if (process->parent_pid != parent->pid) {
+2004:    if (process->scheduler_state == SCHED_STATE_WAITING && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+2008:    if (!process->resumable || process->state != PROCESS_STATE_PAUSED) {
+2032:    if (process->parent_pid != parent->pid) {
+2036:    if (process->state != PROCESS_STATE_PAUSED || !process->resumable) {
+2042:    process->resumable = 0;
+2043:    process->pause_reason = PROCESS_PAUSE_NONE;
+2046:    process->active = 0;
+2049:    print_hex32(process->pid);
+2398:    if (process != 0 && process->timeslice_ticks == 0) {
+2399:        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+2631:        return process != 0 ? process->pid : 0;
+2636:        return process != 0 ? process->parent_pid : 0;
+2651:        const Process* child = find_last_child_process(process->pid);
+2670:        Process* child = find_waitable_child_process(process->pid);
+2715:        uint32_t count = reap_all_child_processes(process->pid);

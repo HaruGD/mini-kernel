@@ -1,6 +1,7 @@
 #include "fs/vfs.h"
 
 #include "heap.h"
+#include "arch/x86/io.h"
 #include "drivers/terminal.h"
 #include "fs/fat12.h"
 
@@ -27,6 +28,7 @@ struct VFSOpenFile {
     uint8_t active;
     uint8_t dirty;
     uint16_t mode;
+    uint32_t owner_pid;
     uint32_t position;
     uint32_t size;
     uint32_t capacity;
@@ -44,6 +46,34 @@ struct MemFSFile {
 };
 
 static MemFSFile g_memfs_files[MEMFS_MAX_FILES];
+
+static int vfs_serial_ready() {
+    return inb(0x3FD) & 0x20;
+}
+
+static void vfs_serial_putchar(char c) {
+    while (!vfs_serial_ready()) {
+    }
+    outb(0x3F8, (unsigned char)c);
+}
+
+static void vfs_putchar_both(char c) {
+    terminal.putchar(c);
+    if (c == '\n') {
+        vfs_serial_putchar('\r');
+    }
+    vfs_serial_putchar(c);
+}
+
+static void vfs_print(const char* text) {
+    if (text == 0) {
+        return;
+    }
+
+    for (uint32_t i = 0; text[i] != '\0'; i++) {
+        vfs_putchar_both(text[i]);
+    }
+}
 
 static uint32_t vfs_strlen_local(const char* text) {
     uint32_t len = 0;
@@ -257,8 +287,8 @@ static int memfs_backend_list_files(void*, const char* relative_path) {
         if (!g_memfs_files[i].active) {
             continue;
         }
-        terminal.print("\n");
-        terminal.print(g_memfs_files[i].name);
+        vfs_print("\n");
+        vfs_print(g_memfs_files[i].name);
     }
     return VFS_OK;
 }
@@ -364,6 +394,7 @@ static void vfs_reset_open_file(VFSOpenFile* file) {
     file->active = 0;
     file->dirty = 0;
     file->mode = 0;
+    file->owner_pid = 0;
     file->position = 0;
     file->size = 0;
     file->capacity = 0;
@@ -643,7 +674,7 @@ int vfs_delete_file(const char* path) {
     return mount->ops->delete_file(mount->backend_ctx, relative_path);
 }
 
-int vfs_open(const char* path, uint32_t mode) {
+int vfs_open_for_owner(const char* path, uint32_t mode, uint32_t owner_pid) {
     if (path == 0 || path[0] == '\0') {
         return VFS_ERR_INVALID_PATH;
     }
@@ -678,6 +709,7 @@ int vfs_open(const char* path, uint32_t mode) {
         file->active = 1;
         file->dirty = (!exists && (mode & VFS_OPEN_CREATE)) || ((mode & VFS_OPEN_WRITE) && (mode & VFS_OPEN_TRUNCATE));
         file->mode = (uint16_t)mode;
+        file->owner_pid = owner_pid;
         file->position = 0;
         file->size = initial_size;
         file->capacity = initial_capacity;
@@ -692,10 +724,18 @@ int vfs_open(const char* path, uint32_t mode) {
             file->size = bytes_read;
         }
 
+        if (mode & VFS_OPEN_APPEND) {
+            file->position = file->size;
+        }
+
         return fd;
     }
 
     return VFS_ERR_NO_SLOT;
+}
+
+int vfs_open(const char* path, uint32_t mode) {
+    return vfs_open_for_owner(path, mode, 0);
 }
 
 int vfs_read(int fd, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_read_out) {
@@ -747,6 +787,49 @@ int vfs_write(int fd, const uint8_t* buffer, uint32_t size, uint32_t* bytes_writ
     return VFS_OK;
 }
 
+int vfs_seek(int fd, int32_t offset, uint32_t whence, uint32_t* position_out) {
+    VFSOpenFile* file = vfs_get_open_file(fd);
+    if (file == 0) {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    int64_t base = 0;
+    switch (whence) {
+        case VFS_SEEK_SET:
+            base = 0;
+            break;
+        case VFS_SEEK_CUR:
+            base = (int64_t)file->position;
+            break;
+        case VFS_SEEK_END:
+            base = (int64_t)file->size;
+            break;
+        default:
+            return VFS_ERR_INVALID_PATH;
+    }
+
+    int64_t next = base + (int64_t)offset;
+    if (next < 0 || next > 0x7FFFFFFFLL) {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    file->position = (uint32_t)next;
+    if (position_out != 0) {
+        *position_out = file->position;
+    }
+    return VFS_OK;
+}
+
+int vfs_tell(int fd, uint32_t* position_out) {
+    VFSOpenFile* file = vfs_get_open_file(fd);
+    if (file == 0 || position_out == 0) {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    *position_out = file->position;
+    return VFS_OK;
+}
+
 int vfs_close(int fd) {
     VFSOpenFile* file = vfs_get_open_file(fd);
     if (file == 0) {
@@ -762,4 +845,32 @@ int vfs_close(int fd) {
 
     vfs_reset_open_file(file);
     return VFS_OK;
+}
+
+uint32_t vfs_close_all_for_owner(uint32_t owner_pid) {
+    uint32_t count = 0;
+
+    for (int fd = 0; fd < VFS_MAX_OPEN_FILES; fd++) {
+        VFSOpenFile* file = &g_vfs_open_files[fd];
+        if (!file->active || file->owner_pid != owner_pid) {
+            continue;
+        }
+
+        vfs_close(fd);
+        count++;
+    }
+
+    return count;
+}
+
+uint32_t vfs_count_open_for_owner(uint32_t owner_pid) {
+    uint32_t count = 0;
+
+    for (int fd = 0; fd < VFS_MAX_OPEN_FILES; fd++) {
+        if (g_vfs_open_files[fd].active && g_vfs_open_files[fd].owner_pid == owner_pid) {
+            count++;
+        }
+    }
+
+    return count;
 }

@@ -8,6 +8,11 @@
 #define USER_VFS_OPEN_WRITE    0x00000002u
 #define USER_VFS_OPEN_CREATE   0x00000004u
 #define USER_VFS_OPEN_TRUNCATE 0x00000008u
+#define USER_VFS_OPEN_APPEND   0x00000010u
+
+#define USER_VFS_SEEK_SET 0u
+#define USER_VFS_SEEK_CUR 1u
+#define USER_VFS_SEEK_END 2u
 
 static inline long user_syscall0(long number) {
     long result;
@@ -201,6 +206,14 @@ static inline long user_write_file_handle(long fd, const void* buffer, uint32_t 
 
 static inline long user_close_file(long fd) {
     return user_syscall1(38, fd);
+}
+
+static inline long user_seek_file(long fd, int32_t offset, uint32_t whence) {
+    return user_syscall3(39, fd, (long)offset, (long)whence);
+}
+
+static inline long user_tell_file(long fd) {
+    return user_syscall1(40, fd);
 }
 
 static inline uint64_t user_strlen(const char* text) {

@@ -1,10 +1,10 @@
 #include "userlib.h"
 
-int user_main(void) {
+int main(void) {
     static const char banner[] =
         "=== URUN_C.ELF ===\n"
-        "Running UHELLO.ELF from C userland.\n";
-    static const char target[] = "UHELLO.ELF";
+        "Running UHELLO_C.ELF from C userland.\n";
+    static const char target[] = "UHELLO_C.ELF";
     long result;
 
     user_write_cstr(banner);

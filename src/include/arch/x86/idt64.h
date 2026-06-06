@@ -31,7 +31,7 @@ uint64_t gp_fault_handler64(uint64_t error_code);
 uint64_t double_fault_handler64(uint64_t error_code);
 
 void keyboard_handler64();
-void timer_handler64();
+uint64_t timer_handler64();
 void user_test_interrupt_handler64();
 void user_exit_interrupt_handler64();
 uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t arg3);

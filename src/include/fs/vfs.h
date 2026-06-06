@@ -28,6 +28,13 @@ enum VFSOpenMode {
     VFS_OPEN_WRITE = 0x00000002,
     VFS_OPEN_CREATE = 0x00000004,
     VFS_OPEN_TRUNCATE = 0x00000008,
+    VFS_OPEN_APPEND = 0x00000010,
+};
+
+enum VFSSeekWhence {
+    VFS_SEEK_SET = 0,
+    VFS_SEEK_CUR = 1,
+    VFS_SEEK_END = 2,
 };
 
 struct VFSFileInfo {
@@ -66,8 +73,13 @@ int vfs_touch_file(const char* path);
 int vfs_delete_file(const char* path);
 
 int vfs_open(const char* path, uint32_t mode);
+int vfs_open_for_owner(const char* path, uint32_t mode, uint32_t owner_pid);
 int vfs_read(int fd, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_read_out);
 int vfs_write(int fd, const uint8_t* buffer, uint32_t size, uint32_t* bytes_written_out);
+int vfs_seek(int fd, int32_t offset, uint32_t whence, uint32_t* position_out);
+int vfs_tell(int fd, uint32_t* position_out);
 int vfs_close(int fd);
+uint32_t vfs_close_all_for_owner(uint32_t owner_pid);
+uint32_t vfs_count_open_for_owner(uint32_t owner_pid);
 
 #endif

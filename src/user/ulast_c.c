@@ -1,6 +1,6 @@
 #include "userlib.h"
 
-int user_main(void) {
+int main(void) {
     static const char banner[] =
         "=== ULAST_C.ELF ===\n"
         "Showing the current process child status from C userland.\n";

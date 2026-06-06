@@ -1,6 +1,6 @@
 #include "userlib.h"
 
-int user_main(void) {
+int main(void) {
     static const char banner[] =
         "=== UJOBS_C.ELF ===\n"
         "Listing jobs from C userland.\n";

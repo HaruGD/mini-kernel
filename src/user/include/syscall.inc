@@ -39,6 +39,8 @@
 %define SYS_VFS_READ 36
 %define SYS_VFS_WRITE 37
 %define SYS_VFS_CLOSE 38
+%define SYS_VFS_SEEK 39
+%define SYS_VFS_TELL 40
 
 %macro sys_write 2
     mov rax, SYS_WRITE

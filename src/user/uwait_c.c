@@ -1,6 +1,6 @@
 #include "userlib.h"
 
-int user_main(void) {
+int main(void) {
     static const char banner[] =
         "=== UWAIT_C.ELF ===\n"
         "Waiting for an unreaped child of the current process.\n";

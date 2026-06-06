@@ -1,6 +1,10 @@
 #include "userlib.h"
 
 #define SHELLC_INPUT_MAX 64
+#define SHELLC_CMDLINE_MAX 96
+
+static char shell_input[SHELLC_INPUT_MAX];
+static char shell_command_line[SHELLC_CMDLINE_MAX];
 
 static void print_prompt(void) {
     user_write_cstr("csh> ");
@@ -17,17 +21,42 @@ static void print_command_failed(const char* command) {
 static void print_tools(void) {
     user_write_cstr(
         "Standalone tools:\n"
-        "  Files:   uls, utouch, usave, ucat, urm, uio\n"
-        "  Status:  upid, uschd, umem, uvers, uargs\n"
+        "  Files:   uls [path], utouch [file], usave [file] [text], ucat [file], urm [file]\n"
+        "           uio [file] [text], uio append [file] [text], uio seek [file] [offset],\n"
+        "           uio leak [file] [text]\n"
+        "  Status:  upid, uschd, umem, uvers, uboot, umounts, uargs\n"
         "  Proc:    urun\n"
         "Shell shortcuts:\n"
+        "  memstat, sched, bootinfo, mounts\n"
         "  ujobs, ulast, uwait\n"
         "Use 'where [name]' to see whether a command is built in, a tool alias,\n"
         "or a shell shortcut.\n");
 }
 
-static int run_tool_alias(const char* command, const char* image_name) {
-    if (user_run(image_name) < 0) {
+static int run_tool_alias(const char* command, const char* image_name, const char* args) {
+    uint64_t image_len = user_strlen(image_name);
+    uint64_t args_len = (args != 0 && args[0] != '\0') ? user_strlen(args) : 0;
+
+    if (image_len + (args_len > 0 ? 1 : 0) + args_len + 1 > sizeof(shell_command_line)) {
+        user_printf("%s arguments are too long.\n", command);
+        return 0;
+    }
+
+    shell_command_line[0] = '\0';
+    for (uint64_t i = 0; i < image_len; i++) {
+        shell_command_line[i] = image_name[i];
+    }
+    shell_command_line[image_len] = '\0';
+
+    if (args_len > 0) {
+        shell_command_line[image_len] = ' ';
+        for (uint64_t i = 0; i < args_len; i++) {
+            shell_command_line[image_len + 1 + i] = args[i];
+        }
+        shell_command_line[image_len + 1 + args_len] = '\0';
+    }
+
+    if (user_run(shell_command_line) < 0) {
         print_command_failed(command);
         return 0;
     }
@@ -39,9 +68,10 @@ static void print_builtins(void) {
     user_write_cstr(
         "Built-in commands:\n"
         "  help ? about exit clear cls tools builtins where\n"
-        "  version bootinfo memstat uptime mounts\n"
-        "  ls [path] cat touch save rm\n"
-        "  jobs ps pid ppid sched wait laststatus reapall\n"
+        "  version uptime\n"
+        "  ls [path], cat [file], touch [file], save [file] [text], rm [file]\n"
+        "  pid ppid\n"
+        "  jobs ps wait laststatus reapall\n"
         "  run sleep yield resume kill bg fg echo\n");
 }
 
@@ -65,6 +95,10 @@ static void print_where(const char* name) {
         user_write_cstr("tool alias - runs URM_C.ELF\n");
     } else if (user_str_eq(name, "uio")) {
         user_write_cstr("tool alias - runs UIO_C.ELF\n");
+    } else if (user_str_eq(name, "uboot")) {
+        user_write_cstr("tool alias - runs UBOOT_C.ELF\n");
+    } else if (user_str_eq(name, "umounts")) {
+        user_write_cstr("tool alias - runs UMNTS_C.ELF\n");
     } else if (user_str_eq(name, "upid")) {
         user_write_cstr("tool alias - runs UPID_C.ELF\n");
     } else if (user_str_eq(name, "uschd")) {
@@ -83,6 +117,14 @@ static void print_where(const char* name) {
         user_write_cstr("shell shortcut - shell shortcut for laststatus\n");
     } else if (user_str_eq(name, "uwait")) {
         user_write_cstr("shell shortcut - shell shortcut for wait\n");
+    } else if (user_str_eq(name, "memstat")) {
+        user_write_cstr("shell shortcut - runs UMEM_C.ELF\n");
+    } else if (user_str_eq(name, "sched")) {
+        user_write_cstr("shell shortcut - runs USCHD_C.ELF\n");
+    } else if (user_str_eq(name, "bootinfo")) {
+        user_write_cstr("shell shortcut - runs UBOOT_C.ELF\n");
+    } else if (user_str_eq(name, "mounts")) {
+        user_write_cstr("shell shortcut - runs UMNTS_C.ELF\n");
     } else if (user_str_eq(name, "help") ||
                user_str_eq(name, "?") ||
                user_str_eq(name, "about") ||
@@ -93,9 +135,6 @@ static void print_where(const char* name) {
                user_str_eq(name, "builtins") ||
                user_str_eq(name, "where") ||
                user_str_eq(name, "version") ||
-               user_str_eq(name, "bootinfo") ||
-               user_str_eq(name, "memstat") ||
-               user_str_eq(name, "mounts") ||
                user_str_eq(name, "uptime") ||
                user_str_eq(name, "ls") ||
                user_str_eq(name, "cat") ||
@@ -106,7 +145,6 @@ static void print_where(const char* name) {
                user_str_eq(name, "ps") ||
                user_str_eq(name, "pid") ||
                user_str_eq(name, "ppid") ||
-               user_str_eq(name, "sched") ||
                user_str_eq(name, "wait") ||
                user_str_eq(name, "laststatus") ||
                user_str_eq(name, "reapall") ||
@@ -129,25 +167,24 @@ static void print_help(void) {
     user_write_cstr(
         "Shell:\n"
         "  help, ?, about, exit, clear, cls, tools, builtins, where [command]\n"
-        "System:\n"
-        "  version, bootinfo, memstat, uptime, mounts\n"
-        "Files:\n"
+        "Built-ins:\n"
+        "  version, uptime, jobs, ps, wait, laststatus, reapall\n"
         "  ls [path], cat [file], touch [file], save [file] [text], rm [file]\n"
-        "  uls, utouch, usave, ucat, urm, uio\n"
-        "Status Tools:\n"
-        "  upid, uschd, umem, uvers, uargs\n"
+        "  pid, ppid\n"
+        "  run [file], sleep [ticks], yield, resume [pid], kill [pid], bg [pid], fg [pid], echo [text]\n"
+        "Shell shortcuts:\n"
+        "  sched, memstat, bootinfo, mounts\n"
+        "Standalone tools:\n"
+        "  uls [path], utouch [file], usave [file] [text], ucat [file], urm [file]\n"
+        "  upid, uschd, umem, uvers, uboot, umounts, uargs\n"
+        "  uio [file] [text], uio append [file] [text], uio seek [file] [offset], uio leak [file] [text]\n"
         "Processes:\n"
-        "  jobs, ps, pid, ppid, sched, wait, laststatus, reapall\n"
         "  ujobs, ulast, uwait, urun\n"
-        "Control:\n"
-        "  run [file], sleep [ticks], yield, resume [pid], kill [pid], bg [pid], fg [pid]\n"
         "Text:\n"
         "  echo [text]\n");
 }
 
 int main(void) {
-    char input[SHELLC_INPUT_MAX];
-
     user_write_cstr(
         "=== USHELL_C.ELF ===\n"
         "C user shell ready. Type help for commands.\n"
@@ -158,9 +195,9 @@ int main(void) {
         char* args;
 
         print_prompt();
-        user_read_line(input, sizeof(input));
+        user_read_line(shell_input, sizeof(shell_input));
 
-        line = user_trim(input);
+        line = user_trim(shell_input);
         if (line[0] == '\0') {
             continue;
         }
@@ -225,32 +262,32 @@ int main(void) {
         }
 
         if (user_str_eq(line, "uls")) {
-            run_tool_alias("uls", "ULS_C.ELF");
+            run_tool_alias("uls", "ULS_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "upid")) {
-            run_tool_alias("upid", "UPID_C.ELF");
+            run_tool_alias("upid", "UPID_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "uschd")) {
-            run_tool_alias("uschd", "USCHD_C.ELF");
+            run_tool_alias("uschd", "USCHD_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "umem")) {
-            run_tool_alias("umem", "UMEM_C.ELF");
+            run_tool_alias("umem", "UMEM_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "uvers")) {
-            run_tool_alias("uvers", "UVERS_C.ELF");
+            run_tool_alias("uvers", "UVERS_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "uargs")) {
-            run_tool_alias("uargs", "UARGS_C.ELF");
+            run_tool_alias("uargs", "UARGS_C.ELF", args);
             continue;
         }
 
@@ -270,32 +307,42 @@ int main(void) {
         }
 
         if (user_str_eq(line, "urun")) {
-            run_tool_alias("urun", "URUN_C.ELF");
+            run_tool_alias("urun", "URUN_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "utouch")) {
-            run_tool_alias("utouch", "UTOUCH_C.ELF");
+            run_tool_alias("utouch", "UTOUCH_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "usave")) {
-            run_tool_alias("usave", "USAVE_C.ELF");
+            run_tool_alias("usave", "USAVE_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "ucat")) {
-            run_tool_alias("ucat", "UCAT_C.ELF");
+            run_tool_alias("ucat", "UCAT_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "urm")) {
-            run_tool_alias("urm", "URM_C.ELF");
+            run_tool_alias("urm", "URM_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "uio")) {
-            run_tool_alias("uio", "UIO_C.ELF");
+            run_tool_alias("uio", "UIO_C.ELF", args);
+            continue;
+        }
+
+        if (user_str_eq(line, "uboot")) {
+            run_tool_alias("uboot", "UBOOT_C.ELF", args);
+            continue;
+        }
+
+        if (user_str_eq(line, "umounts")) {
+            run_tool_alias("umounts", "UMNTS_C.ELF", args);
             continue;
         }
 
@@ -305,17 +352,17 @@ int main(void) {
         }
 
         if (user_str_eq(line, "bootinfo")) {
-            user_bootinfo();
+            run_tool_alias("bootinfo", "UBOOT_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "memstat")) {
-            user_memstat();
+            run_tool_alias("memstat", "UMEM_C.ELF", args);
             continue;
         }
 
         if (user_str_eq(line, "mounts")) {
-            user_mounts();
+            run_tool_alias("mounts", "UMNTS_C.ELF", args);
             continue;
         }
 
@@ -345,7 +392,7 @@ int main(void) {
         }
 
         if (user_str_eq(line, "sched")) {
-            user_sched();
+            run_tool_alias("sched", "USCHD_C.ELF", args);
             continue;
         }
 

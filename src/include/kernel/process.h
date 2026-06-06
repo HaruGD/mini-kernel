@@ -59,6 +59,7 @@ struct Process {
     uint64_t entry_point;
     uint32_t image_size;
     uint32_t code_page_count;
+    uint32_t stack_page_count;
     uint32_t state;
     uint32_t termination_reason;
     uint32_t status_code;

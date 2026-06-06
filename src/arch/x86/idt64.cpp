@@ -9,6 +9,7 @@ extern "C" void debug_print_hex64(uint32_t value);
 extern "C" void debug_print_hex64_u64(uint64_t value);
 extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code);
 extern "C" uint64_t process_fault_returnable64();
+extern "C" uint64_t timer_preempt_requested64();
 
 #define PROCESS_TERM_PAGE_FAULT 6
 #define PROCESS_TERM_GP_FAULT 7
