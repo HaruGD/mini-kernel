@@ -84,12 +84,13 @@ static uint64_t current_rsp() {
 
 int resume_user_program(uint32_t pid);
 
-extern "C" void save_yield_context64(uint64_t* frame) {
-    Process* process = current_process();
+static void save_paused_context64(uint64_t* frame, Process* process, uint32_t pause_reason, uint64_t saved_rax) {
     if (process == 0 || frame == 0) {
         return;
     }
 
+    // Frame layout comes from PUSH_GPRS in idt64.asm:
+    // [0]=r15 ... [13]=rbx [14]=rax [15]=rip [16]=cs [17]=rflags [18]=rsp [19]=ss
     process->saved_r15 = frame[0];
     process->saved_r14 = frame[1];
     process->saved_r13 = frame[2];
@@ -104,13 +105,23 @@ extern "C" void save_yield_context64(uint64_t* frame) {
     process->saved_rdx = frame[11];
     process->saved_rcx = frame[12];
     process->saved_rbx = frame[13];
-    process->saved_rax = 0;
+    process->saved_rax = saved_rax;
     process->saved_rip = frame[15];
     process->saved_rflags = frame[17];
     process->saved_rsp = frame[18];
     process->state = PROCESS_STATE_PAUSED;
     process->resumable = 1;
-    process->pause_reason = PROCESS_PAUSE_YIELD;
+    process->pause_reason = (uint8_t)pause_reason;
+}
+
+extern "C" void save_yield_context64(uint64_t* frame) {
+    Process* process = current_process();
+    if (process == 0 || frame == 0) {
+        return;
+    }
+
+    // Yield/sleep are syscall-driven pauses, so they resume as if the syscall returned 0.
+    save_paused_context64(frame, process, PROCESS_PAUSE_YIELD, 0);
     scheduler_yield_current();
 }
 
@@ -120,27 +131,8 @@ extern "C" void save_preempt_context64(uint64_t* frame) {
         return;
     }
 
-    process->saved_r15 = frame[0];
-    process->saved_r14 = frame[1];
-    process->saved_r13 = frame[2];
-    process->saved_r12 = frame[3];
-    process->saved_r11 = frame[4];
-    process->saved_r10 = frame[5];
-    process->saved_r9  = frame[6];
-    process->saved_r8  = frame[7];
-    process->saved_rdi = frame[8];
-    process->saved_rsi = frame[9];
-    process->saved_rbp = frame[10];
-    process->saved_rdx = frame[11];
-    process->saved_rcx = frame[12];
-    process->saved_rbx = frame[13];
-    process->saved_rax = 0;
-    process->saved_rip = frame[15];
-    process->saved_rflags = frame[17];
-    process->saved_rsp = frame[18];
-    process->state = PROCESS_STATE_PAUSED;
-    process->resumable = 1;
-    process->pause_reason = PROCESS_PAUSE_PREEMPT;
+    // Timer preemption should preserve the interrupted register state, including rax.
+    save_paused_context64(frame, process, PROCESS_PAUSE_PREEMPT, frame[14]);
     scheduler_yield_current();
 }
 
@@ -150,27 +142,7 @@ extern "C" void save_sleep_context64(uint64_t* frame, uint32_t sleep_ticks) {
         return;
     }
 
-    process->saved_r15 = frame[0];
-    process->saved_r14 = frame[1];
-    process->saved_r13 = frame[2];
-    process->saved_r12 = frame[3];
-    process->saved_r11 = frame[4];
-    process->saved_r10 = frame[5];
-    process->saved_r9  = frame[6];
-    process->saved_r8  = frame[7];
-    process->saved_rdi = frame[8];
-    process->saved_rsi = frame[9];
-    process->saved_rbp = frame[10];
-    process->saved_rdx = frame[11];
-    process->saved_rcx = frame[12];
-    process->saved_rbx = frame[13];
-    process->saved_rax = 0;
-    process->saved_rip = frame[15];
-    process->saved_rflags = frame[17];
-    process->saved_rsp = frame[18];
-    process->state = PROCESS_STATE_PAUSED;
-    process->resumable = 1;
-    process->pause_reason = PROCESS_PAUSE_SLEEP;
+    save_paused_context64(frame, process, PROCESS_PAUSE_SLEEP, 0);
     scheduler_mark_sleeping(process, pit.get_tick() + sleep_ticks);
 }
 
@@ -327,6 +299,9 @@ static int idle_until_ready_process() {
 }
 
 static void user_input_reset() {
+    char discarded = 0;
+    while (keyboard.try_read_char(&discarded)) {
+    }
 }
 
 void print_boot_info() {
@@ -773,7 +748,6 @@ int run_user_program(const char* command_line) {
     print(" code=");
     print_hex32(process->status_code);
     print(".\n");
-    process->active = 0;
 
     if (continue_ready_processes(process->pid)) {
         return 1;
