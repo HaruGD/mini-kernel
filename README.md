@@ -1,30 +1,56 @@
 # mini-kernel
 
-Experimental x86 kernel and bootloader project focused on learning low-level systems work.
+Experimental x86 OS project for learning low-level systems work by building a BIOS boot chain, a 64-bit kernel, and a small C-based userland.
 
-The current default path boots a 64-bit kernel through a BIOS `stage1 -> stage2` loader. A legacy 32-bit path is still kept around for reference.
+The current default path is the 64-bit system:
+
+```text
+BIOS -> stage1 -> stage2 -> kernel64 -> USHELL_C.ELF
+```
+
+A legacy 32-bit path still exists for reference, but active development is focused on the 64-bit side.
 
 ## Current Status
 
 What works right now:
 
-- BIOS boot sector + second-stage bootloader
+- BIOS boot sector + second-stage loader
 - FAT12 boot image generation
-- `KERNEL.BIN` lookup from FAT12 root directory
-- FAT12 cluster-chain kernel loading
-- 64-bit long mode boot
+- 64-bit long mode kernel boot
 - `BootInfo` handoff
 - BIOS E820 memory map handoff
-- 64-bit IDT
-- page fault / general protection fault / double fault handling
-- PIT and keyboard IRQ handling
-- FAT12 file commands from the 64-bit shell
-- 64-bit PMM
-- 64-bit heap
-- 64-bit runtime paging helpers
-- heap page return back to PMM
+- IDT / PIT / keyboard IRQ handling
+- PMM + heap + runtime paging helpers
+- user mode entry
+- syscall path (`int 0x80`)
+- process table and scheduler prototype
+- cooperative `yield`
+- timer-based preemption
+- sleep / wakeup
+- foreground / background job control
+- ELF user program loading
+- C user programs with `main(void)` and `main(argc, argv)` support
+- default C shell userland (`USHELL_C.ELF`)
+- VFS layer
+- root FAT12 backend mounted at `/`
+- memory-backed filesystem mounted at `/mem`
+- handle-based file I/O:
+  - `open`
+  - `read`
+  - `write`
+  - `close`
+  - `seek`
+  - `tell`
 
-Current 64-bit shell commands:
+## Shells
+
+There are two shell layers:
+
+### Kernel shell (`OS64>`)
+
+This is the BIOS/kernel-side shell used before entering userland.
+
+Typical commands include:
 
 - `help`
 - `clear`
@@ -32,34 +58,131 @@ Current 64-bit shell commands:
 - `bootinfo`
 - `memmap`
 - `memstat`
-- `echo`
-- `write`
-- `fill`
-- `read`
-- `free`
 - `dump`
-- `atatest`
-- `ls`
-- `load`
-- `save`
-- `rm`
-- `pagefault`
+- `sched`
+- `mounts`
+- `ls [path]`
+- `load [file]`
+- `save [file]`
+- `rm [file]`
+- `run [file]`
+- `resume`
+- `usertest`
+- `ushell`
+- `ushellc`
 - `uptime`
+
+### User shell (`USHELL_C.ELF`)
+
+`ushell` now boots into the C user shell by default.
+
+Main built-ins:
+
+- `help`, `?`, `about`, `exit`, `clear`, `cls`
+- `version`, `uptime`, `jobs`, `ps`, `wait`, `laststatus`, `reapall`
+- `ls [path]`, `cat [file]`, `touch [file]`, `save [file] [text]`, `rm [file]`
+- `pid`, `ppid`
+- `run [file]`
+- `sleep [ticks]`
+- `yield`
+- `resume [pid]`
+- `kill [pid]`
+- `bg [pid]`
+- `fg [pid]`
+- `echo [text]`
+- `tools`, `builtins`, `where [command]`
+
+Shell shortcuts that run standalone tools:
+
+- `sched`
+- `memstat`
+- `bootinfo`
+- `mounts`
+
+## Standalone User Programs
+
+The project now leans heavily on C/ELF user programs.
+
+Examples:
+
+- `UHELLO_C.ELF`
+- `UINFO_C.ELF`
+- `USLEEP_C.ELF`
+- `UYIELD_C.ELF`
+- `UBUSY_C.ELF`
+- `UFAULT_C.ELF`
+- `UARGS_C.ELF`
+- `UIO_C.ELF`
+
+Standalone file/status tools:
+
+- `ULS_C.ELF`
+- `UTOUCH_C.ELF`
+- `USAVE_C.ELF`
+- `UCAT_C.ELF`
+- `URM_C.ELF`
+- `UPID_C.ELF`
+- `USCHD_C.ELF`
+- `UMEM_C.ELF`
+- `UVERS_C.ELF`
+- `UBOOT_C.ELF`
+- `UMNTS_C.ELF`
+
+Examples from the user shell:
+
+```text
+csh> ucat /mem/test.txt
+csh> usave /mem/test.txt hello world
+csh> uio /mem/handle.txt hello via handle
+csh> run uargs_c.elf alpha beta gamma
+```
+
+## Filesystems
+
+Current VFS mounts:
+
+- `/` -> FAT12 backend
+- `/mem` -> memfs backend
+
+Important note:
+
+`/mem/...` currently behaves like a mount-prefix-backed flat file namespace, not a full hierarchical directory tree. For example, `/mem/test.txt` works, but nested directory semantics are not fully implemented yet.
 
 ## Repo Layout
 
 - `src/boot/`
   Boot code, long mode entry, interrupt stubs
 - `src/kernel/`
-  Kernel entry and 64-bit shell logic
+  64-bit kernel runtime and orchestration
 - `src/arch/x86/`
-  IDT, paging, PMM, GDT/TSS-related code
+  PMM, paging, GDT/TSS, IDT
 - `src/drivers/`
   Terminal, keyboard, PIT, ATA
 - `src/fs/`
-  FAT12 implementation
+  FAT12, VFS, memfs backend logic
+- `src/user/`
+  C and ELF user programs
 - `tools/`
-  Image build helpers
+  Build helpers and QEMU automation
+
+## Kernel Structure
+
+The large 64-bit kernel file has been split into focused modules:
+
+- `src/kernel/kernel64.cpp`
+  Boot/initialization and high-level orchestration
+- `src/kernel/kutil64.cpp`
+  Kernel utility and print helpers
+- `src/kernel/kernel_diag.cpp`
+  Process/scheduler/VFS diagnostic output
+- `src/kernel/process64.cpp`
+  Process table and scheduler state handling
+- `src/kernel/userprog64.cpp`
+  ELF/user program loader helpers and argv stack preparation
+- `src/kernel/syscall64.cpp`
+  Syscall dispatch
+- `src/kernel/ksh64.cpp`
+  Kernel shell command handling
 
 ## Requirements
 
@@ -91,10 +214,10 @@ For the legacy 32-bit path:
 Default 64-bit build:
 
 ```sh
-./build.sh
+make all64
 ```
 
-Equivalent:
+Equivalent aliases:
 
 ```sh
 make all
@@ -113,6 +236,12 @@ Build artifacts are written under `bin/` and `build/`.
 Default 64-bit path:
 
 ```sh
+./run64.sh
+```
+
+Equivalent:
+
+```sh
 ./run.sh
 ```
 
@@ -122,35 +251,60 @@ Legacy 32-bit path:
 ./run32.sh
 ```
 
-There is also an explicit 64-bit runner:
+## Quick Test Flow
 
-```sh
-./run64.sh
+From the kernel shell:
+
+```text
+OS64> ushell
+```
+
+From the C user shell:
+
+```text
+csh> mounts
+csh> touch /mem/test.txt
+csh> save /mem/test.txt hello
+csh> cat /mem/test.txt
+csh> run uyield_c.elf
+csh> jobs
+csh> resume
+csh> run ufault_c.elf
+csh> laststatus
+```
+
+Handle-based I/O test:
+
+```text
+csh> uio /mem/handle.txt hello via handle
+csh> ucat /mem/handle.txt
+```
+
+Argument passing test:
+
+```text
+csh> run uargs_c.elf alpha beta gamma
 ```
 
 ## Notes
 
-- `make all` builds `bin/os64.bin`
-- `make all32` builds `bin/os.bin`
-- The 64-bit path uses QEMU serial output on stdout
-- The 32-bit path still writes debug output to `qemu.log`
+- `make all64` builds `bin/os64.bin`
+- the 64-bit path uses QEMU serial output on stdout
+- the system defaults to the C user shell (`USHELL_C.ELF`)
+- C user programs are the main userland path now
+- handle-based VFS I/O is available, but full directory semantics and richer FD features are still in progress
+- NX is currently relaxed for stability while the protection model is being refined
 
 ## Next Steps
 
-The next major milestone is user mode:
+The current priorities are:
 
-1. 64-bit user-mode entry
-2. first syscall path, likely `int 0x80`
-3. first user program
-4. user shell
-
-After that:
-
-- process/task model
-- ELF loader
-- syscall-backed file access
-- init process
-- UEFI boot path
+1. push more userland toward standalone external tools
+2. continue strengthening VFS/file-handle behavior
+3. introduce real directory semantics
+4. add more filesystem backends
+5. revisit memory protection / NX
+6. eventually explore a UEFI boot path
 
 ## Clean
 
