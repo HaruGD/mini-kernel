@@ -9,7 +9,8 @@ qemu.log
 *.log
 *.zip
 
-name|--command
+name
+--command
 
 .env
 
