@@ -69,7 +69,7 @@ static void print_builtins(void) {
         "Built-in commands:\n"
         "  help ? about exit clear cls tools builtins where\n"
         "  version uptime\n"
-        "  ls [path], cat [file], touch [file], save [file] [text], rm [file]\n"
+        "  ls [path], cat [file], touch [file], save [file] [text], rm [file], mkdir [path], rmdir [path]\n"
         "  pid ppid\n"
         "  jobs ps wait laststatus reapall\n"
         "  run sleep yield resume kill bg fg echo\n");
@@ -141,6 +141,8 @@ static void print_where(const char* name) {
                user_str_eq(name, "touch") ||
                user_str_eq(name, "save") ||
                user_str_eq(name, "rm") ||
+               user_str_eq(name, "mkdir") ||
+               user_str_eq(name, "rmdir") ||
                user_str_eq(name, "jobs") ||
                user_str_eq(name, "ps") ||
                user_str_eq(name, "pid") ||
@@ -169,7 +171,7 @@ static void print_help(void) {
         "  help, ?, about, exit, clear, cls, tools, builtins, where [command]\n"
         "Built-ins:\n"
         "  version, uptime, jobs, ps, wait, laststatus, reapall\n"
-        "  ls [path], cat [file], touch [file], save [file] [text], rm [file]\n"
+        "  ls [path], cat [file], touch [file], save [file] [text], rm [file], mkdir [path], rmdir [path]\n"
         "  pid, ppid\n"
         "  run [file], sleep [ticks], yield, resume [pid], kill [pid], bg [pid], fg [pid], echo [text]\n"
         "Shell shortcuts:\n"
@@ -466,6 +468,28 @@ int main(void) {
             }
             if (user_rm(args) < 0) {
                 print_command_failed("rm");
+            }
+            continue;
+        }
+
+        if (user_str_eq(line, "mkdir")) {
+            if (args == 0 || args[0] == '\0') {
+                print_usage("mkdir [path]");
+                continue;
+            }
+            if (user_mkdir(args) < 0) {
+                print_command_failed("mkdir");
+            }
+            continue;
+        }
+
+        if (user_str_eq(line, "rmdir")) {
+            if (args == 0 || args[0] == '\0') {
+                print_usage("rmdir [path]");
+                continue;
+            }
+            if (user_rmdir(args) < 0) {
+                print_command_failed("rmdir");
             }
             continue;
         }

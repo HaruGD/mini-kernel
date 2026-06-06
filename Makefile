@@ -121,22 +121,22 @@ all64: ./bin/os64.bin
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/kernel64.cpp -o ./build/kernel64.o
 
 ./build/kutil64.o: ./src/kernel/kutil64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/kutil64.cpp -o ./build/kutil64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/kutil64.cpp -o ./build/kutil64.o
 
 ./build/kernel_diag64.o: ./src/kernel/kernel_diag.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/kernel_diag.cpp -o ./build/kernel_diag64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/kernel_diag.cpp -o ./build/kernel_diag64.o
 
 ./build/process64.o: ./src/kernel/process64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/process64.cpp -o ./build/process64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/process64.cpp -o ./build/process64.o
 
 ./build/userprog64.o: ./src/kernel/userprog64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/userprog64.cpp -o ./build/userprog64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/userprog64.cpp -o ./build/userprog64.o
 
 ./build/syscall64.o: ./src/kernel/syscall64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/syscall64.cpp -o ./build/syscall64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/syscall64.cpp -o ./build/syscall64.o
 
 ./build/ksh64.o: ./src/kernel/ksh64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/ksh64.cpp -o ./build/ksh64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/ksh64.cpp -o ./build/ksh64.o
 
 ./build/terminal64.o: ./src/drivers/terminal.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/terminal.cpp -o ./build/terminal64.o

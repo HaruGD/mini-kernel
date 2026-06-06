@@ -202,7 +202,7 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, mounts, atatest, ls [path], load, save, rm, pagefault, uptime");
+    print("\nfree, dump, sched, mounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
 
@@ -412,6 +412,34 @@ static void command_rm(char* arg) {
     }
 }
 
+static void command_mkdir(char* arg) {
+    if (arg == 0) {
+        print("\nUsage: mkdir [path]");
+        return;
+    }
+
+    if (vfs_mkdir(arg) == VFS_OK) {
+        print("\nCreated dir: ");
+        print(arg);
+    } else {
+        print("\nFailed to create dir.");
+    }
+}
+
+static void command_rmdir(char* arg) {
+    if (arg == 0) {
+        print("\nUsage: rmdir [path]");
+        return;
+    }
+
+    if (vfs_rmdir(arg) == VFS_OK) {
+        print("\nRemoved dir: ");
+        print(arg);
+    } else {
+        print("\nFailed to remove dir.");
+    }
+}
+
 static void command_run(char* arg) {
     if (arg == 0 || arg[0] == '\0') {
         print("\nUsage: run [filename]");
@@ -492,6 +520,10 @@ static void execute_command() {
         command_save(arg);
     } else if (strcmp64(cmd, "rm") == 0) {
         command_rm(arg);
+    } else if (strcmp64(cmd, "mkdir") == 0) {
+        command_mkdir(arg);
+    } else if (strcmp64(cmd, "rmdir") == 0) {
+        command_rmdir(arg);
     } else if (strcmp64(cmd, "run") == 0) {
         command_run(arg);
     } else if (strcmp64(cmd, "resume") == 0) {

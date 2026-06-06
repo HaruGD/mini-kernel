@@ -37,7 +37,14 @@ enum VFSSeekWhence {
     VFS_SEEK_END = 2,
 };
 
+enum VFSNodeType {
+    VFS_NODE_NONE = 0,
+    VFS_NODE_FILE = 1,
+    VFS_NODE_DIR = 2,
+};
+
 struct VFSFileInfo {
+    uint32_t type;
     uint32_t size;
 };
 
@@ -48,6 +55,8 @@ struct VFSBackendOps {
     int (*write_file)(void* backend_ctx, const char* relative_path, const uint8_t* buffer, uint32_t size);
     int (*touch_file)(void* backend_ctx, const char* relative_path);
     int (*delete_file)(void* backend_ctx, const char* relative_path);
+    int (*mkdir)(void* backend_ctx, const char* relative_path);
+    int (*rmdir)(void* backend_ctx, const char* relative_path);
 };
 
 struct VFSMountInfo {
@@ -71,6 +80,8 @@ int vfs_read_file(const char* path, uint8_t* buffer, uint32_t buffer_size, uint3
 int vfs_write_file(const char* path, const uint8_t* buffer, uint32_t size);
 int vfs_touch_file(const char* path);
 int vfs_delete_file(const char* path);
+int vfs_mkdir(const char* path);
+int vfs_rmdir(const char* path);
 
 int vfs_open(const char* path, uint32_t mode);
 int vfs_open_for_owner(const char* path, uint32_t mode, uint32_t owner_pid);

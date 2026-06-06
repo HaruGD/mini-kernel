@@ -216,6 +216,14 @@ static inline long user_tell_file(long fd) {
     return user_syscall1(40, fd);
 }
 
+static inline long user_mkdir(const char* path) {
+    return user_syscall1(41, (long)path);
+}
+
+static inline long user_rmdir(const char* path) {
+    return user_syscall1(42, (long)path);
+}
+
 static inline uint64_t user_strlen(const char* text) {
     uint64_t len = 0;
     while (text[len] != '\0') {

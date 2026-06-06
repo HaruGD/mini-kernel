@@ -182,6 +182,27 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return position;
     }
 
+    if (syscall_no == SYS_MKDIR || syscall_no == SYS_RMDIR) {
+        char dir_path[USER_PATH_MAX];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, dir_path, sizeof(dir_path))) {
+            print("\nInvalid user path pointer.");
+            return (uint64_t)-1;
+        }
+
+        int result = syscall_no == SYS_MKDIR ? vfs_mkdir(dir_path) : vfs_rmdir(dir_path);
+        if (result == VFS_OK) {
+            print(syscall_no == SYS_MKDIR ? "\nCreated dir: " : "\nRemoved dir: ");
+            print(dir_path);
+            print("\n");
+            return 0;
+        }
+
+        print(syscall_no == SYS_MKDIR ? "\nFailed to create dir: " : "\nFailed to remove dir: ");
+        print(dir_path);
+        print("\n");
+        return (uint64_t)-1;
+    }
+
     if (syscall_no == SYS_CAT_FILE) {
         char file_name[USER_PATH_MAX];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
@@ -192,6 +213,12 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         VFSFileInfo file_info;
         if (vfs_get_file_info(file_name, &file_info) != VFS_OK) {
             print("\nFile not found: ");
+            print(file_name);
+            print("\n");
+            return (uint64_t)-1;
+        }
+        if (file_info.type != VFS_NODE_FILE) {
+            print("\nNot a file: ");
             print(file_name);
             print("\n");
             return (uint64_t)-1;
