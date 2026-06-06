@@ -120,6 +120,24 @@ all64: ./bin/os64.bin
 ./build/kernel64.o: ./src/kernel/kernel64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/kernel64.cpp -o ./build/kernel64.o
 
+./build/kutil64.o: ./src/kernel/kutil64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/kutil64.cpp -o ./build/kutil64.o
+
+./build/kernel_diag64.o: ./src/kernel/kernel_diag.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/kernel_diag.cpp -o ./build/kernel_diag64.o
+
+./build/process64.o: ./src/kernel/process64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/process64.cpp -o ./build/process64.o
+
+./build/userprog64.o: ./src/kernel/userprog64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/userprog64.cpp -o ./build/userprog64.o
+
+./build/syscall64.o: ./src/kernel/syscall64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/syscall64.cpp -o ./build/syscall64.o
+
+./build/ksh64.o: ./src/kernel/ksh64.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/kernel/ksh64.cpp -o ./build/ksh64.o
+
 ./build/terminal64.o: ./src/drivers/terminal.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/terminal.cpp -o ./build/terminal64.o
 
@@ -162,8 +180,8 @@ all64: ./bin/os64.bin
 ./build/heap64.o: ./src/heap64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/heap64.cpp -o ./build/heap64.o
 
-./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
 
 ./bin/kernel64.bin: ./bin/kernel64.elf
 	$(HOST64_OBJCOPY) -O binary ./bin/kernel64.elf ./bin/kernel64.bin
@@ -175,8 +193,6 @@ all64: ./bin/os64.bin
 ./build/user_elf_%.o: ./src/user/%.easm
 	@mkdir -p ./build
 	$(AS) -f elf64 -g -o $@ $<
-
-./build/user_elf_ushell.o: ./src/user/ushell.asm
 
 ./build/user_c_%.o: ./src/user/%.c
 	@mkdir -p ./build
