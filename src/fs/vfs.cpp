@@ -88,6 +88,17 @@ static void vfs_print(const char* text) {
     }
 }
 
+static void vfs_print_dir_entry(const VFSDirEntry* entry) {
+    if (entry == 0) {
+        return;
+    }
+    vfs_print("\n");
+    vfs_print(entry->name);
+    if (entry->type == VFS_NODE_DIR) {
+        vfs_print("/");
+    }
+}
+
 static uint32_t vfs_strlen_local(const char* text) {
     uint32_t len = 0;
     while (text[len] != '\0') {
@@ -931,6 +942,27 @@ static const VFSMount* vfs_find_mount(const char* path, const char** relative_pa
     return best_mount;
 }
 
+static int vfs_list_directory_generic(const VFSMount* mount, const char* relative_path) {
+    if (mount == 0 || mount->ops == 0 || mount->ops->read_dir_entry == 0) {
+        return VFS_ERR_UNSUPPORTED;
+    }
+
+    for (uint32_t index = 0;; index++) {
+        VFSDirEntry entry;
+        int result = mount->ops->read_dir_entry(mount->backend_ctx,
+                                                relative_path != 0 ? relative_path : "",
+                                                index,
+                                                &entry);
+        if (result < 0) {
+            return result;
+        }
+        if (result == 0) {
+            return VFS_OK;
+        }
+        vfs_print_dir_entry(&entry);
+    }
+}
+
 void vfs_init() {
     for (uint32_t i = 0; i < VFS_MAX_MOUNTS; i++) {
         vfs_reset_mount(&g_vfs_mounts[i]);
@@ -1057,11 +1089,22 @@ int vfs_list_files() {
 int vfs_list_files_at(const char* path) {
     const char* relative_path = 0;
     const VFSMount* mount = vfs_find_mount(path != 0 ? path : "/", &relative_path);
-    if (mount == 0 || mount->ops == 0 || mount->ops->list_files == 0) {
+    if (mount == 0 || mount->ops == 0) {
         return VFS_ERR_NOT_READY;
     }
     if (relative_path == 0) {
         relative_path = "";
+    }
+
+    if (mount->ops->read_dir_entry != 0) {
+        VFSFileInfo info;
+        if (vfs_get_file_info(path != 0 ? path : "/", &info) == VFS_OK && info.type == VFS_NODE_DIR) {
+            return vfs_list_directory_generic(mount, relative_path);
+        }
+    }
+
+    if (mount->ops->list_files == 0) {
+        return VFS_ERR_UNSUPPORTED;
     }
     return mount->ops->list_files(mount->backend_ctx, relative_path);
 }
