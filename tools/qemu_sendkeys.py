@@ -59,6 +59,7 @@ def send_monitor_commands(sock_path: str, commands: list[tuple[str, float]]) -> 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", default="./bin/os64.bin")
+    parser.add_argument("--fat32-image", default="./bin/fat32.img")
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--shell-command", default="ushell")
     parser.add_argument("--shell-prompt", default="csh>")
@@ -77,18 +78,27 @@ def main() -> int:
             pass
 
     with open(qemu_out_path, "wb") as qemu_out:
-        proc = subprocess.Popen(
-            [
-                "qemu-system-x86_64",
-                "-display",
-                "none",
+        qemu_args = [
+            "qemu-system-x86_64",
+            "-display",
+            "none",
+            "-drive",
+            f"format=raw,file={args.image},if=ide,index=0",
+        ]
+        if args.fat32_image and os.path.exists(args.fat32_image):
+            qemu_args.extend([
                 "-drive",
-                f"format=raw,file={args.image},if=ide,index=0",
-                "-serial",
-                f"file:{serial_path}",
-                "-monitor",
-                f"unix:{mon_path},server,nowait",
-            ],
+                f"format=raw,file={args.fat32_image},if=ide,index=1",
+            ])
+        qemu_args.extend([
+            "-serial",
+            f"file:{serial_path}",
+            "-monitor",
+            f"unix:{mon_path},server,nowait",
+        ])
+
+        proc = subprocess.Popen(
+            qemu_args,
             stdout=qemu_out,
             stderr=subprocess.STDOUT,
         )

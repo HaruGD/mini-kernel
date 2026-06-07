@@ -34,6 +34,7 @@ What works right now:
 - VFS layer
 - root FAT12 backend mounted at `/`
 - memory-backed filesystem mounted at `/mem`
+- read-only FAT32 backend mounted at `/fat32`
 - handle-based file I/O:
   - `open`
   - `read`
@@ -80,7 +81,9 @@ Main built-ins:
 
 - `help`, `?`, `about`, `exit`, `clear`, `cls`
 - `version`, `uptime`, `jobs`, `ps`, `wait`, `laststatus`, `reapall`
+- `pwd`, `cd [path]`
 - `ls [path]`, `cat [file]`, `touch [file]`, `save [file] [text]`, `rm [file]`
+- `mkdir [path]`, `rmdir [path]`
 - `pid`, `ppid`
 - `run [file]`
 - `sleep [ticks]`
@@ -117,6 +120,8 @@ Examples:
 Standalone file/status tools:
 
 - `ULS_C.ELF`
+- `UMKDIR_C.ELF`
+- `URMDIR_C.ELF`
 - `UTOUCH_C.ELF`
 - `USAVE_C.ELF`
 - `UCAT_C.ELF`
@@ -131,8 +136,9 @@ Standalone file/status tools:
 Examples from the user shell:
 
 ```text
-csh> ucat /mem/test.txt
-csh> usave /mem/test.txt hello world
+csh> cd /mem/docs
+csh> ucat test.txt
+csh> usave test.txt hello world
 csh> uio /mem/handle.txt hello via handle
 csh> run uargs_c.elf alpha beta gamma
 ```
@@ -143,10 +149,19 @@ Current VFS mounts:
 
 - `/` -> FAT12 backend
 - `/mem` -> memfs backend
+- `/fat32` -> FAT32 backend
 
 Important note:
 
-`/mem/...` currently behaves like a mount-prefix-backed flat file namespace, not a full hierarchical directory tree. For example, `/mem/test.txt` works, but nested directory semantics are not fully implemented yet.
+- `memfs` now supports nested directories such as `/mem/docs/readme.txt`
+- `pwd`, `cd`, relative paths, and `.` / `..` path normalization work in `USHELL_C`
+- most shell built-ins and tool aliases resolve relative paths against the current working directory
+- FAT12 is still treated as a simpler root-oriented backend; the richer directory behavior currently lives in `memfs`
+- FAT32 is currently read-only and 8.3-oriented, but it already supports:
+  - root directory listing
+  - subdirectory listing
+  - file info lookup
+  - file reads such as `/fat32/HELLO.TXT` and `/fat32/DOCS/README.TXT`
 
 ## Repo Layout
 
@@ -262,15 +277,24 @@ OS64> ushell
 From the C user shell:
 
 ```text
-csh> mounts
-csh> touch /mem/test.txt
-csh> save /mem/test.txt hello
-csh> cat /mem/test.txt
-csh> run uyield_c.elf
-csh> jobs
-csh> resume
-csh> run ufault_c.elf
-csh> laststatus
+csh> mkdir /mem/docs
+csh> cd /mem/docs
+csh> pwd
+/mem/docs
+csh> touch note.txt
+csh> save note.txt hello cwd
+csh> cat note.txt
+hello cwd
+csh> uls .
+note.txt
+csh> umkdir sub
+csh> cd sub
+csh> usave nested.txt hello nested
+csh> ucat nested.txt
+hello nested
+csh> cd ..
+csh> rm note.txt
+csh> urmdir sub
 ```
 
 Handle-based I/O test:
@@ -278,6 +302,21 @@ Handle-based I/O test:
 ```text
 csh> uio /mem/handle.txt hello via handle
 csh> ucat /mem/handle.txt
+```
+
+FAT32 smoke test:
+
+```text
+csh> mounts
+csh> uls /fat32
+HELLO.TXT
+DOCS/
+csh> ucat /fat32/HELLO.TXT
+hello fat32
+csh> uls /fat32/DOCS
+README.TXT
+csh> ucat /fat32/DOCS/README.TXT
+fat32 nested
 ```
 
 Argument passing test:
@@ -292,17 +331,21 @@ csh> run uargs_c.elf alpha beta gamma
 - the 64-bit path uses QEMU serial output on stdout
 - the system defaults to the C user shell (`USHELL_C.ELF`)
 - C user programs are the main userland path now
-- handle-based VFS I/O is available, but full directory semantics and richer FD features are still in progress
+- handle-based VFS I/O is available
+- `memfs` has directory support plus shell-level `cwd`/`cd`
+- FAT32 is mounted as a second IDE disk image when `bin/fat32.img` exists
+- FAT32 is currently read-only and intended as the next disk-style filesystem path after FAT12
+- richer directory semantics for writable non-memfs backends and fuller FD behavior are still in progress
 - NX is currently relaxed for stability while the protection model is being refined
 
 ## Next Steps
 
 The current priorities are:
 
-1. push more userland toward standalone external tools
-2. continue strengthening VFS/file-handle behavior
-3. introduce real directory semantics
-4. add more filesystem backends
+1. extend FAT32 beyond read-only 8.3 access
+2. continue generalizing directory APIs beyond `memfs`
+3. continue strengthening VFS/file-handle behavior
+4. decide how broadly process-level `cwd` should propagate through userland
 5. revisit memory protection / NX
 6. eventually explore a UEFI boot path
 

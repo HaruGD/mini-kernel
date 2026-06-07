@@ -15,6 +15,7 @@ extern "C" {
 #include "drivers/keyboard.h"
 #include "drivers/pit.h"
 #include "fs/fat12.h"
+#include "fs/fat32.h"
 #include "fs/vfs.h"
 #include "kernel/boot_info.h"
 #include "kernel/kernel_diag.h"
@@ -39,9 +40,11 @@ extern "C" {
 
 Terminal terminal;
 ATADriver ata;
+ATADriver fat32_ata(0xF0);
 KeyboardDriver keyboard;
 PIT pit;
 FAT12Driver fat(&ata);
+FAT32Driver fat32(&fat32_ata);
 
 static const BootInfo* g_boot_info = 0;
 static uint64_t boot_tsc = 0;
@@ -381,6 +384,7 @@ int run_user_program(const char* command_line) {
     process->pid = next_pid++;
     process->parent_pid = parent != 0 ? parent->pid : 0;
     process->slot_index = slot_index;
+    process_copy_cwd(process, parent != 0 ? process_get_cwd(parent) : "/");
     copy_string64(process->command_line, sizeof(process->command_line), command_line);
     UserLaunchInfo launch;
     if (parse_launch_command(process->command_line, &launch) == 0 || launch.argv[0] == 0) {
@@ -1073,10 +1077,13 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     heap_init();
     gdt64_init();
     ata.init();
+    fat32_ata.init();
     fat.init();
+    fat32.init();
     vfs_init();
     vfs_mount_fat12_root(&fat);
     vfs_mount_memfs("/mem");
+    vfs_mount_fat32("/fat32", &fat32);
     idt64_init();
     keyboard.init();
     pit.init();

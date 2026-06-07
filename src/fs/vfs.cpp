@@ -4,6 +4,7 @@
 #include "arch/x86/io.h"
 #include "drivers/terminal.h"
 #include "fs/fat12.h"
+#include "fs/fat32.h"
 
 extern Terminal terminal;
 
@@ -27,16 +28,24 @@ static VFSMount g_vfs_mounts[VFS_MAX_MOUNTS];
 struct VFSOpenFile {
     uint8_t active;
     uint8_t dirty;
+    uint8_t kind;
     uint16_t mode;
     uint32_t owner_pid;
     uint32_t position;
     uint32_t size;
     uint32_t capacity;
+    uint32_t dir_cursor;
     char path[32];
     uint8_t* buffer;
 };
 
 static VFSOpenFile g_vfs_open_files[VFS_MAX_OPEN_FILES];
+
+enum VFSHandleKind {
+    VFS_HANDLE_NONE = 0,
+    VFS_HANDLE_FILE = 1,
+    VFS_HANDLE_DIR = 2,
+};
 
 struct MemFSNode {
     uint8_t active;
@@ -148,6 +157,44 @@ static void fat12_to_name83(const char* path, char out[11]) {
     }
 }
 
+static int fat12_copy_entry_name(const DirEntry* entry, char* out, uint32_t capacity) {
+    if (entry == 0 || out == 0 || capacity < 2) {
+        return 0;
+    }
+
+    uint32_t n = 0;
+    for (uint32_t j = 0; j < 8 && entry->name[j] != ' '; j++) {
+        if (n + 1 >= capacity) {
+            return 0;
+        }
+        out[n++] = (char)entry->name[j];
+    }
+
+    int has_ext = 0;
+    for (uint32_t j = 8; j < 11; j++) {
+        if (entry->name[j] != ' ') {
+            has_ext = 1;
+            break;
+        }
+    }
+
+    if (has_ext) {
+        if (n + 1 >= capacity) {
+            return 0;
+        }
+        out[n++] = '.';
+        for (uint32_t j = 8; j < 11 && entry->name[j] != ' '; j++) {
+            if (n + 1 >= capacity) {
+                return 0;
+            }
+            out[n++] = (char)entry->name[j];
+        }
+    }
+
+    out[n] = '\0';
+    return 1;
+}
+
 static int fat12_lookup_entry(FAT12Driver* fat12, const char* relative_path, DirEntry* entry) {
     if (fat12 == 0) {
         return VFS_ERR_NOT_READY;
@@ -174,6 +221,28 @@ static int fat12_backend_list_files(void* backend_ctx, const char* relative_path
     }
     fat12->list_files();
     return VFS_OK;
+}
+
+static int fat12_backend_read_dir_entry(void* backend_ctx, const char* relative_path, uint32_t cursor, VFSDirEntry* entry) {
+    FAT12Driver* fat12 = (FAT12Driver*)backend_ctx;
+    if (fat12 == 0 || entry == 0) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (relative_path != 0 && relative_path[0] != '\0') {
+        return VFS_ERR_UNSUPPORTED;
+    }
+
+    DirEntry dir_entry;
+    if (!fat12->read_root_entry(cursor, &dir_entry)) {
+        return 0;
+    }
+
+    entry->type = (dir_entry.attributes & 0x10) ? VFS_NODE_DIR : VFS_NODE_FILE;
+    entry->size = dir_entry.file_size;
+    if (!fat12_copy_entry_name(&dir_entry, entry->name, sizeof(entry->name))) {
+        return VFS_ERR_IO;
+    }
+    return 1;
 }
 
 static int fat12_backend_get_file_info(void* backend_ctx, const char* relative_path, VFSFileInfo* info) {
@@ -258,11 +327,59 @@ static int fat12_backend_delete_file(void* backend_ctx, const char* relative_pat
 
 static const VFSBackendOps g_fat12_backend_ops = {
     fat12_backend_list_files,
+    fat12_backend_read_dir_entry,
     fat12_backend_get_file_info,
     fat12_backend_read_file,
     fat12_backend_write_file,
     fat12_backend_touch_file,
     fat12_backend_delete_file,
+    0,
+    0,
+};
+
+static int fat32_backend_list_files(void* backend_ctx, const char* relative_path) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    return fat32->list_dir(relative_path != 0 ? relative_path : "");
+}
+
+static int fat32_backend_read_dir_entry(void* backend_ctx, const char* relative_path, uint32_t cursor, VFSDirEntry* entry) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    return fat32->read_dir_entry(relative_path != 0 ? relative_path : "", cursor, entry);
+}
+
+static int fat32_backend_get_file_info(void* backend_ctx, const char* relative_path, VFSFileInfo* info) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    return fat32->get_path_info(relative_path != 0 ? relative_path : "", info);
+}
+
+static int fat32_backend_read_file(void* backend_ctx, const char* relative_path, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_read_out) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (relative_path == 0 || relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    return fat32->read_file_path(relative_path, buffer, buffer_size, bytes_read_out);
+}
+
+static const VFSBackendOps g_fat32_backend_ops = {
+    fat32_backend_list_files,
+    fat32_backend_read_dir_entry,
+    fat32_backend_get_file_info,
+    fat32_backend_read_file,
+    0,
+    0,
+    0,
     0,
     0,
 };
@@ -507,6 +624,41 @@ static int memfs_backend_list_files(void*, const char* relative_path) {
     return VFS_OK;
 }
 
+static int memfs_backend_read_dir_entry(void*, const char* relative_path, uint32_t cursor, VFSDirEntry* entry) {
+    int16_t dir_index = 0;
+    int result = memfs_lookup_path(relative_path != 0 ? relative_path : "", &dir_index);
+    if (result != VFS_OK) {
+        return result;
+    }
+
+    MemFSNode* dir = memfs_get_node(dir_index);
+    if (dir == 0 || dir->type != VFS_NODE_DIR || entry == 0) {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    int16_t child_index = dir->first_child;
+    uint32_t skip = cursor;
+    while (skip > 0 && child_index >= 0) {
+        MemFSNode* child = memfs_get_node(child_index);
+        child_index = child != 0 ? child->next_sibling : -1;
+        skip--;
+    }
+
+    if (child_index < 0) {
+        return 0;
+    }
+
+    MemFSNode* child = memfs_get_node(child_index);
+    if (child == 0) {
+        return 0;
+    }
+
+    entry->type = child->type;
+    entry->size = child->type == VFS_NODE_FILE ? child->size : 0;
+    vfs_copy_string(entry->name, sizeof(entry->name), child->name);
+    return 1;
+}
+
 static int memfs_backend_get_file_info(void*, const char* relative_path, VFSFileInfo* info) {
     int16_t node_index = 0;
     int result = memfs_lookup_path(relative_path, &node_index);
@@ -638,6 +790,7 @@ static int memfs_backend_rmdir(void*, const char* relative_path) {
 
 static const VFSBackendOps g_memfs_backend_ops = {
     memfs_backend_list_files,
+    memfs_backend_read_dir_entry,
     memfs_backend_get_file_info,
     memfs_backend_read_file,
     memfs_backend_write_file,
@@ -654,11 +807,13 @@ static void vfs_reset_open_file(VFSOpenFile* file) {
 
     file->active = 0;
     file->dirty = 0;
+    file->kind = VFS_HANDLE_NONE;
     file->mode = 0;
     file->owner_pid = 0;
     file->position = 0;
     file->size = 0;
     file->capacity = 0;
+    file->dir_cursor = 0;
     file->path[0] = '\0';
     if (file->buffer != 0) {
         kfree(file->buffer);
@@ -674,6 +829,15 @@ static VFSOpenFile* vfs_get_open_file(int fd) {
         return 0;
     }
     return &g_vfs_open_files[fd];
+}
+
+static int vfs_alloc_open_slot() {
+    for (int fd = 0; fd < VFS_MAX_OPEN_FILES; fd++) {
+        if (!g_vfs_open_files[fd].active) {
+            return fd;
+        }
+    }
+    return VFS_ERR_NO_SLOT;
 }
 
 static uint32_t vfs_growth_capacity(uint32_t required) {
@@ -827,6 +991,13 @@ int vfs_mount_fat12_root(FAT12Driver* fat12) {
         return VFS_ERR_NOT_READY;
     }
     return vfs_mount_root("fat12", VFS_BACKEND_FAT12, &g_fat12_backend_ops, fat12);
+}
+
+int vfs_mount_fat32(const char* mount_path, FAT32Driver* fat32) {
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    return vfs_mount(mount_path, "fat32", VFS_BACKEND_FAT32, &g_fat32_backend_ops, fat32);
 }
 
 int vfs_mount_memfs(const char* mount_path) {
@@ -1004,49 +1175,49 @@ int vfs_open_for_owner(const char* path, uint32_t mode, uint32_t owner_pid) {
         return VFS_ERR_INVALID_PATH;
     }
 
-    for (int fd = 0; fd < VFS_MAX_OPEN_FILES; fd++) {
-        VFSOpenFile* file = &g_vfs_open_files[fd];
-        if (file->active) {
-            continue;
-        }
-
-        uint32_t initial_size = 0;
-        if (exists && !(mode & VFS_OPEN_TRUNCATE)) {
-            initial_size = info.size;
-        }
-
-        uint32_t initial_capacity = vfs_growth_capacity(initial_size > 0 ? initial_size : 1);
-        file->buffer = (uint8_t*)kmalloc(initial_capacity);
-        if (file->buffer == 0) {
-            return VFS_ERR_IO;
-        }
-
-        file->active = 1;
-        file->dirty = (!exists && (mode & VFS_OPEN_CREATE)) || ((mode & VFS_OPEN_WRITE) && (mode & VFS_OPEN_TRUNCATE));
-        file->mode = (uint16_t)mode;
-        file->owner_pid = owner_pid;
-        file->position = 0;
-        file->size = initial_size;
-        file->capacity = initial_capacity;
-        vfs_copy_string(file->path, sizeof(file->path), path);
-
-        if (initial_size > 0) {
-            uint32_t bytes_read = 0;
-            if (vfs_read_file(path, file->buffer, file->capacity, &bytes_read) != VFS_OK) {
-                vfs_reset_open_file(file);
-                return VFS_ERR_IO;
-            }
-            file->size = bytes_read;
-        }
-
-        if (mode & VFS_OPEN_APPEND) {
-            file->position = file->size;
-        }
-
-        return fd;
+    int fd = vfs_alloc_open_slot();
+    if (fd < 0) {
+        return VFS_ERR_NO_SLOT;
     }
 
-    return VFS_ERR_NO_SLOT;
+    VFSOpenFile* file = &g_vfs_open_files[fd];
+
+    uint32_t initial_size = 0;
+    if (exists && !(mode & VFS_OPEN_TRUNCATE)) {
+        initial_size = info.size;
+    }
+
+    uint32_t initial_capacity = vfs_growth_capacity(initial_size > 0 ? initial_size : 1);
+    file->buffer = (uint8_t*)kmalloc(initial_capacity);
+    if (file->buffer == 0) {
+        return VFS_ERR_IO;
+    }
+
+    file->active = 1;
+    file->dirty = (!exists && (mode & VFS_OPEN_CREATE)) || ((mode & VFS_OPEN_WRITE) && (mode & VFS_OPEN_TRUNCATE));
+    file->kind = VFS_HANDLE_FILE;
+    file->mode = (uint16_t)mode;
+    file->owner_pid = owner_pid;
+    file->position = 0;
+    file->size = initial_size;
+    file->capacity = initial_capacity;
+    file->dir_cursor = 0;
+    vfs_copy_string(file->path, sizeof(file->path), path);
+
+    if (initial_size > 0) {
+        uint32_t bytes_read = 0;
+        if (vfs_read_file(path, file->buffer, file->capacity, &bytes_read) != VFS_OK) {
+            vfs_reset_open_file(file);
+            return VFS_ERR_IO;
+        }
+        file->size = bytes_read;
+    }
+
+    if (mode & VFS_OPEN_APPEND) {
+        file->position = file->size;
+    }
+
+    return fd;
 }
 
 int vfs_open(const char* path, uint32_t mode) {
@@ -1055,7 +1226,7 @@ int vfs_open(const char* path, uint32_t mode) {
 
 int vfs_read(int fd, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_read_out) {
     VFSOpenFile* file = vfs_get_open_file(fd);
-    if (file == 0 || buffer == 0) {
+    if (file == 0 || file->kind != VFS_HANDLE_FILE || buffer == 0) {
         return VFS_ERR_INVALID_PATH;
     }
     if ((file->mode & VFS_OPEN_READ) == 0) {
@@ -1076,7 +1247,7 @@ int vfs_read(int fd, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_read
 
 int vfs_write(int fd, const uint8_t* buffer, uint32_t size, uint32_t* bytes_written_out) {
     VFSOpenFile* file = vfs_get_open_file(fd);
-    if (file == 0 || (size > 0 && buffer == 0)) {
+    if (file == 0 || file->kind != VFS_HANDLE_FILE || (size > 0 && buffer == 0)) {
         return VFS_ERR_INVALID_PATH;
     }
     if ((file->mode & VFS_OPEN_WRITE) == 0) {
@@ -1104,7 +1275,7 @@ int vfs_write(int fd, const uint8_t* buffer, uint32_t size, uint32_t* bytes_writ
 
 int vfs_seek(int fd, int32_t offset, uint32_t whence, uint32_t* position_out) {
     VFSOpenFile* file = vfs_get_open_file(fd);
-    if (file == 0) {
+    if (file == 0 || file->kind != VFS_HANDLE_FILE) {
         return VFS_ERR_INVALID_PATH;
     }
 
@@ -1137,7 +1308,7 @@ int vfs_seek(int fd, int32_t offset, uint32_t whence, uint32_t* position_out) {
 
 int vfs_tell(int fd, uint32_t* position_out) {
     VFSOpenFile* file = vfs_get_open_file(fd);
-    if (file == 0 || position_out == 0) {
+    if (file == 0 || file->kind != VFS_HANDLE_FILE || position_out == 0) {
         return VFS_ERR_INVALID_PATH;
     }
 
@@ -1151,6 +1322,11 @@ int vfs_close(int fd) {
         return VFS_ERR_INVALID_PATH;
     }
 
+    if (file->kind == VFS_HANDLE_DIR) {
+        vfs_reset_open_file(file);
+        return VFS_OK;
+    }
+
     if (file->dirty) {
         int result = vfs_write_file(file->path, file->buffer, file->size);
         if (result != VFS_OK) {
@@ -1160,6 +1336,71 @@ int vfs_close(int fd) {
 
     vfs_reset_open_file(file);
     return VFS_OK;
+}
+
+int vfs_opendir_for_owner(const char* path, uint32_t owner_pid) {
+    if (path == 0 || path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    const char* relative_path = 0;
+    const VFSMount* mount = vfs_find_mount(path, &relative_path);
+    if (mount == 0 || mount->ops == 0 || mount->ops->read_dir_entry == 0) {
+        return VFS_ERR_NOT_READY;
+    }
+
+    VFSFileInfo info;
+    if (vfs_get_file_info(path, &info) != VFS_OK || info.type != VFS_NODE_DIR) {
+        return VFS_ERR_INVALID_PATH;
+    }
+    int fd = vfs_alloc_open_slot();
+    if (fd < 0) {
+        return VFS_ERR_NO_SLOT;
+    }
+
+    VFSOpenFile* file = &g_vfs_open_files[fd];
+    file->active = 1;
+    file->dirty = 0;
+    file->kind = VFS_HANDLE_DIR;
+    file->mode = 0;
+    file->owner_pid = owner_pid;
+    file->position = 0;
+    file->size = 0;
+    file->capacity = 0;
+    file->dir_cursor = 0;
+    file->buffer = 0;
+    vfs_copy_string(file->path, sizeof(file->path), path);
+    return fd;
+}
+
+int vfs_opendir(const char* path) {
+    return vfs_opendir_for_owner(path, 0);
+}
+
+int vfs_readdir(int fd, VFSDirEntry* entry) {
+    VFSOpenFile* file = vfs_get_open_file(fd);
+    if (file == 0 || file->kind != VFS_HANDLE_DIR || entry == 0) {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    const char* relative_path = 0;
+    const VFSMount* mount = vfs_find_mount(file->path, &relative_path);
+    if (mount == 0 || mount->ops == 0 || mount->ops->read_dir_entry == 0) {
+        return VFS_ERR_UNSUPPORTED;
+    }
+
+    int result = mount->ops->read_dir_entry(mount->backend_ctx,
+                                            relative_path != 0 ? relative_path : "",
+                                            file->dir_cursor,
+                                            entry);
+    if (result > 0) {
+        file->dir_cursor++;
+    }
+    return result;
+}
+
+int vfs_closedir(int fd) {
+    return vfs_close(fd);
 }
 
 uint32_t vfs_close_all_for_owner(uint32_t owner_pid) {

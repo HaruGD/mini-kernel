@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 class FAT12Driver;
+class FAT32Driver;
 
 enum VFSResult {
     VFS_OK = 0,
@@ -21,6 +22,7 @@ enum VFSBackendKind {
     VFS_BACKEND_NONE = 0,
     VFS_BACKEND_FAT12 = 1,
     VFS_BACKEND_MEMFS = 2,
+    VFS_BACKEND_FAT32 = 3,
 };
 
 enum VFSOpenMode {
@@ -48,8 +50,15 @@ struct VFSFileInfo {
     uint32_t size;
 };
 
+struct VFSDirEntry {
+    uint32_t type;
+    uint32_t size;
+    char name[32];
+};
+
 struct VFSBackendOps {
     int (*list_files)(void* backend_ctx, const char* relative_path);
+    int (*read_dir_entry)(void* backend_ctx, const char* relative_path, uint32_t cursor, VFSDirEntry* entry);
     int (*get_file_info)(void* backend_ctx, const char* relative_path, VFSFileInfo* info);
     int (*read_file)(void* backend_ctx, const char* relative_path, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_read_out);
     int (*write_file)(void* backend_ctx, const char* relative_path, const uint8_t* buffer, uint32_t size);
@@ -69,6 +78,7 @@ void vfs_init();
 int vfs_mount(const char* mount_path, const char* fs_name, uint32_t backend_kind, const VFSBackendOps* ops, void* backend_ctx);
 int vfs_mount_root(const char* fs_name, uint32_t backend_kind, const VFSBackendOps* ops, void* backend_ctx);
 int vfs_mount_fat12_root(FAT12Driver* fat12);
+int vfs_mount_fat32(const char* mount_path, FAT32Driver* fat32);
 int vfs_mount_memfs(const char* mount_path);
 uint32_t vfs_mount_count();
 int vfs_get_mount_info(uint32_t index, VFSMountInfo* info);
@@ -90,6 +100,10 @@ int vfs_write(int fd, const uint8_t* buffer, uint32_t size, uint32_t* bytes_writ
 int vfs_seek(int fd, int32_t offset, uint32_t whence, uint32_t* position_out);
 int vfs_tell(int fd, uint32_t* position_out);
 int vfs_close(int fd);
+int vfs_opendir(const char* path);
+int vfs_opendir_for_owner(const char* path, uint32_t owner_pid);
+int vfs_readdir(int fd, VFSDirEntry* entry);
+int vfs_closedir(int fd);
 uint32_t vfs_close_all_for_owner(uint32_t owner_pid);
 uint32_t vfs_count_open_for_owner(uint32_t owner_pid);
 

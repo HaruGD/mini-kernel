@@ -64,7 +64,7 @@ all64: ./bin/os64.bin
 		--output ./bin/os.bin \
 		--stage2-sectors $(STAGE2_SECTORS)
 
-./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin $(USER_BINS) $(USER_ELFS) ./tools/build_fat12_image.py
+./bin/os64.bin: ./bin/boot64.bin ./bin/stage2_64.bin ./bin/kernel64.bin ./bin/fat32.img $(USER_BINS) $(USER_ELFS) ./tools/build_fat12_image.py
 	python3 ./tools/build_fat12_image.py \
 		--boot ./bin/boot64.bin \
 		--stage2 ./bin/stage2_64.bin \
@@ -147,6 +147,9 @@ all64: ./bin/os64.bin
 ./build/fat12_64.o: ./src/fs/fat12.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/fs/fat12.cpp -o ./build/fat12_64.o
 
+./build/fat32_64.o: ./src/fs/fat32.cpp
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/fs/fat32.cpp -o ./build/fat32_64.o
+
 ./build/vfs64.o: ./src/fs/vfs.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/fs/vfs.cpp -o ./build/vfs64.o
 
@@ -180,11 +183,15 @@ all64: ./bin/os64.bin
 ./build/heap64.o: ./src/heap64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/heap64.cpp -o ./build/heap64.o
 
-./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/fat32_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/fat32_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
 
 ./bin/kernel64.bin: ./bin/kernel64.elf
 	$(HOST64_OBJCOPY) -O binary ./bin/kernel64.elf ./bin/kernel64.bin
+
+./bin/fat32.img: ./tools/build_fat32_image.py
+	@mkdir -p ./bin
+	python3 ./tools/build_fat32_image.py --output ./bin/fat32.img
 
 ./bin/%.bin: ./src/user/%.asm
 	@mkdir -p ./bin
