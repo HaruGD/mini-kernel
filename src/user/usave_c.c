@@ -2,10 +2,12 @@
 
 #define USAVE_FILE_MAX 64
 #define USAVE_TEXT_MAX 64
+#define USAVE_PATH_MAX 160
 
 int main(int argc, char** argv) {
     char file_input[USAVE_FILE_MAX];
     char text_input[USAVE_TEXT_MAX];
+    char path_buffer[USAVE_PATH_MAX];
     char* file_name;
     char* text;
     uint32_t offset = 0;
@@ -49,11 +51,16 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (user_save_silent(file_name, text) < 0) {
+    if (!user_resolve_path(file_name, path_buffer, sizeof(path_buffer))) {
+        user_puts("Path is invalid or too long.");
+        return 1;
+    }
+
+    if (user_save_silent(path_buffer, text) < 0) {
         user_printf("save failed: %s\n", file_name);
         return 1;
     }
 
-    user_printf("Saved to %s\n", file_name);
+    user_printf("Saved to %s\n", path_buffer);
     return 0;
 }

@@ -17,8 +17,8 @@ INCLUDES = -I./src/include -I./src
 FLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0
 CFLAGS = $(FLAGS) -std=gnu99 $(INCLUDES)
 CPPFLAGS = $(FLAGS) -fno-exceptions -fno-rtti -fno-use-cxa-atexit $(INCLUDES)
-HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
-HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie $(INCLUDES)
+HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
+HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -I./src/user/include
 USER_ASM_SOURCES = $(wildcard ./src/user/*.asm)
 USER_BINS = $(patsubst ./src/user/%.asm,./bin/%.bin,$(USER_ASM_SOURCES))
@@ -139,13 +139,13 @@ all64: ./bin/os64.bin
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/ksh64.cpp -o ./build/ksh64.o
 
 ./build/terminal64.o: ./src/drivers/terminal.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/terminal.cpp -o ./build/terminal64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/drivers/terminal.cpp -o ./build/terminal64.o
 
 ./build/ata64.o: ./src/drivers/ata.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/ata.cpp -o ./build/ata64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/drivers/ata.cpp -o ./build/ata64.o
 
 ./build/fat12_64.o: ./src/fs/fat12.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/fs/fat12.cpp -o ./build/fat12_64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/fs/fat12.cpp -o ./build/fat12_64.o
 
 ./build/fat32_64.o: ./src/fs/fat32.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/fs/fat32.cpp -o ./build/fat32_64.o
@@ -154,19 +154,19 @@ all64: ./bin/os64.bin
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/fs/vfs.cpp -o ./build/vfs64.o
 
 ./build/keyboard64.o: ./src/drivers/keyboard.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/keyboard.cpp -o ./build/keyboard64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/drivers/keyboard.cpp -o ./build/keyboard64.o
 
 ./build/pit64.o: ./src/drivers/pit.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/drivers/pit.cpp -o ./build/pit64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/drivers/pit.cpp -o ./build/pit64.o
 
 ./build/idt64.o: ./src/arch/x86/idt64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/arch/x86/idt64.cpp -o ./build/idt64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/arch/x86/idt64.cpp -o ./build/idt64.o
 
 ./build/idt64_asm.o: ./src/boot/idt64.asm
 	$(AS) -f elf64 -g ./src/boot/idt64.asm -o ./build/idt64_asm.o
 
 ./build/gdt64.o: ./src/arch/x86/gdt64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/arch/x86/gdt64.cpp -o ./build/gdt64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/arch/x86/gdt64.cpp -o ./build/gdt64.o
 
 ./build/gdt64_asm.o: ./src/boot/gdt64.asm
 	$(AS) -f elf64 -g ./src/boot/gdt64.asm -o ./build/gdt64_asm.o
@@ -175,13 +175,13 @@ all64: ./bin/os64.bin
 	$(AS) -f elf64 -g ./src/boot/user64.asm -o ./build/user64_asm.o
 
 ./build/pmm64.o: ./src/arch/x86/pmm64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/arch/x86/pmm64.cpp -o ./build/pmm64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/arch/x86/pmm64.cpp -o ./build/pmm64.o
 
 ./build/paging64.o: ./src/arch/x86/paging64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/arch/x86/paging64.cpp -o ./build/paging64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/arch/x86/paging64.cpp -o ./build/paging64.o
 
 ./build/heap64.o: ./src/heap64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -c ./src/heap64.cpp -o ./build/heap64.o
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/heap64.cpp -o ./build/heap64.o
 
 ./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/fat32_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
 	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/terminal64.o ./build/ata64.o ./build/fat12_64.o ./build/fat32_64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o

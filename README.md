@@ -34,7 +34,7 @@ What works right now:
 - VFS layer
 - root FAT12 backend mounted at `/`
 - memory-backed filesystem mounted at `/mem`
-- read-only FAT32 backend mounted at `/fat32`
+- FAT32 backend mounted at `/fat32`
 - handle-based file I/O:
   - `open`
   - `read`
@@ -143,6 +143,20 @@ csh> uio /mem/handle.txt hello via handle
 csh> run uargs_c.elf alpha beta gamma
 ```
 
+FAT32 smoke flow:
+
+```text
+csh> mkdir /fat32/NEWDIR
+csh> touch /fat32/NEWDIR/A.TXT
+csh> save /fat32/NEWDIR/A.TXT hello dir
+csh> cat /fat32/NEWDIR/A.TXT
+csh> rm /fat32/NEWDIR/A.TXT
+csh> rmdir /fat32/NEWDIR
+csh> uls /fat32
+csh> ucat /fat32/LONGFILENAME.TXT
+csh> ucat /fat32/DOCS/NESTEDLONGNAME.TXT
+```
+
 ## Filesystems
 
 Current VFS mounts:
@@ -157,11 +171,15 @@ Important note:
 - `pwd`, `cd`, relative paths, and `.` / `..` path normalization work in `USHELL_C`
 - most shell built-ins and tool aliases resolve relative paths against the current working directory
 - FAT12 is still treated as a simpler root-oriented backend; the richer directory behavior currently lives in `memfs`
-- FAT32 is currently read-only and 8.3-oriented, but it already supports:
+- FAT32 is currently 8.3-oriented and now supports:
   - root directory listing
   - subdirectory listing
   - file info lookup
   - file reads such as `/fat32/HELLO.TXT` and `/fat32/DOCS/README.TXT`
+  - LFN read/listing for existing long-name entries such as `/fat32/LONGFILENAME.TXT`
+  - small file create/write/delete in existing directories
+  - directory create/remove in existing directories
+  - growing directory storage when new entries no longer fit in the first cluster
 
 ## Repo Layout
 
@@ -317,6 +335,16 @@ csh> uls /fat32/DOCS
 README.TXT
 csh> ucat /fat32/DOCS/README.TXT
 fat32 nested
+csh> touch /fat32/NEW.TXT
+csh> save /fat32/NEW.TXT hello write
+csh> cat /fat32/NEW.TXT
+hello write
+csh> touch /fat32/DOCS/NOTE.TXT
+csh> save /fat32/DOCS/NOTE.TXT nested write
+csh> cat /fat32/DOCS/NOTE.TXT
+nested write
+csh> rm /fat32/NEW.TXT
+csh> rm /fat32/DOCS/NOTE.TXT
 ```
 
 Argument passing test:
@@ -334,7 +362,7 @@ csh> run uargs_c.elf alpha beta gamma
 - handle-based VFS I/O is available
 - `memfs` has directory support plus shell-level `cwd`/`cd`
 - FAT32 is mounted as a second IDE disk image when `bin/fat32.img` exists
-- FAT32 is currently read-only and intended as the next disk-style filesystem path after FAT12
+- FAT32 currently supports read/write/delete for small 8.3 files in the root and in existing subdirectories
 - richer directory semantics for writable non-memfs backends and fuller FD behavior are still in progress
 - NX is currently relaxed for stability while the protection model is being refined
 
@@ -342,7 +370,7 @@ csh> run uargs_c.elf alpha beta gamma
 
 The current priorities are:
 
-1. extend FAT32 beyond read-only 8.3 access
+1. extend FAT32 beyond small-file 8.3 access
 2. continue generalizing directory APIs beyond `memfs`
 3. continue strengthening VFS/file-handle behavior
 4. decide how broadly process-level `cwd` should propagate through userland

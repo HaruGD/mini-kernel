@@ -25,7 +25,7 @@ extern "C" {
 void idt64_init();
 void idt64_load(struct idtr64* idtr);
 
-void default_interrupt_handler64();
+void default_interrupt_handler64(uint64_t* frame);
 uint64_t page_fault_handler64(uint64_t fault_addr, uint64_t error_code);
 uint64_t gp_fault_handler64(uint64_t error_code);
 uint64_t double_fault_handler64(uint64_t error_code);

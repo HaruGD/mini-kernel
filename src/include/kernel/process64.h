@@ -26,6 +26,8 @@ Process* current_process();
 void process_clear(Process* process);
 void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code);
 void process_mark_returned(Process* process, uint32_t reason, uint32_t status_code);
+const char* process_get_cwd(const Process* process);
+void process_copy_cwd(Process* process, const char* cwd);
 
 void scheduler_enqueue(Process* process);
 void scheduler_remove(Process* process);

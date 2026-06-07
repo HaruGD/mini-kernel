@@ -52,6 +52,17 @@ struct FAT32DirEntry {
     uint32_t file_size;
 } __attribute__((packed));
 
+struct FAT32LFNEntry {
+    uint8_t  order;
+    uint16_t name1[5];
+    uint8_t  attributes;
+    uint8_t  entry_type;
+    uint8_t  checksum;
+    uint16_t name2[6];
+    uint16_t first_cluster_low;
+    uint16_t name3[2];
+} __attribute__((packed));
+
 class FAT32Driver : public Driver {
     ATADriver* ata;
     uint32_t start_lba;
@@ -63,17 +74,34 @@ class FAT32Driver : public Driver {
     uint32_t total_sectors;
 
     bool read_sector_relative(uint32_t lba, uint8_t* buffer);
+    bool write_sector_relative(uint32_t lba, const uint8_t* buffer);
     uint32_t cluster_to_lba(uint32_t cluster) const;
     uint32_t read_fat_entry(uint32_t cluster);
+    bool write_fat_entry(uint32_t cluster, uint32_t value);
     bool read_cluster_sector(uint32_t cluster, uint32_t sector_offset, uint8_t* buffer);
+    bool write_cluster_sector(uint32_t cluster, uint32_t sector_offset, const uint8_t* buffer);
     bool is_end_of_chain(uint32_t value) const;
     void to_name83(const char* path_segment, char out[11]) const;
     bool dir_entry_name(const FAT32DirEntry& entry, char* out, uint32_t capacity) const;
     uint32_t dir_entry_cluster(const FAT32DirEntry& entry) const;
 
-    int read_dir_entry_internal(uint32_t dir_cluster, uint32_t visible_index, FAT32DirEntry* entry);
+    int read_dir_entry_internal(uint32_t dir_cluster, uint32_t visible_index, FAT32DirEntry* entry, char* name_out, uint32_t name_capacity);
     int find_in_directory(uint32_t dir_cluster, const char* segment, FAT32DirEntry* entry);
+    int find_in_directory_with_location(uint32_t dir_cluster,
+                                        const char* segment,
+                                        FAT32DirEntry* entry,
+                                        uint32_t* out_dir_cluster,
+                                        uint32_t* out_sector_offset,
+                                        uint32_t* out_entry_index);
     int resolve_path(const char* path, FAT32DirEntry* entry, uint32_t* out_cluster, uint8_t* out_is_root_dir);
+    int resolve_parent_path(const char* path, uint32_t* out_dir_cluster, char out_leaf83[11]);
+    int find_free_dir_slot(uint32_t dir_cluster, uint32_t* out_dir_cluster, uint32_t* out_sector_offset, uint32_t* out_entry_index);
+    bool read_dir_sector(uint32_t dir_cluster, uint32_t sector_offset, uint8_t* sector);
+    bool write_dir_sector(uint32_t dir_cluster, uint32_t sector_offset, const uint8_t* sector);
+    bool alloc_free_cluster(uint32_t* out_cluster);
+    bool free_cluster_chain(uint32_t start_cluster);
+    bool write_cluster_chain(const uint8_t* buffer, uint32_t size, uint32_t* out_first_cluster);
+    bool update_dir_entry(uint32_t dir_cluster, uint32_t sector_offset, uint32_t entry_index, const FAT32DirEntry* entry);
 
 public:
     FAT32Driver(ATADriver* ata, uint32_t start_lba = 0);
@@ -84,6 +112,11 @@ public:
     int read_dir_entry(const char* path, uint32_t index, VFSDirEntry* entry);
     int get_path_info(const char* path, VFSFileInfo* info);
     int read_file_path(const char* path, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_read_out);
+    int write_file_path(const char* path, const uint8_t* buffer, uint32_t size);
+    int touch_file_path(const char* path);
+    int delete_file_path(const char* path);
+    int mkdir_path(const char* path);
+    int rmdir_path(const char* path);
 };
 
 #endif

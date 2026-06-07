@@ -1,6 +1,7 @@
 #include "fs/vfs.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/kutil64.h"
+#include "kernel/process64.h"
 
 const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_LOADED) {
@@ -122,8 +123,8 @@ void print_process_summary(const Process* process, uint32_t tick_now) {
     print(process->reaped ? "yes" : "no");
 }
 
-void print_process_table(const Process* process_table, uint32_t process_count, uint32_t tick_now) {
-    for (uint32_t i = 0; i < process_count; i++) {
+void print_process_table(uint32_t tick_now) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         print("\n[");
         print_hex32(i);
         print("] ");
@@ -213,7 +214,7 @@ void print_child_result_compact(const char* label, const Process* process) {
     print(process->name);
 }
 
-void print_jobs_for_process(const Process* parent, const Process* process_table, uint32_t process_count, uint32_t tick_now) {
+void print_jobs_for_process(const Process* parent, uint32_t tick_now) {
     print("\n=== JOBS ===");
     if (parent == 0) {
         print("\nNo current user process.");
@@ -224,7 +225,7 @@ void print_jobs_for_process(const Process* parent, const Process* process_table,
     print_job_compact("self", parent, tick_now);
 
     uint32_t count = 0;
-    for (uint32_t i = 0; i < process_count; i++) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         const Process* process = &process_table[i];
         if (process->pid == 0 || process->parent_pid != parent->pid) {
             continue;

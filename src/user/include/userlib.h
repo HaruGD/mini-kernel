@@ -23,6 +23,12 @@ typedef struct UserVFSInfo {
     uint32_t size;
 } UserVFSInfo;
 
+typedef struct UserDirEntry {
+    uint32_t type;
+    uint32_t size;
+    char name[32];
+} UserDirEntry;
+
 static inline long user_syscall0(long number) {
     long result;
     __asm__ volatile(
@@ -233,8 +239,50 @@ static inline long user_rmdir(const char* path) {
     return user_syscall1(42, (long)path);
 }
 
+static inline long user_mkdir_silent(const char* path) {
+    return user_syscall1(49, (long)path);
+}
+
+static inline long user_rmdir_silent(const char* path) {
+    return user_syscall1(50, (long)path);
+}
+
 static inline long user_get_file_info(const char* path, UserVFSInfo* info) {
     return user_syscall2(43, (long)path, (long)info);
+}
+
+static inline long user_getcwd(char* buffer, uint32_t capacity) {
+    return user_syscall2(44, (long)buffer, (long)capacity);
+}
+
+static inline long user_chdir(const char* path) {
+    return user_syscall1(45, (long)path);
+}
+
+static inline long user_opendir(const char* path) {
+    return user_syscall1(46, (long)path);
+}
+
+static inline long user_readdir(long fd, UserDirEntry* entry) {
+    return user_syscall2(47, fd, (long)entry);
+}
+
+static inline long user_closedir(long fd) {
+    return user_syscall1(48, fd);
+}
+
+static inline int user_normalize_path(const char* cwd, const char* input, char* out, uint32_t capacity);
+
+static inline int user_resolve_path(const char* input, char* out, uint32_t capacity) {
+    char cwd[160];
+    if (input == 0 || out == 0 || capacity == 0) {
+        return 0;
+    }
+    if (user_getcwd(cwd, sizeof(cwd)) < 0) {
+        cwd[0] = '/';
+        cwd[1] = '\0';
+    }
+    return user_normalize_path(cwd, input, out, capacity);
 }
 
 static inline uint64_t user_strlen(const char* text) {
@@ -504,7 +552,7 @@ static inline int user_parse_u32_strict(const char* text, uint32_t* value_out) {
 }
 
 static inline int user_normalize_path(const char* cwd, const char* input, char* out, uint32_t capacity) {
-    char segments[8][16];
+    char segments[16][32];
     uint32_t segment_count = 0;
     const char* cursor;
 
@@ -535,7 +583,7 @@ static inline int user_normalize_path(const char* cwd, const char* input, char* 
                 len++;
             }
             segments[segment_count][len] = '\0';
-            if (segment_count + 1 >= 8) {
+            if (segment_count + 1 >= 16) {
                 return 0;
             }
             segment_count++;
@@ -552,7 +600,7 @@ static inline int user_normalize_path(const char* cwd, const char* input, char* 
             break;
         }
 
-        char segment[16];
+        char segment[32];
         uint32_t len = 0;
         while (cursor[len] != '\0' && cursor[len] != '/') {
             if (len + 1 >= sizeof(segment)) {
@@ -569,7 +617,7 @@ static inline int user_normalize_path(const char* cwd, const char* input, char* 
                 segment_count--;
             }
         } else {
-            if (segment_count >= 8) {
+            if (segment_count >= 16) {
                 return 0;
             }
             for (uint32_t i = 0; i <= len; i++) {

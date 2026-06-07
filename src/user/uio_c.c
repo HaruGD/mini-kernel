@@ -3,6 +3,15 @@
 #define UIO_PATH_MAX 64
 #define UIO_TEXT_MAX 64
 #define UIO_READ_MAX 64
+#define UIO_RESOLVED_PATH_MAX 160
+
+static int resolve_uio_path(const char* input, char* output, uint32_t output_size) {
+    if (!user_resolve_path(input, output, output_size)) {
+        user_puts("Path is invalid or too long.");
+        return 0;
+    }
+    return 1;
+}
 
 static void join_args(char* out, uint32_t out_size, int argc, char** argv, int start_index) {
     uint32_t offset = 0;
@@ -199,6 +208,7 @@ int main(int argc, char** argv) {
     char path_input[UIO_PATH_MAX];
     char text_input[UIO_TEXT_MAX];
     char joined_text[UIO_TEXT_MAX];
+    char resolved_path[UIO_RESOLVED_PATH_MAX];
     char* path;
     char* text;
 
@@ -210,7 +220,10 @@ int main(int argc, char** argv) {
             return 1;
         }
         join_args(joined_text, sizeof(joined_text), argc, argv, 3);
-        return handle_append_mode(argv[2], joined_text);
+        if (!resolve_uio_path(argv[2], resolved_path, sizeof(resolved_path))) {
+            return 1;
+        }
+        return handle_append_mode(resolved_path, joined_text);
     }
 
     if (argc >= 2 && argv[1] != 0 && user_str_eq(argv[1], "seek")) {
@@ -218,7 +231,10 @@ int main(int argc, char** argv) {
             user_puts("Usage: uio seek [file] [offset]");
             return 1;
         }
-        return handle_seek_mode(argv[2], argv[3]);
+        if (!resolve_uio_path(argv[2], resolved_path, sizeof(resolved_path))) {
+            return 1;
+        }
+        return handle_seek_mode(resolved_path, argv[3]);
     }
 
     if (argc >= 2 && argv[1] != 0 && user_str_eq(argv[1], "leak")) {
@@ -227,14 +243,20 @@ int main(int argc, char** argv) {
             return 1;
         }
         join_args(joined_text, sizeof(joined_text), argc, argv, 3);
-        return handle_leak_mode(argv[2], joined_text);
+        if (!resolve_uio_path(argv[2], resolved_path, sizeof(resolved_path))) {
+            return 1;
+        }
+        return handle_leak_mode(resolved_path, joined_text);
     }
 
     if (argc >= 3 && argv[1] != 0 && argv[2] != 0) {
         path = argv[1];
         join_args(joined_text, sizeof(joined_text), argc, argv, 2);
         text = joined_text;
-        return handle_write_mode(path, text);
+        if (!resolve_uio_path(path, resolved_path, sizeof(resolved_path))) {
+            return 1;
+        }
+        return handle_write_mode(resolved_path, text);
     }
 
     user_puts("Open, write, close, reopen, and read back using VFS handles.");
@@ -251,5 +273,8 @@ int main(int argc, char** argv) {
     user_write_cstr("text> ");
     user_read_line(text_input, sizeof(text_input));
     text = user_trim(text_input);
-    return handle_write_mode(path, text);
+    if (!resolve_uio_path(path, resolved_path, sizeof(resolved_path))) {
+        return 1;
+    }
+    return handle_write_mode(resolved_path, text);
 }

@@ -75,6 +75,7 @@ struct Process {
     uint8_t background;
     uint8_t pause_reason;
     uint32_t wake_tick;
+    char cwd[PROCESS_CMDLINE_MAX];
     char command_line[PROCESS_CMDLINE_MAX];
     uint64_t saved_rax;
     uint64_t saved_rbx;

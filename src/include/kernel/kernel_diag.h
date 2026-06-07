@@ -11,10 +11,10 @@ const char* scheduler_state_name(uint32_t state);
 const char* pause_reason_name(uint32_t reason);
 
 void print_process_summary(const Process* process, uint32_t tick_now);
-void print_process_table(const Process* process_table, uint32_t process_count, uint32_t tick_now);
+void print_process_table(uint32_t tick_now);
 void print_job_compact(const char* label, const Process* process, uint32_t tick_now);
 void print_child_result_compact(const char* label, const Process* process);
-void print_jobs_for_process(const Process* parent, const Process* process_table, uint32_t process_count, uint32_t tick_now);
+void print_jobs_for_process(const Process* parent, uint32_t tick_now);
 void print_scheduler_info(Process* const* sched_queue,
                           uint32_t sched_queue_count,
                           uint32_t sched_queue_head,

@@ -90,8 +90,16 @@ extern "C" void idt64_init() {
     idt64_load(&idtr);
 }
 
-extern "C" void default_interrupt_handler64() {
+extern "C" void default_interrupt_handler64(uint64_t* frame) {
     debug_print64("\n=== UNHANDLED 64-BIT INTERRUPT ===");
+    if (frame != 0) {
+        debug_print64("\nRIP: ");
+        debug_print_hex64_u64(frame[15]);
+        debug_print64("\nCS: ");
+        debug_print_hex64_u64(frame[16]);
+        debug_print64("\nRFLAGS: ");
+        debug_print_hex64_u64(frame[17]);
+    }
     halt_forever();
 }
 

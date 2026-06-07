@@ -4,9 +4,14 @@
 #define SHELLC_CMDLINE_MAX 160
 
 static char shell_input[SHELLC_INPUT_MAX];
-static char shell_command_line[SHELLC_CMDLINE_MAX];
 static char shell_cwd[SHELLC_CMDLINE_MAX] = "/";
-static char shell_path_buffer[SHELLC_CMDLINE_MAX];
+
+static void refresh_shell_cwd(void) {
+    if (user_getcwd(shell_cwd, sizeof(shell_cwd)) < 0) {
+        shell_cwd[0] = '/';
+        shell_cwd[1] = '\0';
+    }
+}
 
 static void print_prompt(void) {
     user_write_cstr("csh> ");
@@ -44,7 +49,8 @@ static int append_token(char* dest, uint32_t* offset, const char* text) {
 static void print_tools(void) {
     user_write_cstr(
         "Standalone tools:\n"
-        "  Files:   uls [path], utouch [file], usave [file] [text], ucat [file], urm [file]\n"
+        "  Files:   uls [path], umkdir [path], urmdir [path], utouch [file], usave [file] [text],\n"
+        "           ucat [file], urm [file]\n"
         "           uio [file] [text], uio append [file] [text], uio seek [file] [offset],\n"
         "           uio leak [file] [text]\n"
         "  Status:  upid, uschd, umem, uvers, uboot, umounts, uargs\n"
@@ -57,29 +63,30 @@ static void print_tools(void) {
 }
 
 static int run_tool_alias(const char* command, const char* image_name, const char* args) {
+    char command_line[SHELLC_CMDLINE_MAX];
     uint64_t image_len = user_strlen(image_name);
     uint64_t args_len = (args != 0 && args[0] != '\0') ? user_strlen(args) : 0;
 
-    if (image_len + (args_len > 0 ? 1 : 0) + args_len + 1 > sizeof(shell_command_line)) {
+    if (image_len + (args_len > 0 ? 1 : 0) + args_len + 1 > sizeof(command_line)) {
         user_printf("%s arguments are too long.\n", command);
         return 0;
     }
 
-    shell_command_line[0] = '\0';
+    command_line[0] = '\0';
     for (uint64_t i = 0; i < image_len; i++) {
-        shell_command_line[i] = image_name[i];
+        command_line[i] = image_name[i];
     }
-    shell_command_line[image_len] = '\0';
+    command_line[image_len] = '\0';
 
     if (args_len > 0) {
-        shell_command_line[image_len] = ' ';
+        command_line[image_len] = ' ';
         for (uint64_t i = 0; i < args_len; i++) {
-            shell_command_line[image_len + 1 + i] = args[i];
+            command_line[image_len + 1 + i] = args[i];
         }
-        shell_command_line[image_len + 1 + args_len] = '\0';
+        command_line[image_len + 1 + args_len] = '\0';
     }
 
-    if (user_run(shell_command_line) < 0) {
+    if (user_run(command_line) < 0) {
         print_command_failed(command);
         return 0;
     }
@@ -88,6 +95,7 @@ static int run_tool_alias(const char* command, const char* image_name, const cha
 }
 
 static int run_tool_alias_single_path(const char* command, const char* image_name, const char* path_arg, int default_to_cwd) {
+    char normalized_path[SHELLC_CMDLINE_MAX];
     if ((path_arg == 0 || path_arg[0] == '\0') && !default_to_cwd) {
         return run_tool_alias(command, image_name, 0);
     }
@@ -96,20 +104,21 @@ static int run_tool_alias_single_path(const char* command, const char* image_nam
         path_arg = shell_cwd;
     }
 
-    if (!normalize_shell_path(path_arg, shell_path_buffer)) {
+    if (!normalize_shell_path(path_arg, normalized_path)) {
         return 0;
     }
-    return run_tool_alias(command, image_name, shell_path_buffer);
+    return run_tool_alias(command, image_name, normalized_path);
 }
 
 static int run_tool_alias_usave(const char* args) {
     char local[SHELLC_CMDLINE_MAX];
+    char normalized_path[SHELLC_CMDLINE_MAX];
     char* file_name;
     char* text;
-    uint32_t offset = 0;
 
     if (args == 0 || args[0] == '\0') {
-        return run_tool_alias("usave", "USAVE_C.ELF", 0);
+        print_usage("usave [file] [text]");
+        return 0;
     }
 
     for (uint32_t i = 0; args[i] != '\0' && i + 1 < sizeof(local); i++) {
@@ -121,39 +130,25 @@ static int run_tool_alias_usave(const char* args) {
     file_name = local;
     text = user_split_token(file_name);
     if (text == 0 || text[0] == '\0') {
-        return run_tool_alias("usave", "USAVE_C.ELF", args);
+        print_usage("usave [file] [text]");
+        return 0;
     }
-    if (!normalize_shell_path(file_name, shell_path_buffer)) {
+    if (!normalize_shell_path(file_name, normalized_path)) {
         return 0;
     }
 
-    shell_command_line[0] = '\0';
-    if (!append_token(shell_command_line, &offset, "USAVE_C.ELF")) {
-        user_puts("Command line is too long.");
-        return 0;
-    }
-    shell_command_line[offset++] = ' ';
-    shell_command_line[offset] = '\0';
-    if (!append_token(shell_command_line, &offset, shell_path_buffer)) {
-        user_puts("Command line is too long.");
-        return 0;
-    }
-    shell_command_line[offset++] = ' ';
-    shell_command_line[offset] = '\0';
-    if (!append_token(shell_command_line, &offset, text)) {
-        user_puts("Command line is too long.");
-        return 0;
-    }
-    if (user_run(shell_command_line) < 0) {
+    if (user_save_silent(normalized_path, text) < 0) {
         print_command_failed("usave");
         return 0;
     }
-    user_reapall_silent();
+    user_printf("Saved to %s\n", normalized_path);
     return 1;
 }
 
 static int run_tool_alias_uio(const char* args) {
     char local[SHELLC_CMDLINE_MAX];
+    char command_line[SHELLC_CMDLINE_MAX];
+    char normalized_path[SHELLC_CMDLINE_MAX];
     char* token1;
     char* token2;
     char* rest;
@@ -172,8 +167,8 @@ static int run_tool_alias_uio(const char* args) {
     token1 = local;
     token2 = user_split_token(token1);
 
-    shell_command_line[0] = '\0';
-    if (!append_token(shell_command_line, &offset, "UIO_C.ELF")) {
+    command_line[0] = '\0';
+    if (!append_token(command_line, &offset, "UIO_C.ELF")) {
         user_puts("Command line is too long.");
         return 0;
     }
@@ -183,52 +178,72 @@ static int run_tool_alias_uio(const char* args) {
             return run_tool_alias("uio", "UIO_C.ELF", args);
         }
         rest = user_split_token(token2);
-        if (!normalize_shell_path(token2, shell_path_buffer)) {
+        if (!normalize_shell_path(token2, normalized_path)) {
             return 0;
         }
 
-        shell_command_line[offset++] = ' ';
-        shell_command_line[offset] = '\0';
-        if (!append_token(shell_command_line, &offset, token1)) {
+        if (offset + 1 >= sizeof(command_line)) {
             user_puts("Command line is too long.");
             return 0;
         }
-        shell_command_line[offset++] = ' ';
-        shell_command_line[offset] = '\0';
-        if (!append_token(shell_command_line, &offset, shell_path_buffer)) {
+        command_line[offset++] = ' ';
+        command_line[offset] = '\0';
+        if (!append_token(command_line, &offset, token1)) {
+            user_puts("Command line is too long.");
+            return 0;
+        }
+        if (offset + 1 >= sizeof(command_line)) {
+            user_puts("Command line is too long.");
+            return 0;
+        }
+        command_line[offset++] = ' ';
+        command_line[offset] = '\0';
+        if (!append_token(command_line, &offset, normalized_path)) {
             user_puts("Command line is too long.");
             return 0;
         }
         if (rest != 0 && rest[0] != '\0') {
-            shell_command_line[offset++] = ' ';
-            shell_command_line[offset] = '\0';
-            if (!append_token(shell_command_line, &offset, rest)) {
+            if (offset + 1 >= sizeof(command_line)) {
+                user_puts("Command line is too long.");
+                return 0;
+            }
+            command_line[offset++] = ' ';
+            command_line[offset] = '\0';
+            if (!append_token(command_line, &offset, rest)) {
                 user_puts("Command line is too long.");
                 return 0;
             }
         }
     } else {
         rest = token2;
-        if (!normalize_shell_path(token1, shell_path_buffer)) {
+        if (!normalize_shell_path(token1, normalized_path)) {
             return 0;
         }
-        shell_command_line[offset++] = ' ';
-        shell_command_line[offset] = '\0';
-        if (!append_token(shell_command_line, &offset, shell_path_buffer)) {
+        if (offset + 1 >= sizeof(command_line)) {
+            user_puts("Command line is too long.");
+            return 0;
+        }
+        command_line[offset++] = ' ';
+        command_line[offset] = '\0';
+        if (!append_token(command_line, &offset, normalized_path)) {
             user_puts("Command line is too long.");
             return 0;
         }
         if (rest != 0 && rest[0] != '\0') {
-            shell_command_line[offset++] = ' ';
-            shell_command_line[offset] = '\0';
-            if (!append_token(shell_command_line, &offset, rest)) {
+            if (offset + 1 >= sizeof(command_line)) {
+                user_puts("Command line is too long.");
+                return 0;
+            }
+            command_line[offset++] = ' ';
+            command_line[offset] = '\0';
+            if (!append_token(command_line, &offset, rest)) {
                 user_puts("Command line is too long.");
                 return 0;
             }
         }
     }
 
-    if (user_run(shell_command_line) < 0) {
+    if (user_run(command_line) < 0) {
         print_command_failed("uio");
         return 0;
     }
@@ -258,10 +273,14 @@ static void print_where(const char* name) {
 
     if (user_str_eq(name, "uls")) {
         user_write_cstr("tool alias - runs ULS_C.ELF\n");
+    } else if (user_str_eq(name, "umkdir")) {
+        user_write_cstr("tool alias - runs UMKDIR_C.ELF\n");
+    } else if (user_str_eq(name, "urmdir")) {
+        user_write_cstr("tool alias - runs URMDIR_C.ELF\n");
     } else if (user_str_eq(name, "utouch")) {
         user_write_cstr("tool alias - runs UTOUCH_C.ELF\n");
     } else if (user_str_eq(name, "usave")) {
-        user_write_cstr("tool alias - runs USAVE_C.ELF\n");
+        user_write_cstr("shell shortcut - saves with normalized cwd-aware path handling\n");
     } else if (user_str_eq(name, "ucat")) {
         user_write_cstr("tool alias - runs UCAT_C.ELF\n");
     } else if (user_str_eq(name, "urm")) {
@@ -353,7 +372,8 @@ static void print_help(void) {
         "Shell shortcuts:\n"
         "  sched, memstat, bootinfo, mounts\n"
         "Standalone tools:\n"
-        "  uls [path], utouch [file], usave [file] [text], ucat [file], urm [file]\n"
+        "  uls [path], umkdir [path], urmdir [path], utouch [file], usave [file] [text],\n"
+        "  ucat [file], urm [file]\n"
         "  upid, uschd, umem, uvers, uboot, umounts, uargs\n"
         "  uio [file] [text], uio append [file] [text], uio seek [file] [offset], uio leak [file] [text]\n"
         "Processes:\n"
@@ -363,15 +383,18 @@ static void print_help(void) {
 }
 
 int main(void) {
+    refresh_shell_cwd();
     user_write_cstr(
         "=== USHELL_C.ELF ===\n"
         "C user shell ready. Type help for commands.\n"
         "Use tools for standalone utilities and where [name] for command origin.\n");
 
     while (1) {
+        char normalized_path[SHELLC_CMDLINE_MAX];
         char* line;
         char* args;
 
+        refresh_shell_cwd();
         print_prompt();
         user_read_line(shell_input, sizeof(shell_input));
 
@@ -429,6 +452,7 @@ int main(void) {
         }
 
         if (user_str_eq(line, "pwd")) {
+            refresh_shell_cwd();
             user_printf("%s\n", shell_cwd);
             continue;
         }
@@ -436,18 +460,18 @@ int main(void) {
         if (user_str_eq(line, "cd")) {
             const char* target = (args == 0 || args[0] == '\0') ? "/" : args;
             UserVFSInfo info;
-            if (!normalize_shell_path(target, shell_path_buffer)) {
+            if (!normalize_shell_path(target, normalized_path)) {
                 continue;
             }
-            if (user_get_file_info(shell_path_buffer, &info) < 0 || info.type != USER_VFS_NODE_DIR) {
+            if (user_get_file_info(normalized_path, &info) < 0 || info.type != USER_VFS_NODE_DIR) {
                 print_command_failed("cd");
                 continue;
             }
-            for (uint32_t i = 0; shell_path_buffer[i] != '\0' && i + 1 < sizeof(shell_cwd); i++) {
-                shell_cwd[i] = shell_path_buffer[i];
-                shell_cwd[i + 1] = '\0';
+            if (user_chdir(normalized_path) < 0) {
+                print_command_failed("cd");
+                continue;
             }
-            shell_cwd[sizeof(shell_cwd) - 1] = '\0';
+            refresh_shell_cwd();
             continue;
         }
 
@@ -457,10 +481,10 @@ int main(void) {
                     print_command_failed("ls");
                 }
             } else {
-                if (!normalize_shell_path(args, shell_path_buffer)) {
+                if (!normalize_shell_path(args, normalized_path)) {
                     continue;
                 }
-                if (user_list_files_at(shell_path_buffer) < 0) {
+                if (user_list_files_at(normalized_path) < 0) {
                     print_command_failed("ls");
                 }
             }
@@ -469,6 +493,16 @@ int main(void) {
 
         if (user_str_eq(line, "uls")) {
             run_tool_alias_single_path("uls", "ULS_C.ELF", args, 1);
+            continue;
+        }
+
+        if (user_str_eq(line, "umkdir")) {
+            run_tool_alias_single_path("umkdir", "UMKDIR_C.ELF", args, 0);
+            continue;
+        }
+
+        if (user_str_eq(line, "urmdir")) {
+            run_tool_alias_single_path("urmdir", "URMDIR_C.ELF", args, 0);
             continue;
         }
 
@@ -648,10 +682,10 @@ int main(void) {
                 print_usage("cat [file]");
                 continue;
             }
-            if (!normalize_shell_path(args, shell_path_buffer)) {
+            if (!normalize_shell_path(args, normalized_path)) {
                 continue;
             }
-            if (user_cat(shell_path_buffer) < 0) {
+            if (user_cat(normalized_path) < 0) {
                 print_command_failed("cat");
             }
             continue;
@@ -662,10 +696,10 @@ int main(void) {
                 print_usage("touch [file]");
                 continue;
             }
-            if (!normalize_shell_path(args, shell_path_buffer)) {
+            if (!normalize_shell_path(args, normalized_path)) {
                 continue;
             }
-            if (user_touch(shell_path_buffer) < 0) {
+            if (user_touch(normalized_path) < 0) {
                 print_command_failed("touch");
             }
             continue;
@@ -676,10 +710,10 @@ int main(void) {
                 print_usage("rm [file]");
                 continue;
             }
-            if (!normalize_shell_path(args, shell_path_buffer)) {
+            if (!normalize_shell_path(args, normalized_path)) {
                 continue;
             }
-            if (user_rm(shell_path_buffer) < 0) {
+            if (user_rm(normalized_path) < 0) {
                 print_command_failed("rm");
             }
             continue;
@@ -690,10 +724,10 @@ int main(void) {
                 print_usage("mkdir [path]");
                 continue;
             }
-            if (!normalize_shell_path(args, shell_path_buffer)) {
+            if (!normalize_shell_path(args, normalized_path)) {
                 continue;
             }
-            if (user_mkdir(shell_path_buffer) < 0) {
+            if (user_mkdir(normalized_path) < 0) {
                 print_command_failed("mkdir");
             }
             continue;
@@ -704,10 +738,10 @@ int main(void) {
                 print_usage("rmdir [path]");
                 continue;
             }
-            if (!normalize_shell_path(args, shell_path_buffer)) {
+            if (!normalize_shell_path(args, normalized_path)) {
                 continue;
             }
-            if (user_rmdir(shell_path_buffer) < 0) {
+            if (user_rmdir(normalized_path) < 0) {
                 print_command_failed("rmdir");
             }
             continue;
@@ -728,10 +762,10 @@ int main(void) {
                 continue;
             }
 
-            if (!normalize_shell_path(file_name, shell_path_buffer)) {
+            if (!normalize_shell_path(file_name, normalized_path)) {
                 continue;
             }
-            if (user_save(shell_path_buffer, text) < 0) {
+            if (user_save(normalized_path, text) < 0) {
                 print_command_failed("save");
             }
             continue;

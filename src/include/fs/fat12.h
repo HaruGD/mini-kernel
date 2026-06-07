@@ -56,6 +56,7 @@ public:
     bool find_file(const char* name, DirEntry* entry);
     int read_file(DirEntry* entry, uint8_t* buffer);
     void list_files();
+    bool read_root_entry(uint32_t visible_index, DirEntry* entry);
     bool write_file(const char* name83, uint8_t* buffer, uint32_t size);
     bool delete_file(const char* name83);
 };

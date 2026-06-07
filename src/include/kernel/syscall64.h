@@ -54,6 +54,13 @@
 #define SYS_MKDIR 41
 #define SYS_RMDIR 42
 #define SYS_VFS_INFO 43
+#define SYS_GETCWD 44
+#define SYS_CHDIR 45
+#define SYS_VFS_OPENDIR 46
+#define SYS_VFS_READDIR 47
+#define SYS_VFS_CLOSEDIR 48
+#define SYS_MKDIR_SILENT 49
+#define SYS_RMDIR_SILENT 50
 
 extern KeyboardDriver keyboard;
 extern PIT pit;

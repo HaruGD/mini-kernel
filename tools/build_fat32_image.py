@@ -45,6 +45,50 @@ def make_dir_entry(name83: bytes, attr: int, first_cluster: int, size: int) -> b
     return bytes(entry)
 
 
+def short_name_checksum(name83: bytes) -> int:
+    total = 0
+    for value in name83:
+        total = (((total & 1) << 7) + (total >> 1) + value) & 0xFF
+    return total
+
+
+def make_lfn_entries(long_name: str, checksum: int) -> list[bytes]:
+    utf16 = [ord(ch) for ch in long_name]
+    utf16.append(0x0000)
+    while len(utf16) % 13 != 0:
+        utf16.append(0xFFFF)
+
+    chunks = [utf16[i:i + 13] for i in range(0, len(utf16), 13)]
+    entries: list[bytes] = []
+    total = len(chunks)
+    for chunk_index, chunk in enumerate(reversed(chunks), start=1):
+        order = total - chunk_index + 1
+        if chunk_index == 1:
+            order |= 0x40
+
+        entry = bytearray(32)
+        entry[0] = order
+        for i, value in enumerate(chunk[0:5]):
+            struct.pack_into("<H", entry, 1 + i * 2, value)
+        entry[11] = 0x0F
+        entry[12] = 0
+        entry[13] = checksum
+        for i, value in enumerate(chunk[5:11]):
+            struct.pack_into("<H", entry, 14 + i * 2, value)
+        struct.pack_into("<H", entry, 26, 0)
+        for i, value in enumerate(chunk[11:13]):
+            struct.pack_into("<H", entry, 28 + i * 2, value)
+        entries.append(bytes(entry))
+    return entries
+
+
+def write_entries(block: bytearray, offset: int, entries: list[bytes]) -> int:
+    for entry in entries:
+        block[offset:offset + 32] = entry
+        offset += 32
+    return offset
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
@@ -97,6 +141,10 @@ def main() -> int:
     set_fat32_entry(fat, 3, 0x0FFFFFFF)  # HELLO.TXT
     set_fat32_entry(fat, 4, 0x0FFFFFFF)  # DOCS dir
     set_fat32_entry(fat, 5, 0x0FFFFFFF)  # README.TXT
+    set_fat32_entry(fat, 6, 0x0FFFFFFF)  # LONGFILENAME.TXT
+    set_fat32_entry(fat, 7, 0x0FFFFFFF)  # NESTEDLONGNAME.TXT
+    set_fat32_entry(fat, 8, 0x0FFFFFFF)  # VERYLONGDIR dir
+    set_fat32_entry(fat, 9, 0x0FFFFFFF)  # INNER.TXT
 
     fat1_offset = RESERVED_SECTORS * BYTES_PER_SECTOR
     fat2_offset = (RESERVED_SECTORS + SECTORS_PER_FAT) * BYTES_PER_SECTOR
@@ -110,8 +158,20 @@ def main() -> int:
         return sector * BYTES_PER_SECTOR
 
     root_dir = bytearray(BYTES_PER_SECTOR)
-    root_dir[0:32] = make_dir_entry(name83_bytes("HELLO.TXT"), 0x20, 3, len(b"hello fat32\n"))
-    root_dir[32:64] = make_dir_entry(dir83_bytes("DOCS"), 0x10, 4, 0)
+    offset = 0
+    root_dir[offset:offset + 32] = make_dir_entry(name83_bytes("HELLO.TXT"), 0x20, 3, len(b"hello fat32\n"))
+    offset += 32
+    root_dir[offset:offset + 32] = make_dir_entry(dir83_bytes("DOCS"), 0x10, 4, 0)
+    offset += 32
+
+    long83 = b"LONGFI~1TXT"
+    offset = write_entries(root_dir, offset, make_lfn_entries("LONGFILENAME.TXT", short_name_checksum(long83)))
+    root_dir[offset:offset + 32] = make_dir_entry(long83, 0x20, 6, len(b"fat32 long root\n"))
+    offset += 32
+
+    longdir83 = b"VERYLO~1   "
+    offset = write_entries(root_dir, offset, make_lfn_entries("VERYLONGDIR", short_name_checksum(longdir83)))
+    root_dir[offset:offset + 32] = make_dir_entry(longdir83, 0x10, 8, 0)
     image[cluster_offset(2):cluster_offset(2) + BYTES_PER_SECTOR] = root_dir
 
     hello_cluster = bytearray(BYTES_PER_SECTOR)
@@ -119,12 +179,33 @@ def main() -> int:
     image[cluster_offset(3):cluster_offset(3) + BYTES_PER_SECTOR] = hello_cluster
 
     docs_dir = bytearray(BYTES_PER_SECTOR)
-    docs_dir[0:32] = make_dir_entry(name83_bytes("README.TXT"), 0x20, 5, len(b"fat32 nested\n"))
+    offset = 0
+    docs_dir[offset:offset + 32] = make_dir_entry(name83_bytes("README.TXT"), 0x20, 5, len(b"fat32 nested\n"))
+    offset += 32
+    nested83 = b"NESTED~1TXT"
+    offset = write_entries(docs_dir, offset, make_lfn_entries("NESTEDLONGNAME.TXT", short_name_checksum(nested83)))
+    docs_dir[offset:offset + 32] = make_dir_entry(nested83, 0x20, 7, len(b"fat32 nested long\n"))
     image[cluster_offset(4):cluster_offset(4) + BYTES_PER_SECTOR] = docs_dir
 
     readme_cluster = bytearray(BYTES_PER_SECTOR)
     readme_cluster[0:len(b"fat32 nested\n")] = b"fat32 nested\n"
     image[cluster_offset(5):cluster_offset(5) + BYTES_PER_SECTOR] = readme_cluster
+
+    long_cluster = bytearray(BYTES_PER_SECTOR)
+    long_cluster[0:len(b"fat32 long root\n")] = b"fat32 long root\n"
+    image[cluster_offset(6):cluster_offset(6) + BYTES_PER_SECTOR] = long_cluster
+
+    nested_long_cluster = bytearray(BYTES_PER_SECTOR)
+    nested_long_cluster[0:len(b"fat32 nested long\n")] = b"fat32 nested long\n"
+    image[cluster_offset(7):cluster_offset(7) + BYTES_PER_SECTOR] = nested_long_cluster
+
+    verylongdir_dir = bytearray(BYTES_PER_SECTOR)
+    verylongdir_dir[0:32] = make_dir_entry(name83_bytes("INNER.TXT"), 0x20, 9, len(b"inside long dir\n"))
+    image[cluster_offset(8):cluster_offset(8) + BYTES_PER_SECTOR] = verylongdir_dir
+
+    inner_cluster = bytearray(BYTES_PER_SECTOR)
+    inner_cluster[0:len(b"inside long dir\n")] = b"inside long dir\n"
+    image[cluster_offset(9):cluster_offset(9) + BYTES_PER_SECTOR] = inner_cluster
 
     with open(args.output, "wb") as f:
         f.write(image)

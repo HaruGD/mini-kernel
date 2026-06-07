@@ -10,6 +10,18 @@ extern Terminal terminal;  // 포인터 아닌 참조로
 
 FAT12Driver::FAT12Driver(ATADriver* ata) : ata(ata) {}
 
+static void fat12_copy_dir_entry(DirEntry* dest, const DirEntry* src) {
+    if (dest == 0 || src == 0) {
+        return;
+    }
+
+    const uint8_t* src_bytes = (const uint8_t*)src;
+    uint8_t* dest_bytes = (uint8_t*)dest;
+    for (uint32_t i = 0; i < sizeof(DirEntry); i++) {
+        dest_bytes[i] = src_bytes[i];
+    }
+}
+
 void FAT12Driver::init() {
     uint8_t buffer[512];
     if (!ata->read_sector(0, buffer)) {
@@ -70,7 +82,7 @@ bool FAT12Driver::find_file(const char* name, DirEntry* entry) {
                 }
             }
             if (match) {
-                *entry = dir[i];
+                fat12_copy_dir_entry(entry, &dir[i]);
                 return true;
             }
         }
@@ -126,6 +138,39 @@ void FAT12Driver::list_files() {
             terminal.print(name);
         }
     }
+}
+
+bool FAT12Driver::read_root_entry(uint32_t visible_index, DirEntry* entry) {
+    if (entry == 0) {
+        return false;
+    }
+
+    uint8_t buffer[512];
+    int entries_per_sector = 512 / 32;
+    int root_sectors = (bpb.root_entry_count * 32) / 512;
+    uint32_t seen = 0;
+
+    for (int s = 0; s < root_sectors; s++) {
+        if (!ata->read_sector(root_start + s, buffer)) {
+            return false;
+        }
+        DirEntry* dir = (DirEntry*)buffer;
+
+        for (int i = 0; i < entries_per_sector; i++) {
+            if (dir[i].name[0] == 0x00) {
+                return false;
+            }
+            if (dir[i].name[0] == 0xE5) continue;
+            if (dir[i].attributes & 0x08) continue;
+
+            if (seen == visible_index) {
+                fat12_copy_dir_entry(entry, &dir[i]);
+                return true;
+            }
+            seen++;
+        }
+    }
+    return false;
 }
 
 

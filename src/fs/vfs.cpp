@@ -383,16 +383,74 @@ static int fat32_backend_read_file(void* backend_ctx, const char* relative_path,
     return fat32->read_file_path(relative_path, buffer, buffer_size, bytes_read_out);
 }
 
+static int fat32_backend_write_file(void* backend_ctx, const char* relative_path, const uint8_t* buffer, uint32_t size) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (relative_path == 0 || relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    if (size > 0 && buffer == 0) {
+        return VFS_ERR_IO;
+    }
+    return fat32->write_file_path(relative_path, buffer, size);
+}
+
+static int fat32_backend_touch_file(void* backend_ctx, const char* relative_path) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (relative_path == 0 || relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    return fat32->touch_file_path(relative_path);
+}
+
+static int fat32_backend_delete_file(void* backend_ctx, const char* relative_path) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (relative_path == 0 || relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    return fat32->delete_file_path(relative_path);
+}
+
+static int fat32_backend_mkdir(void* backend_ctx, const char* relative_path) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (relative_path == 0 || relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    return fat32->mkdir_path(relative_path);
+}
+
+static int fat32_backend_rmdir(void* backend_ctx, const char* relative_path) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (relative_path == 0 || relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    return fat32->rmdir_path(relative_path);
+}
+
 static const VFSBackendOps g_fat32_backend_ops = {
     fat32_backend_list_files,
     fat32_backend_read_dir_entry,
     fat32_backend_get_file_info,
     fat32_backend_read_file,
-    0,
-    0,
-    0,
-    0,
-    0,
+    fat32_backend_write_file,
+    fat32_backend_touch_file,
+    fat32_backend_delete_file,
+    fat32_backend_mkdir,
+    fat32_backend_rmdir,
 };
 
 static MemFSNode* memfs_get_node(int16_t index) {

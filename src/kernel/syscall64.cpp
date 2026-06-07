@@ -182,24 +182,32 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return position;
     }
 
-    if (syscall_no == SYS_MKDIR || syscall_no == SYS_RMDIR) {
+    if (syscall_no == SYS_MKDIR || syscall_no == SYS_RMDIR ||
+        syscall_no == SYS_MKDIR_SILENT || syscall_no == SYS_RMDIR_SILENT) {
         char dir_path[USER_PATH_MAX];
+        int silent = syscall_no == SYS_MKDIR_SILENT || syscall_no == SYS_RMDIR_SILENT;
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, dir_path, sizeof(dir_path))) {
-            print("\nInvalid user path pointer.");
+            if (!silent) {
+                print("\nInvalid user path pointer.");
+            }
             return (uint64_t)-1;
         }
 
-        int result = syscall_no == SYS_MKDIR ? vfs_mkdir(dir_path) : vfs_rmdir(dir_path);
+        int result = (syscall_no == SYS_MKDIR || syscall_no == SYS_MKDIR_SILENT) ? vfs_mkdir(dir_path) : vfs_rmdir(dir_path);
         if (result == VFS_OK) {
-            print(syscall_no == SYS_MKDIR ? "\nCreated dir: " : "\nRemoved dir: ");
-            print(dir_path);
-            print("\n");
+            if (!silent) {
+                print((syscall_no == SYS_MKDIR || syscall_no == SYS_MKDIR_SILENT) ? "\nCreated dir: " : "\nRemoved dir: ");
+                print(dir_path);
+                print("\n");
+            }
             return 0;
         }
 
-        print(syscall_no == SYS_MKDIR ? "\nFailed to create dir: " : "\nFailed to remove dir: ");
-        print(dir_path);
-        print("\n");
+        if (!silent) {
+            print((syscall_no == SYS_MKDIR || syscall_no == SYS_MKDIR_SILENT) ? "\nFailed to create dir: " : "\nFailed to remove dir: ");
+            print(dir_path);
+            print("\n");
+        }
         return (uint64_t)-1;
     }
 
@@ -219,6 +227,60 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return (uint64_t)-1;
         }
         return 0;
+    }
+
+    if (syscall_no == SYS_GETCWD) {
+        Process* process = current_process();
+        const char* cwd = process_get_cwd(process);
+        uint32_t capacity = (uint32_t)arg2;
+        uint32_t needed = (uint32_t)strlen64(cwd) + 1;
+        if (arg1 == 0 || capacity < needed) {
+            return (uint64_t)-1;
+        }
+        return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg1, (const uint8_t*)cwd, needed) ? 0 : (uint64_t)-1;
+    }
+
+    if (syscall_no == SYS_CHDIR) {
+        Process* process = current_process();
+        char dir_path[USER_PATH_MAX];
+        VFSFileInfo info;
+        if (process == 0) {
+            return (uint64_t)-1;
+        }
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, dir_path, sizeof(dir_path))) {
+            return (uint64_t)-1;
+        }
+        if (vfs_get_file_info(dir_path, &info) != VFS_OK || info.type != VFS_NODE_DIR) {
+            return (uint64_t)-1;
+        }
+        process_copy_cwd(process, dir_path);
+        return 0;
+    }
+
+    if (syscall_no == SYS_VFS_OPENDIR) {
+        char dir_path[USER_PATH_MAX];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, dir_path, sizeof(dir_path))) {
+            return (uint64_t)-1;
+        }
+
+        Process* owner = current_process();
+        return (uint64_t)vfs_opendir_for_owner(dir_path, owner != 0 ? owner->pid : 0);
+    }
+
+    if (syscall_no == SYS_VFS_READDIR) {
+        VFSDirEntry entry;
+        int result = vfs_readdir((int)arg1, &entry);
+        if (result <= 0) {
+            return (uint64_t)result;
+        }
+        if (arg2 == 0) {
+            return (uint64_t)-1;
+        }
+        return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg2, (const uint8_t*)&entry, sizeof(entry)) ? 1 : (uint64_t)-1;
+    }
+
+    if (syscall_no == SYS_VFS_CLOSEDIR) {
+        return vfs_closedir((int)arg1) == VFS_OK ? 0 : (uint64_t)-1;
     }
 
     if (syscall_no == SYS_CAT_FILE) {
@@ -407,7 +469,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_PS) {
-        print_process_table(process_table, PROCESS_TABLE_SIZE, pit.get_tick());
+        print_process_table(pit.get_tick());
         return 0;
     }
 
@@ -501,7 +563,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
 
     if (syscall_no == SYS_JOBS) {
         Process* process = current_process();
-        print_jobs_for_process(process, process_table, PROCESS_TABLE_SIZE, pit.get_tick());
+        print_jobs_for_process(process, pit.get_tick());
         return 0;
     }
 

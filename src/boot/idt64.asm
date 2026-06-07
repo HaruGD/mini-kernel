@@ -81,6 +81,7 @@ isr_default_asm:
     cli
     PUSH_GPRS
     sub rsp, 8
+    lea rdi, [rsp + 8]
     call default_interrupt_handler64
 .hang_default:
     cli

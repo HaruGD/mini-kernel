@@ -1,4 +1,5 @@
 #include "fs/vfs.h"
+#include "kernel/kutil64.h"
 #include "kernel/process64.h"
 
 uint32_t user_program_depth = 0;
@@ -48,6 +49,8 @@ void process_clear(Process* process) {
     process->background = 0;
     process->pause_reason = PROCESS_PAUSE_NONE;
     process->wake_tick = 0;
+    process->cwd[0] = '/';
+    process->cwd[1] = '\0';
     process->command_line[0] = '\0';
     process->saved_rax = 0;
     process->saved_rbx = 0;
@@ -67,6 +70,25 @@ void process_clear(Process* process) {
     process->saved_rip = 0;
     process->saved_rsp = 0;
     process->saved_rflags = 0;
+}
+
+const char* process_get_cwd(const Process* process) {
+    if (process == 0 || process->cwd[0] == '\0') {
+        return "/";
+    }
+    return process->cwd;
+}
+
+void process_copy_cwd(Process* process, const char* cwd) {
+    if (process == 0) {
+        return;
+    }
+
+    copy_string64(process->cwd, sizeof(process->cwd), (cwd != 0 && cwd[0] != '\0') ? cwd : "/");
+    if (process->cwd[0] == '\0') {
+        process->cwd[0] = '/';
+        process->cwd[1] = '\0';
+    }
 }
 
 void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code) {
