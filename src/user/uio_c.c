@@ -4,6 +4,8 @@
 #define UIO_TEXT_MAX 64
 #define UIO_READ_MAX 64
 #define UIO_RESOLVED_PATH_MAX 160
+#define UIO_FILL_CHUNK 128
+#define UIO_SAMPLE_SIZE 16
 
 static int resolve_uio_path(const char* input, char* output, uint32_t output_size) {
     if (!user_resolve_path(input, output, output_size)) {
@@ -204,6 +206,106 @@ static int handle_leak_mode(const char* path, const char* text) {
     return 0;
 }
 
+static void build_fill_chunk(char* chunk, uint32_t base_offset) {
+    for (uint32_t i = 0; i < UIO_FILL_CHUNK; i++) {
+        chunk[i] = (char)('A' + ((base_offset + i) % 26u));
+    }
+}
+
+static void print_sample(const char* label, const char* text, uint32_t size) {
+    char sample[UIO_SAMPLE_SIZE + 1];
+    uint32_t count = size > UIO_SAMPLE_SIZE ? UIO_SAMPLE_SIZE : size;
+    for (uint32_t i = 0; i < count; i++) {
+        sample[i] = text[i];
+    }
+    sample[count] = '\0';
+    user_printf("%s: %s\n", label, sample);
+}
+
+static int handle_fill_mode(const char* path, const char* size_text) {
+    char chunk[UIO_FILL_CHUNK];
+    char sample[UIO_SAMPLE_SIZE + 1];
+    UserVFSInfo info;
+    uint32_t requested_size = 0;
+    uint32_t written_total = 0;
+
+    if (!user_parse_u32_strict(size_text, &requested_size)) {
+        user_printf("invalid fill size: %s\n", size_text);
+        return 1;
+    }
+
+    long fd = user_open_file(path, USER_VFS_OPEN_WRITE | USER_VFS_OPEN_CREATE | USER_VFS_OPEN_TRUNCATE);
+    if (fd < 0) {
+        user_printf("open for fill failed: %s\n", path);
+        return 1;
+    }
+
+    while (written_total < requested_size) {
+        uint32_t chunk_size = requested_size - written_total;
+        if (chunk_size > UIO_FILL_CHUNK) {
+            chunk_size = UIO_FILL_CHUNK;
+        }
+        build_fill_chunk(chunk, written_total);
+
+        long bytes = user_write_file_handle(fd, chunk, chunk_size);
+        if (bytes < 0 || (uint32_t)bytes != chunk_size) {
+            user_puts("fill write failed.");
+            user_close_file(fd);
+            return 1;
+        }
+        written_total += chunk_size;
+    }
+
+    if (user_close_file(fd) < 0) {
+        user_puts("close after fill failed.");
+        return 1;
+    }
+
+    if (user_get_file_info(path, &info) < 0) {
+        user_puts("file info after fill failed.");
+        return 1;
+    }
+
+    fd = user_open_file(path, USER_VFS_OPEN_READ);
+    if (fd < 0) {
+        user_printf("open for fill verify failed: %s\n", path);
+        return 1;
+    }
+
+    long bytes = user_read_file_handle(fd, sample, UIO_SAMPLE_SIZE);
+    if (bytes < 0) {
+        user_puts("read head sample failed.");
+        user_close_file(fd);
+        return 1;
+    }
+    sample[bytes >= 0 ? bytes : 0] = '\0';
+    print_sample("Head", sample, (uint32_t)bytes);
+
+    if (requested_size > UIO_SAMPLE_SIZE) {
+        if (user_seek_file(fd, (int32_t)(requested_size - UIO_SAMPLE_SIZE), USER_VFS_SEEK_SET) < 0) {
+            user_puts("seek tail sample failed.");
+            user_close_file(fd);
+            return 1;
+        }
+        bytes = user_read_file_handle(fd, sample, UIO_SAMPLE_SIZE);
+        if (bytes < 0) {
+            user_puts("read tail sample failed.");
+            user_close_file(fd);
+            return 1;
+        }
+        sample[bytes >= 0 ? bytes : 0] = '\0';
+        print_sample("Tail", sample, (uint32_t)bytes);
+    }
+
+    if (user_close_file(fd) < 0) {
+        user_puts("close after fill verify failed.");
+        return 1;
+    }
+
+    user_printf("Filled %u byte(s), file size now %u byte(s).\n", requested_size, info.size);
+    return 0;
+}
+
 int main(int argc, char** argv) {
     char path_input[UIO_PATH_MAX];
     char text_input[UIO_TEXT_MAX];
@@ -247,6 +349,17 @@ int main(int argc, char** argv) {
             return 1;
         }
         return handle_leak_mode(resolved_path, joined_text);
+    }
+
+    if (argc >= 2 && argv[1] != 0 && user_str_eq(argv[1], "fill")) {
+        if (argc < 4 || argv[2] == 0 || argv[2][0] == '\0' || argv[3] == 0 || argv[3][0] == '\0') {
+            user_puts("Usage: uio fill [file] [size]");
+            return 1;
+        }
+        if (!resolve_uio_path(argv[2], resolved_path, sizeof(resolved_path))) {
+            return 1;
+        }
+        return handle_fill_mode(resolved_path, argv[3]);
     }
 
     if (argc >= 3 && argv[1] != 0 && argv[2] != 0) {

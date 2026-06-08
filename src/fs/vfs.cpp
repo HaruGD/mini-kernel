@@ -35,7 +35,7 @@ struct VFSOpenFile {
     uint32_t size;
     uint32_t capacity;
     uint32_t dir_cursor;
-    char path[32];
+    char path[VFS_PATH_MAX];
     uint8_t* buffer;
 };
 
@@ -346,6 +346,7 @@ static const VFSBackendOps g_fat12_backend_ops = {
     fat12_backend_delete_file,
     0,
     0,
+    0,
 };
 
 static int fat32_backend_list_files(void* backend_ctx, const char* relative_path) {
@@ -441,6 +442,18 @@ static int fat32_backend_rmdir(void* backend_ctx, const char* relative_path) {
     return fat32->rmdir_path(relative_path);
 }
 
+static int fat32_backend_rename_path(void* backend_ctx, const char* old_relative_path, const char* new_relative_path) {
+    FAT32Driver* fat32 = (FAT32Driver*)backend_ctx;
+    if (fat32 == 0 || !fat32->ready()) {
+        return VFS_ERR_NOT_READY;
+    }
+    if (old_relative_path == 0 || old_relative_path[0] == '\0' ||
+        new_relative_path == 0 || new_relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    return fat32->rename_path(old_relative_path, new_relative_path);
+}
+
 static const VFSBackendOps g_fat32_backend_ops = {
     fat32_backend_list_files,
     fat32_backend_read_dir_entry,
@@ -451,6 +464,7 @@ static const VFSBackendOps g_fat32_backend_ops = {
     fat32_backend_delete_file,
     fat32_backend_mkdir,
     fat32_backend_rmdir,
+    fat32_backend_rename_path,
 };
 
 static MemFSNode* memfs_get_node(int16_t index) {
@@ -857,6 +871,69 @@ static int memfs_backend_rmdir(void*, const char* relative_path) {
     return VFS_OK;
 }
 
+static int memfs_is_descendant(int16_t node_index, int16_t possible_ancestor) {
+    int16_t current = node_index;
+    while (current >= 0) {
+        if (current == possible_ancestor) {
+            return 1;
+        }
+        MemFSNode* node = memfs_get_node(current);
+        if (node == 0) {
+            break;
+        }
+        current = node->parent;
+    }
+    return 0;
+}
+
+static int memfs_backend_rename_path(void*, const char* old_relative_path, const char* new_relative_path) {
+    int16_t node_index = 0;
+    int16_t new_parent_index = 0;
+    char new_leaf_name[MEMFS_MAX_NAME];
+    int result = memfs_lookup_path(old_relative_path, &node_index);
+    if (result != VFS_OK) {
+        return result;
+    }
+    if (node_index == 0) {
+        return VFS_ERR_UNSUPPORTED;
+    }
+
+    result = memfs_lookup_parent(new_relative_path, &new_parent_index, new_leaf_name);
+    if (result != VFS_OK) {
+        return result;
+    }
+
+    MemFSNode* node = memfs_get_node(node_index);
+    if (node == 0) {
+        return VFS_ERR_NOT_FOUND;
+    }
+
+    if (node->parent == new_parent_index && vfs_str_eq(node->name, new_leaf_name)) {
+        return VFS_OK;
+    }
+    if (memfs_find_child(new_parent_index, new_leaf_name) >= 0) {
+        return VFS_ERR_ALREADY_MOUNTED;
+    }
+    if (node->type == VFS_NODE_DIR &&
+        (new_parent_index == node_index || memfs_is_descendant(new_parent_index, node_index))) {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    if (node->parent != new_parent_index) {
+        memfs_unlink_child(node->parent, node_index);
+        MemFSNode* new_parent = memfs_get_node(new_parent_index);
+        if (new_parent == 0 || new_parent->type != VFS_NODE_DIR) {
+            return VFS_ERR_INVALID_PATH;
+        }
+        node->next_sibling = new_parent->first_child;
+        new_parent->first_child = node_index;
+        node->parent = new_parent_index;
+    }
+
+    vfs_copy_string(node->name, sizeof(node->name), new_leaf_name);
+    return VFS_OK;
+}
+
 static const VFSBackendOps g_memfs_backend_ops = {
     memfs_backend_list_files,
     memfs_backend_read_dir_entry,
@@ -867,6 +944,7 @@ static const VFSBackendOps g_memfs_backend_ops = {
     memfs_backend_delete_file,
     memfs_backend_mkdir,
     memfs_backend_rmdir,
+    memfs_backend_rename_path,
 };
 
 static void vfs_reset_open_file(VFSOpenFile* file) {
@@ -998,6 +1076,39 @@ static const VFSMount* vfs_find_mount(const char* path, const char** relative_pa
         *relative_path_out = best_relative;
     }
     return best_mount;
+}
+
+static int vfs_path_is_descendant_or_same(const char* path, const char* prefix) {
+    uint32_t i = 0;
+    if (path == 0 || prefix == 0) {
+        return 0;
+    }
+    while (prefix[i] != '\0' && path[i] != '\0' && prefix[i] == path[i]) {
+        i++;
+    }
+    if (prefix[i] != '\0') {
+        return 0;
+    }
+    if (path[i] == '\0') {
+        return 1;
+    }
+    if (prefix[i - (i > 0 ? 1u : 0u)] == '/') {
+        return 1;
+    }
+    return path[i] == '/';
+}
+
+static int vfs_has_open_descendant_path(const char* path) {
+    for (uint32_t i = 0; i < VFS_MAX_OPEN_FILES; i++) {
+        VFSOpenFile* file = &g_vfs_open_files[i];
+        if (!file->active) {
+            continue;
+        }
+        if (vfs_path_is_descendant_or_same(file->path, path)) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int vfs_list_directory_generic(const VFSMount* mount, const char* relative_path) {
@@ -1256,6 +1367,27 @@ int vfs_rmdir(const char* path) {
         return VFS_ERR_INVALID_PATH;
     }
     return mount->ops->rmdir(mount->backend_ctx, relative_path);
+}
+
+int vfs_rename(const char* old_path, const char* new_path) {
+    const char* old_relative_path = 0;
+    const char* new_relative_path = 0;
+    const VFSMount* old_mount = vfs_find_mount(old_path, &old_relative_path);
+    const VFSMount* new_mount = vfs_find_mount(new_path, &new_relative_path);
+    if (old_mount == 0 || new_mount == 0 || old_mount != new_mount) {
+        return VFS_ERR_UNSUPPORTED;
+    }
+    if (old_mount->ops == 0 || old_mount->ops->rename_path == 0) {
+        return VFS_ERR_UNSUPPORTED;
+    }
+    if (old_relative_path == 0 || old_relative_path[0] == '\0' ||
+        new_relative_path == 0 || new_relative_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+    if (vfs_has_open_descendant_path(old_path)) {
+        return VFS_ERR_UNSUPPORTED;
+    }
+    return old_mount->ops->rename_path(old_mount->backend_ctx, old_relative_path, new_relative_path);
 }
 
 int vfs_open_for_owner(const char* path, uint32_t mode, uint32_t owner_pid) {

@@ -84,6 +84,7 @@ Main built-ins:
 - `pwd`, `cd [path]`
 - `ls [path]`, `cat [file]`, `touch [file]`, `save [file] [text]`, `rm [file]`
 - `mkdir [path]`, `rmdir [path]`
+- `rename [old] [new]`, `mv [old] [new]`
 - `pid`, `ppid`
 - `run [file]`
 - `sleep [ticks]`
@@ -152,9 +153,15 @@ csh> save /fat32/NEWDIR/A.TXT hello dir
 csh> cat /fat32/NEWDIR/A.TXT
 csh> rm /fat32/NEWDIR/A.TXT
 csh> rmdir /fat32/NEWDIR
+csh> rename /fat32/LONGNEWDIRNAME/LONGWRITENAME.TXT /fat32/LONGNEWDIRNAME/RENAMEDLONG.TXT
+csh> mkdir /fat32/TARGETDIR
+csh> rename /fat32/LONGNEWDIRNAME /fat32/TARGETDIR/MOVEDLONGDIR
 csh> uls /fat32
 csh> ucat /fat32/LONGFILENAME.TXT
 csh> ucat /fat32/DOCS/NESTEDLONGNAME.TXT
+csh> uio fill /fat32/BIG.TXT 1536
+csh> mkdir /fat32/LONGNEWDIRNAME
+csh> save /fat32/LONGNEWDIRNAME/LONGWRITENAME.TXT hello lfn write
 ```
 
 ## Filesystems
@@ -177,9 +184,12 @@ Important note:
   - file info lookup
   - file reads such as `/fat32/HELLO.TXT` and `/fat32/DOCS/README.TXT`
   - LFN read/listing for existing long-name entries such as `/fat32/LONGFILENAME.TXT`
+  - creating, writing, listing, and deleting new long-name files/directories
+  - renaming and moving long-name files/directories within the same FAT32 mount
   - small file create/write/delete in existing directories
   - directory create/remove in existing directories
   - growing directory storage when new entries no longer fit in the first cluster
+  - multi-cluster file writes validated through `uio fill /fat32/BIG.TXT 1536`
 
 ## Repo Layout
 

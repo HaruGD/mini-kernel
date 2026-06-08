@@ -26,7 +26,7 @@ typedef struct UserVFSInfo {
 typedef struct UserDirEntry {
     uint32_t type;
     uint32_t size;
-    char name[32];
+    char name[64];
 } UserDirEntry;
 
 static inline long user_syscall0(long number) {
@@ -245,6 +245,10 @@ static inline long user_mkdir_silent(const char* path) {
 
 static inline long user_rmdir_silent(const char* path) {
     return user_syscall1(50, (long)path);
+}
+
+static inline long user_rename(const char* old_path, const char* new_path) {
+    return user_syscall2(51, (long)old_path, (long)new_path);
 }
 
 static inline long user_get_file_info(const char* path, UserVFSInfo* info) {

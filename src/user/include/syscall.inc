@@ -51,6 +51,7 @@
 %define SYS_VFS_CLOSEDIR 48
 %define SYS_MKDIR_SILENT 49
 %define SYS_RMDIR_SILENT 50
+%define SYS_RENAME_PATH 51
 
 %macro sys_write 2
     mov rax, SYS_WRITE

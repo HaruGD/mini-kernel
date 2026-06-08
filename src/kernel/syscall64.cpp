@@ -211,6 +211,32 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return (uint64_t)-1;
     }
 
+    if (syscall_no == SYS_RENAME_PATH) {
+        char old_path[USER_PATH_MAX];
+        char new_path[USER_PATH_MAX];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, old_path, sizeof(old_path)) ||
+            !copy_user_cstring((const char*)(uintptr_t)arg2, new_path, sizeof(new_path))) {
+            print("\nInvalid user path pointer.");
+            return (uint64_t)-1;
+        }
+
+        if (vfs_rename(old_path, new_path) != VFS_OK) {
+            print("\nFailed to rename: ");
+            print(old_path);
+            print(" -> ");
+            print(new_path);
+            print("\n");
+            return (uint64_t)-1;
+        }
+
+        print("\nRenamed: ");
+        print(old_path);
+        print(" -> ");
+        print(new_path);
+        print("\n");
+        return 0;
+    }
+
     if (syscall_no == SYS_VFS_INFO) {
         char file_path[USER_PATH_MAX];
         VFSFileInfo info;

@@ -125,6 +125,91 @@ static int fat32_name_eq_ci(const char* a, const char* b) {
     return a[i] == '\0' && b[i] == '\0';
 }
 
+static int fat32_is_alnum_ascii(char ch) {
+    return (ch >= 'A' && ch <= 'Z') ||
+           (ch >= 'a' && ch <= 'z') ||
+           (ch >= '0' && ch <= '9');
+}
+
+static char fat32_sanitize_short_char(char ch) {
+    ch = fat32_to_upper(ch);
+    if (fat32_is_alnum_ascii(ch)) {
+        return ch;
+    }
+    switch (ch) {
+        case '_':
+        case '$':
+        case '~':
+        case '!':
+        case '#':
+        case '%':
+        case '-':
+        case '{':
+        case '}':
+        case '(':
+        case ')':
+        case '@':
+        case '^':
+        case '&':
+            return ch;
+        default:
+            return '_';
+    }
+}
+
+static int fat32_is_simple_83_name(const char* name) {
+    uint32_t base_len = 0;
+    uint32_t ext_len = 0;
+    uint8_t saw_dot = 0;
+
+    if (name == 0 || name[0] == '\0') {
+        return 0;
+    }
+
+    for (uint32_t i = 0; name[i] != '\0'; i++) {
+        char ch = name[i];
+        if (ch == '.') {
+            if (saw_dot || base_len == 0) {
+                return 0;
+            }
+            saw_dot = 1;
+            continue;
+        }
+        if (ch == ' ' || ch == '/' || ch == '\\') {
+            return 0;
+        }
+        if (fat32_to_upper(ch) != ch) {
+            return 0;
+        }
+        if (!fat32_is_alnum_ascii(ch) && ch != '_' && ch != '$' && ch != '~' &&
+            ch != '!' && ch != '#' && ch != '%' && ch != '-' && ch != '{' &&
+            ch != '}' && ch != '(' && ch != ')' && ch != '@' && ch != '^' &&
+            ch != '&') {
+            return 0;
+        }
+
+        if (!saw_dot) {
+            if (++base_len > 8) {
+                return 0;
+            }
+        } else {
+            if (++ext_len > 3) {
+                return 0;
+            }
+        }
+    }
+
+    return base_len > 0;
+}
+
+static uint32_t fat32_lfn_slot_count(const char* long_name) {
+    uint32_t len = 0;
+    while (long_name != 0 && long_name[len] != '\0') {
+        len++;
+    }
+    return (len + 12u) / 13u;
+}
+
 FAT32Driver::FAT32Driver(ATADriver* ata, uint32_t start_lba)
     : ata(ata),
       start_lba(start_lba),
@@ -393,6 +478,54 @@ int FAT32Driver::find_in_directory(uint32_t dir_cluster, const char* segment, FA
     }
 }
 
+int FAT32Driver::find_short_name_in_directory(uint32_t dir_cluster, const char short_name[11], FAT32DirEntry* entry) {
+    uint8_t sector[512];
+    uint32_t cluster = dir_cluster;
+
+    while (cluster >= 2u && !is_end_of_chain(cluster)) {
+        for (uint32_t sector_offset = 0; sector_offset < bpb.sectors_per_cluster; sector_offset++) {
+            if (!read_dir_sector(cluster, sector_offset, sector)) {
+                return VFS_ERR_IO;
+            }
+
+            FAT32DirEntry* dir = (FAT32DirEntry*)sector;
+            uint32_t entry_count = bpb.bytes_per_sector / sizeof(FAT32DirEntry);
+            for (uint32_t i = 0; i < entry_count; i++) {
+                if (dir[i].name[0] == 0x00) {
+                    return VFS_ERR_NOT_FOUND;
+                }
+                if (dir[i].name[0] == 0xE5 || dir[i].attributes == 0x0F || (dir[i].attributes & 0x08)) {
+                    continue;
+                }
+
+                uint8_t matched = 1;
+                for (uint32_t j = 0; j < 11; j++) {
+                    if (dir[i].name[j] != (uint8_t)short_name[j]) {
+                        matched = 0;
+                        break;
+                    }
+                }
+                if (!matched) {
+                    continue;
+                }
+
+                if (entry != 0) {
+                    fat32_copy_dir_entry(entry, &dir[i]);
+                }
+                return VFS_OK;
+            }
+        }
+
+        uint32_t next = read_fat_entry(cluster);
+        if (next == cluster) {
+            return VFS_ERR_IO;
+        }
+        cluster = next;
+    }
+
+    return VFS_ERR_NOT_FOUND;
+}
+
 int FAT32Driver::find_in_directory_with_location(uint32_t dir_cluster,
                                                  const char* segment,
                                                  FAT32DirEntry* entry,
@@ -631,12 +764,119 @@ int FAT32Driver::resolve_parent_path(const char* path, uint32_t* out_dir_cluster
     return VFS_ERR_INVALID_PATH;
 }
 
-int FAT32Driver::find_free_dir_slot(uint32_t dir_cluster,
-                                    uint32_t* out_dir_cluster,
-                                    uint32_t* out_sector_offset,
-                                    uint32_t* out_entry_index) {
+static void fat32_build_short_alias_name(const char* leaf_name, uint32_t serial, char out[11]) {
+    char base[8];
+    char ext[3];
+    uint32_t base_len = 0;
+    uint32_t ext_len = 0;
+    int32_t dot_index = -1;
+
+    for (uint32_t i = 0; leaf_name != 0 && leaf_name[i] != '\0'; i++) {
+        if (leaf_name[i] == '.') {
+            dot_index = (int32_t)i;
+        }
+    }
+
+    for (uint32_t i = 0; i < 11; i++) {
+        out[i] = ' ';
+    }
+
+    if (dot_index >= 0) {
+        for (uint32_t i = (uint32_t)dot_index + 1; leaf_name[i] != '\0' && ext_len < 3; i++) {
+            ext[ext_len++] = fat32_sanitize_short_char(leaf_name[i]);
+        }
+    }
+
+    uint32_t suffix_digits = serial >= 10 ? 2u : 1u;
+    uint32_t prefix_limit = suffix_digits == 1 ? 6u : 5u;
+    for (uint32_t i = 0; leaf_name[i] != '\0' && leaf_name[i] != '.' && base_len < prefix_limit; i++) {
+        base[base_len++] = fat32_sanitize_short_char(leaf_name[i]);
+    }
+    if (base_len == 0) {
+        base[base_len++] = 'X';
+    }
+
+    for (uint32_t i = 0; i < base_len; i++) {
+        out[i] = base[i];
+    }
+    out[base_len] = '~';
+    if (serial >= 10) {
+        out[base_len + 1] = (char)('0' + ((serial / 10u) % 10u));
+        out[base_len + 2] = (char)('0' + (serial % 10u));
+    } else {
+        out[base_len + 1] = (char)('0' + serial);
+    }
+
+    for (uint32_t i = 0; i < ext_len; i++) {
+        out[8 + i] = ext[i];
+    }
+}
+
+static void fat32_make_lfn_entry(const char* long_name,
+                                 uint32_t long_len,
+                                 uint32_t chunk_index,
+                                 uint32_t chunk_count,
+                                 uint8_t checksum,
+                                 FAT32LFNEntry* entry) {
+    uint16_t chars[13];
+    uint32_t start = chunk_index * 13u;
+    uint32_t copied = 0;
+
+    for (uint32_t i = 0; i < 13; i++) {
+        uint32_t pos = start + i;
+        if (pos < long_len) {
+            chars[i] = (uint8_t)long_name[pos];
+            copied++;
+        } else if (pos == long_len) {
+            chars[i] = 0x0000u;
+        } else {
+            chars[i] = 0xFFFFu;
+        }
+    }
+
+    entry->order = (uint8_t)(chunk_index + 1u);
+    if (chunk_index + 1u == chunk_count) {
+        entry->order |= 0x40u;
+    }
+    entry->attributes = 0x0Fu;
+    entry->entry_type = 0;
+    entry->checksum = checksum;
+    entry->first_cluster_low = 0;
+    for (uint32_t i = 0; i < 5; i++) {
+        entry->name1[i] = chars[i];
+    }
+    for (uint32_t i = 0; i < 6; i++) {
+        entry->name2[i] = chars[5u + i];
+    }
+    for (uint32_t i = 0; i < 2; i++) {
+        entry->name3[i] = chars[11u + i];
+    }
+    (void)copied;
+}
+
+static const char* fat32_leaf_name_from_path(const char* path) {
+    const char* leaf = path;
+    if (path == 0) {
+        return 0;
+    }
+    for (const char* cursor = path; *cursor != '\0'; cursor++) {
+        if (*cursor == '/') {
+            leaf = cursor + 1;
+        }
+    }
+    return leaf;
+}
+
+int FAT32Driver::find_free_dir_slots(uint32_t dir_cluster,
+                                     uint32_t slot_count,
+                                     uint32_t* out_dir_cluster,
+                                     uint32_t* out_sector_offset,
+                                     uint32_t* out_entry_index) {
     if (!initialized) {
         return VFS_ERR_NOT_READY;
+    }
+    if (slot_count == 0 || slot_count > (bpb.bytes_per_sector / sizeof(FAT32DirEntry))) {
+        return VFS_ERR_INVALID_PATH;
     }
 
     uint8_t sector[512];
@@ -652,8 +892,15 @@ int FAT32Driver::find_free_dir_slot(uint32_t dir_cluster,
 
             FAT32DirEntry* dir = (FAT32DirEntry*)sector;
             uint32_t entry_count = bpb.bytes_per_sector / sizeof(FAT32DirEntry);
-            for (uint32_t i = 0; i < entry_count; i++) {
-                if (dir[i].name[0] == 0x00 || dir[i].name[0] == 0xE5) {
+            for (uint32_t i = 0; i + slot_count <= entry_count; i++) {
+                uint8_t free_run = 1;
+                for (uint32_t j = 0; j < slot_count; j++) {
+                    if (dir[i + j].name[0] != 0x00 && dir[i + j].name[0] != 0xE5) {
+                        free_run = 0;
+                        break;
+                    }
+                }
+                if (free_run) {
                     if (out_dir_cluster != 0) {
                         *out_dir_cluster = cluster;
                     }
@@ -709,6 +956,13 @@ int FAT32Driver::find_free_dir_slot(uint32_t dir_cluster,
         *out_entry_index = 0;
     }
     return VFS_OK;
+}
+
+int FAT32Driver::find_free_dir_slot(uint32_t dir_cluster,
+                                    uint32_t* out_dir_cluster,
+                                    uint32_t* out_sector_offset,
+                                    uint32_t* out_entry_index) {
+    return find_free_dir_slots(dir_cluster, 1, out_dir_cluster, out_sector_offset, out_entry_index);
 }
 
 bool FAT32Driver::alloc_free_cluster(uint32_t* out_cluster) {
@@ -834,6 +1088,85 @@ bool FAT32Driver::update_dir_entry(uint32_t dir_cluster, uint32_t sector_offset,
 
     fat32_copy_dir_entry(&dir[entry_index], entry);
     return write_dir_sector(dir_cluster, sector_offset, sector);
+}
+
+bool FAT32Driver::read_directory_parent_link(uint32_t dir_cluster, uint32_t* parent_cluster_out) {
+    uint8_t sector[512];
+    FAT32DirEntry* dir = (FAT32DirEntry*)sector;
+    if (parent_cluster_out == 0) {
+        return false;
+    }
+    if (!read_dir_sector(dir_cluster, 0, sector)) {
+        return false;
+    }
+    *parent_cluster_out = dir_entry_cluster(dir[1]);
+    return true;
+}
+
+bool FAT32Driver::update_directory_parent_link(uint32_t dir_cluster, uint32_t parent_cluster) {
+    uint8_t sector[512];
+    FAT32DirEntry* dir = (FAT32DirEntry*)sector;
+    if (!read_dir_sector(dir_cluster, 0, sector)) {
+        return false;
+    }
+    dir[1].first_cluster_high = (uint16_t)((parent_cluster >> 16) & 0xFFFFu);
+    dir[1].first_cluster_low = (uint16_t)(parent_cluster & 0xFFFFu);
+    return write_dir_sector(dir_cluster, 0, sector);
+}
+
+bool FAT32Driver::directory_is_descendant_of(uint32_t dir_cluster, uint32_t possible_ancestor) {
+    uint32_t current = dir_cluster;
+    uint32_t guard = 0;
+    while (current >= 2u && guard < 256u) {
+        if (current == possible_ancestor) {
+            return true;
+        }
+        if (current == bpb.root_cluster) {
+            break;
+        }
+
+        uint32_t parent = 0;
+        if (!read_directory_parent_link(current, &parent)) {
+            return false;
+        }
+        if (parent == current || parent < 2u) {
+            break;
+        }
+        current = parent;
+        guard++;
+    }
+    return false;
+}
+
+int FAT32Driver::delete_entry_chain(uint32_t dir_cluster, uint32_t sector_offset, uint32_t entry_index, const FAT32DirEntry* entry) {
+    uint8_t sector[512];
+    if (entry == 0) {
+        return VFS_ERR_INVALID_PATH;
+    }
+    if (!read_dir_sector(dir_cluster, sector_offset, sector)) {
+        return VFS_ERR_IO;
+    }
+
+    FAT32DirEntry* dir = (FAT32DirEntry*)sector;
+    dir[entry_index].name[0] = 0xE5;
+
+    uint8_t checksum = fat32_short_name_checksum(entry->name);
+    for (int32_t i = (int32_t)entry_index - 1; i >= 0; i--) {
+        FAT32DirEntry* current = &dir[i];
+        if (current->attributes != 0x0F) {
+            break;
+        }
+        FAT32LFNEntry lfn = {};
+        for (uint32_t j = 0; j < sizeof(FAT32LFNEntry); j++) {
+            ((uint8_t*)&lfn)[j] = ((const uint8_t*)current)[j];
+        }
+        if (lfn.checksum != checksum) {
+            break;
+        }
+        current->name[0] = 0xE5;
+    }
+
+    return write_dir_sector(dir_cluster, sector_offset, sector) ? VFS_OK : VFS_ERR_IO;
 }
 
 void FAT32Driver::init() {
@@ -1000,20 +1333,12 @@ int FAT32Driver::write_file_path(const char* path, const uint8_t* buffer, uint32
         return result;
     }
 
+    const char* leaf = fat32_leaf_name_from_path(path);
+    uint8_t needs_lfn = !fat32_is_simple_83_name(leaf != 0 ? leaf : "");
     FAT32DirEntry existing = {};
     uint32_t existing_dir_cluster = 0;
     uint32_t existing_sector_offset = 0;
     uint32_t existing_entry_index = 0;
-    const char* leaf = path;
-    if (path != 0) {
-        const char* cursor = path;
-        while (*cursor != '\0') {
-            if (*cursor == '/') {
-                leaf = cursor + 1;
-            }
-            cursor++;
-        }
-    }
     int found = find_in_directory_with_location(parent_cluster,
                                                 leaf != 0 ? leaf : "",
                                                 &existing,
@@ -1025,6 +1350,7 @@ int FAT32Driver::write_file_path(const char* path, const uint8_t* buffer, uint32
     uint32_t target_sector_offset = 0;
     uint32_t target_entry_index = 0;
     uint32_t old_cluster = 0;
+    uint32_t lfn_count = needs_lfn ? fat32_lfn_slot_count(leaf) : 0;
 
     if (found == VFS_OK) {
         if ((existing.attributes & 0x10) != 0) {
@@ -1034,8 +1360,27 @@ int FAT32Driver::write_file_path(const char* path, const uint8_t* buffer, uint32
         target_sector_offset = existing_sector_offset;
         target_entry_index = existing_entry_index;
         old_cluster = dir_entry_cluster(existing);
+        for (uint32_t i = 0; i < 11; i++) {
+            leaf83[i] = (char)existing.name[i];
+        }
     } else if (found == VFS_ERR_NOT_FOUND) {
-        result = find_free_dir_slot(parent_cluster, &target_dir_cluster, &target_sector_offset, &target_entry_index);
+        if (needs_lfn) {
+            for (uint32_t serial = 1; serial <= 99; serial++) {
+                FAT32DirEntry alias_entry;
+                fat32_build_short_alias_name(leaf, serial, leaf83);
+                if (find_short_name_in_directory(parent_cluster, leaf83, &alias_entry) == VFS_ERR_NOT_FOUND) {
+                    break;
+                }
+                if (serial == 99) {
+                    return VFS_ERR_IO;
+                }
+            }
+        }
+        result = find_free_dir_slots(parent_cluster,
+                                     needs_lfn ? (lfn_count + 1u) : 1u,
+                                     &target_dir_cluster,
+                                     &target_sector_offset,
+                                     &target_entry_index);
         if (result != VFS_OK) {
             return result;
         }
@@ -1057,11 +1402,56 @@ int FAT32Driver::write_file_path(const char* path, const uint8_t* buffer, uint32
     new_entry.first_cluster_low = (uint16_t)(first_cluster & 0xFFFF);
     new_entry.file_size = size;
 
-    if (!update_dir_entry(target_dir_cluster, target_sector_offset, target_entry_index, &new_entry)) {
-        if (first_cluster >= 2u) {
-            free_cluster_chain(first_cluster);
+    if (!needs_lfn || found == VFS_OK) {
+        if (!update_dir_entry(target_dir_cluster, target_sector_offset, target_entry_index, &new_entry)) {
+            if (first_cluster >= 2u) {
+                free_cluster_chain(first_cluster);
+            }
+            return VFS_ERR_IO;
         }
-        return VFS_ERR_IO;
+    } else {
+        FAT32DirEntry entries[8];
+        if (lfn_count + 1u > 8u) {
+            if (first_cluster >= 2u) {
+                free_cluster_chain(first_cluster);
+            }
+            return VFS_ERR_IO;
+        }
+        uint32_t leaf_len = 0;
+        while (leaf[leaf_len] != '\0') {
+            leaf_len++;
+        }
+        for (uint32_t i = 0; i < lfn_count; i++) {
+            FAT32LFNEntry lfn_entry = {};
+            fat32_make_lfn_entry(leaf,
+                                 leaf_len,
+                                 lfn_count - 1u - i,
+                                 lfn_count,
+                                 fat32_short_name_checksum((const uint8_t*)leaf83),
+                                 &lfn_entry);
+            for (uint32_t j = 0; j < sizeof(FAT32LFNEntry); j++) {
+                ((uint8_t*)&entries[i])[j] = ((const uint8_t*)&lfn_entry)[j];
+            }
+        }
+        fat32_copy_dir_entry(&entries[lfn_count], &new_entry);
+
+        uint8_t sector[512];
+        if (!read_dir_sector(target_dir_cluster, target_sector_offset, sector)) {
+            if (first_cluster >= 2u) {
+                free_cluster_chain(first_cluster);
+            }
+            return VFS_ERR_IO;
+        }
+        FAT32DirEntry* dir = (FAT32DirEntry*)sector;
+        for (uint32_t i = 0; i < lfn_count + 1u; i++) {
+            fat32_copy_dir_entry(&dir[target_entry_index + i], &entries[i]);
+        }
+        if (!write_dir_sector(target_dir_cluster, target_sector_offset, sector)) {
+            if (first_cluster >= 2u) {
+                free_cluster_chain(first_cluster);
+            }
+            return VFS_ERR_IO;
+        }
     }
 
     if (old_cluster >= 2u) {
@@ -1089,18 +1479,7 @@ int FAT32Driver::delete_file_path(const char* path) {
     uint32_t dir_cluster = 0;
     uint32_t sector_offset = 0;
     uint32_t entry_index = 0;
-    const char* leaf = path;
-    if (path != 0) {
-        const char* slash = path;
-        const char* last = path;
-        while (*slash != '\0') {
-            if (*slash == '/') {
-                last = slash + 1;
-            }
-            slash++;
-        }
-        leaf = last;
-    }
+    const char* leaf = fat32_leaf_name_from_path(path);
     result = find_in_directory_with_location(parent_cluster,
                                              leaf,
                                              &existing,
@@ -1114,14 +1493,9 @@ int FAT32Driver::delete_file_path(const char* path) {
         return VFS_ERR_INVALID_PATH;
     }
 
-    uint8_t sector[512];
-    if (!read_dir_sector(dir_cluster, sector_offset, sector)) {
-        return VFS_ERR_IO;
-    }
-    FAT32DirEntry* dir = (FAT32DirEntry*)sector;
-    dir[entry_index].name[0] = 0xE5;
-    if (!write_dir_sector(dir_cluster, sector_offset, sector)) {
-        return VFS_ERR_IO;
+    result = delete_entry_chain(dir_cluster, sector_offset, entry_index, &existing);
+    if (result != VFS_OK) {
+        return result;
     }
 
     uint32_t first_cluster = dir_entry_cluster(existing);
@@ -1139,17 +1513,8 @@ int FAT32Driver::mkdir_path(const char* path) {
         return result;
     }
 
-    const char* leaf = path;
-    if (path != 0) {
-        const char* cursor = path;
-        while (*cursor != '\0') {
-            if (*cursor == '/') {
-                leaf = cursor + 1;
-            }
-            cursor++;
-        }
-    }
-
+    const char* leaf = fat32_leaf_name_from_path(path);
+    uint8_t needs_lfn = !fat32_is_simple_83_name(leaf != 0 ? leaf : "");
     FAT32DirEntry existing = {};
     result = find_in_directory(parent_cluster, leaf != 0 ? leaf : "", &existing);
     if (result == VFS_OK) {
@@ -1159,10 +1524,28 @@ int FAT32Driver::mkdir_path(const char* path) {
         return result;
     }
 
+    uint32_t lfn_count = needs_lfn ? fat32_lfn_slot_count(leaf) : 0;
+    if (needs_lfn) {
+        for (uint32_t serial = 1; serial <= 99; serial++) {
+            FAT32DirEntry alias_entry;
+            fat32_build_short_alias_name(leaf, serial, leaf83);
+            if (find_short_name_in_directory(parent_cluster, leaf83, &alias_entry) == VFS_ERR_NOT_FOUND) {
+                break;
+            }
+            if (serial == 99) {
+                return VFS_ERR_IO;
+            }
+        }
+    }
+
     uint32_t target_dir_cluster = 0;
     uint32_t target_sector_offset = 0;
     uint32_t target_entry_index = 0;
-    result = find_free_dir_slot(parent_cluster, &target_dir_cluster, &target_sector_offset, &target_entry_index);
+    result = find_free_dir_slots(parent_cluster,
+                                 needs_lfn ? (lfn_count + 1u) : 1u,
+                                 &target_dir_cluster,
+                                 &target_sector_offset,
+                                 &target_entry_index);
     if (result != VFS_OK) {
         return result;
     }
@@ -1211,9 +1594,47 @@ int FAT32Driver::mkdir_path(const char* path) {
     new_entry.first_cluster_low = (uint16_t)(new_cluster & 0xFFFF);
     new_entry.file_size = 0;
 
-    if (!update_dir_entry(target_dir_cluster, target_sector_offset, target_entry_index, &new_entry)) {
-        free_cluster_chain(new_cluster);
-        return VFS_ERR_IO;
+    if (!needs_lfn) {
+        if (!update_dir_entry(target_dir_cluster, target_sector_offset, target_entry_index, &new_entry)) {
+            free_cluster_chain(new_cluster);
+            return VFS_ERR_IO;
+        }
+    } else {
+        FAT32DirEntry entries[8];
+        if (lfn_count + 1u > 8u) {
+            free_cluster_chain(new_cluster);
+            return VFS_ERR_IO;
+        }
+        uint32_t leaf_len = 0;
+        while (leaf[leaf_len] != '\0') {
+            leaf_len++;
+        }
+        for (uint32_t i = 0; i < lfn_count; i++) {
+            FAT32LFNEntry lfn_entry = {};
+            fat32_make_lfn_entry(leaf,
+                                 leaf_len,
+                                 lfn_count - 1u - i,
+                                 lfn_count,
+                                 fat32_short_name_checksum((const uint8_t*)leaf83),
+                                 &lfn_entry);
+            for (uint32_t j = 0; j < sizeof(FAT32LFNEntry); j++) {
+                ((uint8_t*)&entries[i])[j] = ((const uint8_t*)&lfn_entry)[j];
+            }
+        }
+        fat32_copy_dir_entry(&entries[lfn_count], &new_entry);
+
+        if (!read_dir_sector(target_dir_cluster, target_sector_offset, sector)) {
+            free_cluster_chain(new_cluster);
+            return VFS_ERR_IO;
+        }
+        FAT32DirEntry* dir = (FAT32DirEntry*)sector;
+        for (uint32_t i = 0; i < lfn_count + 1u; i++) {
+            fat32_copy_dir_entry(&dir[target_entry_index + i], &entries[i]);
+        }
+        if (!write_dir_sector(target_dir_cluster, target_sector_offset, sector)) {
+            free_cluster_chain(new_cluster);
+            return VFS_ERR_IO;
+        }
     }
 
     return VFS_OK;
@@ -1227,16 +1648,7 @@ int FAT32Driver::rmdir_path(const char* path) {
         return result;
     }
 
-    const char* leaf = path;
-    if (path != 0) {
-        const char* cursor = path;
-        while (*cursor != '\0') {
-            if (*cursor == '/') {
-                leaf = cursor + 1;
-            }
-            cursor++;
-        }
-    }
+    const char* leaf = fat32_leaf_name_from_path(path);
 
     FAT32DirEntry existing = {};
     uint32_t dir_cluster = 0;
@@ -1294,17 +1706,164 @@ int FAT32Driver::rmdir_path(const char* path) {
         cluster = next;
     }
 
-    if (!read_dir_sector(dir_cluster, sector_offset, sector)) {
-        return VFS_ERR_IO;
-    }
-    FAT32DirEntry* dir = (FAT32DirEntry*)sector;
-    dir[entry_index].name[0] = 0xE5;
-    if (!write_dir_sector(dir_cluster, sector_offset, sector)) {
-        return VFS_ERR_IO;
+    result = delete_entry_chain(dir_cluster, sector_offset, entry_index, &existing);
+    if (result != VFS_OK) {
+        return result;
     }
 
     if (!free_cluster_chain(target_cluster)) {
         return VFS_ERR_IO;
     }
+    return VFS_OK;
+}
+
+int FAT32Driver::rename_path(const char* old_path, const char* new_path) {
+    uint32_t old_parent_cluster = 0;
+    uint32_t new_parent_cluster = 0;
+    char unused_old_leaf83[11];
+    char new_leaf83[11];
+    const char* old_leaf = fat32_leaf_name_from_path(old_path);
+    const char* new_leaf = fat32_leaf_name_from_path(new_path);
+    FAT32DirEntry source_entry = {};
+    FAT32DirEntry clash_entry = {};
+    uint32_t source_dir_cluster = 0;
+    uint32_t source_sector_offset = 0;
+    uint32_t source_entry_index = 0;
+    uint32_t dest_dir_cluster = 0;
+    uint32_t dest_sector_offset = 0;
+    uint32_t dest_entry_index = 0;
+    uint32_t source_cluster = 0;
+    uint32_t lfn_count = 0;
+    uint8_t needs_lfn = 0;
+
+    if (old_path == 0 || new_path == 0 || old_path[0] == '\0' || new_path[0] == '\0') {
+        return VFS_ERR_INVALID_PATH;
+    }
+
+    int result = resolve_parent_path(old_path, &old_parent_cluster, unused_old_leaf83);
+    if (result != VFS_OK) {
+        return result;
+    }
+    result = resolve_parent_path(new_path, &new_parent_cluster, new_leaf83);
+    if (result != VFS_OK) {
+        return result;
+    }
+
+    if (fat32_name_eq_ci(old_path, new_path)) {
+        return VFS_OK;
+    }
+
+    result = find_in_directory_with_location(old_parent_cluster,
+                                             old_leaf != 0 ? old_leaf : "",
+                                             &source_entry,
+                                             &source_dir_cluster,
+                                             &source_sector_offset,
+                                             &source_entry_index);
+    if (result != VFS_OK) {
+        return result;
+    }
+
+    result = find_in_directory(new_parent_cluster, new_leaf != 0 ? new_leaf : "", &clash_entry);
+    if (result == VFS_OK) {
+        return VFS_ERR_ALREADY_MOUNTED;
+    }
+    if (result != VFS_ERR_NOT_FOUND) {
+        return result;
+    }
+
+    source_cluster = dir_entry_cluster(source_entry);
+    if ((source_entry.attributes & 0x10) != 0) {
+        if (source_cluster < 2u) {
+            return VFS_ERR_INVALID_PATH;
+        }
+        if (new_parent_cluster == source_cluster || directory_is_descendant_of(new_parent_cluster, source_cluster)) {
+            return VFS_ERR_INVALID_PATH;
+        }
+    }
+
+    needs_lfn = !fat32_is_simple_83_name(new_leaf != 0 ? new_leaf : "");
+    if (needs_lfn) {
+        for (uint32_t serial = 1; serial <= 99; serial++) {
+            FAT32DirEntry alias_entry;
+            fat32_build_short_alias_name(new_leaf, serial, new_leaf83);
+            if (find_short_name_in_directory(new_parent_cluster, new_leaf83, &alias_entry) == VFS_ERR_NOT_FOUND) {
+                break;
+            }
+            if (serial == 99) {
+                return VFS_ERR_IO;
+            }
+        }
+        lfn_count = fat32_lfn_slot_count(new_leaf);
+    }
+
+    result = find_free_dir_slots(new_parent_cluster,
+                                 needs_lfn ? (lfn_count + 1u) : 1u,
+                                 &dest_dir_cluster,
+                                 &dest_sector_offset,
+                                 &dest_entry_index);
+    if (result != VFS_OK) {
+        return result;
+    }
+
+    FAT32DirEntry renamed_entry = {};
+    fat32_copy_dir_entry(&renamed_entry, &source_entry);
+    for (uint32_t i = 0; i < 11; i++) {
+        renamed_entry.name[i] = (uint8_t)new_leaf83[i];
+    }
+
+    if (!needs_lfn) {
+        if (!update_dir_entry(dest_dir_cluster, dest_sector_offset, dest_entry_index, &renamed_entry)) {
+            return VFS_ERR_IO;
+        }
+    } else {
+        FAT32DirEntry entries[8];
+        uint8_t sector[512];
+        uint32_t new_leaf_len = 0;
+
+        if (lfn_count + 1u > 8u) {
+            return VFS_ERR_IO;
+        }
+
+        while (new_leaf[new_leaf_len] != '\0') {
+            new_leaf_len++;
+        }
+        for (uint32_t i = 0; i < lfn_count; i++) {
+            FAT32LFNEntry lfn_entry = {};
+            fat32_make_lfn_entry(new_leaf,
+                                 new_leaf_len,
+                                 lfn_count - 1u - i,
+                                 lfn_count,
+                                 fat32_short_name_checksum((const uint8_t*)new_leaf83),
+                                 &lfn_entry);
+            for (uint32_t j = 0; j < sizeof(FAT32LFNEntry); j++) {
+                ((uint8_t*)&entries[i])[j] = ((const uint8_t*)&lfn_entry)[j];
+            }
+        }
+        fat32_copy_dir_entry(&entries[lfn_count], &renamed_entry);
+
+        if (!read_dir_sector(dest_dir_cluster, dest_sector_offset, sector)) {
+            return VFS_ERR_IO;
+        }
+        FAT32DirEntry* dir = (FAT32DirEntry*)sector;
+        for (uint32_t i = 0; i < lfn_count + 1u; i++) {
+            fat32_copy_dir_entry(&dir[dest_entry_index + i], &entries[i]);
+        }
+        if (!write_dir_sector(dest_dir_cluster, dest_sector_offset, sector)) {
+            return VFS_ERR_IO;
+        }
+    }
+
+    if ((source_entry.attributes & 0x10) != 0 && old_parent_cluster != new_parent_cluster) {
+        if (!update_directory_parent_link(source_cluster, new_parent_cluster)) {
+            delete_entry_chain(dest_dir_cluster, dest_sector_offset, dest_entry_index, &renamed_entry);
+            return VFS_ERR_IO;
+        }
+    }
+
+    result = delete_entry_chain(source_dir_cluster, source_sector_offset, source_entry_index, &source_entry);
+    if (result != VFS_OK) {
+        return result;
+    }
+
     return VFS_OK;
 }

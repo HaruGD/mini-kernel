@@ -45,6 +45,9 @@ enum VFSNodeType {
     VFS_NODE_DIR = 2,
 };
 
+#define VFS_NAME_MAX 64
+#define VFS_PATH_MAX 160
+
 struct VFSFileInfo {
     uint32_t type;
     uint32_t size;
@@ -53,7 +56,7 @@ struct VFSFileInfo {
 struct VFSDirEntry {
     uint32_t type;
     uint32_t size;
-    char name[32];
+    char name[VFS_NAME_MAX];
 };
 
 struct VFSBackendOps {
@@ -66,6 +69,7 @@ struct VFSBackendOps {
     int (*delete_file)(void* backend_ctx, const char* relative_path);
     int (*mkdir)(void* backend_ctx, const char* relative_path);
     int (*rmdir)(void* backend_ctx, const char* relative_path);
+    int (*rename_path)(void* backend_ctx, const char* old_relative_path, const char* new_relative_path);
 };
 
 struct VFSMountInfo {
@@ -92,6 +96,7 @@ int vfs_touch_file(const char* path);
 int vfs_delete_file(const char* path);
 int vfs_mkdir(const char* path);
 int vfs_rmdir(const char* path);
+int vfs_rename(const char* old_path, const char* new_path);
 
 int vfs_open(const char* path, uint32_t mode);
 int vfs_open_for_owner(const char* path, uint32_t mode, uint32_t owner_pid);

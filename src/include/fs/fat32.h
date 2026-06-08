@@ -87,6 +87,7 @@ class FAT32Driver : public Driver {
 
     int read_dir_entry_internal(uint32_t dir_cluster, uint32_t visible_index, FAT32DirEntry* entry, char* name_out, uint32_t name_capacity);
     int find_in_directory(uint32_t dir_cluster, const char* segment, FAT32DirEntry* entry);
+    int find_short_name_in_directory(uint32_t dir_cluster, const char short_name[11], FAT32DirEntry* entry);
     int find_in_directory_with_location(uint32_t dir_cluster,
                                         const char* segment,
                                         FAT32DirEntry* entry,
@@ -95,6 +96,11 @@ class FAT32Driver : public Driver {
                                         uint32_t* out_entry_index);
     int resolve_path(const char* path, FAT32DirEntry* entry, uint32_t* out_cluster, uint8_t* out_is_root_dir);
     int resolve_parent_path(const char* path, uint32_t* out_dir_cluster, char out_leaf83[11]);
+    int find_free_dir_slots(uint32_t dir_cluster,
+                            uint32_t slot_count,
+                            uint32_t* out_dir_cluster,
+                            uint32_t* out_sector_offset,
+                            uint32_t* out_entry_index);
     int find_free_dir_slot(uint32_t dir_cluster, uint32_t* out_dir_cluster, uint32_t* out_sector_offset, uint32_t* out_entry_index);
     bool read_dir_sector(uint32_t dir_cluster, uint32_t sector_offset, uint8_t* sector);
     bool write_dir_sector(uint32_t dir_cluster, uint32_t sector_offset, const uint8_t* sector);
@@ -102,6 +108,10 @@ class FAT32Driver : public Driver {
     bool free_cluster_chain(uint32_t start_cluster);
     bool write_cluster_chain(const uint8_t* buffer, uint32_t size, uint32_t* out_first_cluster);
     bool update_dir_entry(uint32_t dir_cluster, uint32_t sector_offset, uint32_t entry_index, const FAT32DirEntry* entry);
+    bool update_directory_parent_link(uint32_t dir_cluster, uint32_t parent_cluster);
+    bool read_directory_parent_link(uint32_t dir_cluster, uint32_t* parent_cluster_out);
+    bool directory_is_descendant_of(uint32_t dir_cluster, uint32_t possible_ancestor);
+    int delete_entry_chain(uint32_t dir_cluster, uint32_t sector_offset, uint32_t entry_index, const FAT32DirEntry* entry);
 
 public:
     FAT32Driver(ATADriver* ata, uint32_t start_lba = 0);
@@ -117,6 +127,7 @@ public:
     int delete_file_path(const char* path);
     int mkdir_path(const char* path);
     int rmdir_path(const char* path);
+    int rename_path(const char* old_path, const char* new_path);
 };
 
 #endif

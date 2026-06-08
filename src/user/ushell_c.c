@@ -1,6 +1,6 @@
 #include "userlib.h"
 
-#define SHELLC_INPUT_MAX 64
+#define SHELLC_INPUT_MAX 160
 #define SHELLC_CMDLINE_MAX 160
 
 static char shell_input[SHELLC_INPUT_MAX];
@@ -52,6 +52,7 @@ static void print_tools(void) {
         "  Files:   uls [path], umkdir [path], urmdir [path], utouch [file], usave [file] [text],\n"
         "           ucat [file], urm [file]\n"
         "           uio [file] [text], uio append [file] [text], uio seek [file] [offset],\n"
+        "           uio fill [file] [size],\n"
         "           uio leak [file] [text]\n"
         "  Status:  upid, uschd, umem, uvers, uboot, umounts, uargs\n"
         "  Proc:    urun\n"
@@ -173,7 +174,8 @@ static int run_tool_alias_uio(const char* args) {
         return 0;
     }
 
-    if (user_str_eq(token1, "append") || user_str_eq(token1, "seek") || user_str_eq(token1, "leak")) {
+    if (user_str_eq(token1, "append") || user_str_eq(token1, "seek") ||
+        user_str_eq(token1, "leak") || user_str_eq(token1, "fill")) {
         if (token2 == 0 || token2[0] == '\0') {
             return run_tool_alias("uio", "UIO_C.ELF", args);
         }
@@ -258,6 +260,7 @@ static void print_builtins(void) {
         "  version uptime\n"
         "  pwd, cd [path]\n"
         "  ls [path], cat [file], touch [file], save [file] [text], rm [file], mkdir [path], rmdir [path]\n"
+        "  rename [old] [new], mv [old] [new]\n"
         "  pid ppid\n"
         "  jobs ps wait laststatus reapall\n"
         "  run sleep yield resume kill bg fg echo\n");
@@ -337,6 +340,8 @@ static void print_where(const char* name) {
                user_str_eq(name, "rm") ||
                user_str_eq(name, "mkdir") ||
                user_str_eq(name, "rmdir") ||
+               user_str_eq(name, "rename") ||
+               user_str_eq(name, "mv") ||
                user_str_eq(name, "jobs") ||
                user_str_eq(name, "ps") ||
                user_str_eq(name, "pid") ||
@@ -367,6 +372,7 @@ static void print_help(void) {
         "  version, uptime, jobs, ps, wait, laststatus, reapall\n"
         "  pwd, cd [path]\n"
         "  ls [path], cat [file], touch [file], save [file] [text], rm [file], mkdir [path], rmdir [path]\n"
+        "  rename [old] [new], mv [old] [new]\n"
         "  pid, ppid\n"
         "  run [file], sleep [ticks], yield, resume [pid], kill [pid], bg [pid], fg [pid], echo [text]\n"
         "Shell shortcuts:\n"
@@ -375,7 +381,8 @@ static void print_help(void) {
         "  uls [path], umkdir [path], urmdir [path], utouch [file], usave [file] [text],\n"
         "  ucat [file], urm [file]\n"
         "  upid, uschd, umem, uvers, uboot, umounts, uargs\n"
-        "  uio [file] [text], uio append [file] [text], uio seek [file] [offset], uio leak [file] [text]\n"
+        "  uio [file] [text], uio append [file] [text], uio seek [file] [offset],\n"
+        "  uio fill [file] [size], uio leak [file] [text]\n"
         "Processes:\n"
         "  ujobs, ulast, uwait, urun\n"
         "Text:\n"
@@ -743,6 +750,34 @@ int main(void) {
             }
             if (user_rmdir(normalized_path) < 0) {
                 print_command_failed("rmdir");
+            }
+            continue;
+        }
+
+        if (user_str_eq(line, "rename") || user_str_eq(line, "mv")) {
+            char* old_path = args;
+            char* new_path;
+            char normalized_old[SHELLC_CMDLINE_MAX];
+            char normalized_new[SHELLC_CMDLINE_MAX];
+
+            if (old_path == 0 || old_path[0] == '\0') {
+                print_usage("rename [old] [new]");
+                continue;
+            }
+
+            new_path = user_split_token(old_path);
+            if (new_path == 0 || new_path[0] == '\0') {
+                print_usage("rename [old] [new]");
+                continue;
+            }
+
+            if (!normalize_shell_path(old_path, normalized_old) ||
+                !normalize_shell_path(new_path, normalized_new)) {
+                continue;
+            }
+
+            if (user_rename(normalized_old, normalized_new) < 0) {
+                print_command_failed(user_str_eq(line, "mv") ? "mv" : "rename");
             }
             continue;
         }
