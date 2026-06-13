@@ -2,7 +2,7 @@
 
 int main(void) {
     static const char banner[] =
-        "=== ULAST_C.ELF ===\n"
+        "=== ulast_c.elf ===\n"
         "Showing the current process child status from C userland.\n";
 
     user_write_cstr(banner);

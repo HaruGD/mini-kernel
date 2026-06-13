@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
     char* text;
     uint32_t offset = 0;
 
-    user_puts("=== USAVE_C.ELF ===");
+    user_puts("=== usave_c.elf ===");
     if (argc >= 3 && argv[1] != 0 && argv[2] != 0) {
         file_name = argv[1];
         text_input[0] = '\0';

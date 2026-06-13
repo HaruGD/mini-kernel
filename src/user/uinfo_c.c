@@ -3,7 +3,7 @@
 int main(void) {
     long ch;
 
-    user_puts("=== UINFO_C.ELF ===");
+    user_puts("=== uinfo_c.elf ===");
     user_puts("This is the C version of UINFO.");
     user_write_cstr("Press one key to return: ");
 

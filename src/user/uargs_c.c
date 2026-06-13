@@ -1,7 +1,7 @@
 #include "userlib.h"
 
 int main(int argc, char** argv) {
-    user_puts("=== UARGS_C.ELF ===");
+    user_puts("=== uargs_c.elf ===");
     user_printf("argc=%d\n", argc);
 
     for (int i = 0; i < argc; i++) {

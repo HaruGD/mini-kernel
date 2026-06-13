@@ -9,6 +9,7 @@ extern "C" {
 #include "arch/x86/pmm64.h"
 #include "drivers/terminal.h"
 #include "fs/vfs.h"
+#include "kernel/driver/driver_manager.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/ksh64.h"
 #include "kernel/kutil64.h"
@@ -59,6 +60,21 @@ static uint64_t e820_base(const E820Entry* entry) {
 
 static uint64_t e820_length(const E820Entry* entry) {
     return ((uint64_t)entry->length_high << 32) | entry->length_low;
+}
+
+static int ends_with_ci(const char* text, const char* suffix) {
+    int text_len = strlen64(text);
+    int suffix_len = strlen64(suffix);
+    if (text_len < suffix_len) {
+        return 0;
+    }
+    const char* tail = text + text_len - suffix_len;
+    for (int i = 0; i < suffix_len; i++) {
+        if (to_lower_ascii(tail[i]) != to_lower_ascii(suffix[i])) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static void print_e820_entry(const E820Entry* entry, uint32_t index) {
@@ -202,7 +218,7 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, mounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
+    print("\nfree, dump, sched, drivers, drvcheck [path], drvload [path], mounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
 
@@ -445,21 +461,26 @@ static void command_run(char* arg) {
         print("\nUsage: run [filename]");
         return;
     }
+    if (ends_with_ci(arg, ".drv")) {
+        print("\nDRV packages are kernel drivers. Use: drvload ");
+        print(arg);
+        return;
+    }
     run_user_program(arg);
 }
 
 static void command_usertest() {
-    char default_program[] = "UTEST.BIN";
+    char default_program[] = "utest.bin";
     command_run(default_program);
 }
 
 static void command_ushell() {
-    char default_program[] = "USHELL_C.ELF";
+    char default_program[] = "ushell_c.elf";
     command_run(default_program);
 }
 
 static void command_ushellc() {
-    char default_program[] = "USHELL_C.ELF";
+    char default_program[] = "ushell_c.elf";
     command_run(default_program);
 }
 
@@ -508,6 +529,12 @@ static void execute_command() {
         dump_state();
     } else if (strcmp64(cmd, "sched") == 0) {
         command_sched();
+    } else if (strcmp64(cmd, "drivers") == 0) {
+        command_drivers();
+    } else if (strcmp64(cmd, "drvcheck") == 0) {
+        command_drvcheck(arg);
+    } else if (strcmp64(cmd, "drvload") == 0) {
+        command_drvload(arg);
     } else if (strcmp64(cmd, "mounts") == 0) {
         command_mounts();
     } else if (strcmp64(cmd, "atatest") == 0) {

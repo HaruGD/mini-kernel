@@ -2,7 +2,7 @@
 
 int main(void) {
     static const char banner[] =
-        "=== UJOBS_C.ELF ===\n"
+        "=== ujobs_c.elf ===\n"
         "Listing jobs from C userland.\n";
 
     user_write_cstr(banner);

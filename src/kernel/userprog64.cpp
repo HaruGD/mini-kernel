@@ -261,7 +261,7 @@ uint32_t infer_shell_prompt_kind(const char* filename) {
         return SHELL_PROMPT_NONE;
     }
 
-    if (strcmp64(filename, "USHELL_C.ELF") == 0) {
+    if (strcmp64(filename, "ushell_c.elf") == 0) {
         return SHELL_PROMPT_CSH;
     }
 

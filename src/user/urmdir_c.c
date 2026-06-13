@@ -8,7 +8,7 @@ int main(int argc, char** argv) {
     char path_buffer[URMDIR_PATH_MAX];
     char* path;
 
-    user_puts("=== URMDIR_C.ELF ===");
+    user_puts("=== urmdir_c.elf ===");
     if (argc >= 2 && argv[1] != 0 && argv[1][0] != '\0') {
         path = argv[1];
     } else {

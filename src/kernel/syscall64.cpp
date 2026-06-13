@@ -6,6 +6,7 @@ extern "C" {
 }
 
 #include "fs/vfs.h"
+#include "drivers/terminal.h"
 #include "kernel/boot_info.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/kutil64.h"
@@ -15,6 +16,8 @@ extern "C" {
 #include "kernel/userprog64.h"
 
 #define USER_PATH_MAX PROCESS_CMDLINE_MAX
+
+extern Terminal terminal;
 
 static uint32_t syscall_count = 0;
 
@@ -53,6 +56,11 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     if (syscall_no == SYS_PUTCHAR) {
         putchar_both((char)(arg1 & 0xFF));
         return 1;
+    }
+
+    if (syscall_no == SYS_CLEAR_SCREEN) {
+        terminal.clear();
+        return 0;
     }
 
     if (syscall_no == SYS_GETCHAR) {

@@ -12,7 +12,7 @@ int main(void) {
     uint32_t pid = (uint32_t)user_get_pid();
     char pid_char = pid_nibble_char(pid);
 
-    user_puts("=== UBUSY_C.ELF ===");
+    user_puts("=== ubusy_c.elf ===");
     user_puts("Preemptive scheduling C demo: one setup yield, then busy work without sys_yield.");
     user_printf("Busy worker pid nibble=%c\n", pid_char);
     user_yield();

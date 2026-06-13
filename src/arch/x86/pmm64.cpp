@@ -1,4 +1,5 @@
 #include "arch/x86/pmm64.h"
+#include <stddef.h>
 
 #define E820_TYPE_USABLE 1
 #define LOW_MEMORY_RESERVE_SIZE (2 * 1024 * 1024)
@@ -56,6 +57,10 @@ static void mark_block_free64(uint32_t index) {
 }
 
 static void mark_range_used64(uint64_t start, uint64_t end) {
+    if (end <= start) {
+        return;
+    }
+
     uint64_t first_block = align_down64(start, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
     uint64_t last_block = align_up64(end, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
 
@@ -66,6 +71,18 @@ static void mark_range_used64(uint64_t start, uint64_t end) {
     for (uint64_t i = first_block; i < last_block; i++) {
         mark_block_used64((uint32_t)i);
     }
+}
+
+static void mark_range_size_used64(uint64_t start, uint64_t size) {
+    if (size == 0) {
+        return;
+    }
+
+    uint64_t end = start + size;
+    if (end < start) {
+        end = PMM64_MAX_RAM_SIZE;
+    }
+    mark_range_used64(start, end);
 }
 
 static void mark_range_free64(uint64_t start, uint64_t end) {
@@ -98,6 +115,38 @@ static uint64_t e820_entry_end64(const E820Entry* entry) {
     return end;
 }
 
+static uint32_t kernel_reserved_size64(const BootInfo* boot_info) {
+    if (boot_info->kernel_file_size != 0) {
+        return boot_info->kernel_file_size;
+    }
+    if (boot_info->kernel_sector_count != 0) {
+        return boot_info->kernel_sector_count * 512U;
+    }
+    return 0;
+}
+
+static void reserve_boot_info_ranges64(const BootInfo* boot_info) {
+    uint32_t kernel_size = kernel_reserved_size64(boot_info);
+    if (boot_info->kernel_load_addr != 0 && kernel_size != 0) {
+        mark_range_size_used64(boot_info->kernel_load_addr, kernel_size);
+    }
+
+    if (boot_info->size < sizeof(BootInfo) ||
+        boot_info->reserved_range_entry_size < sizeof(BootReservedRange)) {
+        return;
+    }
+
+    uint32_t count = boot_info->reserved_range_count;
+    if (count > BOOT_RESERVED_RANGE_MAX) {
+        count = BOOT_RESERVED_RANGE_MAX;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        const BootReservedRange* range = &boot_info->reserved_ranges[i];
+        mark_range_size_used64(range->base, range->size);
+    }
+}
+
 static int init_from_e820_64(const BootInfo* boot_info) {
     if (!boot_info || boot_info->magic != BOOT_INFO_MAGIC || boot_info->memory_map_entry_count == 0) {
         return 0;
@@ -125,6 +174,7 @@ static int init_from_e820_64(const BootInfo* boot_info) {
     }
 
     mark_range_used64(0, LOW_MEMORY_RESERVE_SIZE);
+    reserve_boot_info_ranges64(boot_info);
     return 1;
 }
 
@@ -198,4 +248,34 @@ extern "C" uint32_t pmm64_get_total_block_count() {
 
 extern "C" uint32_t pmm64_get_free_block_count() {
     return free_blocks64;
+}
+
+extern "C" int pmm64_range_is_marked_used(uint64_t start, uint64_t size) {
+    if (size == 0) {
+        return 1;
+    }
+
+    uint64_t end = start + size;
+    if (end < start) {
+        end = PMM64_MAX_RAM_SIZE;
+    }
+    if (start >= PMM64_MAX_RAM_SIZE) {
+        return 1;
+    }
+    if (end > PMM64_MAX_RAM_SIZE) {
+        end = PMM64_MAX_RAM_SIZE;
+    }
+
+    uint64_t first_block = align_down64(start, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
+    uint64_t last_block = align_up64(end, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
+    if (last_block > PMM64_TOTAL_BLOCKS) {
+        last_block = PMM64_TOTAL_BLOCKS;
+    }
+
+    for (uint64_t i = first_block; i < last_block; i++) {
+        if (!mmap_test64((uint32_t)i)) {
+            return 0;
+        }
+    }
+    return 1;
 }

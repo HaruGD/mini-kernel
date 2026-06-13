@@ -40,6 +40,32 @@ static uint64_t allocate_table() {
     return phys;
 }
 
+static int split_huge_page(uint64_t* pd, uint16_t index) {
+    uint64_t entry = pd[index];
+    if (!(entry & PAGING64_FLAG_PRESENT) || !(entry & PAGING64_FLAG_HUGE)) {
+        return 0;
+    }
+
+    uint64_t pt_phys = allocate_table();
+    if (pt_phys == 0) {
+        return 0;
+    }
+
+    uint64_t* pt = (uint64_t*)(uintptr_t)pt_phys;
+    uint64_t base = entry & 0x000FFFFFFFE00000ULL;
+    uint64_t flags = entry & (0xFFFULL | PAGING64_FLAG_NX);
+    flags &= ~PAGING64_FLAG_HUGE;
+    for (uint32_t i = 0; i < 512; i++) {
+        pt[i] = (base + ((uint64_t)i * PAGING64_PAGE_SIZE)) | flags;
+    }
+
+    pd[index] = pt_phys |
+        PAGING64_FLAG_PRESENT |
+        PAGING64_FLAG_WRITABLE |
+        (entry & PAGING64_FLAG_USER);
+    return 1;
+}
+
 static uint64_t* get_or_create_next(uint64_t* table, uint16_t index, uint64_t flags) {
     uint64_t entry = table[index];
     if (entry & PAGING64_FLAG_PRESENT) {
@@ -86,7 +112,10 @@ extern "C" int paging64_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
     uint64_t* pt = 0;
     if (entry & PAGING64_FLAG_PRESENT) {
         if (entry & PAGING64_FLAG_HUGE) {
-            return 0;
+            if (!split_huge_page(pd, pd_index(virt))) {
+                return 0;
+            }
+            entry = pd[pd_index(virt)];
         }
         if ((flags & PAGING64_FLAG_USER) && !(entry & PAGING64_FLAG_USER)) {
             pd[pd_index(virt)] = entry | PAGING64_FLAG_USER;

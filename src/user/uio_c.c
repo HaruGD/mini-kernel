@@ -314,7 +314,7 @@ int main(int argc, char** argv) {
     char* path;
     char* text;
 
-    user_puts("=== UIO_C.ELF ===");
+    user_puts("=== uio_c.elf ===");
 
     if (argc >= 2 && argv[1] != 0 && user_str_eq(argv[1], "append")) {
         if (argc < 4 || argv[2] == 0 || argv[2][0] == '\0' || argv[3] == 0) {

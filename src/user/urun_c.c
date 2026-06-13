@@ -2,9 +2,9 @@
 
 int main(void) {
     static const char banner[] =
-        "=== URUN_C.ELF ===\n"
-        "Running UHELLO_C.ELF from C userland.\n";
-    static const char target[] = "UHELLO_C.ELF";
+        "=== urun_c.elf ===\n"
+        "Running uhello_c.elf from C userland.\n";
+    static const char target[] = "uhello_c.elf";
     long result;
 
     user_write_cstr(banner);

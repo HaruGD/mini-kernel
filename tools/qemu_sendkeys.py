@@ -59,7 +59,8 @@ def send_monitor_commands(sock_path: str, commands: list[tuple[str, float]]) -> 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", default="./bin/os64.bin")
-    parser.add_argument("--fat32-image", default="./bin/fat32.img")
+    parser.add_argument("--esp-image", default="./bin/uefi_esp.img")
+    parser.add_argument("--ovmf-vars", default="./bin/OVMF_VARS_4M.fd")
     parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument("--shell-command", default="ushell")
     parser.add_argument("--shell-prompt", default="csh>")
@@ -83,13 +84,16 @@ def main() -> int:
             "-display",
             "none",
             "-drive",
+            "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
+            "-drive",
+            f"if=pflash,format=raw,file={args.ovmf_vars}",
+            "-drive",
+            f"if=none,id=uefi_esp,format=raw,file={args.esp_image}",
+            "-device",
+            "virtio-blk-pci,drive=uefi_esp,bootindex=1",
+            "-drive",
             f"format=raw,file={args.image},if=ide,index=0",
         ]
-        if args.fat32_image and os.path.exists(args.fat32_image):
-            qemu_args.extend([
-                "-drive",
-                f"format=raw,file={args.fat32_image},if=ide,index=1",
-            ])
         qemu_args.extend([
             "-serial",
             f"file:{serial_path}",

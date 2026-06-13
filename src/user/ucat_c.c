@@ -8,7 +8,7 @@ int main(int argc, char** argv) {
     char path_buffer[UCAT_PATH_MAX];
     char* file_name;
 
-    user_puts("=== UCAT_C.ELF ===");
+    user_puts("=== ucat_c.elf ===");
     if (argc >= 2 && argv[1] != 0 && argv[1][0] != '\0') {
         file_name = argv[1];
     } else {

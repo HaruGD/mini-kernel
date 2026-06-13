@@ -20,6 +20,7 @@ void pmm64_free_block(void* addr);
 void pmm64_free_blocks(void* addr, uint32_t count);
 uint32_t pmm64_get_total_block_count();
 uint32_t pmm64_get_free_block_count();
+int pmm64_range_is_marked_used(uint64_t start, uint64_t size);
 
 #ifdef __cplusplus
 }

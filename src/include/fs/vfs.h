@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-class FAT12Driver;
 class FAT32Driver;
 
 enum VFSResult {
@@ -20,9 +19,8 @@ enum VFSResult {
 
 enum VFSBackendKind {
     VFS_BACKEND_NONE = 0,
-    VFS_BACKEND_FAT12 = 1,
+    VFS_BACKEND_FAT32 = 1,
     VFS_BACKEND_MEMFS = 2,
-    VFS_BACKEND_FAT32 = 3,
 };
 
 enum VFSOpenMode {
@@ -81,7 +79,7 @@ struct VFSMountInfo {
 void vfs_init();
 int vfs_mount(const char* mount_path, const char* fs_name, uint32_t backend_kind, const VFSBackendOps* ops, void* backend_ctx);
 int vfs_mount_root(const char* fs_name, uint32_t backend_kind, const VFSBackendOps* ops, void* backend_ctx);
-int vfs_mount_fat12_root(FAT12Driver* fat12);
+int vfs_mount_fat32_root(FAT32Driver* fat32);
 int vfs_mount_fat32(const char* mount_path, FAT32Driver* fat32);
 int vfs_mount_memfs(const char* mount_path);
 uint32_t vfs_mount_count();

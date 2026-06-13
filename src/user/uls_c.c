@@ -5,7 +5,7 @@ int main(int argc, char** argv) {
     long dir_fd;
     const char* path = "/";
 
-    user_puts("=== ULS_C.ELF ===");
+    user_puts("=== uls_c.elf ===");
     if (argc >= 2 && argv[1] != 0 && argv[1][0] != '\0') {
         path = argv[1];
         user_printf("Listing files at %s from C userland.\n", path);
