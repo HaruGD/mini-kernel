@@ -1,11 +1,27 @@
+static int map_boot_framebuffer(const BootInfo* boot_info) {
+    if (boot_info == 0 ||
+        boot_info->size < sizeof(BootInfo) ||
+        !(boot_info->flags & BOOT_INFO_FLAG_FRAMEBUFFER) ||
+        boot_info->framebuffer_addr == 0 ||
+        boot_info->framebuffer_size == 0) {
+        return 0;
+    }
+
+    uint64_t start = boot_info->framebuffer_addr & ~(PAGING64_PAGE_SIZE - 1ULL);
+    uint64_t end = boot_info->framebuffer_addr + boot_info->framebuffer_size;
+    end = (end + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
+    uint64_t flags = PAGING64_FLAG_WRITABLE | PAGING64_FLAG_WRITE_THROUGH | PAGING64_FLAG_CACHE_DISABLE;
+    for (uint64_t addr = start; addr < end; addr += PAGING64_PAGE_SIZE) {
+        if (!paging64_map_page(addr, addr, flags)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 extern "C" void kernel64_main(const BootInfo* boot_info) {
     serial_init();
-
     g_boot_info = boot_info;
-    early_framebuffer_marker(g_boot_info, 0, 0x000000FF);
-    terminal.init_from_boot_info(g_boot_info);
-    terminal.clear();
-    early_framebuffer_marker(g_boot_info, 0, 0x000000FF);
     boot_tsc = read_tsc();
 
     print("Long mode OK\n");
@@ -41,10 +57,14 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     }
 
     pmm64_init(boot_info);
-    early_framebuffer_marker(g_boot_info, 1, 0x0000FF00);
     paging64_init();
+    int framebuffer_mapped = map_boot_framebuffer(g_boot_info);
+    if (framebuffer_mapped) {
+        terminal.init_from_boot_info(g_boot_info);
+        terminal.clear();
+        early_framebuffer_marker(g_boot_info, 0, 0x000000FF);
+    }
     heap_init();
-    early_framebuffer_marker(g_boot_info, 2, 0x00FF0000);
     driver_manager_init();
     driver_manager_register_kernel_exports();
     gdt64_init();
@@ -61,6 +81,9 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     __asm__ volatile("sti");
 
     print("Memory ready\n");
+    print("Framebuffer mapped: ");
+    print_hex32((uint32_t)framebuffer_mapped);
+    print("\n");
     print("Driver autoloaded: ");
     print_hex32(autoloaded_drivers);
     print("\n");

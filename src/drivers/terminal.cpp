@@ -134,6 +134,7 @@ Terminal::Terminal() {
     fg_color = 0x00FFFFFF;
     bg_color = 0x00000000;
     use_framebuffer = 0;
+    active = 0;
 }
 
 void Terminal::init_from_boot_info(const BootInfo* boot_info) {
@@ -172,7 +173,12 @@ void Terminal::init_from_boot_info(const BootInfo* boot_info) {
         bg_color = 0x00000000;
     }
     use_framebuffer = 1;
+    active = 1;
     cursor = 0;
+}
+
+int Terminal::is_active() const {
+    return active;
 }
 
 void Terminal::update_cursor() {
@@ -266,6 +272,9 @@ void Terminal::scroll() {
 }
 
 void Terminal::clear() {
+    if (!active) {
+        return;
+    }
     if (use_framebuffer) {
         for (uint32_t y = 0; y < fb_height; y++) {
             for (uint32_t x = 0; x < fb_width; x++) {
@@ -285,6 +294,9 @@ void Terminal::clear() {
 }
 
 void Terminal::putchar(char c) {
+    if (!active) {
+        return;
+    }
     if (cursor >= columns * rows) {
         scroll();
     }

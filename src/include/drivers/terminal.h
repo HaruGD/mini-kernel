@@ -20,6 +20,7 @@ class Terminal {
     uint32_t fg_color;
     uint32_t bg_color;
     uint8_t use_framebuffer;
+    uint8_t active;
 
     void update_cursor();
     void scroll();
@@ -32,6 +33,7 @@ class Terminal {
 public:
     Terminal();
     void init_from_boot_info(const BootInfo* boot_info);
+    int is_active() const;
     void clear();
     void putchar(char c);
     void print(const char* str);
