@@ -45,25 +45,6 @@ bool FAT32Driver::ready() const {
     return initialized != 0;
 }
 
-int FAT32Driver::list_dir(const char* path) {
-    for (uint32_t index = 0;; index++) {
-        VFSDirEntry dir_entry;
-        int step = read_dir_entry(path != 0 ? path : "", index, &dir_entry);
-        if (step < 0) {
-            return step;
-        }
-        if (step == 0) {
-            return VFS_OK;
-        }
-
-        terminal.print("\n");
-        terminal.print(dir_entry.name);
-        if (dir_entry.type == VFS_NODE_DIR) {
-            terminal.print("/");
-        }
-    }
-}
-
 int FAT32Driver::read_dir_entry(const char* path, uint32_t index, VFSDirEntry* entry) {
     uint32_t dir_cluster = 0;
     uint8_t is_root = 0;

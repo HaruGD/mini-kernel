@@ -248,16 +248,24 @@ void Terminal::vga_scroll() {
 void Terminal::framebuffer_scroll() {
     uint32_t pixel_rows = (uint32_t)(rows * char_height);
     uint32_t scroll_rows = (uint32_t)char_height;
+    uint32_t copy_width = (uint32_t)(columns * char_width);
+    uint32_t* fb = (uint32_t*)(uintptr_t)framebuffer;
+
+    if (copy_width > fb_width) {
+        copy_width = fb_width;
+    }
 
     for (uint32_t y = 0; y + scroll_rows < pixel_rows; y++) {
-        for (uint32_t x = 0; x < fb_width; x++) {
-            framebuffer[(uint64_t)y * fb_pixels_per_scanline + x] =
-                framebuffer[(uint64_t)(y + scroll_rows) * fb_pixels_per_scanline + x];
+        uint32_t* dst = fb + (uint64_t)y * fb_pixels_per_scanline;
+        uint32_t* src = fb + (uint64_t)(y + scroll_rows) * fb_pixels_per_scanline;
+        for (uint32_t x = 0; x < copy_width; x++) {
+            dst[x] = src[x];
         }
     }
     for (uint32_t y = pixel_rows - scroll_rows; y < pixel_rows; y++) {
-        for (uint32_t x = 0; x < fb_width; x++) {
-            putpixel(x, y, bg_color);
+        uint32_t* row = fb + (uint64_t)y * fb_pixels_per_scanline;
+        for (uint32_t x = 0; x < copy_width; x++) {
+            row[x] = bg_color;
         }
     }
     cursor = columns * (rows - 1);

@@ -302,9 +302,12 @@ int vfs_list_files_at(const char* path) {
         relative_path = "";
     }
 
-    if (mount->ops->read_dir_entry != 0) {
-        VFSFileInfo info;
-        if (vfs_get_file_info(path != 0 ? path : "/", &info) == VFS_OK && info.type == VFS_NODE_DIR) {
+    VFSFileInfo info;
+    if (vfs_get_file_info(path != 0 ? path : "/", &info) == VFS_OK && info.type == VFS_NODE_DIR) {
+        if (mount->ops->list_files != 0) {
+            return mount->ops->list_files(mount->backend_ctx, relative_path);
+        }
+        if (mount->ops->read_dir_entry != 0) {
             return vfs_list_directory_generic(mount, relative_path);
         }
     }

@@ -2,4 +2,5 @@
 #include "fs/fat32/fat32_dir.cpp"
 #include "fs/fat32/fat32_lfn.cpp"
 #include "fs/fat32/fat32_cluster.cpp"
+#include "fs/fat32/fat32_list.cpp"
 #include "fs/fat32/fat32_api.cpp"

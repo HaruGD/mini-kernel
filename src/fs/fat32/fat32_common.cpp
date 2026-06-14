@@ -1,8 +1,37 @@
 #include "fs/fat32.h"
 
+#include "arch/x86/io.h"
 #include "drivers/terminal.h"
 
 extern Terminal terminal;
+
+static int fat32_serial_ready() {
+    return inb(0x3FD) & 0x20;
+}
+
+static void fat32_serial_putchar(char c) {
+    while (!fat32_serial_ready()) {
+    }
+    outb(0x3F8, (unsigned char)c);
+}
+
+static void fat32_putchar_both(char c) {
+    terminal.putchar(c);
+    if (c == '\n') {
+        fat32_serial_putchar('\r');
+    }
+    fat32_serial_putchar(c);
+}
+
+static void fat32_print(const char* text) {
+    if (text == 0) {
+        return;
+    }
+    for (uint32_t i = 0; text[i] != '\0'; i++) {
+        fat32_putchar_both(text[i]);
+    }
+}
+
 static char fat32_to_upper(char ch) {
     if (ch >= 'a' && ch <= 'z') {
         return (char)(ch - ('a' - 'A'));
