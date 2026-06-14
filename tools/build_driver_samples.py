@@ -31,19 +31,6 @@ def zstr(text: str, size: int) -> bytes:
     return data + bytes(size - len(data))
 
 
-def checksum64(data: bytes) -> int:
-    value = 0xCBF29CE484222325
-    for byte in data:
-        value ^= byte
-        value = (value * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
-    return value
-
-
-def local_signature(unsigned_prefix: bytes, certificate: bytes, file_size: int) -> bytes:
-    value = checksum64(unsigned_prefix) ^ checksum64(certificate) ^ file_size
-    return b"OS64SIG0" + struct.pack("<Q", value)
-
-
 def pack_driver(name: str,
                 entry: str,
                 code: bytes,
@@ -93,11 +80,7 @@ def pack_driver(name: str,
     export_table_offset = import_table_offset + len(import_table)
     code_offset = export_table_offset + len(export_table)
     relocation_table_offset = code_offset + len(code)
-    certificate = b"OS64LOCALTESTCERT"
-    signature_size = 16
-    signature_offset = relocation_table_offset + len(relocation_table)
-    certificate_offset = signature_offset + signature_size
-    file_size = certificate_offset + len(certificate)
+    file_size = relocation_table_offset + len(relocation_table)
 
     section = struct.pack(SECTION_FORMAT, zstr(".text", 16), DRV_SECTION_CODE, 0, code_offset, len(code), len(code), 16)
     header = struct.pack(
@@ -125,12 +108,12 @@ def pack_driver(name: str,
         relocation_table_offset,
         len(relocations),
         relocation_size,
-        signature_offset,
-        signature_size,
-        certificate_offset,
-        len(certificate),
+        0,
+        0,
+        0,
+        0,
     )
-    unsigned_prefix = b"".join([
+    return b"".join([
         header,
         manifest,
         section,
@@ -139,12 +122,6 @@ def pack_driver(name: str,
         export_table,
         code,
         relocation_table,
-    ])
-    signature = local_signature(unsigned_prefix, certificate, file_size)
-    return b"".join([
-        unsigned_prefix,
-        signature,
-        certificate,
     ])
 
 

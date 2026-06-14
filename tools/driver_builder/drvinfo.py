@@ -10,10 +10,27 @@ SECTION_FORMAT = "<16sIIQQQQ"
 IMPORT_FORMAT = "<32s48sIIQ"
 EXPORT_FORMAT = "<48sIIQ"
 RELOCATION_FORMAT = "<IIQQq"
+SIGNATURE_FORMAT = "<QIIIIQQQQ"
+CERTIFICATE_FORMAT = "<QII32s"
 
 DRV_MAGIC = 0x5652443436534F
 DRV_FORMAT_VERSION = 1
 DRV_ABI_VERSION = 1
+DRV_SIGNATURE_MAGIC = 0x314749533436534F
+DRV_CERTIFICATE_MAGIC = 0x315452433436534F
+DRV_SIGNATURE_VERSION = 1
+DRV_SIGNATURE_HASH_CHECKSUM64 = 1
+
+SIGNATURE_ALGORITHMS = {
+    1: "LOCAL_TEST",
+    2: "ROOT_KEY",
+    3: "TPM_LOCAL",
+}
+CERTIFICATE_TYPES = {
+    1: "LOCAL_TEST",
+    2: "ROOT_KEY",
+    3: "TPM_LOCAL",
+}
 
 
 def cstr(data: bytes) -> str:
@@ -48,17 +65,28 @@ def check_signature(image: bytes, header: tuple) -> str:
     certificate_offset = header[25]
     certificate_size = header[26]
     file_size = header[5]
-    if signature_size != 16:
+    if signature_size == 0 and certificate_size == 0:
+        return "unsigned"
+    if signature_size < struct.calcsize(SIGNATURE_FORMAT) or certificate_size < struct.calcsize(CERTIFICATE_FORMAT):
         return "bad-size"
-    signature = image[signature_offset:signature_offset + signature_size]
-    certificate = image[certificate_offset:certificate_offset + certificate_size]
-    if not signature.startswith(b"OS64SIG0"):
+    signature = struct.unpack_from(SIGNATURE_FORMAT, image, signature_offset)
+    certificate = struct.unpack_from(CERTIFICATE_FORMAT, image, certificate_offset)
+    if signature[0] != DRV_SIGNATURE_MAGIC or certificate[0] != DRV_CERTIFICATE_MAGIC:
         return "bad-magic"
-    if certificate != b"OS64LOCALTESTCERT":
-        return "bad-cert"
-    expected = struct.unpack_from("<Q", signature, 8)[0]
-    actual = checksum64(image[:signature_offset]) ^ checksum64(certificate) ^ file_size
-    return "ok" if actual == expected else f"bad-checksum actual=0x{actual:016x}"
+    if signature[1] != DRV_SIGNATURE_VERSION or certificate[1] != DRV_SIGNATURE_VERSION:
+        return "bad-version"
+    if signature[3] != DRV_SIGNATURE_HASH_CHECKSUM64 or signature[5] != signature_offset:
+        return "bad-range"
+    actual_hash = checksum64(image[:signature[5]])
+    cert_bytes = image[certificate_offset:certificate_offset + certificate_size]
+    expected_value = signature[6] ^ checksum64(cert_bytes) ^ file_size ^ signature[2]
+    if actual_hash != signature[6]:
+        return f"bad-hash actual=0x{actual_hash:016x}"
+    if expected_value != signature[7]:
+        return f"bad-value actual=0x{expected_value:016x}"
+    algorithm = SIGNATURE_ALGORITHMS.get(signature[2], f"UNKNOWN({signature[2]})")
+    cert_type = CERTIFICATE_TYPES.get(certificate[2], f"UNKNOWN({certificate[2]})")
+    return f"ok algorithm={algorithm} cert={cert_type} key={cstr(certificate[3])}"
 
 
 def main() -> int:

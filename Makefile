@@ -44,6 +44,7 @@ DRIVER_PACKAGES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv $(DRIVER
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--extra-file-auto $(file))
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
+.SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
 
 # 3. 오브젝트 파일 목록 (★순서가 가장 중요합니다★)
 # kernel.asm.o가 무조건 맨 앞에 와야 EIP=0x2d 에러를 막을 수 있습니다.
@@ -166,21 +167,37 @@ drivers: $(DRIVER_PACKAGES)
 ./build/kernel_exports64.o: ./src/kernel/driver/kernel_exports.cpp ./src/include/kernel/driver/kernel_exports.h ./src/include/kernel/driver/driver_manager.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/driver/kernel_exports.cpp -o ./build/kernel_exports64.o
 
-./bin/hello.drv: ./tools/build_hello_drv.py
-	@mkdir -p ./bin
-	python3 ./tools/build_hello_drv.py --output ./bin/hello.drv
+./build/hello.unsigned.drv: ./tools/build_hello_drv.py
+	@mkdir -p ./build
+	python3 ./tools/build_hello_drv.py --output ./build/hello.unsigned.drv
 
-./bin/provider.drv ./bin/consumer.drv: ./tools/build_driver_samples.py
+./bin/hello.drv: ./build/hello.unsigned.drv ./tools/driver_builder/sign_drv.py
 	@mkdir -p ./bin
-	python3 ./tools/build_driver_samples.py --provider ./bin/provider.drv --consumer ./bin/consumer.drv
+	python3 ./tools/driver_builder/sign_drv.py --input ./build/hello.unsigned.drv --output ./bin/hello.drv --algorithm local-test
+
+./build/provider.unsigned.drv ./build/consumer.unsigned.drv: ./tools/build_driver_samples.py
+	@mkdir -p ./build
+	python3 ./tools/build_driver_samples.py --provider ./build/provider.unsigned.drv --consumer ./build/consumer.unsigned.drv
+
+./bin/provider.drv: ./build/provider.unsigned.drv ./tools/driver_builder/sign_drv.py
+	@mkdir -p ./bin
+	python3 ./tools/driver_builder/sign_drv.py --input ./build/provider.unsigned.drv --output ./bin/provider.drv --algorithm local-test
+
+./bin/consumer.drv: ./build/consumer.unsigned.drv ./tools/driver_builder/sign_drv.py
+	@mkdir -p ./bin
+	python3 ./tools/driver_builder/sign_drv.py --input ./build/consumer.unsigned.drv --output ./bin/consumer.drv --algorithm local-test
 
 ./build/driver_ext_%.o: ./src/drivers_ext/%/driver.c ./src/drivers_ext/include/os64_driver.h
 	@mkdir -p ./build
 	$(HOST64_CC) -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./src/drivers_ext/include -c $< -o $@
 
-./bin/%.drv: ./build/driver_ext_%.o ./src/drivers_ext/%/driver.json ./tools/driver_builder/build_drv.py
-	@mkdir -p ./bin
+./build/driver_ext_%.unsigned.drv: ./build/driver_ext_%.o ./src/drivers_ext/%/driver.json ./tools/driver_builder/build_drv.py
+	@mkdir -p ./build
 	python3 ./tools/driver_builder/build_drv.py --object $< --output $@ --manifest ./src/drivers_ext/$*/driver.json
+
+./bin/%.drv: ./build/driver_ext_%.unsigned.drv ./tools/driver_builder/sign_drv.py
+	@mkdir -p ./bin
+	python3 ./tools/driver_builder/sign_drv.py --input $< --output $@ --algorithm local-test
 
 ./build/terminal64.o: ./src/drivers/terminal.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/drivers/terminal.cpp -o ./build/terminal64.o

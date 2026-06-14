@@ -90,6 +90,7 @@ static const char* drv_load_result_name(int result) {
     if (result == DRIVER_LOAD_UNSUPPORTED_RELOC) return "unsupported_reloc";
     if (result == DRIVER_LOAD_ENTRY_FAILED) return "entry_failed";
     if (result == DRIVER_LOAD_SIGNATURE_INVALID) return "signature_invalid";
+    if (result == DRIVER_LOAD_SIGNATURE_UNSUPPORTED) return "signature_unsupported";
     return "unknown";
 }
 

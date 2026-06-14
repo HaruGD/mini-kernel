@@ -133,19 +133,6 @@ def zstr(text: str, size: int) -> bytes:
     return data + bytes(size - len(data))
 
 
-def checksum64(data: bytes) -> int:
-    value = 0xCBF29CE484222325
-    for byte in data:
-        value ^= byte
-        value = (value * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
-    return value
-
-
-def local_signature(unsigned_prefix: bytes, certificate: bytes, file_size: int) -> bytes:
-    value = checksum64(unsigned_prefix) ^ checksum64(certificate) ^ file_size
-    return b"OS64SIG0" + struct.pack("<Q", value)
-
-
 def read_cstr(data: bytes, offset: int) -> str:
     end = offset
     while end < len(data) and data[end] != 0:
@@ -529,11 +516,7 @@ def pack_drv(args: argparse.Namespace,
                         section.alignment)
         )
 
-    certificate = b"OS64LOCALTESTCERT"
-    signature_size = 16
-    signature_offset = data_offset + len(section_data)
-    certificate_offset = signature_offset + signature_size
-    file_size = certificate_offset + len(certificate)
+    file_size = data_offset + len(section_data)
 
     header = struct.pack(
         HEADER_FORMAT,
@@ -560,12 +543,12 @@ def pack_drv(args: argparse.Namespace,
         relocation_table_offset,
         len(relocations),
         relocation_entry_size,
-        signature_offset,
-        signature_size,
-        certificate_offset,
-        len(certificate),
+        0,
+        0,
+        0,
+        0,
     )
-    unsigned_prefix = b"".join([
+    return b"".join([
         header,
         manifest,
         b"".join(section_entries),
@@ -574,12 +557,6 @@ def pack_drv(args: argparse.Namespace,
         export_table,
         relocation_table,
         bytes(section_data),
-    ])
-    signature = local_signature(unsigned_prefix, certificate, file_size)
-    return b"".join([
-        unsigned_prefix,
-        signature,
-        certificate,
     ])
 
 

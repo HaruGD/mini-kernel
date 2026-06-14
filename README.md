@@ -45,7 +45,9 @@ What works on the active 64-bit UEFI path:
 - `.drv` package validation and loading
 - ELF object based `.drv` builder for C kernel drivers
 - manifest-based external driver projects under `src/drivers_ext/`
-- local test signature v0 validation for `.drv` packages
+- separate unsigned builder and `.drv` signer
+- signature ABI v1 with `LOCAL_TEST`, `ROOT_KEY`, and `TPM_LOCAL` algorithm slots
+- local test signature validation for `.drv` packages
 - kernel export/import resolution
 - driver-to-driver export/import resolution
 - boot-time `.drv` autoload from the FAT32 root
@@ -78,7 +80,7 @@ Important active artifacts:
 - `bin/hello.drv`
   Hand-built test driver package loaded from the FAT32 root filesystem.
 - `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`
-  C driver packages produced from `src/drivers_ext/*/driver.c` and `driver.json`.
+  C driver packages produced from `src/drivers_ext/*/driver.c`, `driver.json`, and the separate signer.
 
 ## Run
 
@@ -314,6 +316,8 @@ Implemented pieces:
 - `.drv` header validation
 - manifest validation
 - local test signature v0 validation
+- unsigned builder output rejected by the kernel
+- reserved signature algorithms for future root-key and TPM-local signing
 - section loading
 - import resolution
 - manifest-declared import permission checks
@@ -330,6 +334,7 @@ Implemented pieces:
 Not implemented yet:
 
 - real asymmetric cryptographic signature verification
+- actual TPM hardware command path
 - explicit dependency metadata and dependency-sorted loading
 - unload / stop lifecycle
 - page-level code/data permissions
@@ -362,7 +367,7 @@ Not implemented yet:
 - `tools/`
   Image builders and QEMU smoke automation.
 - `tools/driver_builder/`
-  Host-side `.drv` builder and `drvinfo.py` inspection tool.
+  Host-side unsigned `.drv` builder, signer, and `drvinfo.py` inspection tool.
 
 ## Requirements
 
@@ -408,6 +413,8 @@ The smoke scripts use temporary image copies so they can run even when another Q
 - `run hello.drv` is intentionally rejected because `.drv` files are kernel drivers, not user programs.
 - Use `drvload hello.drv` for kernel-driver packages.
 - Use `python3 tools/driver_builder/drvinfo.py bin/consumer_c.drv` to inspect a package on the host.
+- `build_drv.py` emits unsigned packages; `sign_drv.py` turns them into loadable signed `.drv` files.
+- `sign_drv.py --algorithm tpm-local` is a placeholder format path only; the current kernel recognizes it and rejects it as unsupported.
 - NX/page permission policy is still being refined.
 - Legacy BIOS/32-bit/FAT12 code is frozen and should not be changed as part of active work.
 

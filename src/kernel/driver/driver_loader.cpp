@@ -15,10 +15,7 @@ static const uint32_t DRV_KNOWN_PERMISSIONS =
     DRV_PERMISSION_INPUT |
     DRV_PERMISSION_TIMER;
 
-static const uint8_t DRV_LOCAL_SIGNATURE_MAGIC[8] = {
-    'O', 'S', '6', '4', 'S', 'I', 'G', '0'
-};
-static const char DRV_LOCAL_CERTIFICATE[] = "OS64LOCALTESTCERT";
+static const char DRV_LOCAL_TEST_KEY_ID[] = "OS64 local test key";
 
 static int range_inside(uint64_t offset, uint64_t size, uint64_t file_size) {
     if (size == 0) {
@@ -54,14 +51,6 @@ static uint64_t checksum64(const uint8_t* data, uint64_t size) {
         sum *= 0x100000001b3ULL;
     }
     return sum;
-}
-
-static uint64_t read_u64_le(const uint8_t* data) {
-    uint64_t value = 0;
-    for (uint32_t byte = 0; byte < sizeof(uint64_t); byte++) {
-        value |= ((uint64_t)data[byte]) << (byte * 8u);
-    }
-    return value;
 }
 
 static void bytes_copy(uint8_t* dst, const uint8_t* src, uint64_t size) {
@@ -130,33 +119,53 @@ static int validate_section_ranges(const uint8_t* image, const DrvHeader* header
 }
 
 static int validate_signature(const uint8_t* image, const DrvHeader* header, uint64_t size) {
-    if (header->signature_size != 16 || header->certificate_size != sizeof(DRV_LOCAL_CERTIFICATE) - 1) {
+    if (header->signature_size < sizeof(DrvSignatureBlock) ||
+        header->certificate_size < sizeof(DrvCertificateBlock)) {
         driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "shape", 0, header->signature_size);
         return DRIVER_LOAD_SIGNATURE_INVALID;
     }
 
-    const uint8_t* signature = image + header->signature_offset;
-    for (uint32_t i = 0; i < sizeof(DRV_LOCAL_SIGNATURE_MAGIC); i++) {
-        if (signature[i] != DRV_LOCAL_SIGNATURE_MAGIC[i]) {
-            driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "magic", i, signature[i]);
-            return DRIVER_LOAD_SIGNATURE_INVALID;
-        }
+    const DrvSignatureBlock* signature = (const DrvSignatureBlock*)(image + header->signature_offset);
+    const DrvCertificateBlock* certificate = (const DrvCertificateBlock*)(image + header->certificate_offset);
+    if (signature->magic != DRV_SIGNATURE_MAGIC ||
+        certificate->magic != DRV_CERTIFICATE_MAGIC ||
+        signature->version != DRV_SIGNATURE_VERSION ||
+        certificate->version != DRV_SIGNATURE_VERSION) {
+        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "magic_or_version", 0, signature->magic);
+        return DRIVER_LOAD_SIGNATURE_INVALID;
+    }
+    if (signature->signed_size != header->signature_offset ||
+        signature->hash_algorithm != DRV_SIGNATURE_HASH_CHECKSUM64) {
+        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "range_or_hash", 0, signature->signed_size);
+        return DRIVER_LOAD_SIGNATURE_INVALID;
     }
 
-    const uint8_t* certificate = image + header->certificate_offset;
-    for (uint32_t i = 0; i < sizeof(DRV_LOCAL_CERTIFICATE) - 1; i++) {
-        if (certificate[i] != (uint8_t)DRV_LOCAL_CERTIFICATE[i]) {
-            driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "certificate", 0, "local_test", i, certificate[i]);
-            return DRIVER_LOAD_SIGNATURE_INVALID;
-        }
+    if (signature->algorithm == DRV_SIGNATURE_ALG_ROOT_KEY ||
+        signature->algorithm == DRV_SIGNATURE_ALG_TPM_LOCAL) {
+        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_UNSUPPORTED, "signature", 0, "algorithm", 0, signature->algorithm);
+        return DRIVER_LOAD_SIGNATURE_UNSUPPORTED;
+    }
+    if (signature->algorithm != DRV_SIGNATURE_ALG_LOCAL_TEST ||
+        certificate->certificate_type != DRV_CERTIFICATE_TYPE_LOCAL_TEST) {
+        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "algorithm", 0, signature->algorithm);
+        return DRIVER_LOAD_SIGNATURE_INVALID;
     }
 
-    uint64_t expected = read_u64_le(signature + 8);
-    uint64_t actual = checksum64(image, header->signature_offset);
-    actual ^= checksum64(certificate, header->certificate_size);
-    actual ^= size;
-    if (actual != expected) {
-        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "checksum", 0, actual);
+    uint64_t signed_hash = checksum64(image, signature->signed_size);
+    if (signed_hash != signature->signed_hash) {
+        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "hash", 0, signed_hash);
+        return DRIVER_LOAD_SIGNATURE_INVALID;
+    }
+
+    uint64_t certificate_hash = checksum64((const uint8_t*)certificate, header->certificate_size);
+    uint64_t expected = signature->signed_hash ^ certificate_hash ^ size ^ signature->algorithm;
+    if (signature->signature_value != expected) {
+        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "signature", 0, "value", 0, signature->signature_value);
+        return DRIVER_LOAD_SIGNATURE_INVALID;
+    }
+
+    if (strcmp64(certificate->key_id, DRV_LOCAL_TEST_KEY_ID) != 0) {
+        driver_manager_set_last_error(DRIVER_LOAD_SIGNATURE_INVALID, "certificate", 0, "key_id", 0, 0);
         return DRIVER_LOAD_SIGNATURE_INVALID;
     }
 

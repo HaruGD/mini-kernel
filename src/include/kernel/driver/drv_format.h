@@ -30,6 +30,17 @@
 #define DRV_BOOT_SAFE     0x00000002
 #define DRV_BOOT_RECOVERY 0x00000004
 
+#define DRV_SIGNATURE_MAGIC 0x314749533436534FULL
+#define DRV_CERTIFICATE_MAGIC 0x315452433436534FULL
+#define DRV_SIGNATURE_VERSION 1
+#define DRV_SIGNATURE_HASH_CHECKSUM64 1
+#define DRV_SIGNATURE_ALG_LOCAL_TEST 1
+#define DRV_SIGNATURE_ALG_ROOT_KEY 2
+#define DRV_SIGNATURE_ALG_TPM_LOCAL 3
+#define DRV_CERTIFICATE_TYPE_LOCAL_TEST 1
+#define DRV_CERTIFICATE_TYPE_ROOT_KEY 2
+#define DRV_CERTIFICATE_TYPE_TPM_LOCAL 3
+
 struct DrvHeader {
     uint64_t magic;
     uint32_t format_version;
@@ -109,6 +120,25 @@ struct DrvRelocation {
     uint64_t offset;
     uint64_t symbol_index;
     int64_t addend;
+} __attribute__((packed));
+
+struct DrvSignatureBlock {
+    uint64_t magic;
+    uint32_t version;
+    uint32_t algorithm;
+    uint32_t hash_algorithm;
+    uint32_t flags;
+    uint64_t signed_size;
+    uint64_t signed_hash;
+    uint64_t signature_value;
+    uint64_t reserved;
+} __attribute__((packed));
+
+struct DrvCertificateBlock {
+    uint64_t magic;
+    uint32_t version;
+    uint32_t certificate_type;
+    char key_id[32];
 } __attribute__((packed));
 
 #endif
