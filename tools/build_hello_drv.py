@@ -30,6 +30,19 @@ def zstr(text: str, size: int) -> bytes:
     return data + bytes(size - len(data))
 
 
+def checksum64(data: bytes) -> int:
+    value = 0xCBF29CE484222325
+    for byte in data:
+        value ^= byte
+        value = (value * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return value
+
+
+def local_signature(unsigned_prefix: bytes, certificate: bytes, file_size: int) -> bytes:
+    value = checksum64(unsigned_prefix) ^ checksum64(certificate) ^ file_size
+    return b"OS64SIG0" + struct.pack("<Q", value)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
@@ -120,8 +133,8 @@ def main() -> int:
         struct.pack(RELOCATION_FORMAT, DRV_RELOC_ABS64, 0, abs64_patch_offset, 2, 0),
     ])
 
-    signature = b"OS64TESTSIGNATURE"
-    certificate = b"OS64TESTCERT"
+    certificate = b"OS64LOCALTESTCERT"
+    signature_size = 16
 
     manifest_offset = header_size
     section_table_offset = manifest_offset + len(manifest)
@@ -130,7 +143,7 @@ def main() -> int:
     code_offset = import_table_offset + len(import_entry)
     relocation_table_offset = code_offset + len(code)
     signature_offset = relocation_table_offset + len(relocations)
-    certificate_offset = signature_offset + len(signature)
+    certificate_offset = signature_offset + signature_size
     file_size = certificate_offset + len(certificate)
 
     section = struct.pack(
@@ -170,19 +183,23 @@ def main() -> int:
         2,
         relocation_size,
         signature_offset,
-        len(signature),
+        signature_size,
         certificate_offset,
         len(certificate),
     )
+    unsigned_prefix = b"".join([
+        header,
+        manifest,
+        section,
+        symbols,
+        import_entry,
+        code,
+        relocations,
+    ])
+    signature = local_signature(unsigned_prefix, certificate, file_size)
 
     with open(args.output, "wb") as f:
-        f.write(header)
-        f.write(manifest)
-        f.write(section)
-        f.write(symbols)
-        f.write(import_entry)
-        f.write(code)
-        f.write(relocations)
+        f.write(unsigned_prefix)
         f.write(signature)
         f.write(certificate)
 

@@ -39,6 +39,17 @@ static void print_permission_names(uint32_t permissions) {
     }
 }
 
+static int name_ends_with_drv(const char* name) {
+    int len = strlen64(name);
+    if (len < 4) {
+        return 0;
+    }
+    return name[len - 4] == '.' &&
+           to_lower_ascii(name[len - 3]) == 'd' &&
+           to_lower_ascii(name[len - 2]) == 'r' &&
+           to_lower_ascii(name[len - 1]) == 'v';
+}
+
 void command_drivers() {
     print("\n=== DRIVERS ===");
     uint32_t count = driver_manager_count();
@@ -78,7 +89,30 @@ static const char* drv_load_result_name(int result) {
     if (result == DRIVER_LOAD_UNRESOLVED_IMPORT) return "unresolved_import";
     if (result == DRIVER_LOAD_UNSUPPORTED_RELOC) return "unsupported_reloc";
     if (result == DRIVER_LOAD_ENTRY_FAILED) return "entry_failed";
+    if (result == DRIVER_LOAD_SIGNATURE_INVALID) return "signature_invalid";
     return "unknown";
+}
+
+static void print_last_driver_error() {
+    const DriverLoadDiagnostics* diag = driver_manager_last_error();
+    if (diag == 0 || diag->result == DRIVER_LOAD_OK || diag->stage[0] == '\0') {
+        return;
+    }
+
+    print("\nerror_stage=");
+    print(diag->stage);
+    if (diag->module[0] != '\0') {
+        print(" module=");
+        print(diag->module);
+    }
+    if (diag->name[0] != '\0') {
+        print(" name=");
+        print(diag->name);
+    }
+    print(" index=");
+    print_hex32(diag->index);
+    print(" detail=");
+    print_hex64(diag->detail);
 }
 
 static void print_drv_manifest(const DrvManifest* manifest) {
@@ -171,8 +205,72 @@ void command_drvcheck(const char* path) {
         print_hex32((uint32_t)header->signature_size);
         print(" cert bytes=");
         print_hex32((uint32_t)header->certificate_size);
+    } else {
+        print_last_driver_error();
     }
 
+    kfree(image);
+}
+
+void command_drvinfo(const char* path) {
+    const char* target = (path != 0 && path[0] != '\0') ? path : "hello.drv";
+    uint32_t bytes_read = 0;
+    uint8_t* image = read_drv_file(target, &bytes_read);
+    if (image == 0) {
+        print("\nDRV info failed: file not found");
+        return;
+    }
+
+    int result = driver_manager_validate_drv_image(image, bytes_read);
+    print("\n=== DRV INFO ===");
+    print("\nfile=");
+    print(target);
+    print(" result=");
+    print(drv_load_result_name(result));
+    print(" bytes=");
+    print_hex32(bytes_read);
+    if (result != DRIVER_LOAD_OK) {
+        print_last_driver_error();
+        print("\n==============");
+        kfree(image);
+        return;
+    }
+
+    const DrvHeader* header = (const DrvHeader*)image;
+    const DrvManifest* manifest = (const DrvManifest*)(image + header->manifest_offset);
+    print_drv_manifest(manifest);
+    print("\nsections=");
+    print_hex32(header->section_count);
+    print(" symbols=");
+    print_hex32(header->symbol_count);
+    print(" imports=");
+    print_hex32(header->import_count);
+    print(" exports=");
+    print_hex32(header->export_count);
+    print(" relocs=");
+    print_hex32(header->relocation_count);
+
+    for (uint32_t i = 0; i < header->import_count; i++) {
+        const DrvImport* import = (const DrvImport*)(image + header->import_table_offset + (uint64_t)i * header->import_entry_size);
+        print("\nimport[");
+        print_hex32(i);
+        print("] ");
+        print(import->module);
+        print(".");
+        print(import->name);
+        print(" requires=");
+        print_permission_names(import->required_permission);
+    }
+    for (uint32_t i = 0; i < header->export_count; i++) {
+        const DrvExport* export_entry = (const DrvExport*)(image + header->export_table_offset + (uint64_t)i * header->export_entry_size);
+        print("\nexport[");
+        print_hex32(i);
+        print("] ");
+        print(export_entry->name);
+        print(" requires=");
+        print_permission_names(export_entry->flags);
+    }
+    print("\n==============");
     kfree(image);
 }
 
@@ -187,7 +285,7 @@ void command_drvload(const char* path) {
 
     int result = driver_manager_load_drv_image(image, bytes_read);
     print("\nDRV load ");
-    print(result == DRIVER_LOAD_OK ? "OK" : "FAILED");
+    print((result == DRIVER_LOAD_OK || result == DRIVER_LOAD_DUPLICATE) ? "OK" : "FAILED");
     print(" result=");
     print(drv_load_result_name(result));
     print(" file=");
@@ -197,7 +295,85 @@ void command_drvload(const char* path) {
         const DrvHeader* header = (const DrvHeader*)image;
         const DrvManifest* manifest = (const DrvManifest*)(image + header->manifest_offset);
         print_drv_manifest(manifest);
+    } else {
+        print_last_driver_error();
     }
 
     kfree(image);
+}
+
+static int load_drv_file_quiet(const char* path) {
+    uint32_t bytes_read = 0;
+    uint8_t* image = read_drv_file(path, &bytes_read);
+    if (image == 0) {
+        return DRIVER_LOAD_BAD_HEADER;
+    }
+    int result = driver_manager_load_drv_image(image, bytes_read);
+    kfree(image);
+    return result;
+}
+
+static void join_path(char* out, uint32_t out_size, const char* dir, const char* name) {
+    if (out_size == 0) {
+        return;
+    }
+    out[0] = '\0';
+    if (dir == 0 || dir[0] == '\0' || strcmp64(dir, "/") == 0) {
+        out[0] = '/';
+        copy_string64(out + 1, out_size - 1, name);
+        return;
+    }
+    copy_string64(out, out_size, dir);
+    int len = strlen64(out);
+    if (len > 0 && out[len - 1] != '/' && (uint32_t)len + 1 < out_size) {
+        out[len] = '/';
+        out[len + 1] = '\0';
+        len++;
+    }
+    if ((uint32_t)len < out_size) {
+        copy_string64(out + len, out_size - (uint32_t)len, name);
+    }
+}
+
+uint32_t driver_manager_autoload_from(const char* path) {
+    const char* dir = (path != 0 && path[0] != '\0') ? path : "/";
+    uint32_t loaded = 0;
+    for (uint32_t pass = 0; pass < 4; pass++) {
+        int progress = 0;
+        int fd = vfs_opendir(dir);
+        if (fd < 0) {
+            return loaded;
+        }
+        for (;;) {
+            VFSDirEntry entry;
+            int result = vfs_readdir(fd, &entry);
+            if (result <= 0) {
+                break;
+            }
+            if (entry.type != VFS_NODE_FILE || !name_ends_with_drv(entry.name)) {
+                continue;
+            }
+            char full_path[128];
+            join_path(full_path, sizeof(full_path), dir, entry.name);
+            int load_result = load_drv_file_quiet(full_path);
+            if (load_result == DRIVER_LOAD_OK) {
+                loaded++;
+                progress = 1;
+            }
+        }
+        vfs_closedir(fd);
+        if (!progress) {
+            break;
+        }
+    }
+    return loaded;
+}
+
+void command_drvautoload(const char* path) {
+    const char* dir = (path != 0 && path[0] != '\0') ? path : "/";
+    uint32_t loaded = driver_manager_autoload_from(dir);
+    print("\nDRV autoload path=");
+    print(dir);
+    print(" loaded=");
+    print_hex32(loaded);
 }

@@ -43,8 +43,13 @@ What works on the active 64-bit UEFI path:
   - `tell`
 - kernel driver manager prototype
 - `.drv` package validation and loading
+- ELF object based `.drv` builder for C kernel drivers
+- manifest-based external driver projects under `src/drivers_ext/`
+- local test signature v0 validation for `.drv` packages
 - kernel export/import resolution
-- `hello.drv` entry execution through `drvload hello.drv`
+- driver-to-driver export/import resolution
+- boot-time `.drv` autoload from the FAT32 root
+- `hello.drv`, `hello_c.drv`, `provider_c.drv`, and `consumer_c.drv` entry execution
 
 ## Build
 
@@ -71,7 +76,9 @@ Important active artifacts:
 - `bin/uefi_esp.img`
   UEFI ESP image containing `BOOTX64.EFI` and `kernel64.bin`.
 - `bin/hello.drv`
-  Test driver package loaded from the FAT32 root filesystem.
+  Hand-built test driver package loaded from the FAT32 root filesystem.
+- `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`
+  C driver packages produced from `src/drivers_ext/*/driver.c` and `driver.json`.
 
 ## Run
 
@@ -112,8 +119,10 @@ Common commands:
 - `dump`
 - `sched`
 - `drivers`
+- `drvinfo [path]`
 - `drvcheck [path]`
 - `drvload [path]`
+- `drvautoload [dir]`
 - `mounts`
 - `ls [path]`
 - `load [file]`
@@ -284,8 +293,10 @@ Supported commands:
 
 ```text
 OS64> drivers
+OS64> drvinfo consumer_c.drv
 OS64> drvcheck hello.drv
 OS64> drvload hello.drv
+OS64> drvautoload /
 ```
 
 Expected `hello.drv` flow:
@@ -302,19 +313,24 @@ Implemented pieces:
 
 - `.drv` header validation
 - manifest validation
+- local test signature v0 validation
 - section loading
 - import resolution
-- import patching into loaded code
+- manifest-declared import permission checks
+- import patching into loaded sections
+- ABS64 and REL32 relocation application
 - `driver_entry()` invocation
+- driver export-table registration
+- driver-to-driver import/export calls
+- boot-time `.drv` autoload with retry passes for dependency ordering
 - driver state transition to `ready`
+- detailed load diagnostics for failed import/relocation/signature paths
 - `new/delete` and `new[]/delete[]` use in the loader
 
 Not implemented yet:
 
-- real cryptographic signature verification
-- relocation application
-- driver export-table registration
-- driver-to-driver dependency loading
+- real asymmetric cryptographic signature verification
+- explicit dependency metadata and dependency-sorted loading
 - unload / stop lifecycle
 - page-level code/data permissions
 - isolation from kernel address space
@@ -335,6 +351,8 @@ Not implemented yet:
   PMM, paging, GDT/TSS, and IDT.
 - `src/drivers/`
   Terminal, keyboard, PIT, ATA.
+- `src/drivers_ext/`
+  External C driver projects, SDK header, and per-driver manifests.
 - `src/fs/`
   VFS, FAT32, memfs, and frozen legacy FAT12 code.
 - `src/user/`
@@ -343,6 +361,8 @@ Not implemented yet:
   C user shell implementation split into smaller include units.
 - `tools/`
   Image builders and QEMU smoke automation.
+- `tools/driver_builder/`
+  Host-side `.drv` builder and `drvinfo.py` inspection tool.
 
 ## Requirements
 
@@ -387,6 +407,7 @@ The smoke scripts use temporary image copies so they can run even when another Q
 - `make uefi` builds `bin/uefi_esp.img`.
 - `run hello.drv` is intentionally rejected because `.drv` files are kernel drivers, not user programs.
 - Use `drvload hello.drv` for kernel-driver packages.
+- Use `python3 tools/driver_builder/drvinfo.py bin/consumer_c.drv` to inspect a package on the host.
 - NX/page permission policy is still being refined.
 - Legacy BIOS/32-bit/FAT12 code is frozen and should not be changed as part of active work.
 

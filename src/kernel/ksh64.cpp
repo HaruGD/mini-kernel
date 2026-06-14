@@ -218,7 +218,8 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, drivers, drvcheck [path], drvload [path], mounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
+    print("\nfree, dump, sched, drivers, drvinfo [path], drvcheck [path], drvload [path], drvautoload [dir]");
+    print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
 
@@ -531,10 +532,14 @@ static void execute_command() {
         command_sched();
     } else if (strcmp64(cmd, "drivers") == 0) {
         command_drivers();
+    } else if (strcmp64(cmd, "drvinfo") == 0) {
+        command_drvinfo(arg);
     } else if (strcmp64(cmd, "drvcheck") == 0) {
         command_drvcheck(arg);
     } else if (strcmp64(cmd, "drvload") == 0) {
         command_drvload(arg);
+    } else if (strcmp64(cmd, "drvautoload") == 0) {
+        command_drvautoload(arg);
     } else if (strcmp64(cmd, "mounts") == 0) {
         command_mounts();
     } else if (strcmp64(cmd, "atatest") == 0) {

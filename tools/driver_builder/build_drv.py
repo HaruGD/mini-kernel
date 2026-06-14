@@ -121,6 +121,7 @@ class RelocOut:
 class ImportOut:
     module: str
     name: str
+    required_permission: int
     section_index: int
     patch_offset: int
 
@@ -130,6 +131,19 @@ def zstr(text: str, size: int) -> bytes:
     if len(data) >= size:
         raise SystemExit(f"{text}: string is too long for {size} bytes")
     return data + bytes(size - len(data))
+
+
+def checksum64(data: bytes) -> int:
+    value = 0xCBF29CE484222325
+    for byte in data:
+        value ^= byte
+        value = (value * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return value
+
+
+def local_signature(unsigned_prefix: bytes, certificate: bytes, file_size: int) -> bytes:
+    value = checksum64(unsigned_prefix) ^ checksum64(certificate) ^ file_size
+    return b"OS64SIG0" + struct.pack("<Q", value)
 
 
 def read_cstr(data: bytes, offset: int) -> str:
@@ -214,6 +228,17 @@ def parse_import_symbol(name: str) -> tuple[str, str]:
     raise SystemExit(f"{name}: unresolved symbol has no import mapping")
 
 
+def validate_ascii_name(value: str, field_name: str, limit: int) -> None:
+    if not isinstance(value, str) or value == "":
+        raise SystemExit(f"{field_name}: expected non-empty string")
+    try:
+        encoded = value.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise SystemExit(f"{field_name}: expected ASCII") from exc
+    if len(encoded) >= limit:
+        raise SystemExit(f"{field_name}: value is too long")
+
+
 def parse_flag_list(value, table: dict[str, int], field_name: str) -> int:
     if value is None:
         return 0
@@ -233,6 +258,42 @@ def parse_flag_list(value, table: dict[str, int], field_name: str) -> int:
     return flags
 
 
+def parse_export_specs(value) -> dict[str, int]:
+    if value is None:
+        return {}
+    if not isinstance(value, list):
+        raise SystemExit("exports: expected list")
+
+    exports: dict[str, int] = {}
+    for item in value:
+        if isinstance(item, str):
+            validate_ascii_name(item, "exports.name", 48)
+            exports[item] = 0
+            continue
+        if isinstance(item, dict):
+            name = item.get("name")
+            validate_ascii_name(name, "exports.name", 48)
+            exports[name] = parse_flag_list(item.get("required_permissions", []), PERMISSIONS, "exports.required_permissions")
+            continue
+        raise SystemExit("exports: expected string or object")
+    return exports
+
+
+def parse_import_permissions(value) -> dict[str, int]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise SystemExit("imports: expected object")
+
+    imports: dict[str, int] = {}
+    for key, permissions in value.items():
+        validate_ascii_name(key, "imports.key", 80)
+        if "." not in key:
+            raise SystemExit(f"imports.{key}: expected module.name")
+        imports[key] = parse_flag_list(permissions, PERMISSIONS, f"imports.{key}")
+    return imports
+
+
 def load_manifest(args: argparse.Namespace) -> None:
     if args.manifest is None:
         return
@@ -247,13 +308,8 @@ def load_manifest(args: argparse.Namespace) -> None:
     args.entry = manifest.get("entry", args.entry)
     args.permissions = parse_flag_list(manifest.get("permissions", args.permissions), PERMISSIONS, "permissions")
     args.boot_modes = parse_flag_list(manifest.get("boot_modes", args.boot_modes), BOOT_MODES, "boot_modes")
-
-    exports = manifest.get("exports", args.export)
-    if exports is None:
-        exports = []
-    if not isinstance(exports, list) or any(not isinstance(item, str) for item in exports):
-        raise SystemExit(f"{path}: exports must be a string list")
-    args.export = exports
+    args.export_specs = parse_export_specs(manifest.get("exports", args.export or []))
+    args.import_permissions = parse_import_permissions(manifest.get("imports", {}))
 
 
 def normalized_reloc_addend(reloc_type: int, addend: int) -> int:
@@ -264,6 +320,9 @@ def normalized_reloc_addend(reloc_type: int, addend: int) -> int:
 
 def build_drv(args: argparse.Namespace) -> bytes:
     elf_data, elf_sections, elf_symbols, symtab_index = parse_elf(Path(args.object))
+    validate_ascii_name(args.name, "name", 32)
+    validate_ascii_name(args.version, "version", 16)
+    validate_ascii_name(args.entry, "entry", 32)
     selected: list[DrvSectionOut] = []
     elf_to_drv: dict[int, int] = {}
 
@@ -313,6 +372,7 @@ def build_drv(args: argparse.Namespace) -> bytes:
 
         symbol = elf_symbols[sym_index]
         module, import_name = parse_import_symbol(symbol.name)
+        required_permission = args.import_permissions.get(f"{module}.{import_name}", 0)
         if import_slot_section_index < 0:
             import_slot_section_index = len(selected)
             selected.append(DrvSectionOut(".import", DRV_SECTION_DATA, b"", 0, 8, -1))
@@ -325,7 +385,7 @@ def build_drv(args: argparse.Namespace) -> bytes:
         slot_symbol_index = len(drv_symbols)
         import_slot_symbols[sym_index] = slot_symbol_index
         drv_symbols.append((f"import_{module}__{import_name}", DRV_SYMBOL_OBJECT, import_slot_section_index, slot_offset, 8))
-        imports.append(ImportOut(module, import_name, import_slot_section_index, slot_offset))
+        imports.append(ImportOut(module, import_name, required_permission, import_slot_section_index, slot_offset))
         return slot_symbol_index
 
     for section in elf_sections:
@@ -374,11 +434,18 @@ def build_drv(args: argparse.Namespace) -> bytes:
         selected[import_slot_section_index].data = bytes(import_slot_data)
         selected[import_slot_section_index].memory_size = len(import_slot_data)
 
+    symbols_by_name = {symbol_name for symbol_name, _kind, _section_index, _value, _size in drv_symbols}
+    if args.entry not in symbols_by_name:
+        raise SystemExit(f"{args.entry}: entry symbol was not found")
+
     exports = []
-    export_names = set(args.export or [])
+    export_specs = args.export_specs
+    missing_exports = [name for name in export_specs.keys() if name not in symbols_by_name]
+    if missing_exports:
+        raise SystemExit(f"missing export symbols: {', '.join(missing_exports)}")
     for symbol_name, kind, section_index, value, _size in drv_symbols:
-        if symbol_name in export_names:
-            exports.append((symbol_name, kind, 0, value))
+        if symbol_name in export_specs:
+            exports.append((symbol_name, kind, export_specs[symbol_name], value))
 
     return pack_drv(args, selected, drv_symbols, imports, exports, relocations)
 
@@ -415,7 +482,12 @@ def pack_drv(args: argparse.Namespace,
         for name, kind, section_index, value, size in symbols
     )
     import_table = b"".join(
-        struct.pack(IMPORT_FORMAT, zstr(item.module, 32), zstr(item.name, 48), 0, item.section_index, item.patch_offset)
+        struct.pack(IMPORT_FORMAT,
+                    zstr(item.module, 32),
+                    zstr(item.name, 48),
+                    item.required_permission,
+                    item.section_index,
+                    item.patch_offset)
         for item in imports
     )
     export_table = b"".join(
@@ -457,10 +529,10 @@ def pack_drv(args: argparse.Namespace,
                         section.alignment)
         )
 
-    signature = b"OS64TESTSIGNATURE"
-    certificate = b"OS64TESTCERT"
+    certificate = b"OS64LOCALTESTCERT"
+    signature_size = 16
     signature_offset = data_offset + len(section_data)
-    certificate_offset = signature_offset + len(signature)
+    certificate_offset = signature_offset + signature_size
     file_size = certificate_offset + len(certificate)
 
     header = struct.pack(
@@ -489,11 +561,11 @@ def pack_drv(args: argparse.Namespace,
         len(relocations),
         relocation_entry_size,
         signature_offset,
-        len(signature),
+        signature_size,
         certificate_offset,
         len(certificate),
     )
-    return b"".join([
+    unsigned_prefix = b"".join([
         header,
         manifest,
         b"".join(section_entries),
@@ -502,6 +574,10 @@ def pack_drv(args: argparse.Namespace,
         export_table,
         relocation_table,
         bytes(section_data),
+    ])
+    signature = local_signature(unsigned_prefix, certificate, file_size)
+    return b"".join([
+        unsigned_prefix,
         signature,
         certificate,
     ])
@@ -519,6 +595,8 @@ def main() -> int:
     parser.add_argument("--boot-modes", dest="boot_modes", type=lambda value: int(value, 0), default=DRV_BOOT_NORMAL)
     parser.add_argument("--export", action="append", default=[])
     args = parser.parse_args()
+    args.export_specs = parse_export_specs(args.export)
+    args.import_permissions = {}
     load_manifest(args)
     if not args.name:
         raise SystemExit("--name or manifest name is required")

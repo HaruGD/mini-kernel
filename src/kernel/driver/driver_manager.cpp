@@ -3,6 +3,7 @@
 #include "kernel/kutil64.h"
 
 static DriverRecord g_drivers[DRIVER_MAX_RECORDS];
+static DriverLoadDiagnostics g_last_error;
 
 static void clear_driver_record(DriverRecord* record) {
     if (record == 0) {
@@ -21,6 +22,7 @@ void driver_manager_init() {
     for (uint32_t i = 0; i < DRIVER_MAX_RECORDS; i++) {
         clear_driver_record(&g_drivers[i]);
     }
+    driver_manager_clear_last_error();
 }
 
 static int driver_name_matches(const DriverRecord* record, const char* name) {
@@ -151,4 +153,31 @@ const char* driver_kind_name(uint32_t kind) {
     if (kind == DRIVER_KIND_DISPLAY) return "display";
     if (kind == DRIVER_KIND_MODULE) return "module";
     return "unknown";
+}
+
+void driver_manager_clear_last_error() {
+    g_last_error.result = DRIVER_LOAD_OK;
+    g_last_error.index = 0;
+    g_last_error.detail = 0;
+    g_last_error.stage[0] = '\0';
+    g_last_error.module[0] = '\0';
+    g_last_error.name[0] = '\0';
+}
+
+void driver_manager_set_last_error(int result,
+                                   const char* stage,
+                                   const char* module,
+                                   const char* name,
+                                   uint32_t index,
+                                   uint64_t detail) {
+    g_last_error.result = result;
+    g_last_error.index = index;
+    g_last_error.detail = detail;
+    copy_string64(g_last_error.stage, sizeof(g_last_error.stage), stage != 0 ? stage : "");
+    copy_string64(g_last_error.module, sizeof(g_last_error.module), module != 0 ? module : "");
+    copy_string64(g_last_error.name, sizeof(g_last_error.name), name != 0 ? name : "");
+}
+
+const DriverLoadDiagnostics* driver_manager_last_error() {
+    return &g_last_error;
 }

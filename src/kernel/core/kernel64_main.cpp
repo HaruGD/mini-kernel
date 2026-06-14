@@ -54,12 +54,16 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     vfs_init();
     vfs_mount_fat32_root(&fat32);
     vfs_mount_memfs("/mem");
+    uint32_t autoloaded_drivers = driver_manager_autoload_from("/");
     idt64_init();
     keyboard.init();
     pit.init();
     __asm__ volatile("sti");
 
     print("Memory ready\n");
+    print("Driver autoloaded: ");
+    print_hex32(autoloaded_drivers);
+    print("\n");
     print("GDT/TSS ready\n");
     print("Interrupts ready\n");
     print(kernel_shell_prompt());

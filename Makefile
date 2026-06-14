@@ -127,7 +127,7 @@ drivers: $(DRIVER_PACKAGES)
 	@mkdir -p ./build
 	$(AS) -f elf64 -g ./src/boot/kernel64_entry.asm -o ./build/kernel64_entry.o
 
-./build/kernel64.o: ./src/kernel/kernel64.cpp
+./build/kernel64.o: ./src/kernel/kernel64.cpp ./src/kernel/core/kernel64_main.cpp ./src/kernel/core/kernel64_process.cpp ./src/kernel/core/kernel64_diag.cpp ./src/kernel/core/kernel64_user.cpp ./src/kernel/core/kernel64_irq.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/kernel64.cpp -o ./build/kernel64.o
 
 ./build/kutil64.o: ./src/kernel/kutil64.cpp

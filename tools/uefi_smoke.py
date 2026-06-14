@@ -53,6 +53,7 @@ def main() -> int:
         "drvcheck consumer_c.drv",
         "drvload consumer_c.drv",
         "drivers",
+        "drvinfo consumer_c.drv",
         "mounts",
         "ls",
         "ls /mem",
@@ -108,6 +109,7 @@ def main() -> int:
     log_text = serial_log.read_text(errors="replace") if serial_log.exists() else ""
     checks = [
         "Boot path: UEFI",
+        "Driver autoloaded:",
         "OS64>",
         "BootInfo magic:",
         "Reserved range count:",
@@ -135,6 +137,8 @@ def main() -> int:
         "hello_c kind=module state=ready",
         "provider_c kind=module state=ready",
         "consumer_c kind=module state=ready",
+        "=== DRV INFO ===",
+        "import[0x00000001] provider_c.provider_ping",
         "fat32 kind=fs state=ready",
         "kernel64.bin",
         "ushell_c.elf",
