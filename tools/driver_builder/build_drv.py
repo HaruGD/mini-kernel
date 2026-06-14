@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,15 @@ DRV_SYMBOL_OBJECT = 2
 DRV_RELOC_ABS64 = 1
 DRV_RELOC_REL32 = 2
 DRV_BOOT_NORMAL = 0x00000001
+DRV_BOOT_SAFE = 0x00000002
+DRV_BOOT_RECOVERY = 0x00000004
+DRV_PERMISSION_PCI = 0x00000001
+DRV_PERMISSION_MMIO = 0x00000002
+DRV_PERMISSION_INTERRUPT = 0x00000004
+DRV_PERMISSION_BLOCK = 0x00000008
+DRV_PERMISSION_VFS = 0x00000010
+DRV_PERMISSION_INPUT = 0x00000020
+DRV_PERMISSION_TIMER = 0x00000040
 
 SHT_NULL = 0
 SHT_PROGBITS = 1
@@ -48,6 +58,21 @@ SYMBOL_FORMAT = "<48sIIQQ"
 IMPORT_FORMAT = "<32s48sIIQ"
 EXPORT_FORMAT = "<48sIIQ"
 RELOCATION_FORMAT = "<IIQQq"
+
+PERMISSIONS = {
+    "PCI": DRV_PERMISSION_PCI,
+    "MMIO": DRV_PERMISSION_MMIO,
+    "INTERRUPT": DRV_PERMISSION_INTERRUPT,
+    "BLOCK": DRV_PERMISSION_BLOCK,
+    "VFS": DRV_PERMISSION_VFS,
+    "INPUT": DRV_PERMISSION_INPUT,
+    "TIMER": DRV_PERMISSION_TIMER,
+}
+BOOT_MODES = {
+    "NORMAL": DRV_BOOT_NORMAL,
+    "SAFE": DRV_BOOT_SAFE,
+    "RECOVERY": DRV_BOOT_RECOVERY,
+}
 
 
 @dataclass
@@ -187,6 +212,48 @@ def parse_import_symbol(name: str) -> tuple[str, str]:
         module, imported = name.split("__", 1)
         return module, imported
     raise SystemExit(f"{name}: unresolved symbol has no import mapping")
+
+
+def parse_flag_list(value, table: dict[str, int], field_name: str) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, int):
+        return value
+    if not isinstance(value, list):
+        raise SystemExit(f"{field_name}: expected integer or string list")
+
+    flags = 0
+    for item in value:
+        if not isinstance(item, str):
+            raise SystemExit(f"{field_name}: expected string values")
+        key = item.upper()
+        if key not in table:
+            raise SystemExit(f"{field_name}: unknown flag {item}")
+        flags |= table[key]
+    return flags
+
+
+def load_manifest(args: argparse.Namespace) -> None:
+    if args.manifest is None:
+        return
+
+    path = Path(args.manifest)
+    manifest = json.loads(path.read_text())
+    if not isinstance(manifest, dict):
+        raise SystemExit(f"{path}: manifest root must be an object")
+
+    args.name = manifest.get("name", args.name)
+    args.version = manifest.get("version", args.version)
+    args.entry = manifest.get("entry", args.entry)
+    args.permissions = parse_flag_list(manifest.get("permissions", args.permissions), PERMISSIONS, "permissions")
+    args.boot_modes = parse_flag_list(manifest.get("boot_modes", args.boot_modes), BOOT_MODES, "boot_modes")
+
+    exports = manifest.get("exports", args.export)
+    if exports is None:
+        exports = []
+    if not isinstance(exports, list) or any(not isinstance(item, str) for item in exports):
+        raise SystemExit(f"{path}: exports must be a string list")
+    args.export = exports
 
 
 def normalized_reloc_addend(reloc_type: int, addend: int) -> int:
@@ -335,7 +402,7 @@ def pack_drv(args: argparse.Namespace,
         zstr(args.version, 16),
         zstr(args.entry, 32),
         args.permissions,
-        DRV_BOOT_NORMAL,
+        args.boot_modes,
         0,
         0,
     )
@@ -444,12 +511,17 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--object", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--name", required=True)
+    parser.add_argument("--manifest")
+    parser.add_argument("--name")
     parser.add_argument("--version", default="0.1.0")
     parser.add_argument("--entry", default="driver_entry")
     parser.add_argument("--permissions", type=lambda value: int(value, 0), default=0)
+    parser.add_argument("--boot-modes", dest="boot_modes", type=lambda value: int(value, 0), default=DRV_BOOT_NORMAL)
     parser.add_argument("--export", action="append", default=[])
     args = parser.parse_args()
+    load_manifest(args)
+    if not args.name:
+        raise SystemExit("--name or manifest name is required")
 
     image = build_drv(args)
     output = Path(args.output)
