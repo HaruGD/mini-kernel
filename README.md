@@ -5,7 +5,7 @@ Experimental x86 OS project for learning low-level systems work by building a 64
 The current active path is:
 
 ```text
-UEFI firmware -> BOOTX64.EFI -> kernel64.bin -> FAT32 root / -> OS64 shell/userland
+UEFI firmware -> BOOTX64.EFI -> kernel64.bin + OS64.BIN ramdisk -> FAT32 root / -> OS64 shell/userland
 ```
 
 Legacy BIOS/32-bit/FAT12 code still exists for reference, but it is frozen and is not part of current active development.
@@ -74,9 +74,9 @@ Important active artifacts:
 
 - `bin/kernel64.bin`
 - `bin/os64.bin`
-  FAT32 root disk image for the active OS path.
+  FAT32 root filesystem image for the active OS path.
 - `bin/uefi_esp.img`
-  UEFI ESP image containing `BOOTX64.EFI` and `kernel64.bin`.
+  UEFI boot image containing `BOOTX64.EFI`, `kernel64.bin`, and `OS64.BIN`.
 - `bin/hello.drv`
   Hand-built test driver package loaded from the FAT32 root filesystem.
 - `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`
@@ -96,7 +96,22 @@ Equivalent helper:
 ./run_uefi.sh
 ```
 
-`run.sh` builds the FAT32 root image and ESP image, refreshes OVMF vars, and starts QEMU with the ESP plus the FAT32 root disk.
+`run.sh` builds the FAT32 root image, embeds it into the UEFI image as `OS64.BIN`, refreshes OVMF vars, and starts QEMU from that single boot image.
+
+## Boot Layout
+
+The active UEFI path uses one boot image:
+
+```text
+uefi_esp.img
+├── BOOTX64.EFI
+├── KERNEL.BIN
+└── OS64.BIN
+```
+
+`BOOTX64.EFI` loads `KERNEL.BIN` to the kernel load address, loads `OS64.BIN` into RAM, records it in `BootInfo`, exits UEFI boot services, and jumps to the 64-bit kernel. The kernel mounts that RAM-backed `OS64.BIN` FAT32 image as `/`.
+
+This keeps QEMU, VirtualBox, and USB boot experiments simple: firmware only needs to boot the UEFI image, and the early kernel no longer needs a second disk controller just to find `/`.
 
 ## Shells
 

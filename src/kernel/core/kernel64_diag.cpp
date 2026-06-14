@@ -14,6 +14,9 @@ static const char* reserved_range_type_name(uint32_t type) {
     if (type == BOOT_RESERVED_RANGE_KERNEL_STACK) {
         return "kernel_stack";
     }
+    if (type == BOOT_RESERVED_RANGE_RAMDISK) {
+        return "ramdisk";
+    }
     return "unknown";
 }
 
@@ -98,6 +101,13 @@ void print_boot_info() {
         print_hex32(g_boot_info->framebuffer_pixels_per_scanline);
         print("\nFramebuffer format: ");
         print_hex32(g_boot_info->framebuffer_format);
+    }
+    if (g_boot_info->size >= sizeof(BootInfo) &&
+        (g_boot_info->flags & BOOT_INFO_FLAG_RAMDISK)) {
+        print("\nRamdisk addr: ");
+        print_hex64(g_boot_info->ramdisk_addr);
+        print("\nRamdisk bytes: ");
+        print_hex64(g_boot_info->ramdisk_size);
     }
     if (boot_info_has_reserved_ranges(g_boot_info)) {
         uint32_t count = boot_reserved_range_count(g_boot_info);

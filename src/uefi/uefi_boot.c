@@ -47,6 +47,8 @@ typedef struct EFI_TABLE_HEADER {
 #define KERNEL_LOAD_ADDR 0x100000ULL
 #define KERNEL_MAX_SIZE  (4ULL * 1024ULL * 1024ULL)
 #define KERNEL_MAX_PAGES (KERNEL_MAX_SIZE / PAGE_SIZE)
+#define RAMDISK_MAX_SIZE (32ULL * 1024ULL * 1024ULL)
+#define RAMDISK_MAX_PAGES (RAMDISK_MAX_SIZE / PAGE_SIZE)
 #define KERNEL_STACK_PAGES 16
 #define PAGE_SIZE 4096ULL
 
@@ -324,17 +326,11 @@ static int allocate_any_below_4g(UINTN pages, EFI_PHYSICAL_ADDRESS* out) {
     return 1;
 }
 
-static EFI_FILE_PROTOCOL* open_kernel_file(EFI_HANDLE image_handle) {
+static EFI_FILE_PROTOCOL* open_root_file(EFI_HANDLE image_handle, CHAR16* primary, CHAR16* fallback) {
     EFI_LOADED_IMAGE_PROTOCOL* loaded = 0;
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs = 0;
     EFI_FILE_PROTOCOL* root = 0;
     EFI_FILE_PROTOCOL* file = 0;
-    static CHAR16 kernel_bin[] = {
-        'K','E','R','N','E','L','.','B','I','N',0
-    };
-    static CHAR16 kernel64_bin[] = {
-        'K','E','R','N','E','L','6','4','.','B','I','N',0
-    };
 
     if (g_bs->handle_protocol(image_handle, &loaded_image_guid, (void**)&loaded) != EFI_SUCCESS) {
         return 0;
@@ -346,14 +342,31 @@ static EFI_FILE_PROTOCOL* open_kernel_file(EFI_HANDLE image_handle) {
         return 0;
     }
 
-    if (root->open(root, &file, kernel_bin, EFI_FILE_MODE_READ, 0) == EFI_SUCCESS) {
+    if (primary != 0 && root->open(root, &file, primary, EFI_FILE_MODE_READ, 0) == EFI_SUCCESS) {
         return file;
     }
-    if (root->open(root, &file, kernel64_bin, EFI_FILE_MODE_READ, 0) == EFI_SUCCESS) {
+    if (fallback != 0 && root->open(root, &file, fallback, EFI_FILE_MODE_READ, 0) == EFI_SUCCESS) {
         return file;
     }
 
     return 0;
+}
+
+static EFI_FILE_PROTOCOL* open_kernel_file(EFI_HANDLE image_handle) {
+    static CHAR16 kernel_bin[] = {
+        'K','E','R','N','E','L','.','B','I','N',0
+    };
+    static CHAR16 kernel64_bin[] = {
+        'K','E','R','N','E','L','6','4','.','B','I','N',0
+    };
+    return open_root_file(image_handle, kernel_bin, kernel64_bin);
+}
+
+static EFI_FILE_PROTOCOL* open_ramdisk_file(EFI_HANDLE image_handle) {
+    static CHAR16 os64_bin[] = {
+        'O','S','6','4','.','B','I','N',0
+    };
+    return open_root_file(image_handle, os64_bin, 0);
 }
 
 static void add_reserved_range(BootInfo* boot_info, uint64_t base, uint64_t size, uint32_t type) {
@@ -375,6 +388,26 @@ static UINTN read_kernel(EFI_FILE_PROTOCOL* file, UINT8* dest) {
         UINTN chunk = 65536;
         if (chunk > KERNEL_MAX_SIZE - total) {
             chunk = KERNEL_MAX_SIZE - total;
+        }
+
+        EFI_STATUS status = file->read(file, &chunk, dest + total);
+        if (status != EFI_SUCCESS) {
+            return 0;
+        }
+        if (chunk == 0) {
+            break;
+        }
+        total += chunk;
+    }
+    return total;
+}
+
+static UINTN read_file_limited(EFI_FILE_PROTOCOL* file, UINT8* dest, UINTN max_size) {
+    UINTN total = 0;
+    while (total < max_size) {
+        UINTN chunk = 65536;
+        if (chunk > max_size - total) {
+            chunk = max_size - total;
         }
 
         EFI_STATUS status = file->read(file, &chunk, dest + total);
@@ -515,6 +548,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     static CHAR16 kernel_alloc_fail_msg[] = {'K','e','r','n','e','l',' ','a','d','d','r',' ','a','l','l','o','c',' ','f','a','i','l','e','d','\r','\n',0};
     static CHAR16 ebs_fail_msg[] = {'E','x','i','t','B','o','o','t','S','e','r','v','i','c','e','s',' ','f','a','i','l','e','d','\r','\n',0};
     static CHAR16 temp_alloc_fail_msg[] = {'K','e','r','n','e','l',' ','t','e','m','p',' ','a','l','l','o','c',' ','f','a','i','l','e','d','\r','\n',0};
+    static CHAR16 ramdisk_alloc_fail_msg[] = {'R','a','m','d','i','s','k',' ','a','l','l','o','c',' ','f','a','i','l','e','d','\r','\n',0};
     static CHAR16 bootinfo_alloc_fail_msg[] = {'B','o','o','t','I','n','f','o',' ','a','l','l','o','c',' ','f','a','i','l','e','d','\r','\n',0};
     static CHAR16 table_alloc_fail_msg[] = {'P','a','g','e',' ','t','a','b','l','e',' ','a','l','l','o','c',' ','f','a','i','l','e','d','\r','\n',0};
     static CHAR16 stack_alloc_fail_msg[] = {'K','e','r','n','e','l',' ','s','t','a','c','k',' ','a','l','l','o','c',' ','f','a','i','l','e','d','\r','\n',0};
@@ -546,6 +580,20 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     }
     UINTN kernel_reserved_size = kernel_pages * PAGE_SIZE;
     memcpy64((void*)(uintptr_t)KERNEL_LOAD_ADDR, (const void*)(uintptr_t)kernel_temp_phys, kernel_size);
+
+    EFI_PHYSICAL_ADDRESS ramdisk_phys = 0;
+    UINTN ramdisk_size = 0;
+    EFI_FILE_PROTOCOL* ramdisk_file = open_ramdisk_file(image_handle);
+    if (ramdisk_file != 0) {
+        if (!allocate_any_below_4g(RAMDISK_MAX_PAGES, &ramdisk_phys)) {
+            return fail_with_pause(ramdisk_alloc_fail_msg, EFI_NOT_FOUND);
+        }
+        ramdisk_size = read_file_limited(ramdisk_file, (UINT8*)(uintptr_t)ramdisk_phys, RAMDISK_MAX_SIZE);
+        ramdisk_file->close(ramdisk_file);
+        if (ramdisk_size == 0) {
+            ramdisk_phys = 0;
+        }
+    }
 
     FramebufferInfo framebuffer_info;
     collect_framebuffer_info(&framebuffer_info);
@@ -622,6 +670,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         boot_info->framebuffer_format = framebuffer_info.format;
         boot_info->reserved_range_count = 0;
         boot_info->reserved_range_entry_size = sizeof(BootReservedRange);
+        boot_info->ramdisk_addr = ramdisk_phys;
+        boot_info->ramdisk_size = ramdisk_size;
         for (uint32_t i = 0; i < BOOT_RESERVED_RANGE_MAX; i++) {
             boot_info->reserved_ranges[i].base = 0;
             boot_info->reserved_ranges[i].size = 0;
@@ -635,6 +685,10 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         if (framebuffer_info.base != 0 && framebuffer_info.size != 0) {
             boot_info->flags |= BOOT_INFO_FLAG_FRAMEBUFFER;
             add_reserved_range(boot_info, framebuffer_info.base, framebuffer_info.size, BOOT_RESERVED_RANGE_FRAMEBUFFER);
+        }
+        if (ramdisk_phys != 0 && ramdisk_size != 0) {
+            boot_info->flags |= BOOT_INFO_FLAG_RAMDISK;
+            add_reserved_range(boot_info, ramdisk_phys, ramdisk_size, BOOT_RESERVED_RANGE_RAMDISK);
         }
 
         status = g_bs->exit_boot_services(image_handle, map_key);

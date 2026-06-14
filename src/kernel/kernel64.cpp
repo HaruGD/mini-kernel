@@ -44,6 +44,8 @@ ATADriver ata;
 KeyboardDriver keyboard;
 PIT pit;
 FAT32Driver fat32(&ata);
+FAT32Driver ramdisk_fat32((uint8_t*)0, 0);
+FAT32Driver* root_fat32 = &fat32;
 
 static const BootInfo* g_boot_info = 0;
 static uint64_t boot_tsc = 0;

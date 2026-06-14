@@ -5,7 +5,6 @@ import struct
 
 
 BYTES_PER_SECTOR = 512
-TOTAL_SECTORS = 32768
 SECTORS_PER_CLUSTER = 1
 RESERVED_SECTORS = 1
 FAT_COUNT = 2
@@ -53,6 +52,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--efi", required=True)
     parser.add_argument("--kernel", required=True)
+    parser.add_argument("--root")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -60,19 +60,35 @@ def main() -> int:
         efi = f.read()
     with open(args.kernel, "rb") as f:
         kernel = f.read()
+    root_image = b""
+    if args.root:
+        with open(args.root, "rb") as f:
+            root_image = f.read()
     startup = b"FS0:\r\nBOOTX64.EFI\r\n"
 
     root_dir_sectors = (ROOT_ENTRY_COUNT * 32 + BYTES_PER_SECTOR - 1) // BYTES_PER_SECTOR
-    data_sectors_guess = TOTAL_SECTORS - RESERVED_SECTORS - root_dir_sectors
-    sectors_per_fat = math.ceil((data_sectors_guess // SECTORS_PER_CLUSTER + 2) * 2 / BYTES_PER_SECTOR)
+    payload_bytes = len(efi) + len(kernel) + len(startup) + len(root_image)
+    payload_clusters = cluster_count(payload_bytes) + 8
+    total_sectors = 32768
+    while True:
+        data_sectors_guess = total_sectors - RESERVED_SECTORS - root_dir_sectors
+        sectors_per_fat = math.ceil((data_sectors_guess // SECTORS_PER_CLUSTER + 2) * 2 / BYTES_PER_SECTOR)
+        data_start_sector = RESERVED_SECTORS + FAT_COUNT * sectors_per_fat + root_dir_sectors
+        data_sectors = total_sectors - data_start_sector
+        total_clusters = data_sectors // SECTORS_PER_CLUSTER
+        if total_clusters >= payload_clusters:
+            break
+        total_sectors *= 2
+        if total_sectors > 262144:
+            raise SystemExit("ESP image would be too large")
     data_start_sector = RESERVED_SECTORS + FAT_COUNT * sectors_per_fat + root_dir_sectors
-    data_sectors = TOTAL_SECTORS - data_start_sector
+    data_sectors = total_sectors - data_start_sector
     total_clusters = data_sectors // SECTORS_PER_CLUSTER
 
     if total_clusters < 4085:
         raise SystemExit("image is too small for FAT16")
 
-    image = bytearray(TOTAL_SECTORS * BYTES_PER_SECTOR)
+    image = bytearray(total_sectors * BYTES_PER_SECTOR)
 
     boot = bytearray(BYTES_PER_SECTOR)
     boot[0:3] = b"\xEB\x3C\x90"
@@ -82,13 +98,13 @@ def main() -> int:
     struct.pack_into("<H", boot, 14, RESERVED_SECTORS)
     boot[16] = FAT_COUNT
     struct.pack_into("<H", boot, 17, ROOT_ENTRY_COUNT)
-    struct.pack_into("<H", boot, 19, TOTAL_SECTORS if TOTAL_SECTORS < 65536 else 0)
+    struct.pack_into("<H", boot, 19, total_sectors if total_sectors < 65536 else 0)
     boot[21] = MEDIA_DESCRIPTOR
     struct.pack_into("<H", boot, 22, sectors_per_fat)
     struct.pack_into("<H", boot, 24, 32)
     struct.pack_into("<H", boot, 26, 64)
     struct.pack_into("<I", boot, 28, 0)
-    struct.pack_into("<I", boot, 32, TOTAL_SECTORS if TOTAL_SECTORS >= 65536 else 0)
+    struct.pack_into("<I", boot, 32, total_sectors if total_sectors >= 65536 else 0)
     boot[36] = 0x80
     boot[38] = 0x29
     struct.pack_into("<I", boot, 39, 0x55454649)
@@ -116,6 +132,7 @@ def main() -> int:
     boot_dir_chain = alloc_chain(b"")
     efi_chain = alloc_chain(efi)
     kernel_chain = alloc_chain(kernel)
+    root_chain = alloc_chain(root_image) if root_image else []
     startup_chain = alloc_chain(startup)
 
     if next_cluster >= total_clusters:
@@ -130,12 +147,15 @@ def main() -> int:
         return sector * BYTES_PER_SECTOR
 
     root_offset = (RESERVED_SECTORS + FAT_COUNT * sectors_per_fat) * BYTES_PER_SECTOR
-    write_dir(image, root_offset, [
+    root_entries = [
         make_entry("EFI", 0x10, efi_dir_chain[0], 0),
         make_entry("BOOTX64.EFI", 0x20, efi_chain[0], len(efi)),
         make_entry("KERNEL.BIN", 0x20, kernel_chain[0], len(kernel)),
         make_entry("STARTUP.NSH", 0x20, startup_chain[0], len(startup)),
-    ])
+    ]
+    if root_chain:
+        root_entries.insert(3, make_entry("OS64.BIN", 0x20, root_chain[0], len(root_image)))
+    write_dir(image, root_offset, root_entries)
 
     efi_dir = [
         make_entry(".", 0x10, efi_dir_chain[0], 0),
@@ -160,6 +180,8 @@ def main() -> int:
 
     write_file(efi, efi_chain)
     write_file(kernel, kernel_chain)
+    if root_chain:
+        write_file(root_image, root_chain)
     write_file(startup, startup_chain)
 
     with open(args.output, "wb") as f:

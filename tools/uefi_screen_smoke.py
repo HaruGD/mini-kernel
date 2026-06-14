@@ -45,11 +45,8 @@ def main() -> int:
     screen = Path("uefi_screen.ppm")
     screen.unlink(missing_ok=True)
     esp_image = Path("bin/uefi_esp.screen.img")
-    root_image = Path("bin/os64.screen.img")
     esp_image.unlink(missing_ok=True)
-    root_image.unlink(missing_ok=True)
     shutil.copyfile("bin/uefi_esp.img", esp_image)
-    shutil.copyfile("bin/os64.bin", root_image)
 
     qemu = [
         "qemu-system-x86_64",
@@ -57,7 +54,6 @@ def main() -> int:
         "-drive", "if=pflash,format=raw,file=./bin/OVMF_VARS_4M.fd",
         "-drive", f"if=none,id=uefi_esp,format=raw,file={esp_image}",
         "-device", "virtio-blk-pci,drive=uefi_esp,bootindex=1",
-        "-drive", f"format=raw,file={root_image},if=ide,index=0",
         "-serial", "none",
         "-monitor", "stdio",
         "-display", "none",
@@ -83,7 +79,6 @@ def main() -> int:
             except BrokenPipeError:
                 pass
         esp_image.unlink(missing_ok=True)
-        root_image.unlink(missing_ok=True)
 
     if not screen.exists():
         print("UEFI screen smoke missing screendump")

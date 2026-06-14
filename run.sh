@@ -33,7 +33,6 @@ qemu-system-x86_64 \
   -drive if=pflash,format=raw,file="$OVMF_VARS" \
   -drive if=none,id=uefi_esp,format=raw,file=./bin/uefi_esp.img \
   -device virtio-blk-pci,drive=uefi_esp,bootindex=1 \
-  -drive format=raw,file=./bin/os64.bin,if=ide,index=0 \
   -boot menu=off \
   -vga std \
   -display "$QEMU_DISPLAY" \

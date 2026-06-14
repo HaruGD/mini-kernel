@@ -65,6 +65,8 @@ struct FAT32LFNEntry {
 
 class FAT32Driver : public Driver {
     ATADriver* ata;
+    uint8_t* ramdisk;
+    uint32_t ramdisk_size;
     uint32_t start_lba;
     FAT32BPB bpb;
     uint8_t initialized;
@@ -115,6 +117,8 @@ class FAT32Driver : public Driver {
 
 public:
     FAT32Driver(ATADriver* ata, uint32_t start_lba = 0);
+    FAT32Driver(uint8_t* ramdisk, uint32_t ramdisk_size, uint32_t start_lba = 0);
+    void attach_ramdisk(uint8_t* ramdisk, uint32_t ramdisk_size, uint32_t start_lba = 0);
     void init() override;
     bool ready() const;
 

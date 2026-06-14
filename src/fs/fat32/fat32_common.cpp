@@ -201,6 +201,8 @@ static uint32_t fat32_lfn_slot_count(const char* long_name) {
 
 FAT32Driver::FAT32Driver(ATADriver* ata, uint32_t start_lba)
     : ata(ata),
+      ramdisk(0),
+      ramdisk_size(0),
       start_lba(start_lba),
       initialized(0),
       fat_start_lba(0),
@@ -208,15 +210,63 @@ FAT32Driver::FAT32Driver(ATADriver* ata, uint32_t start_lba)
       total_sectors(0) {
 }
 
+FAT32Driver::FAT32Driver(uint8_t* ramdisk, uint32_t ramdisk_size, uint32_t start_lba)
+    : ata(0),
+      ramdisk(ramdisk),
+      ramdisk_size(ramdisk_size),
+      start_lba(start_lba),
+      initialized(0),
+      fat_start_lba(0),
+      data_start_lba(0),
+      total_sectors(0) {
+}
+
+void FAT32Driver::attach_ramdisk(uint8_t* new_ramdisk, uint32_t new_ramdisk_size, uint32_t new_start_lba) {
+    ata = 0;
+    ramdisk = new_ramdisk;
+    ramdisk_size = new_ramdisk_size;
+    start_lba = new_start_lba;
+    initialized = 0;
+    fat_start_lba = 0;
+    data_start_lba = 0;
+    total_sectors = 0;
+}
+
 bool FAT32Driver::read_sector_relative(uint32_t lba, uint8_t* buffer) {
-    if (ata == 0 || buffer == 0) {
+    if (buffer == 0) {
+        return false;
+    }
+    if (ramdisk != 0) {
+        uint64_t offset = (uint64_t)(start_lba + lba) * 512ULL;
+        if (offset > ramdisk_size || ramdisk_size - offset < 512ULL) {
+            return false;
+        }
+        for (uint32_t i = 0; i < 512; i++) {
+            buffer[i] = ramdisk[offset + i];
+        }
+        return true;
+    }
+    if (ata == 0) {
         return false;
     }
     return ata->read_sector(start_lba + lba, buffer);
 }
 
 bool FAT32Driver::write_sector_relative(uint32_t lba, const uint8_t* buffer) {
-    if (ata == 0 || buffer == 0) {
+    if (buffer == 0) {
+        return false;
+    }
+    if (ramdisk != 0) {
+        uint64_t offset = (uint64_t)(start_lba + lba) * 512ULL;
+        if (offset > ramdisk_size || ramdisk_size - offset < 512ULL) {
+            return false;
+        }
+        for (uint32_t i = 0; i < 512; i++) {
+            ramdisk[offset + i] = buffer[i];
+        }
+        return true;
+    }
+    if (ata == 0) {
         return false;
     }
     return ata->write_sector(start_lba + lba, buffer);

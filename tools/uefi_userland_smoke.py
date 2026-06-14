@@ -46,11 +46,8 @@ def send_shell_command(proc: subprocess.Popen, command: str) -> None:
 def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
     serial_log.unlink(missing_ok=True)
     esp_image = Path("bin/uefi_esp.userland.img")
-    root_image = Path("bin/os64.userland.img")
     esp_image.unlink(missing_ok=True)
-    root_image.unlink(missing_ok=True)
     shutil.copyfile("bin/uefi_esp.img", esp_image)
-    shutil.copyfile("bin/os64.bin", root_image)
 
     qemu = [
         "qemu-system-x86_64",
@@ -58,7 +55,6 @@ def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
         "-drive", "if=pflash,format=raw,file=./bin/OVMF_VARS_4M.fd",
         "-drive", f"if=none,id=uefi_esp,format=raw,file={esp_image}",
         "-device", "virtio-blk-pci,drive=uefi_esp,bootindex=1",
-        "-drive", f"format=raw,file={root_image},if=ide,index=0",
         "-serial", f"file:{serial_log}",
         "-monitor", "stdio",
         "-display", "none",
@@ -82,7 +78,6 @@ def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
             except BrokenPipeError:
                 pass
         esp_image.unlink(missing_ok=True)
-        root_image.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -96,6 +91,8 @@ def main() -> int:
     log_text = serial_log.read_text(errors="replace") if serial_log.exists() else ""
     checks = [
         "Boot path: UEFI",
+        "Ramdisk:",
+        "Root source: ramdisk",
         "Running user program: ushell_c.elf",
         "=== ushell_c.elf ===",
         "csh> pwd",

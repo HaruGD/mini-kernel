@@ -7,6 +7,7 @@
 #define BOOT_INFO_VERSION 1
 #define BOOT_INFO_FLAG_UEFI 0x00000001
 #define BOOT_INFO_FLAG_FRAMEBUFFER 0x00000002
+#define BOOT_INFO_FLAG_RAMDISK 0x00000004
 #define BOOT_INFO_ADDR 0x8000
 #define E820_MEMORY_MAP_ADDR 0x8200
 #define E820_ENTRY_SIZE 24
@@ -19,6 +20,7 @@
 #define BOOT_RESERVED_RANGE_PAGE_TABLES 3
 #define BOOT_RESERVED_RANGE_FRAMEBUFFER 4
 #define BOOT_RESERVED_RANGE_KERNEL_STACK 5
+#define BOOT_RESERVED_RANGE_RAMDISK 6
 
 typedef struct __attribute__((packed)) E820Entry {
     uint32_t base_low;
@@ -57,6 +59,8 @@ typedef struct BootInfo {
     uint32_t framebuffer_format;
     uint32_t reserved_range_count;
     uint32_t reserved_range_entry_size;
+    uint64_t ramdisk_addr;
+    uint64_t ramdisk_size;
     BootReservedRange reserved_ranges[BOOT_RESERVED_RANGE_MAX];
 } BootInfo;
 

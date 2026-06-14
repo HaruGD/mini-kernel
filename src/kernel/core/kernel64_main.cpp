@@ -51,6 +51,13 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
             print(" fmt=");
             print_hex32(g_boot_info->framebuffer_format);
         }
+        if (g_boot_info->size >= sizeof(BootInfo) &&
+            (g_boot_info->flags & BOOT_INFO_FLAG_RAMDISK)) {
+            print("\nRamdisk: ");
+            print_hex64(g_boot_info->ramdisk_addr);
+            print(" bytes=");
+            print_hex64(g_boot_info->ramdisk_size);
+        }
         print("\n");
     } else {
         print("BootInfo invalid\n");
@@ -69,10 +76,25 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     driver_manager_register_kernel_exports();
     gdt64_init();
     ata.init();
-    fat32.init();
+    uint32_t root_from_ramdisk = 0;
+    if (g_boot_info != 0 &&
+        g_boot_info->size >= sizeof(BootInfo) &&
+        (g_boot_info->flags & BOOT_INFO_FLAG_RAMDISK) &&
+        g_boot_info->ramdisk_addr != 0 &&
+        g_boot_info->ramdisk_size >= 512) {
+        ramdisk_fat32.attach_ramdisk((uint8_t*)(uintptr_t)g_boot_info->ramdisk_addr,
+                                     (uint32_t)g_boot_info->ramdisk_size);
+        ramdisk_fat32.init();
+        root_fat32 = &ramdisk_fat32;
+        root_from_ramdisk = ramdisk_fat32.ready() ? 1 : 0;
+    }
+    if (!root_from_ramdisk) {
+        fat32.init();
+        root_fat32 = &fat32;
+    }
     driver_manager_register_builtin_devices();
     vfs_init();
-    vfs_mount_fat32_root(&fat32);
+    vfs_mount_fat32_root(root_fat32);
     vfs_mount_memfs("/mem");
     uint32_t autoloaded_drivers = driver_manager_autoload_from("/");
     idt64_init();
@@ -81,6 +103,9 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     __asm__ volatile("sti");
 
     print("Memory ready\n");
+    print("Root source: ");
+    print(root_from_ramdisk ? "ramdisk" : "ata");
+    print("\n");
     print("Framebuffer mapped: ");
     print_hex32((uint32_t)framebuffer_mapped);
     print("\n");

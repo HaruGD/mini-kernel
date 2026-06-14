@@ -265,8 +265,8 @@ drivers: $(DRIVER_PACKAGES)
 	@mkdir -p ./bin
 	$(UEFI_OBJCOPY) -j .text -j .rodata -j .data -j .bss -O pei-x86-64 --subsystem efi-app --image-base 0x400000 --stack 0x100000,0x1000 ./build/BOOTX64.elf ./bin/BOOTX64.EFI
 
-./bin/uefi_esp.img: ./bin/BOOTX64.EFI ./bin/kernel64.bin ./tools/build_uefi_esp.py
-	python3 ./tools/build_uefi_esp.py --efi ./bin/BOOTX64.EFI --kernel ./bin/kernel64.bin --output ./bin/uefi_esp.img
+./bin/uefi_esp.img: ./bin/BOOTX64.EFI ./bin/kernel64.bin ./bin/os64.bin ./tools/build_uefi_esp.py
+	python3 ./tools/build_uefi_esp.py --efi ./bin/BOOTX64.EFI --kernel ./bin/kernel64.bin --root ./bin/os64.bin --output ./bin/uefi_esp.img
 
 ./bin/fat32.img: ./tools/build_fat32_image.py
 	@mkdir -p ./bin

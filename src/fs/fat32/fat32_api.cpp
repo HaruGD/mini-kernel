@@ -1,6 +1,6 @@
 void FAT32Driver::init() {
     initialized = 0;
-    if (ata == 0) {
+    if (ata == 0 && ramdisk == 0) {
         return;
     }
 

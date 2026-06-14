@@ -19,10 +19,6 @@ fi
 cp /usr/share/OVMF/OVMF_VARS_4M.fd "$OVMF_VARS"
 rm -f "$SERIAL_LOG" "$QEMU_LOG"
 
-QEMU_ARGS=(
-  -drive format=raw,file=./bin/os64.bin,if=ide,index=0
-)
-
 echo "[uefi] starting qemu"
 echo "[uefi] display: $QEMU_DISPLAY"
 echo "[uefi] serial: $SERIAL_TARGET"
@@ -39,7 +35,6 @@ qemu-system-x86_64 \
   -boot menu=off \
   -vga std \
   -display "$QEMU_DISPLAY" \
-  "${QEMU_ARGS[@]}" \
   -serial "$SERIAL_TARGET" \
   -monitor none \
   -no-reboot \

@@ -9,6 +9,7 @@ extern ATADriver ata;
 extern KeyboardDriver keyboard;
 extern PIT pit;
 extern FAT32Driver fat32;
+extern FAT32Driver* root_fat32;
 
 static void register_ready_builtin(const char* name,
                                    uint32_t kind,
@@ -27,7 +28,7 @@ void driver_manager_register_builtin_devices() {
     register_ready_builtin("fat32",
                            DRIVER_KIND_FS,
                            DRV_PERMISSION_BLOCK | DRV_PERMISSION_VFS,
-                           &fat32);
+                           root_fat32 != 0 ? root_fat32 : &fat32);
     register_ready_builtin("keyboard",
                            DRIVER_KIND_INPUT,
                            DRV_PERMISSION_INPUT | DRV_PERMISSION_INTERRUPT,
