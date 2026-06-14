@@ -11,12 +11,16 @@ DRV_ARCH_X86_64 = 0x8664
 DRV_BOOT_NORMAL = 0x00000001
 DRV_SECTION_CODE = 1
 DRV_SYMBOL_FUNC = 1
+DRV_SYMBOL_OBJECT = 2
+DRV_RELOC_ABS64 = 1
+DRV_RELOC_REL32 = 2
 
 HEADER_FORMAT = "<QIIIIQQQQIIQIIQIIQIIQIIQQQQ"
 MANIFEST_FORMAT = "<32s16s32sIIII"
 SECTION_FORMAT = "<16sIIQQQQ"
 SYMBOL_FORMAT = "<48sIIQQ"
 IMPORT_FORMAT = "<32s48sIIQ"
+RELOCATION_FORMAT = "<IIQQq"
 
 
 def zstr(text: str, size: int) -> bytes:
@@ -36,6 +40,7 @@ def main() -> int:
     section_size = struct.calcsize(SECTION_FORMAT)
     symbol_size = struct.calcsize(SYMBOL_FORMAT)
     import_size = struct.calcsize(IMPORT_FORMAT)
+    relocation_size = struct.calcsize(RELOCATION_FORMAT)
 
     manifest = struct.pack(
         MANIFEST_FORMAT,
@@ -49,12 +54,17 @@ def main() -> int:
     )
 
     message = b"hello.drv driver_entry()\x00"
-    message_offset = 22
-    rip_after_lea = 7
-    message_disp = message_offset - rip_after_lea
-    import_patch_offset = 9
+    helper_offset = 8
+    helper_size = 25
+    message_offset = helper_offset + helper_size
+    rel32_patch_offset = 1
+    abs64_patch_offset = helper_offset + 2
+    import_patch_offset = helper_offset + 12
     code = (
-        b"\x48\x8D\x3D" + struct.pack("<i", message_disp) +
+        b"\xE8" + struct.pack("<i", 0) +
+        b"\x31\xC0" +
+        b"\xC3" +
+        b"\x48\xBF" + struct.pack("<Q", 0) +
         b"\x48\xB8" + struct.pack("<Q", 0) +
         b"\xFF\xD0" +
         b"\x31\xC0" +
@@ -71,14 +81,32 @@ def main() -> int:
         len(code),
         16,
     )
-    symbol = struct.pack(
-        SYMBOL_FORMAT,
-        zstr("driver_entry", 48),
-        DRV_SYMBOL_FUNC,
-        0,
-        0,
-        len(code),
-    )
+    symbols = b"".join([
+        struct.pack(
+            SYMBOL_FORMAT,
+            zstr("driver_entry", 48),
+            DRV_SYMBOL_FUNC,
+            0,
+            0,
+            helper_offset,
+        ),
+        struct.pack(
+            SYMBOL_FORMAT,
+            zstr("hello_log", 48),
+            DRV_SYMBOL_FUNC,
+            0,
+            helper_offset,
+            helper_size,
+        ),
+        struct.pack(
+            SYMBOL_FORMAT,
+            zstr("hello_message", 48),
+            DRV_SYMBOL_OBJECT,
+            0,
+            message_offset,
+            len(message),
+        ),
+    ])
     import_entry = struct.pack(
         IMPORT_FORMAT,
         zstr("kernel", 32),
@@ -87,6 +115,10 @@ def main() -> int:
         0,
         import_patch_offset,
     )
+    relocations = b"".join([
+        struct.pack(RELOCATION_FORMAT, DRV_RELOC_REL32, 0, rel32_patch_offset, 1, 0),
+        struct.pack(RELOCATION_FORMAT, DRV_RELOC_ABS64, 0, abs64_patch_offset, 2, 0),
+    ])
 
     signature = b"OS64TESTSIGNATURE"
     certificate = b"OS64TESTCERT"
@@ -94,9 +126,10 @@ def main() -> int:
     manifest_offset = header_size
     section_table_offset = manifest_offset + len(manifest)
     symbol_table_offset = section_table_offset + len(section)
-    import_table_offset = symbol_table_offset + len(symbol)
+    import_table_offset = symbol_table_offset + len(symbols)
     code_offset = import_table_offset + len(import_entry)
-    signature_offset = code_offset + len(code)
+    relocation_table_offset = code_offset + len(code)
+    signature_offset = relocation_table_offset + len(relocations)
     certificate_offset = signature_offset + len(signature)
     file_size = certificate_offset + len(certificate)
 
@@ -125,7 +158,7 @@ def main() -> int:
         1,
         section_size,
         symbol_table_offset,
-        1,
+        3,
         symbol_size,
         import_table_offset,
         1,
@@ -133,9 +166,9 @@ def main() -> int:
         0,
         0,
         0,
-        0,
-        0,
-        0,
+        relocation_table_offset,
+        2,
+        relocation_size,
         signature_offset,
         len(signature),
         certificate_offset,
@@ -146,9 +179,10 @@ def main() -> int:
         f.write(header)
         f.write(manifest)
         f.write(section)
-        f.write(symbol)
+        f.write(symbols)
         f.write(import_entry)
         f.write(code)
+        f.write(relocations)
         f.write(signature)
         f.write(certificate)
 

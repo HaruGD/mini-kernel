@@ -66,6 +66,14 @@ static const DrvImport* drv_import_at(const uint8_t* image, const DrvHeader* hea
     return (const DrvImport*)(image + header->import_table_offset + (uint64_t)index * header->import_entry_size);
 }
 
+static const DrvExport* drv_export_at(const uint8_t* image, const DrvHeader* header, uint32_t index) {
+    return (const DrvExport*)(image + header->export_table_offset + (uint64_t)index * header->export_entry_size);
+}
+
+static const DrvRelocation* drv_relocation_at(const uint8_t* image, const DrvHeader* header, uint32_t index) {
+    return (const DrvRelocation*)(image + header->relocation_table_offset + (uint64_t)index * header->relocation_entry_size);
+}
+
 static void free_loaded_image(DriverLoadedImage* loaded) {
     if (loaded == 0) {
         return;
@@ -214,6 +222,24 @@ static void* resolve_symbol_address(const uint8_t* image,
     return 0;
 }
 
+static void* resolve_symbol_by_index(const uint8_t* image,
+                                     const DrvHeader* header,
+                                     DriverLoadedImage* loaded,
+                                     uint32_t symbol_index) {
+    if (symbol_index >= header->symbol_count) {
+        return 0;
+    }
+
+    const DrvSymbol* symbol = drv_symbol_at(image, header, symbol_index);
+    if (symbol->section_index >= loaded->section_count) {
+        return 0;
+    }
+    if (symbol->value > loaded->sections[symbol->section_index].size) {
+        return 0;
+    }
+    return loaded->sections[symbol->section_index].base + symbol->value;
+}
+
 static int resolve_imports(const uint8_t* image,
                            const DrvHeader* header,
                            const DrvManifest* manifest,
@@ -236,21 +262,65 @@ static int resolve_imports(const uint8_t* image,
     return DRIVER_LOAD_OK;
 }
 
-static int patch_imports_into_code(const uint8_t* image,
-                                   const DrvHeader* header,
-                                   DriverLoadedImage* loaded) {
-    if (loaded == 0 || loaded->section_count == 0) {
-        return DRIVER_LOAD_BAD_HEADER;
+static void write_u64_le(uint8_t* target, uint64_t value) {
+    for (uint32_t byte = 0; byte < sizeof(uint64_t); byte++) {
+        target[byte] = (uint8_t)((value >> (byte * 8u)) & 0xFFu);
+    }
+}
+
+static void write_u32_le(uint8_t* target, uint32_t value) {
+    for (uint32_t byte = 0; byte < sizeof(uint32_t); byte++) {
+        target[byte] = (uint8_t)((value >> (byte * 8u)) & 0xFFu);
+    }
+}
+
+static int apply_relocations(const uint8_t* image, const DrvHeader* header, DriverLoadedImage* loaded) {
+    for (uint32_t i = 0; i < header->relocation_count; i++) {
+        const DrvRelocation* relocation = drv_relocation_at(image, header, i);
+        if (relocation->section_index >= loaded->section_count) {
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+
+        DriverLoadedSection* section = &loaded->sections[relocation->section_index];
+        void* symbol_address = resolve_symbol_by_index(image, header, loaded, (uint32_t)relocation->symbol_index);
+        if (symbol_address == 0) {
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+
+        if (relocation->type == DRV_RELOC_ABS64) {
+            if (relocation->offset > section->size || section->size - relocation->offset < sizeof(uint64_t)) {
+                return DRIVER_LOAD_BAD_HEADER;
+            }
+            uint64_t value = (uint64_t)symbol_address + (uint64_t)relocation->addend;
+            write_u64_le(section->base + relocation->offset, value);
+            continue;
+        }
+
+        if (relocation->type == DRV_RELOC_REL32) {
+            if (relocation->offset > section->size || section->size - relocation->offset < sizeof(uint32_t)) {
+                return DRIVER_LOAD_BAD_HEADER;
+            }
+
+            int64_t target = (int64_t)(uint64_t)symbol_address + relocation->addend;
+            int64_t source_next = (int64_t)(uint64_t)(section->base + relocation->offset + sizeof(uint32_t));
+            int64_t relative = target - source_next;
+            if (relative < -2147483648LL || relative > 2147483647LL) {
+                return DRIVER_LOAD_UNSUPPORTED_RELOC;
+            }
+            write_u32_le(section->base + relocation->offset, (uint32_t)(int32_t)relative);
+            continue;
+        }
+
+        return DRIVER_LOAD_UNSUPPORTED_RELOC;
     }
 
-    DriverLoadedSection* code = 0;
-    for (uint32_t i = 0; i < loaded->section_count; i++) {
-        if (loaded->sections[i].kind == DRV_SECTION_CODE) {
-            code = &loaded->sections[i];
-            break;
-        }
-    }
-    if (code == 0 || code->base == 0) {
+    return DRIVER_LOAD_OK;
+}
+
+static int patch_imports(const uint8_t* image,
+                         const DrvHeader* header,
+                         DriverLoadedImage* loaded) {
+    if (loaded == 0 || loaded->section_count == 0) {
         return DRIVER_LOAD_BAD_HEADER;
     }
 
@@ -259,17 +329,53 @@ static int patch_imports_into_code(const uint8_t* image,
         if (i >= loaded->import_count) {
             return DRIVER_LOAD_BAD_HEADER;
         }
-        if (import->patch_offset > code->size || code->size - import->patch_offset < sizeof(uint64_t)) {
+        if (import->flags >= loaded->section_count) {
             return DRIVER_LOAD_BAD_HEADER;
         }
 
-        uint64_t address = (uint64_t)loaded->imports[i].address;
-        uint8_t* patch = code->base + import->patch_offset;
-        for (uint32_t byte = 0; byte < sizeof(uint64_t); byte++) {
-            patch[byte] = (uint8_t)((address >> (byte * 8u)) & 0xFFu);
+        DriverLoadedSection* patch_section = &loaded->sections[import->flags];
+        if (patch_section->base == 0) {
+            return DRIVER_LOAD_BAD_HEADER;
         }
+        if (import->patch_offset > patch_section->size ||
+            patch_section->size - import->patch_offset < sizeof(uint64_t)) {
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+
+        write_u64_le(patch_section->base + import->patch_offset, (uint64_t)loaded->imports[i].address);
     }
 
+    return DRIVER_LOAD_OK;
+}
+
+static int register_driver_exports(const uint8_t* image,
+                                   const DrvHeader* header,
+                                   const DrvManifest* manifest,
+                                   DriverLoadedImage* loaded) {
+    DriverLoadedSection* code = 0;
+    for (uint32_t i = 0; i < loaded->section_count; i++) {
+        if (loaded->sections[i].kind == DRV_SECTION_CODE) {
+            code = &loaded->sections[i];
+            break;
+        }
+    }
+    if (header->export_count != 0 && (code == 0 || code->base == 0)) {
+        return DRIVER_LOAD_BAD_HEADER;
+    }
+
+    for (uint32_t i = 0; i < header->export_count; i++) {
+        const DrvExport* export_entry = drv_export_at(image, header, i);
+        if (export_entry->address >= code->size) {
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        int result = driver_export_register(manifest->name,
+                                            export_entry->name,
+                                            code->base + export_entry->address,
+                                            export_entry->flags);
+        if (result != DRIVER_LOAD_OK) {
+            return result;
+        }
+    }
     return DRIVER_LOAD_OK;
 }
 
@@ -326,11 +432,11 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
             result = DRIVER_LOAD_BAD_HEADER;
         }
     }
-    if (result == DRIVER_LOAD_OK && header->relocation_count != 0) {
-        result = DRIVER_LOAD_UNSUPPORTED_RELOC;
+    if (result == DRIVER_LOAD_OK) {
+        result = apply_relocations(image, header, loaded);
     }
     if (result == DRIVER_LOAD_OK) {
-        result = patch_imports_into_code(image, header, loaded);
+        result = patch_imports(image, header, loaded);
     }
     if (result == DRIVER_LOAD_OK) {
         result = driver_manager_register_package_manifest(manifest, loaded);
@@ -340,6 +446,9 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
     }
     if (result == DRIVER_LOAD_OK) {
         result = call_driver_entry(manifest, loaded);
+    }
+    if (result == DRIVER_LOAD_OK) {
+        result = register_driver_exports(image, header, manifest, loaded);
     }
     if (result != DRIVER_LOAD_OK && !registered) {
         free_loaded_image(loaded);

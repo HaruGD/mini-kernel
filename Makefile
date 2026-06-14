@@ -36,8 +36,13 @@ USER_C_SOURCES = $(filter-out $(USER_C_RUNTIME_SOURCES),$(wildcard ./src/user/*.
 USER_C_OBJECTS = $(patsubst ./src/user/%.c,./build/user_c_%.o,$(USER_C_SOURCES))
 USER_C_ELFS = $(patsubst ./src/user/%.c,./bin/%.elf,$(USER_C_SOURCES))
 USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
-DRIVER_PACKAGES = ./bin/hello.drv
+DRIVER_C_SOURCES = $(wildcard ./src/drivers_ext/*.c)
+DRIVER_C_OBJECTS = $(patsubst ./src/drivers_ext/%.c,./build/driver_ext_%.o,$(DRIVER_C_SOURCES))
+DRIVER_C_PACKAGES = $(patsubst ./src/drivers_ext/%.c,./bin/%.drv,$(DRIVER_C_SOURCES))
+DRIVER_PACKAGES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv $(DRIVER_C_PACKAGES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--extra-file-auto $(file))
+
+.SECONDARY: $(DRIVER_C_OBJECTS)
 
 # 3. 오브젝트 파일 목록 (★순서가 가장 중요합니다★)
 # kernel.asm.o가 무조건 맨 앞에 와야 EIP=0x2d 에러를 막을 수 있습니다.
@@ -60,6 +65,7 @@ all: ./bin/os64.bin
 all32: ./bin/os.bin
 all64: ./bin/os64.bin
 uefi: ./bin/uefi_esp.img
+drivers: $(DRIVER_PACKAGES)
 
 # 최종 이미지 생성 (legacy FAT12 BIOS 부트 이미지 + KERNEL.BIN)
 ./bin/os.bin: ./bin/boot.bin ./bin/stage2.bin ./bin/kernel.bin ./tools/build_fat12_image.py
@@ -162,6 +168,18 @@ uefi: ./bin/uefi_esp.img
 ./bin/hello.drv: ./tools/build_hello_drv.py
 	@mkdir -p ./bin
 	python3 ./tools/build_hello_drv.py --output ./bin/hello.drv
+
+./bin/provider.drv ./bin/consumer.drv: ./tools/build_driver_samples.py
+	@mkdir -p ./bin
+	python3 ./tools/build_driver_samples.py --provider ./bin/provider.drv --consumer ./bin/consumer.drv
+
+./build/driver_ext_%.o: ./src/drivers_ext/%.c ./src/drivers_ext/include/os64_driver.h
+	@mkdir -p ./build
+	$(HOST64_CC) -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./src/drivers_ext/include -c $< -o $@
+
+./bin/%.drv: ./build/driver_ext_%.o ./tools/driver_builder/build_drv.py
+	@mkdir -p ./bin
+	python3 ./tools/driver_builder/build_drv.py --object $< --output $@ --name $* --entry driver_entry
 
 ./build/terminal64.o: ./src/drivers/terminal.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/drivers/terminal.cpp -o ./build/terminal64.o
