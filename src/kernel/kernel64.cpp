@@ -19,6 +19,7 @@ extern "C" {
 #include "kernel/boot_info.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/driver_manager.h"
+#include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/elf64.h"
 #include "kernel/ksh64.h"

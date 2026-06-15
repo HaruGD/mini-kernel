@@ -2,7 +2,7 @@
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/kernel_exports.h"
 #include "kernel/kutil64.h"
-#include "arch/x86/io.h"
+#include "kernel/pci.h"
 #include "drivers/ata.h"
 #include "fs/vfs.h"
 #include <stddef.h>
@@ -26,22 +26,41 @@ extern "C" void driver_kfree(void* ptr) {
     kfree(ptr);
 }
 
-static uint32_t pci_config_address(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset) {
-    return 0x80000000U |
-           (((uint32_t)bus & 0xFFU) << 16) |
-           (((uint32_t)device & 0x1FU) << 11) |
-           (((uint32_t)function & 0x07U) << 8) |
-           ((uint32_t)offset & 0xFCU);
-}
-
 extern "C" uint32_t driver_pci_read_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset) {
-    outl(0xCF8, pci_config_address(bus, device, function, offset));
-    return inl(0xCFC);
+    return pci_read_config32(bus, device, function, offset);
 }
 
 extern "C" void driver_pci_write_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset, uint32_t value) {
-    outl(0xCF8, pci_config_address(bus, device, function, offset));
-    outl(0xCFC, value);
+    pci_write_config32(bus, device, function, offset, value);
+}
+
+extern "C" uint64_t driver_pci_device_count() {
+    return pci_get_device_count();
+}
+
+extern "C" int64_t driver_pci_get_device(uint64_t index, PCIDeviceInfo* out) {
+    const PCIDeviceInfo* device = pci_get_device((uint32_t)index);
+    if (device == 0 || out == 0) {
+        return -1;
+    }
+    *out = *device;
+    return 0;
+}
+
+extern "C" int64_t driver_pci_find_device(uint64_t vendor_id, uint64_t device_id, PCIDeviceInfo* out) {
+    return pci_find_device((uint16_t)vendor_id, (uint16_t)device_id, out) ? 0 : -1;
+}
+
+extern "C" int64_t driver_pci_get_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out) {
+    return pci_get_bar(device, (uint32_t)bar_index, out) ? 0 : -1;
+}
+
+extern "C" int64_t driver_pci_enable_memory_space(const PCIDeviceInfo* device) {
+    return pci_enable_memory_space(device) ? 0 : -1;
+}
+
+extern "C" int64_t driver_pci_enable_bus_mastering(const PCIDeviceInfo* device) {
+    return pci_enable_bus_mastering(device) ? 0 : -1;
 }
 
 extern "C" uint32_t driver_mmio_read32(uint64_t address) {
@@ -92,6 +111,12 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "kfree", (void*)driver_kfree, 0);
     driver_export_register("kernel", "pci_read_config32", (void*)driver_pci_read_config32, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_write_config32", (void*)driver_pci_write_config32, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_device_count", (void*)driver_pci_device_count, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_get_device", (void*)driver_pci_get_device, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_find_device", (void*)driver_pci_find_device, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_get_bar", (void*)driver_pci_get_bar, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_enable_memory_space", (void*)driver_pci_enable_memory_space, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_enable_bus_mastering", (void*)driver_pci_enable_bus_mastering, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "mmio_read32", (void*)driver_mmio_read32, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "mmio_write32", (void*)driver_mmio_write32, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "vfs_open", (void*)driver_vfs_open, DRV_PERMISSION_VFS);

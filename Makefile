@@ -147,7 +147,7 @@ drivers: $(DRIVER_PACKAGES)
 ./build/syscall64.o: ./src/kernel/syscall64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/syscall64.cpp -o ./build/syscall64.o
 
-./build/ksh64.o: ./src/kernel/ksh64.cpp
+./build/ksh64.o: ./src/kernel/ksh64.cpp ./src/include/kernel/pci.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/ksh64.cpp -o ./build/ksh64.o
 
 ./build/driver_manager64.o: ./src/kernel/driver/driver_manager.cpp ./src/include/kernel/driver/driver_manager.h
@@ -168,8 +168,11 @@ drivers: $(DRIVER_PACKAGES)
 ./build/driver_shell64.o: ./src/kernel/driver/driver_shell.cpp ./src/include/kernel/driver/driver_manager.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/driver/driver_shell.cpp -o ./build/driver_shell64.o
 
-./build/kernel_exports64.o: ./src/kernel/driver/kernel_exports.cpp ./src/include/kernel/driver/kernel_exports.h ./src/include/kernel/driver/driver_manager.h ./src/include/arch/x86/io.h ./src/include/drivers/ata.h ./src/include/fs/vfs.h
+./build/kernel_exports64.o: ./src/kernel/driver/kernel_exports.cpp ./src/include/kernel/driver/kernel_exports.h ./src/include/kernel/driver/driver_manager.h ./src/include/kernel/pci.h ./src/include/arch/x86/io.h ./src/include/drivers/ata.h ./src/include/fs/vfs.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/driver/kernel_exports.cpp -o ./build/kernel_exports64.o
+
+./build/pci64.o: ./src/kernel/pci.cpp ./src/include/kernel/pci.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/kernel/pci.cpp -o ./build/pci64.o
 
 ./build/hello.unsigned.drv: ./tools/build_hello_drv.py
 	@mkdir -p ./build
@@ -248,8 +251,8 @@ drivers: $(DRIVER_PACKAGES)
 ./build/heap64.o: ./src/heap64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./src/heap64.cpp -o ./build/heap64.o
 
-./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/driver_manager64.o ./build/driver_exports64.o ./build/driver_loader64.o ./build/driver_unload64.o ./build/driver_builtin64.o ./build/driver_shell64.o ./build/kernel_exports64.o ./build/terminal64.o ./build/ata64.o ./build/fat32_64.o ./build/fat32_vfs64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/driver_manager64.o ./build/driver_exports64.o ./build/driver_loader64.o ./build/driver_unload64.o ./build/driver_builtin64.o ./build/driver_shell64.o ./build/kernel_exports64.o ./build/terminal64.o ./build/ata64.o ./build/fat32_64.o ./build/fat32_vfs64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+./bin/kernel64.elf: ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/driver_manager64.o ./build/driver_exports64.o ./build/driver_loader64.o ./build/driver_unload64.o ./build/driver_builtin64.o ./build/driver_shell64.o ./build/kernel_exports64.o ./build/pci64.o ./build/terminal64.o ./build/ata64.o ./build/fat32_64.o ./build/fat32_vfs64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./src/arch/x86/linkerScript64.ld -o ./bin/kernel64.elf ./build/kernel64_entry.o ./build/kernel64.o ./build/kutil64.o ./build/kernel_diag64.o ./build/process64.o ./build/userprog64.o ./build/syscall64.o ./build/ksh64.o ./build/driver_manager64.o ./build/driver_exports64.o ./build/driver_loader64.o ./build/driver_unload64.o ./build/driver_builtin64.o ./build/driver_shell64.o ./build/kernel_exports64.o ./build/pci64.o ./build/terminal64.o ./build/ata64.o ./build/fat32_64.o ./build/fat32_vfs64.o ./build/vfs64.o ./build/keyboard64.o ./build/pit64.o ./build/idt64.o ./build/idt64_asm.o ./build/gdt64.o ./build/gdt64_asm.o ./build/user64_asm.o ./build/pmm64.o ./build/paging64.o ./build/heap64.o
 
 ./bin/kernel64.bin: ./bin/kernel64.elf
 	$(HOST64_OBJCOPY) -O binary ./bin/kernel64.elf ./bin/kernel64.bin

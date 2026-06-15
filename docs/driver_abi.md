@@ -144,6 +144,12 @@ The current kernel export set is:
 - `kernel.kfree`
 - `kernel.pci_read_config32`
 - `kernel.pci_write_config32`
+- `kernel.pci_device_count`
+- `kernel.pci_get_device`
+- `kernel.pci_find_device`
+- `kernel.pci_get_bar`
+- `kernel.pci_enable_memory_space`
+- `kernel.pci_enable_bus_mastering`
 - `kernel.mmio_read32`
 - `kernel.mmio_write32`
 - `kernel.vfs_open`
@@ -154,6 +160,9 @@ The current kernel export set is:
 - `kernel.block_write_sector`
 
 These are the current ABI surface for hardware-oriented drivers.
+
+The active helper header `os64_driver.h` exposes the same PCI discovery APIs
+for C driver projects, using the `kernel__<name>` import naming convention.
 
 ## Notes
 

@@ -74,6 +74,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     heap_init();
     driver_manager_init();
     driver_manager_register_kernel_exports();
+    pci_discover();
     gdt64_init();
     ata.init();
     uint32_t root_from_ramdisk = 0;

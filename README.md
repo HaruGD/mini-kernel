@@ -45,6 +45,7 @@ What works on the active 64-bit UEFI path:
   - `seek`
   - `tell`
 - kernel driver manager prototype
+- PCI discovery and device listing
 - `.drv` package validation and loading
 - ELF object based `.drv` builder for C kernel drivers
 - manifest-based external driver projects under `src/drivers_ext/`
@@ -144,6 +145,7 @@ Common commands:
 - `dump`
 - `sched`
 - `drivers`
+- `pci`
 - `drvinfo [path]`
 - `drvcheck [path]`
 - `drvload [path]`

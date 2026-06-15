@@ -10,6 +10,7 @@ extern "C" {
 #include "drivers/terminal.h"
 #include "fs/vfs.h"
 #include "kernel/driver/driver_manager.h"
+#include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/ksh64.h"
 #include "kernel/kutil64.h"
@@ -222,7 +223,7 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, drivers, drvinfo [path], drvcheck [path], drvload [path]");
+    print("\nfree, dump, sched, drivers, pci, drvinfo [path], drvcheck [path], drvload [path]");
     print("\ndrvunload [name], drvreload [path], drvautoload [dir], drvlast");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
     print("\nrun, resume, usertest, ushell, ushellc");
@@ -537,6 +538,8 @@ static void execute_command() {
         command_sched();
     } else if (strcmp64(cmd, "drivers") == 0) {
         command_drivers();
+    } else if (strcmp64(cmd, "pci") == 0) {
+        command_pci();
     } else if (strcmp64(cmd, "drvinfo") == 0) {
         command_drvinfo(arg);
     } else if (strcmp64(cmd, "drvcheck") == 0) {
