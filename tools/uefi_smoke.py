@@ -57,6 +57,15 @@ def main() -> int:
         "mounts",
         "ls",
         "ls /mem",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
+        "run uvers_c.elf",
     ])
     args = parser.parse_args()
 
@@ -154,6 +163,16 @@ def main() -> int:
     if missing:
         print("UEFI smoke missing:")
         for item in missing:
+            print(item)
+        return 1
+
+    forbidden = [
+        "Process table is full",
+    ]
+    present = [check for check in forbidden if check in log_text]
+    if present:
+        print("UEFI smoke unexpected:")
+        for item in present:
             print(item)
         return 1
 

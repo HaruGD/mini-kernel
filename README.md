@@ -25,8 +25,9 @@ What works on the active 64-bit UEFI path:
 - process table and scheduler prototype
 - cooperative `yield`
 - timer-based preemption
-- sleep / wakeup
+- PIT tick based sleep / wakeup (`PIT_DEFAULT_HZ=100`, about 10ms per tick)
 - foreground / background job control
+- child-result reaping with `wait` / `reapall` plus automatic cleanup when process slots are exhausted
 - ELF user program loading
 - C user programs with `main(void)` and `main(argc, argv)` support
 - default C shell userland: `ushell_c.elf`
@@ -189,6 +190,8 @@ Shell shortcuts run standalone userland tools such as:
 - `memstat`
 - `bootinfo`
 - `mounts`
+
+Time commands use PIT ticks. The current PIT default is 100Hz, so one tick is about 10ms. For example, `sleep 100` sleeps for about 1000ms.
 
 ## User Programs
 
@@ -427,6 +430,8 @@ The smoke scripts use temporary image copies so they can run even when another Q
 - `make uefi` builds `bin/uefi_esp.img`.
 - `run hello.drv` is intentionally rejected because `.drv` files are kernel drivers, not user programs.
 - Use `drvload hello.drv` for kernel-driver packages.
+- User program results can be inspected with `laststatus`, reaped one at a time with `wait`, or cleared with `reapall`. If the process table fills with finished child results, the kernel now attempts a silent reap before failing a new `run`.
+- `uptime` reports PIT Hz, raw ticks, approximate milliseconds, and TSC delta.
 - Use `python3 tools/driver_builder/drvinfo.py bin/consumer_c.drv` to inspect a package on the host.
 - `build_drv.py` emits unsigned packages; `sign_drv.py` turns them into loadable signed `.drv` files.
 - `sign_drv.py --algorithm tpm-local` is a placeholder format path only; the current kernel recognizes it and rejects it as unsupported.

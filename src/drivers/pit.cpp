@@ -10,11 +10,14 @@ extern Terminal terminal;
 PIT::PIT() : tick(0) {}
 
 void PIT::init() {
-    init(100);  // 기본 100Hz
+    init(PIT_DEFAULT_HZ);
 }
 
 void PIT::init(uint32_t frequency) {
-    uint32_t divisor = 1193180 / frequency;
+    if (frequency == 0) {
+        frequency = PIT_DEFAULT_HZ;
+    }
+    uint32_t divisor = PIT_BASE_FREQUENCY / frequency;
 
     // PIT 설정
     outb(COMMAND, 0x36);  // 채널0, 로우/하이 바이트, 스퀘어웨이브
@@ -29,4 +32,12 @@ void PIT::handle() {
 
 uint32_t PIT::get_tick() {
     return tick;
+}
+
+uint32_t PIT::get_frequency() const {
+    return PIT_DEFAULT_HZ;
+}
+
+uint32_t PIT::ticks_to_ms(uint32_t ticks) const {
+    return (ticks * 1000u) / PIT_DEFAULT_HZ;
 }

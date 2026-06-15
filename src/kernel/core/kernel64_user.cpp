@@ -22,7 +22,11 @@ int run_user_program(const char* command_line) {
     Process* parent = current_process();
     Process* process = allocate_process_record();
     if (process == 0) {
-        print("\nProcess table is full. Reap finished child results with wait.");
+        reap_all_child_processes(parent != 0 ? parent->pid : 0);
+        process = allocate_process_record();
+    }
+    if (process == 0) {
+        print("\nProcess table is full. Finish or reap child programs first.");
         return 0;
     }
     process->pid = next_pid++;

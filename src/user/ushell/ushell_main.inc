@@ -424,6 +424,7 @@ int main(void) {
                 print_usage("sleep [ticks]");
                 continue;
             }
+            user_printf("sleep ticks=%u approx_ms=%u\n", ticks, ticks * 10u);
             user_sleep(ticks);
             continue;
         }

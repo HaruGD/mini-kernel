@@ -154,8 +154,13 @@ void command_version() {
 }
 
 void command_uptime() {
+    uint32_t ticks = pit.get_tick();
+    print("\nPIT hz: ");
+    print_hex32(pit.get_frequency());
     print("\nTick: ");
-    print_hex32(pit.get_tick());
+    print_hex32(ticks);
+    print("\nApprox ms: ");
+    print_hex32(pit.ticks_to_ms(ticks));
     print("\nTSC delta: ");
     print_hex64(read_tsc() - boot_tsc);
 }

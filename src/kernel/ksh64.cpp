@@ -133,8 +133,12 @@ static void dump_state() {
         print("\nNotebook phys: ");
         print_hex64(paging64_get_phys((uint64_t)(uintptr_t)notebook_ptr));
     }
+    print("\nPIT hz: ");
+    print_hex32(pit.get_frequency());
     print("\nPIT tick: ");
     print_hex32(pit.get_tick());
+    print("\nPIT ms: ");
+    print_hex32(pit.ticks_to_ms(pit.get_tick()));
     print("\nSched queue count: ");
     print_hex32(sched_queue_count);
     print("\nSched last pid: ");
