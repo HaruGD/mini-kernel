@@ -59,6 +59,7 @@ What works on the active 64-bit UEFI path:
 - kernel hardware exports for PCI config I/O, MMIO32, VFS handles, and ATA sector I/O
 - boot-time `.drv` autoload from the FAT32 root
 - `hello.drv`, `hello_c.drv`, `provider_c.drv`, `consumer_c.drv`, and `pci_probe_c.drv` entry execution
+- Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
 
 ## Build
 
