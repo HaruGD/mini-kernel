@@ -41,6 +41,26 @@ int driver_export_register(const char* module,
     return DRIVER_LOAD_NO_SLOT;
 }
 
+void driver_export_unregister_module(const char* module) {
+    const char* module_name = module != 0 ? module : "kernel";
+    if (strcmp64(module_name, "kernel") == 0) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < DRIVER_MAX_EXPORTS; i++) {
+        if (!g_exports[i].active) {
+            continue;
+        }
+        if (strcmp64(g_exports[i].module, module_name) == 0) {
+            g_exports[i].active = 0;
+            g_exports[i].required_permission = 0;
+            g_exports[i].address = 0;
+            g_exports[i].module[0] = '\0';
+            g_exports[i].name[0] = '\0';
+        }
+    }
+}
+
 void* driver_export_resolve(const char* module, const char* name, uint32_t granted_permissions) {
     for (uint32_t i = 0; i < DRIVER_MAX_EXPORTS; i++) {
         if (!export_matches(&g_exports[i], module, name)) {

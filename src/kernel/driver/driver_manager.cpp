@@ -50,6 +50,13 @@ static DriverRecord* alloc_driver_record() {
     return 0;
 }
 
+static int driver_record_can_be_reused(const DriverRecord* record) {
+    if (record == 0 || !record->active) {
+        return 1;
+    }
+    return record->state == DRIVER_STATE_FAILED || record->state == DRIVER_STATE_REJECTED;
+}
+
 int driver_manager_register_builtin(const char* name,
                                     const char* version,
                                     uint32_t kind,
@@ -84,7 +91,10 @@ int driver_manager_register_package_manifest(const DrvManifest* manifest, void* 
 
     DriverRecord* existing = find_driver_by_name(manifest->name);
     if (existing != 0) {
-        return DRIVER_LOAD_DUPLICATE;
+        if (!driver_record_can_be_reused(existing)) {
+            return DRIVER_LOAD_DUPLICATE;
+        }
+        clear_driver_record(existing);
     }
 
     DriverRecord* record = alloc_driver_record();
@@ -108,6 +118,24 @@ int driver_manager_set_state(const char* name, uint32_t state) {
         return DRIVER_LOAD_BAD_HEADER;
     }
     record->state = (uint8_t)state;
+    return DRIVER_LOAD_OK;
+}
+
+int driver_manager_set_instance(const char* name, void* instance) {
+    DriverRecord* record = find_driver_by_name(name);
+    if (record == 0) {
+        return DRIVER_LOAD_BAD_HEADER;
+    }
+    record->instance = instance;
+    return DRIVER_LOAD_OK;
+}
+
+int driver_manager_unregister(const char* name) {
+    DriverRecord* record = find_driver_by_name(name);
+    if (record == 0) {
+        return DRIVER_LOAD_BAD_HEADER;
+    }
+    clear_driver_record(record);
     return DRIVER_LOAD_OK;
 }
 
@@ -140,6 +168,8 @@ const char* driver_state_name(uint32_t state) {
     if (state == DRIVER_STATE_READY) return "ready";
     if (state == DRIVER_STATE_FAILED) return "failed";
     if (state == DRIVER_STATE_REJECTED) return "rejected";
+    if (state == DRIVER_STATE_LOADING) return "loading";
+    if (state == DRIVER_STATE_LINKED) return "linked";
     return "empty";
 }
 

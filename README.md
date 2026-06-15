@@ -53,8 +53,12 @@ What works on the active 64-bit UEFI path:
 - local test signature validation for `.drv` packages
 - kernel export/import resolution
 - driver-to-driver export/import resolution
+- bounded `.drv` load state transitions with failed/rejected diagnostics
+- module export rollback when `.drv` load or entry execution fails
+- `.drv` unload/reload commands with dependent-driver unload protection
+- kernel hardware exports for PCI config I/O, MMIO32, VFS handles, and ATA sector I/O
 - boot-time `.drv` autoload from the FAT32 root
-- `hello.drv`, `hello_c.drv`, `provider_c.drv`, and `consumer_c.drv` entry execution
+- `hello.drv`, `hello_c.drv`, `provider_c.drv`, `consumer_c.drv`, and `pci_probe_c.drv` entry execution
 
 ## Build
 
@@ -414,13 +418,13 @@ For frozen legacy 32-bit builds:
 The active path has QEMU smoke tests:
 
 ```sh
-cp /usr/share/OVMF/OVMF_VARS_4M.fd ./bin/OVMF_VARS_4M.fd
+make uefi
 python3 tools/uefi_smoke.py
 
-cp /usr/share/OVMF/OVMF_VARS_4M.fd ./bin/OVMF_VARS_4M.fd
+make uefi
 python3 tools/uefi_userland_smoke.py
 
-cp /usr/share/OVMF/OVMF_VARS_4M.fd ./bin/OVMF_VARS_4M.fd
+make uefi
 python3 tools/uefi_screen_smoke.py
 ```
 
@@ -431,7 +435,7 @@ The smoke scripts use temporary image copies so they can run even when another Q
 - `make all64` builds the active FAT32 root image at `bin/os64.bin`.
 - `make uefi` builds `bin/uefi_esp.img`.
 - `run hello.drv` is intentionally rejected because `.drv` files are kernel drivers, not user programs.
-- Use `drvload hello.drv` for kernel-driver packages.
+- Use `drvload hello.drv` for kernel-driver packages. Use `drvunload <name>` and `drvreload <path>` for package lifecycle tests. Use `drvlast` to inspect the last `.drv` loader diagnostic.
 - User program results can be inspected with `laststatus`, reaped one at a time with `wait`, or cleared with `reapall`. Each parent keeps the latest three finished child results unreaped; older results are automatically marked reaped. If the process table still fills, the kernel attempts a silent reap before failing a new `run`.
 - `uptime` reports PIT Hz, raw ticks, approximate milliseconds, and TSC delta.
 - Use `python3 tools/driver_builder/drvinfo.py bin/consumer_c.drv` to inspect a package on the host.

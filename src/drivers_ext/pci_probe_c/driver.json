@@ -1,0 +1,11 @@
+{
+  "name": "pci_probe_c",
+  "version": "0.1.0",
+  "entry": "driver_entry",
+  "permissions": ["PCI"],
+  "boot_modes": ["NORMAL"],
+  "imports": {
+    "kernel.klog": [],
+    "kernel.pci_read_config32": ["PCI"]
+  }
+}

@@ -20,6 +20,8 @@
 #define DRIVER_STATE_READY      2
 #define DRIVER_STATE_FAILED     3
 #define DRIVER_STATE_REJECTED   4
+#define DRIVER_STATE_LOADING    5
+#define DRIVER_STATE_LINKED     6
 
 #define DRIVER_LOAD_OK                 0
 #define DRIVER_LOAD_BAD_HEADER        -1
@@ -34,6 +36,8 @@
 #define DRIVER_LOAD_ENTRY_FAILED     -10
 #define DRIVER_LOAD_SIGNATURE_INVALID -11
 #define DRIVER_LOAD_SIGNATURE_UNSUPPORTED -12
+#define DRIVER_LOAD_UNLOAD_DENIED    -13
+#define DRIVER_LOAD_EXIT_FAILED      -14
 
 #define DRIVER_MAX_LOADED_SECTIONS 16
 #define DRIVER_MAX_RESOLVED_IMPORTS 32
@@ -60,6 +64,7 @@ struct DriverLoadedImage {
     DriverLoadedSection sections[DRIVER_MAX_LOADED_SECTIONS];
     DriverResolvedImport imports[DRIVER_MAX_RESOLVED_IMPORTS];
     void* entry;
+    void* exit;
 };
 
 struct DriverRecord {
@@ -97,6 +102,8 @@ int driver_manager_register_builtin(const char* name,
                                     void* instance);
 int driver_manager_register_package_manifest(const DrvManifest* manifest, void* instance);
 int driver_manager_set_state(const char* name, uint32_t state);
+int driver_manager_set_instance(const char* name, void* instance);
+int driver_manager_unregister(const char* name);
 uint32_t driver_manager_count();
 const DriverRecord* driver_manager_get(uint32_t index);
 const char* driver_state_name(uint32_t state);
@@ -114,19 +121,25 @@ int driver_export_register(const char* module,
                            const char* name,
                            void* address,
                            uint32_t required_permission);
+void driver_export_unregister_module(const char* module);
 void* driver_export_resolve(const char* module, const char* name, uint32_t granted_permissions);
 uint32_t driver_export_count();
 const DriverExportRecord* driver_export_get(uint32_t index);
 
 int driver_manager_validate_drv_image(const uint8_t* image, uint64_t size);
 int driver_manager_load_drv_image(const uint8_t* image, uint64_t size);
+int driver_manager_unload(const char* name);
+int driver_manager_reload_drv_image(const uint8_t* image, uint64_t size);
 uint32_t driver_manager_autoload_from(const char* path);
 void driver_manager_register_kernel_exports();
 void driver_manager_register_builtin_devices();
 void command_drivers();
 void command_drvcheck(const char* path);
 void command_drvload(const char* path);
+void command_drvunload(const char* name);
+void command_drvreload(const char* path);
 void command_drvinfo(const char* path);
 void command_drvautoload(const char* path);
+void command_drvlast();
 
 #endif

@@ -91,6 +91,8 @@ static const char* drv_load_result_name(int result) {
     if (result == DRIVER_LOAD_ENTRY_FAILED) return "entry_failed";
     if (result == DRIVER_LOAD_SIGNATURE_INVALID) return "signature_invalid";
     if (result == DRIVER_LOAD_SIGNATURE_UNSUPPORTED) return "signature_unsupported";
+    if (result == DRIVER_LOAD_UNLOAD_DENIED) return "unload_denied";
+    if (result == DRIVER_LOAD_EXIT_FAILED) return "exit_failed";
     return "unknown";
 }
 
@@ -114,6 +116,20 @@ static void print_last_driver_error() {
     print_hex32(diag->index);
     print(" detail=");
     print_hex64(diag->detail);
+}
+
+void command_drvlast() {
+    const DriverLoadDiagnostics* diag = driver_manager_last_error();
+    print("\n=== DRV LAST ===");
+    if (diag == 0 || diag->result == DRIVER_LOAD_OK) {
+        print("\nresult=ok");
+        print("\n==============");
+        return;
+    }
+    print("\nresult=");
+    print(drv_load_result_name(diag->result));
+    print_last_driver_error();
+    print("\n==============");
 }
 
 static void print_drv_manifest(const DrvManifest* manifest) {
@@ -293,6 +309,48 @@ void command_drvload(const char* path) {
     print(target);
 
     if (result == DRIVER_LOAD_OK || result == DRIVER_LOAD_DUPLICATE) {
+        const DrvHeader* header = (const DrvHeader*)image;
+        const DrvManifest* manifest = (const DrvManifest*)(image + header->manifest_offset);
+        print_drv_manifest(manifest);
+    } else {
+        print_last_driver_error();
+    }
+
+    kfree(image);
+}
+
+void command_drvunload(const char* name) {
+    const char* target = (name != 0 && name[0] != '\0') ? name : "hello";
+    int result = driver_manager_unload(target);
+    print("\nDRV unload ");
+    print(result == DRIVER_LOAD_OK ? "OK" : "FAILED");
+    print(" result=");
+    print(drv_load_result_name(result));
+    print(" name=");
+    print(target);
+    if (result != DRIVER_LOAD_OK) {
+        print_last_driver_error();
+    }
+}
+
+void command_drvreload(const char* path) {
+    const char* target = (path != 0 && path[0] != '\0') ? path : "hello.drv";
+    uint32_t bytes_read = 0;
+    uint8_t* image = read_drv_file(target, &bytes_read);
+    if (image == 0) {
+        print("\nDRV reload failed: file not found");
+        return;
+    }
+
+    int result = driver_manager_reload_drv_image(image, bytes_read);
+    print("\nDRV reload ");
+    print(result == DRIVER_LOAD_OK ? "OK" : "FAILED");
+    print(" result=");
+    print(drv_load_result_name(result));
+    print(" file=");
+    print(target);
+
+    if (result == DRIVER_LOAD_OK) {
         const DrvHeader* header = (const DrvHeader*)image;
         const DrvManifest* manifest = (const DrvManifest*)(image + header->manifest_offset);
         print_drv_manifest(manifest);
