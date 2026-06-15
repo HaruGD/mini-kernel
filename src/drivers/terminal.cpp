@@ -135,6 +135,7 @@ Terminal::Terminal() {
     bg_color = 0x00000000;
     use_framebuffer = 0;
     active = 0;
+    clear_text_buffer();
 }
 
 void Terminal::init_from_boot_info(const BootInfo* boot_info) {
@@ -156,6 +157,12 @@ void Terminal::init_from_boot_info(const BootInfo* boot_info) {
     char_height = 8 * FONT_SCALE;
     columns = (int)(fb_width / (uint32_t)char_width);
     rows = (int)(fb_height / (uint32_t)char_height);
+    if (columns > TERMINAL_MAX_COLUMNS) {
+        columns = TERMINAL_MAX_COLUMNS;
+    }
+    if (rows > TERMINAL_MAX_ROWS) {
+        rows = TERMINAL_MAX_ROWS;
+    }
     if (columns <= 0 || rows <= 0) {
         framebuffer = 0;
         columns = 80;
@@ -175,6 +182,7 @@ void Terminal::init_from_boot_info(const BootInfo* boot_info) {
     use_framebuffer = 1;
     active = 1;
     cursor = 0;
+    clear_text_buffer();
 }
 
 int Terminal::is_active() const {
@@ -196,6 +204,36 @@ void Terminal::putpixel(uint32_t x, uint32_t y, uint32_t color_value) {
         return;
     }
     framebuffer[(uint64_t)y * fb_pixels_per_scanline + x] = color_value;
+}
+
+void Terminal::clear_text_buffer() {
+    for (int i = 0; i < TERMINAL_MAX_CELLS; i++) {
+        text_buffer[i] = ' ';
+    }
+}
+
+void Terminal::scroll_text_buffer() {
+    if (columns <= 0 || rows <= 0) {
+        return;
+    }
+
+    for (int y = 1; y < rows; y++) {
+        for (int x = 0; x < columns; x++) {
+            text_buffer[(y - 1) * columns + x] = text_buffer[y * columns + x];
+        }
+    }
+
+    int last_row = rows - 1;
+    for (int x = 0; x < columns; x++) {
+        text_buffer[last_row * columns + x] = ' ';
+    }
+}
+
+void Terminal::put_text_cell(int cell, char c) {
+    if (cell < 0 || cell >= TERMINAL_MAX_CELLS || cell >= columns * rows) {
+        return;
+    }
+    text_buffer[cell] = c;
 }
 
 void Terminal::clear_framebuffer_cell(int cell) {
@@ -272,6 +310,7 @@ void Terminal::framebuffer_scroll() {
 }
 
 void Terminal::scroll() {
+    scroll_text_buffer();
     if (use_framebuffer) {
         framebuffer_scroll();
     } else {
@@ -284,6 +323,7 @@ void Terminal::clear() {
         return;
     }
     if (use_framebuffer) {
+        clear_text_buffer();
         for (uint32_t y = 0; y < fb_height; y++) {
             for (uint32_t x = 0; x < fb_width; x++) {
                 putpixel(x, y, bg_color);
@@ -293,6 +333,7 @@ void Terminal::clear() {
         return;
     }
 
+    clear_text_buffer();
     for (int i = 0; i < 80 * 25; i++) {
         vga[i * 2]     = ' ';
         vga[i * 2 + 1] = color;
@@ -314,6 +355,7 @@ void Terminal::putchar(char c) {
     } else if (c == '\b') {
         if (cursor > 0) {
             cursor--;
+            put_text_cell(cursor, ' ');
             if (use_framebuffer) {
                 clear_framebuffer_cell(cursor);
             } else {
@@ -322,6 +364,7 @@ void Terminal::putchar(char c) {
             }
         }
     } else {
+        put_text_cell(cursor, c);
         if (use_framebuffer) {
             draw_framebuffer_char(cursor, c);
         } else {

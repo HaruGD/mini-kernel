@@ -91,6 +91,38 @@ void process_copy_cwd(Process* process, const char* cwd) {
     }
 }
 
+static int process_is_waitable_result(const Process* process) {
+    if (process == 0 || process->pid == 0 || process->active || process->reaped) {
+        return 0;
+    }
+    return process->state == PROCESS_STATE_RETURNED || process->state == PROCESS_STATE_FAILED;
+}
+
+static uint32_t reap_old_child_results(uint32_t parent_pid, uint32_t keep_count) {
+    uint32_t reaped_count = 0;
+    for (;;) {
+        uint32_t result_count = 0;
+        Process* oldest = 0;
+        for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+            Process* process = &process_table[i];
+            if (process->parent_pid != parent_pid || !process_is_waitable_result(process)) {
+                continue;
+            }
+            result_count++;
+            if (oldest == 0 || process->pid < oldest->pid) {
+                oldest = process;
+            }
+        }
+
+        if (result_count <= keep_count || oldest == 0) {
+            return reaped_count;
+        }
+
+        oldest->reaped = 1;
+        reaped_count++;
+    }
+}
+
 void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code) {
     if (process == 0) {
         return;
@@ -106,6 +138,7 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
+    reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
 
 void process_mark_returned(Process* process, uint32_t reason, uint32_t status_code) {
@@ -123,6 +156,7 @@ void process_mark_returned(Process* process, uint32_t reason, uint32_t status_co
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
+    reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
 
 static int scheduler_queue_contains(const Process* process) {

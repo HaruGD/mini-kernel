@@ -10,6 +10,7 @@ HOST64_OBJCOPY = objcopy
 UEFI_CC = gcc
 UEFI_LD = ld
 UEFI_OBJCOPY = objcopy
+OVMF_VARS_TEMPLATE = /usr/share/OVMF/OVMF_VARS_4M.fd
 STAGE2_SECTORS = 8
 STAGE2_64_SECTORS = 12
 STAGE2_MAX_SIZE = $(shell expr $(STAGE2_SECTORS) \* 512)
@@ -66,7 +67,7 @@ FILES = ./build/kernel.asm.o \
 all: ./bin/os64.bin
 all32: ./bin/os.bin
 all64: ./bin/os64.bin
-uefi: ./bin/uefi_esp.img
+uefi: ./bin/uefi_esp.img ./bin/OVMF_VARS_4M.fd
 drivers: $(DRIVER_PACKAGES)
 
 # 최종 이미지 생성 (legacy FAT12 BIOS 부트 이미지 + KERNEL.BIN)
@@ -267,6 +268,10 @@ drivers: $(DRIVER_PACKAGES)
 
 ./bin/uefi_esp.img: ./bin/BOOTX64.EFI ./bin/kernel64.bin ./bin/os64.bin ./tools/build_uefi_esp.py
 	python3 ./tools/build_uefi_esp.py --efi ./bin/BOOTX64.EFI --kernel ./bin/kernel64.bin --root ./bin/os64.bin --output ./bin/uefi_esp.img
+
+./bin/OVMF_VARS_4M.fd:
+	@mkdir -p ./bin
+	cp $(OVMF_VARS_TEMPLATE) ./bin/OVMF_VARS_4M.fd
 
 ./bin/fat32.img: ./tools/build_fat32_image.py
 	@mkdir -p ./bin

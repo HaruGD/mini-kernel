@@ -47,6 +47,8 @@ typedef struct EFI_TABLE_HEADER {
 #define KERNEL_LOAD_ADDR 0x100000ULL
 #define KERNEL_MAX_SIZE  (4ULL * 1024ULL * 1024ULL)
 #define KERNEL_MAX_PAGES (KERNEL_MAX_SIZE / PAGE_SIZE)
+#define KERNEL_RUNTIME_RESERVE_SIZE (1ULL * 1024ULL * 1024ULL)
+#define KERNEL_RUNTIME_RESERVE_PAGES (KERNEL_RUNTIME_RESERVE_SIZE / PAGE_SIZE)
 #define RAMDISK_MAX_SIZE (32ULL * 1024ULL * 1024ULL)
 #define RAMDISK_MAX_PAGES (RAMDISK_MAX_SIZE / PAGE_SIZE)
 #define KERNEL_STACK_PAGES 16
@@ -574,11 +576,10 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         return fail_with_pause(read_fail_msg, EFI_NOT_FOUND);
     }
 
-    UINTN kernel_pages = (kernel_size + PAGE_SIZE - 1) / PAGE_SIZE;
-    if (!allocate_fixed_pages(KERNEL_LOAD_ADDR, kernel_pages)) {
+    if (!allocate_fixed_pages(KERNEL_LOAD_ADDR, KERNEL_RUNTIME_RESERVE_PAGES)) {
         return fail_with_pause(kernel_alloc_fail_msg, EFI_NOT_FOUND);
     }
-    UINTN kernel_reserved_size = kernel_pages * PAGE_SIZE;
+    UINTN kernel_reserved_size = KERNEL_RUNTIME_RESERVE_SIZE;
     memcpy64((void*)(uintptr_t)KERNEL_LOAD_ADDR, (const void*)(uintptr_t)kernel_temp_phys, kernel_size);
 
     EFI_PHYSICAL_ADDRESS ramdisk_phys = 0;

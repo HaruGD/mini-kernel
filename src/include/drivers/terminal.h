@@ -5,9 +5,14 @@
 
 struct BootInfo;
 
+#define TERMINAL_MAX_COLUMNS 160
+#define TERMINAL_MAX_ROWS 80
+#define TERMINAL_MAX_CELLS (TERMINAL_MAX_COLUMNS * TERMINAL_MAX_ROWS)
+
 class Terminal {
     volatile char* vga;
     volatile uint32_t* framebuffer;
+    char text_buffer[TERMINAL_MAX_CELLS];
     int cursor;
     int columns;
     int rows;
@@ -24,6 +29,9 @@ class Terminal {
 
     void update_cursor();
     void scroll();
+    void clear_text_buffer();
+    void scroll_text_buffer();
+    void put_text_cell(int cell, char c);
     void vga_scroll();
     void framebuffer_scroll();
     void putpixel(uint32_t x, uint32_t y, uint32_t color_value);

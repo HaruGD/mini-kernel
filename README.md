@@ -21,8 +21,10 @@ What works on the active 64-bit UEFI path:
 - PMM, heap, and runtime paging helpers
 - kernel stack supplied by the UEFI loader
 - IDT, GDT/TSS, PIT, and keyboard IRQ handling
+- framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
 - process table and scheduler prototype
+- bounded child-result history (`PROCESS_CHILD_RESULT_HISTORY_LIMIT=3`)
 - cooperative `yield`
 - timer-based preemption
 - PIT tick based sleep / wakeup (`PIT_DEFAULT_HZ=100`, about 10ms per tick)
@@ -430,7 +432,7 @@ The smoke scripts use temporary image copies so they can run even when another Q
 - `make uefi` builds `bin/uefi_esp.img`.
 - `run hello.drv` is intentionally rejected because `.drv` files are kernel drivers, not user programs.
 - Use `drvload hello.drv` for kernel-driver packages.
-- User program results can be inspected with `laststatus`, reaped one at a time with `wait`, or cleared with `reapall`. If the process table fills with finished child results, the kernel now attempts a silent reap before failing a new `run`.
+- User program results can be inspected with `laststatus`, reaped one at a time with `wait`, or cleared with `reapall`. Each parent keeps the latest three finished child results unreaped; older results are automatically marked reaped. If the process table still fills, the kernel attempts a silent reap before failing a new `run`.
 - `uptime` reports PIT Hz, raw ticks, approximate milliseconds, and TSC delta.
 - Use `python3 tools/driver_builder/drvinfo.py bin/consumer_c.drv` to inspect a package on the host.
 - `build_drv.py` emits unsigned packages; `sign_drv.py` turns them into loadable signed `.drv` files.
