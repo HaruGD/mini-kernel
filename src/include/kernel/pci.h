@@ -48,6 +48,7 @@ uint32_t pci_get_device_count();
 const PCIDeviceInfo* pci_get_device(uint32_t index);
 int pci_find_device(uint16_t vendor_id, uint16_t device_id, PCIDeviceInfo* out);
 int pci_get_bar(const PCIDeviceInfo* device, uint32_t bar_index, PCIBarInfo* out);
+void* pci_map_bar(const PCIDeviceInfo* device, uint32_t bar_index, PCIBarInfo* out);
 int pci_enable_memory_space(const PCIDeviceInfo* device);
 int pci_enable_bus_mastering(const PCIDeviceInfo* device);
 

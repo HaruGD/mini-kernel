@@ -51,6 +51,7 @@ Supported permission bits:
 - `VFS`
 - `INPUT`
 - `TIMER`
+- `DISPLAY`
 
 Permissions are checked both when resolving imports and when resolving exports.
 If the manifest does not grant the required permission, the load is rejected.
@@ -142,12 +143,17 @@ The current kernel export set is:
 - `kernel.klog`
 - `kernel.kmalloc`
 - `kernel.kfree`
+- `kernel.gop_get_info`
+- `kernel.gop_clear`
+- `kernel.gop_putpixel`
+- `kernel.gop_fill_rect`
 - `kernel.pci_read_config32`
 - `kernel.pci_write_config32`
 - `kernel.pci_device_count`
 - `kernel.pci_get_device`
 - `kernel.pci_find_device`
 - `kernel.pci_get_bar`
+- `kernel.pci_map_bar`
 - `kernel.pci_enable_memory_space`
 - `kernel.pci_enable_bus_mastering`
 - `kernel.mmio_read32`
@@ -160,6 +166,12 @@ The current kernel export set is:
 - `kernel.block_write_sector`
 
 These are the current ABI surface for hardware-oriented drivers.
+
+`kernel.pci_map_bar` returns a kernel virtual address for an MMIO BAR and
+requires both `PCI` and `MMIO` permission bits.
+
+`kernel.gop_*` functions expose the active UEFI GOP framebuffer as a display
+service for GUI-style drivers.
 
 The active helper header `os64_driver.h` exposes the same PCI discovery APIs
 for C driver projects, using the `kernel__<name>` import naming convention.

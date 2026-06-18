@@ -1,11 +1,13 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
 #include "drivers/ata.h"
+#include "drivers/gop.h"
 #include "drivers/keyboard.h"
 #include "drivers/pit.h"
 #include "fs/fat32.h"
 
 extern ATADriver ata;
+extern GOPDriver gop;
 extern KeyboardDriver keyboard;
 extern PIT pit;
 extern FAT32Driver fat32;
@@ -25,6 +27,10 @@ void driver_manager_register_builtin_devices() {
                            DRIVER_KIND_BLOCK,
                            DRV_PERMISSION_BLOCK,
                            &ata);
+    register_ready_builtin("gop",
+                           DRIVER_KIND_DISPLAY,
+                           DRV_PERMISSION_DISPLAY,
+                           &gop);
     register_ready_builtin("fat32",
                            DRIVER_KIND_FS,
                            DRV_PERMISSION_BLOCK | DRV_PERMISSION_VFS,

@@ -3,17 +3,23 @@
 
 #include <stdint.h>
 
+#include "drivers/gop.h"
 #include "kernel/pci.h"
 
 extern "C" void driver_klog(const char* text);
 extern "C" void* driver_kmalloc(uint64_t size);
 extern "C" void driver_kfree(void* ptr);
+extern "C" const GOPInfo* driver_gop_get_info();
+extern "C" void driver_gop_clear(uint32_t color);
+extern "C" void driver_gop_putpixel(uint32_t x, uint32_t y, uint32_t color);
+extern "C" void driver_gop_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color);
 extern "C" uint32_t driver_pci_read_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset);
 extern "C" void driver_pci_write_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset, uint32_t value);
 extern "C" uint64_t driver_pci_device_count();
 extern "C" int64_t driver_pci_get_device(uint64_t index, PCIDeviceInfo* out);
 extern "C" int64_t driver_pci_find_device(uint64_t vendor_id, uint64_t device_id, PCIDeviceInfo* out);
 extern "C" int64_t driver_pci_get_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out);
+extern "C" void* driver_pci_map_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out);
 extern "C" int64_t driver_pci_enable_memory_space(const PCIDeviceInfo* device);
 extern "C" int64_t driver_pci_enable_bus_mastering(const PCIDeviceInfo* device);
 extern "C" uint32_t driver_mmio_read32(uint64_t address);

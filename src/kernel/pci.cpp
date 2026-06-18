@@ -1,10 +1,47 @@
 #include "arch/x86/io.h"
+#include "arch/x86/paging64.h"
 #include "kernel/kutil64.h"
 #include "kernel/pci.h"
 
 static PCIDeviceInfo g_pci_devices[PCI_MAX_DEVICES];
 static uint32_t g_pci_device_count = 0;
 static uint8_t g_pci_discovered = 0;
+
+#define PCI_MMIO_MAP_BASE  0x0000000060000000ULL
+#define PCI_MMIO_MAP_LIMIT 0x0000000070000000ULL
+
+static uint64_t g_pci_mmio_next_virtual = PCI_MMIO_MAP_BASE;
+
+typedef struct {
+    uint16_t vendor_id;
+    const char* name;
+} PCIVendorName;
+
+typedef struct {
+    uint16_t vendor_id;
+    uint16_t device_id;
+    const char* name;
+} PCIDeviceName;
+
+static const PCIVendorName g_pci_vendor_names[] = {
+    {0x8086U, "Intel"},
+    {0x1234U, "Bochs/QEMU"},
+    {0x1AF4U, "Virtio"},
+    {0x10ECU, "Realtek"},
+    {0x80EEU, "VirtualBox"},
+    {0x1022U, "AMD"},
+    {0x10DEU, "NVIDIA"},
+};
+
+static const PCIDeviceName g_pci_device_names[] = {
+    {0x8086U, 0x1237U, "440FX - 82441FX PMC"},
+    {0x8086U, 0x7000U, "82371SB PIIX3 ISA"},
+    {0x8086U, 0x7010U, "82371SB PIIX3 IDE"},
+    {0x8086U, 0x7113U, "82371AB/EB/MB PIIX4 ACPI"},
+    {0x8086U, 0x100EU, "82540EM Gigabit Ethernet"},
+    {0x1234U, 0x1111U, "Bochs VGA"},
+    {0x1AF4U, 0x1001U, "virtio network device"},
+};
 
 static uint32_t pci_make_address(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset) {
     return 0x80000000U |
@@ -16,6 +53,10 @@ static uint32_t pci_make_address(uint64_t bus, uint64_t device, uint64_t functio
 
 static int pci_present(uint32_t vendor_device) {
     return vendor_device != 0xFFFFFFFFU && (vendor_device & 0xFFFFU) != 0xFFFFU;
+}
+
+static uint64_t pci_align_up(uint64_t value, uint64_t align) {
+    return (value + align - 1ULL) & ~(align - 1ULL);
 }
 
 static void pci_clear_device(PCIDeviceInfo* device) {
@@ -51,6 +92,24 @@ uint32_t pci_read_config32(uint64_t bus, uint64_t device, uint64_t function, uin
 void pci_write_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset, uint32_t value) {
     outl(0xCF8, pci_make_address(bus, device, function, offset));
     outl(0xCFC, value);
+}
+
+static const char* pci_vendor_name(uint16_t vendor_id) {
+    for (uint32_t i = 0; i < sizeof(g_pci_vendor_names) / sizeof(g_pci_vendor_names[0]); i++) {
+        if (g_pci_vendor_names[i].vendor_id == vendor_id) {
+            return g_pci_vendor_names[i].name;
+        }
+    }
+    return 0;
+}
+
+static const char* pci_device_name(uint16_t vendor_id, uint16_t device_id) {
+    for (uint32_t i = 0; i < sizeof(g_pci_device_names) / sizeof(g_pci_device_names[0]); i++) {
+        if (g_pci_device_names[i].vendor_id == vendor_id && g_pci_device_names[i].device_id == device_id) {
+            return g_pci_device_names[i].name;
+        }
+    }
+    return 0;
 }
 
 static uint8_t pci_header_type(uint64_t bus, uint64_t device, uint64_t function) {
@@ -237,6 +296,42 @@ static int pci_decode_mmio64_bar(uint64_t bus,
     return 1;
 }
 
+static void* pci_map_physical_range(uint64_t phys, uint64_t size) {
+    if (phys == 0) {
+        return 0;
+    }
+    if (size == 0) {
+        size = PAGING64_PAGE_SIZE;
+    }
+
+    uint64_t aligned_phys = phys & ~(PAGING64_PAGE_SIZE - 1ULL);
+    uint64_t offset = phys - aligned_phys;
+    uint64_t total_bytes = pci_align_up(offset + size, PAGING64_PAGE_SIZE);
+    uint64_t virt_base = pci_align_up(g_pci_mmio_next_virtual, PAGING64_PAGE_SIZE);
+    uint64_t virt_end = virt_base + total_bytes;
+    if (virt_end > PCI_MMIO_MAP_LIMIT) {
+        return 0;
+    }
+
+    uint64_t page_count = total_bytes / PAGING64_PAGE_SIZE;
+    for (uint64_t i = 0; i < page_count; i++) {
+        uint64_t virt = virt_base + (i * PAGING64_PAGE_SIZE);
+        uint64_t page_phys = aligned_phys + (i * PAGING64_PAGE_SIZE);
+        if (!paging64_map_page(virt, page_phys,
+                               PAGING64_FLAG_WRITABLE |
+                               PAGING64_FLAG_WRITE_THROUGH |
+                               PAGING64_FLAG_CACHE_DISABLE)) {
+            for (uint64_t rollback = 0; rollback < i; rollback++) {
+                paging64_unmap_page(virt_base + (rollback * PAGING64_PAGE_SIZE));
+            }
+            return 0;
+        }
+    }
+
+    g_pci_mmio_next_virtual = virt_end;
+    return (void*)(uintptr_t)(virt_base + offset);
+}
+
 int pci_get_bar(const PCIDeviceInfo* device_info, uint32_t bar_index, PCIBarInfo* out) {
     if (device_info == 0 || out == 0) {
         return 0;
@@ -270,6 +365,21 @@ int pci_get_bar(const PCIDeviceInfo* device_info, uint32_t bar_index, PCIBarInfo
     return pci_decode_mmio32_bar(bus, device, function, bar_index, raw, out);
 }
 
+void* pci_map_bar(const PCIDeviceInfo* device_info, uint32_t bar_index, PCIBarInfo* out) {
+    PCIBarInfo local_bar;
+    PCIBarInfo* bar = out != 0 ? out : &local_bar;
+    if (!pci_get_bar(device_info, bar_index, bar)) {
+        return 0;
+    }
+    if (bar->type == PCI_BAR_TYPE_IO || bar->base == 0) {
+        return 0;
+    }
+    if (!pci_enable_memory_space(device_info)) {
+        return 0;
+    }
+    return pci_map_physical_range(bar->base, bar->size);
+}
+
 static int pci_update_command_bits(const PCIDeviceInfo* device_info, uint16_t mask) {
     if (device_info == 0) {
         return 0;
@@ -300,7 +410,10 @@ static const char* pci_class_name(uint8_t class_code, uint8_t subclass) {
     if (class_code == 0x02U) return "network";
     if (class_code == 0x03U) return "display";
     if (class_code == 0x04U) return "multimedia";
-    if (class_code == 0x06U && subclass == 0x04U) return "bridge";
+    if (class_code == 0x06U && subclass == 0x00U) return "host bridge";
+    if (class_code == 0x06U && subclass == 0x01U) return "ISA bridge";
+    if (class_code == 0x06U && subclass == 0x04U) return "PCI bridge";
+    if (class_code == 0x06U && subclass == 0x80U) return "bridge";
     if (class_code == 0x0CU && subclass == 0x03U) return "USB";
     return "device";
 }
@@ -349,8 +462,18 @@ void command_pci() {
         print(" fn=");
         pci_print_hex8(device->function);
         print(" vendor=");
+        const char* vendor_name = pci_vendor_name(device->vendor_id);
+        if (vendor_name != 0) {
+            print(vendor_name);
+            print(" ");
+        }
         print_hex32(device->vendor_id);
         print(" device=");
+        const char* device_name = pci_device_name(device->vendor_id, device->device_id);
+        if (device_name != 0) {
+            print(device_name);
+            print(" ");
+        }
         print_hex32(device->device_id);
         print("\n    class=");
         print(pci_class_name(device->class_code, device->subclass));

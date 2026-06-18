@@ -1,3 +1,5 @@
+#include "drivers/gop.h"
+
 static int map_boot_framebuffer(const BootInfo* boot_info) {
     if (boot_info == 0 ||
         boot_info->size < sizeof(BootInfo) ||
@@ -67,6 +69,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     paging64_init();
     int framebuffer_mapped = map_boot_framebuffer(g_boot_info);
     if (framebuffer_mapped) {
+        gop.init_from_boot_info(g_boot_info);
         terminal.init_from_boot_info(g_boot_info);
         terminal.clear();
         early_framebuffer_marker(g_boot_info, 0, 0x000000FF);

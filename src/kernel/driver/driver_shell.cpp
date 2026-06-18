@@ -25,6 +25,7 @@ static void print_permission_names(uint32_t permissions) {
         {0x00000010, "VFS"},
         {0x00000020, "INPUT"},
         {0x00000040, "TIMER"},
+        {0x00000080, "DISPLAY"},
     };
 
     for (uint32_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {

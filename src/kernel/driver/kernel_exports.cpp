@@ -2,6 +2,7 @@
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/kernel_exports.h"
 #include "kernel/kutil64.h"
+#include "drivers/gop.h"
 #include "kernel/pci.h"
 #include "drivers/ata.h"
 #include "fs/vfs.h"
@@ -24,6 +25,22 @@ extern "C" void* driver_kmalloc(uint64_t size) {
 
 extern "C" void driver_kfree(void* ptr) {
     kfree(ptr);
+}
+
+extern "C" const GOPInfo* driver_gop_get_info() {
+    return gop.info();
+}
+
+extern "C" void driver_gop_clear(uint32_t color) {
+    gop.clear(color);
+}
+
+extern "C" void driver_gop_putpixel(uint32_t x, uint32_t y, uint32_t color) {
+    gop.putpixel(x, y, color);
+}
+
+extern "C" void driver_gop_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color) {
+    gop.fill_rect(x, y, width, height, color);
 }
 
 extern "C" uint32_t driver_pci_read_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset) {
@@ -53,6 +70,10 @@ extern "C" int64_t driver_pci_find_device(uint64_t vendor_id, uint64_t device_id
 
 extern "C" int64_t driver_pci_get_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out) {
     return pci_get_bar(device, (uint32_t)bar_index, out) ? 0 : -1;
+}
+
+extern "C" void* driver_pci_map_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out) {
+    return pci_map_bar(device, (uint32_t)bar_index, out);
 }
 
 extern "C" int64_t driver_pci_enable_memory_space(const PCIDeviceInfo* device) {
@@ -109,12 +130,17 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "klog", (void*)driver_klog, 0);
     driver_export_register("kernel", "kmalloc", (void*)driver_kmalloc, 0);
     driver_export_register("kernel", "kfree", (void*)driver_kfree, 0);
+    driver_export_register("kernel", "gop_get_info", (void*)driver_gop_get_info, DRV_PERMISSION_DISPLAY);
+    driver_export_register("kernel", "gop_clear", (void*)driver_gop_clear, DRV_PERMISSION_DISPLAY);
+    driver_export_register("kernel", "gop_putpixel", (void*)driver_gop_putpixel, DRV_PERMISSION_DISPLAY);
+    driver_export_register("kernel", "gop_fill_rect", (void*)driver_gop_fill_rect, DRV_PERMISSION_DISPLAY);
     driver_export_register("kernel", "pci_read_config32", (void*)driver_pci_read_config32, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_write_config32", (void*)driver_pci_write_config32, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_device_count", (void*)driver_pci_device_count, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_get_device", (void*)driver_pci_get_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_find_device", (void*)driver_pci_find_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_get_bar", (void*)driver_pci_get_bar, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_map_bar", (void*)driver_pci_map_bar, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "pci_enable_memory_space", (void*)driver_pci_enable_memory_space, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_enable_bus_mastering", (void*)driver_pci_enable_bus_mastering, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "mmio_read32", (void*)driver_mmio_read32, DRV_PERMISSION_MMIO);

@@ -7,6 +7,15 @@ typedef unsigned int os64_u32;
 
 #define OS64_PCI_MAX_BARS 6
 
+typedef struct os64_gop_info {
+    os64_u64 framebuffer_addr;
+    os64_u64 framebuffer_size;
+    os64_u32 width;
+    os64_u32 height;
+    os64_u32 pixels_per_scanline;
+    os64_u32 format;
+} os64_gop_info;
+
 typedef struct os64_pci_bar_info {
     os64_u64 base;
     os64_u64 size;
@@ -38,12 +47,17 @@ typedef struct os64_pci_device_info {
 typedef void (*os64_klog_fn)(const char* text);
 typedef void* (*os64_kmalloc_fn)(os64_u64 size);
 typedef void (*os64_kfree_fn)(void* ptr);
+typedef const os64_gop_info* (*os64_gop_get_info_fn)(void);
+typedef void (*os64_gop_clear_fn)(os64_u32 color);
+typedef void (*os64_gop_putpixel_fn)(os64_u32 x, os64_u32 y, os64_u32 color);
+typedef void (*os64_gop_fill_rect_fn)(os64_u32 x, os64_u32 y, os64_u32 width, os64_u32 height, os64_u32 color);
 typedef os64_u32 (*os64_pci_read_config32_fn)(os64_u64 bus, os64_u64 device, os64_u64 function, os64_u64 offset);
 typedef void (*os64_pci_write_config32_fn)(os64_u64 bus, os64_u64 device, os64_u64 function, os64_u64 offset, os64_u32 value);
 typedef os64_u64 (*os64_pci_device_count_fn)(void);
 typedef os64_i64 (*os64_pci_get_device_fn)(os64_u64 index, os64_pci_device_info* out);
 typedef os64_i64 (*os64_pci_find_device_fn)(os64_u64 vendor_id, os64_u64 device_id, os64_pci_device_info* out);
 typedef os64_i64 (*os64_pci_get_bar_fn)(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out);
+typedef void* (*os64_pci_map_bar_fn)(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out);
 typedef os64_i64 (*os64_pci_enable_memory_space_fn)(const os64_pci_device_info* device);
 typedef os64_i64 (*os64_pci_enable_bus_mastering_fn)(const os64_pci_device_info* device);
 typedef os64_u32 (*os64_mmio_read32_fn)(os64_u64 address);
@@ -58,12 +72,17 @@ typedef os64_i64 (*os64_block_write_sector_fn)(os64_u64 lba, const void* buffer)
 extern os64_klog_fn kernel__klog;
 extern os64_kmalloc_fn kernel__kmalloc;
 extern os64_kfree_fn kernel__kfree;
+extern os64_gop_get_info_fn kernel__gop_get_info;
+extern os64_gop_clear_fn kernel__gop_clear;
+extern os64_gop_putpixel_fn kernel__gop_putpixel;
+extern os64_gop_fill_rect_fn kernel__gop_fill_rect;
 extern os64_pci_read_config32_fn kernel__pci_read_config32;
 extern os64_pci_write_config32_fn kernel__pci_write_config32;
 extern os64_pci_device_count_fn kernel__pci_device_count;
 extern os64_pci_get_device_fn kernel__pci_get_device;
 extern os64_pci_find_device_fn kernel__pci_find_device;
 extern os64_pci_get_bar_fn kernel__pci_get_bar;
+extern os64_pci_map_bar_fn kernel__pci_map_bar;
 extern os64_pci_enable_memory_space_fn kernel__pci_enable_memory_space;
 extern os64_pci_enable_bus_mastering_fn kernel__pci_enable_bus_mastering;
 extern os64_mmio_read32_fn kernel__mmio_read32;
@@ -89,6 +108,22 @@ static inline void os64_kfree(void* ptr) {
     kernel__kfree(ptr);
 }
 
+static inline const os64_gop_info* os64_gop_get_info(void) {
+    return kernel__gop_get_info();
+}
+
+static inline void os64_gop_clear(os64_u32 color) {
+    kernel__gop_clear(color);
+}
+
+static inline void os64_gop_putpixel(os64_u32 x, os64_u32 y, os64_u32 color) {
+    kernel__gop_putpixel(x, y, color);
+}
+
+static inline void os64_gop_fill_rect(os64_u32 x, os64_u32 y, os64_u32 width, os64_u32 height, os64_u32 color) {
+    kernel__gop_fill_rect(x, y, width, height, color);
+}
+
 static inline os64_u32 os64_pci_read_config32(os64_u64 bus, os64_u64 device, os64_u64 function, os64_u64 offset) {
     return kernel__pci_read_config32(bus, device, function, offset);
 }
@@ -111,6 +146,10 @@ static inline os64_i64 os64_pci_find_device(os64_u64 vendor_id, os64_u64 device_
 
 static inline os64_i64 os64_pci_get_bar(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out) {
     return kernel__pci_get_bar(device, bar_index, out);
+}
+
+static inline void* os64_pci_map_bar(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out) {
+    return kernel__pci_map_bar(device, bar_index, out);
 }
 
 static inline os64_i64 os64_pci_enable_memory_space(const os64_pci_device_info* device) {

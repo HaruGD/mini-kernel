@@ -7,6 +7,7 @@ extern "C" {
 
 #include "arch/x86/paging64.h"
 #include "arch/x86/pmm64.h"
+#include "drivers/gop.h"
 #include "drivers/terminal.h"
 #include "fs/vfs.h"
 #include "kernel/driver/driver_manager.h"
@@ -224,7 +225,7 @@ extern "C" void shell_recall_history(int direction) {
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, sched, drivers, pci, drvinfo [path], drvcheck [path], drvload [path]");
-    print("\ndrvunload [name], drvreload [path], drvautoload [dir], drvlast");
+    print("\ndrvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
@@ -238,6 +239,41 @@ static void command_sched() {
                          sched_switch_count,
                          sched_yield_count,
                          pit.get_tick());
+}
+
+static void command_gop(char* arg) {
+    const GOPInfo* info = gop.info();
+    if (arg != 0 && strcmp64(arg, "clear") == 0) {
+        if (info == 0) {
+            print("\nGOP is not ready.");
+            return;
+        }
+        gop.clear(0x00000000);
+        terminal.clear();
+        print("\nGOP cleared.");
+        return;
+    }
+
+    print("\n=== GOP ===");
+    if (info == 0) {
+        print("\nready=0x00000000");
+        print("\n==============");
+        return;
+    }
+    print("\nready=0x00000001");
+    print("\nframebuffer=");
+    print_hex64(info->framebuffer_addr);
+    print(" size=");
+    print_hex64(info->framebuffer_size);
+    print("\nwidth=");
+    print_hex32(info->width);
+    print(" height=");
+    print_hex32(info->height);
+    print(" stride=");
+    print_hex32(info->pixels_per_scanline);
+    print(" format=");
+    print_hex32(info->format);
+    print("\n==============");
 }
 
 static void command_mounts() {
@@ -540,6 +576,8 @@ static void execute_command() {
         command_drivers();
     } else if (strcmp64(cmd, "pci") == 0) {
         command_pci();
+    } else if (strcmp64(cmd, "gop") == 0) {
+        command_gop(arg);
     } else if (strcmp64(cmd, "drvinfo") == 0) {
         command_drvinfo(arg);
     } else if (strcmp64(cmd, "drvcheck") == 0) {
