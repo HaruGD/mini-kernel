@@ -1,5 +1,7 @@
-#!/bin/bash
-qemu-system-i386 \
-  -drive format=raw,file=./bin/os.bin,if=ide,index=0 \
-  -drive format=raw,file=./bin/disk.img,if=ide,index=1 \
-  -d int,cpu_reset -D qemu.log
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+echo "run32.sh is archived behavior. Legacy BIOS sources live under archive/legacy-bios/."
+exit 1

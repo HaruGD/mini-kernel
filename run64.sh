@@ -1,15 +1,7 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-QEMU_ARGS=(
-  -drive format=raw,file=./bin/os64.bin,if=ide,index=0
-)
+cd "$(dirname "$0")"
 
-if [ -f ./bin/fat32.img ]; then
-  QEMU_ARGS+=(-drive format=raw,file=./bin/fat32.img,if=ide,index=1)
-fi
-
-qemu-system-x86_64 \
-  "${QEMU_ARGS[@]}" \
-  -serial stdio \
-  -monitor none
+echo "run64.sh is archived behavior. Use ./run.sh for the active UEFI path."
+exit 1

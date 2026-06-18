@@ -33,7 +33,7 @@ def send_shell_command(proc: subprocess.Popen, command: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--serial-log", default="serial_uefi_smoke.log")
+    parser.add_argument("--serial-log", default="logs/serial_uefi_smoke.log")
     parser.add_argument("--timeout", type=float, default=35.0)
     parser.add_argument("commands", nargs="*", default=[
         "bootinfo",
@@ -76,6 +76,7 @@ def main() -> int:
     args = parser.parse_args()
 
     serial_log = Path(args.serial_log)
+    serial_log.parent.mkdir(parents=True, exist_ok=True)
     serial_log.unlink(missing_ok=True)
     esp_image = Path("bin/uefi_esp.smoke.img")
     esp_image.unlink(missing_ok=True)

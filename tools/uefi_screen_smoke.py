@@ -42,7 +42,8 @@ def count_nonblack_ppm(path: Path) -> tuple[int, int, int]:
 
 
 def main() -> int:
-    screen = Path("uefi_screen.ppm")
+    screen = Path("logs/uefi_screen.ppm")
+    screen.parent.mkdir(parents=True, exist_ok=True)
     screen.unlink(missing_ok=True)
     esp_image = Path("bin/uefi_esp.screen.img")
     esp_image.unlink(missing_ok=True)
@@ -63,7 +64,7 @@ def main() -> int:
     try:
         time.sleep(12.0)
         assert proc.stdin is not None
-        proc.stdin.write(b"screendump uefi_screen.ppm\n")
+        proc.stdin.write(f"screendump {screen}\n".encode("ascii"))
         proc.stdin.flush()
         time.sleep(1.0)
         proc.stdin.write(b"quit\n")

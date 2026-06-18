@@ -77,7 +77,14 @@ Equivalent default:
 make all
 ```
 
+Convenience wrapper:
+
+```sh
+./build.sh
+```
+
 Build artifacts are written under `bin/` and `build/`.
+Runtime logs and smoke-test captures are written under `logs/`.
 
 Important active artifacts:
 
@@ -105,7 +112,9 @@ Equivalent helper:
 ./run_uefi.sh
 ```
 
-`run.sh` builds the FAT32 root image, embeds it into the UEFI image as `OS64.BIN`, refreshes OVMF vars, and starts QEMU from that single boot image.
+`run.sh` calls `build.sh`, embeds the FAT32 root image into the UEFI image as `OS64.BIN`, refreshes OVMF vars, and starts QEMU from that single boot image. `run_uefi.sh` is a compatibility wrapper around `run.sh`.
+
+Legacy helpers such as `run32.sh`, `run64.sh`, and `reset.sh` are disabled on the active path. The active run path is UEFI-only.
 
 ## Boot Layout
 
@@ -449,6 +458,9 @@ The smoke scripts use temporary image copies so they can run even when another Q
 
 - `make all64` builds the active FAT32 root image at `bin/os64.bin`.
 - `make uefi` builds `bin/uefi_esp.img`.
+- `./build.sh` is the active full build helper.
+- `./run.sh` is the active QEMU run helper.
+- Runtime logs are kept under `logs/`.
 - `run hello.drv` is intentionally rejected because `.drv` files are kernel drivers, not user programs.
 - Use `drvload hello.drv` for kernel-driver packages. Use `drvunload <name>` and `drvreload <path>` for package lifecycle tests. Use `drvlast` to inspect the last `.drv` loader diagnostic.
 - User program results can be inspected with `laststatus`, reaped one at a time with `wait`, or cleared with `reapall`. Each parent keeps the latest three finished child results unreaped; older results are automatically marked reaped. If the process table still fills, the kernel attempts a silent reap before failing a new `run`.

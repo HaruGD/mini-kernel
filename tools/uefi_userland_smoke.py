@@ -84,10 +84,11 @@ def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--serial-log", default="serial_uefi_userland.log")
+    parser.add_argument("--serial-log", default="logs/serial_uefi_userland.log")
     args = parser.parse_args()
 
     serial_log = Path(args.serial_log)
+    serial_log.parent.mkdir(parents=True, exist_ok=True)
     run_qemu(serial_log, DEFAULT_COMMANDS)
 
     log_text = serial_log.read_text(errors="replace") if serial_log.exists() else ""

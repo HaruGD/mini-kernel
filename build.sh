@@ -1,5 +1,10 @@
-#!/bin/bash
-export PREFIX="/home/home/opt/cross"
-export TARGET=i686-elf
-export PATH="$PREFIX/bin:$PATH"
-make all
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+echo "[build] build OS64 FAT32 root image"
+make all64
+
+echo "[build] build UEFI ESP image"
+make uefi

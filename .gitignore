@@ -9,6 +9,9 @@ qemu.log
 *.log
 *.zip
 
+logs/*
+!logs/.gitkeep
+
 name
 --command
 
