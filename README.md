@@ -8,7 +8,7 @@ The current active path is:
 UEFI firmware -> BOOTX64.EFI -> kernel64.bin + OS64.BIN ramdisk -> FAT32 root / -> OS64 shell/userland
 ```
 
-Legacy BIOS/32-bit/FAT12 code still exists for reference, but it is frozen and is not part of current active development.
+Legacy BIOS/32-bit/FAT12 code is archived under `archive/legacy-bios/` for reference only and is not part of the active build.
 
 ## Current Status
 
@@ -48,7 +48,7 @@ What works on the active 64-bit UEFI path:
 - PCI discovery and device listing
 - `.drv` package validation and loading
 - ELF object based `.drv` builder for C kernel drivers
-- manifest-based external driver projects under `src/drivers_ext/`
+- manifest-based external driver projects under `drivers/external/`
 - separate unsigned builder and `.drv` signer
 - signature ABI v1 with `LOCAL_TEST`, `ROOT_KEY`, and `TPM_LOCAL` algorithm slots
 - local test signature validation for `.drv` packages
@@ -89,7 +89,7 @@ Important active artifacts:
 - `bin/hello.drv`
   Hand-built test driver package loaded from the FAT32 root filesystem.
 - `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`
-  C driver packages produced from `src/drivers_ext/*/driver.c`, `driver.json`, and the separate signer.
+  C driver packages produced from `drivers/external/*/driver.c`, `driver.json`, and the separate signer.
 
 ## Run
 
@@ -309,6 +309,7 @@ Built-in drivers currently registered:
 
 - `ata0`
 - `fat32`
+- `gop`
 - `keyboard`
 - `pit`
 
@@ -317,6 +318,14 @@ Kernel exports currently available:
 - `kernel.klog`
 - `kernel.kmalloc`
 - `kernel.kfree`
+- `kernel.gop_get_info`
+- `kernel.gop_clear`
+- `kernel.gop_putpixel`
+- `kernel.gop_fill_rect`
+- PCI config, BAR, and enable helpers
+- MMIO32 helpers
+- VFS handle helpers
+- ATA sector helpers
 
 Supported commands:
 
@@ -355,6 +364,7 @@ Implemented pieces:
 - driver-to-driver import/export calls
 - boot-time `.drv` autoload with retry passes for dependency ordering
 - driver state transition to `ready`
+- unload/reload with dependent-driver protection
 - detailed load diagnostics for failed import/relocation/signature paths
 - `new/delete` and `new[]/delete[]` use in the loader
 
@@ -363,34 +373,40 @@ Not implemented yet:
 - real asymmetric cryptographic signature verification
 - actual TPM hardware command path
 - explicit dependency metadata and dependency-sorted loading
-- unload / stop lifecycle
+- full stop lifecycle for real hardware devices
 - page-level code/data permissions
 - isolation from kernel address space
 
 ## Repo Layout
 
-- `src/uefi/`
+- `boot/uefi/`
   UEFI loader, PE/COFF link script, and kernel entry bridge.
-- `src/boot/`
-  Long mode entry, interrupt stubs, and legacy boot code.
-- `src/kernel/`
+- `arch/x86_64/`
+  Long mode entry, interrupt stubs, PMM, paging, GDT/TSS, and IDT.
+- `kernel/`
   64-bit kernel runtime and orchestration.
-- `src/kernel/core/`
+- `kernel/core/`
   Split kernel64 initialization, diagnostics, IRQ, process, and user-mode logic.
-- `src/kernel/driver/`
+- `kernel/driver/`
   Driver manager, loader, exports, built-ins, and shell commands.
-- `src/arch/x86/`
-  PMM, paging, GDT/TSS, and IDT.
-- `src/drivers/`
-  Terminal, keyboard, PIT, ATA.
-- `src/drivers_ext/`
+- `kernel/pci/`, `kernel/process/`, `kernel/syscall/`, `kernel/shell/`, `kernel/memory/`, `kernel/util/`
+  Kernel subsystems split by responsibility.
+- `drivers/builtin/`
+  Terminal, GOP display, keyboard, PIT, and ATA built into the kernel.
+- `drivers/external/`
   External C driver projects, SDK header, and per-driver manifests.
-- `src/fs/`
-  VFS, FAT32, memfs, and frozen legacy FAT12 code.
-- `src/user/`
+- `fs/`
+  VFS, FAT32, and memfs.
+- `user/programs/`
   C and ELF user programs.
-- `src/user/ushell/`
+- `user/programs/ushell/`
   C user shell implementation split into smaller include units.
+- `user/include/`
+  Userland syscall and helper headers.
+- `include/`
+  Public kernel, driver, filesystem, and architecture headers.
+- `archive/legacy-bios/`
+  Frozen BIOS/32-bit/FAT12 reference code, excluded from the active build.
 - `tools/`
   Image builders and QEMU smoke automation.
 - `tools/driver_builder/`
@@ -410,11 +426,7 @@ For the active 64-bit UEFI build:
 - `ld`
 - `objcopy`
 
-For frozen legacy 32-bit builds:
-
-- `i686-elf-gcc`
-- `i686-elf-g++`
-- `i686-elf-ld`
+The archived legacy BIOS tree is not part of the active build requirements.
 
 ## Smoke Tests
 
