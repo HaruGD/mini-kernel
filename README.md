@@ -21,6 +21,12 @@ What works on the active 64-bit UEFI path:
 - `BootInfo` handoff with memory map and reserved ranges
 - 64-bit long mode kernel entry
 - PMM, heap, and runtime paging helpers
+- PMM allocation statistics with next-fit single-page allocation hint
+- paging range helpers for identity, MMIO, allocated, remapped, and freed ranges
+- kernel heap block guards, invalid-free and double-free diagnostics
+- kernel heap O(1) current/peak used accounting
+- kernel heap immediate adjacent-block coalescing with a doubly linked block list
+- page-based user buffer validation for syscall copy helpers
 - kernel stack supplied by the UEFI loader
 - IDT, GDT/TSS, PIT, and keyboard IRQ handling
 - framebuffer terminal with an internal text-cell buffer
@@ -238,6 +244,20 @@ Shell shortcuts run standalone userland tools such as:
 - `mounts`
 
 Time commands use PIT ticks. The current PIT default is 100Hz, so one tick is about 10ms. For example, `sleep 100` sleeps for about 1000ms.
+
+## Memory Management
+
+The active kernel memory path is intentionally simple but instrumented:
+
+- PMM uses a bitmap allocator with a next-free hint for single-page allocations.
+- Kernel heap pages are mapped `RW | GLOBAL | NX`.
+- Heap blocks carry a magic value, requested size, next/prev links, and free state.
+- `kfree()` coalesces only adjacent `prev`/`next` blocks instead of scanning the full heap.
+- Heap current and peak used bytes are maintained as counters.
+- Heap growth zeroes new regions with 64-bit stores.
+- `memstat` reports PMM and heap counters, allocation failures, largest free block, invalid frees, and double frees.
+
+The main remaining heap performance limit is first-fit free-block search in `kmalloc()`. A future allocator pass should add size bins or dedicated free lists.
 
 ## User Programs
 
