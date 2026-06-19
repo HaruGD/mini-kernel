@@ -2,9 +2,21 @@
 #include "arch/x86_64/paging64.h"
 #include "arch/x86_64/pmm64.h"
 
+#define HEAP_BLOCK_MAGIC 0x48454150U
+
+typedef char heap_header_alignment_check[(sizeof(struct heap_header) % 16 == 0) ? 1 : -1];
+
 static struct heap_header* heap_tail = 0;
 static uint64_t heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
 static uint32_t heap_mapped_pages = 0;
+static uint64_t heap_alloc_requests = 0;
+static uint64_t heap_free_requests = 0;
+static uint64_t heap_alloc_failures = 0;
+static uint64_t heap_invalid_free_requests = 0;
+static uint64_t heap_double_free_requests = 0;
+static uint64_t heap_current_used_bytes = 0;
+static uint64_t heap_peak_used_bytes = 0;
+static uint32_t heap_grow_requests = 0;
 
 static uintptr_t align_up_heap(uintptr_t value, uintptr_t align) {
     return (value + align - 1) & ~(align - 1);
@@ -16,16 +28,61 @@ static uintptr_t align_down_heap(uintptr_t value, uintptr_t align) {
 
 struct heap_header* heap_start = 0;
 
-static struct heap_header* find_prev_block(struct heap_header* target) {
-    if (target == 0 || target == heap_start) {
-        return 0;
+static int heap_block_valid(const struct heap_header* block) {
+    return block != 0 && block->magic == HEAP_BLOCK_MAGIC;
+}
+
+static void heap_init_block(struct heap_header* block,
+                            uint32_t size,
+                            uint8_t is_free,
+                            struct heap_header* next,
+                            struct heap_header* prev) {
+    block->magic = HEAP_BLOCK_MAGIC;
+    block->size = size;
+    block->requested_size = 0;
+    block->is_free = is_free;
+    block->next = next;
+    block->prev = prev;
+    block->reserved[0] = 0;
+    block->reserved[1] = 0;
+    block->reserved[2] = 0;
+}
+
+static void heap_update_peak_used() {
+    if (heap_current_used_bytes > heap_peak_used_bytes) {
+        heap_peak_used_bytes = heap_current_used_bytes;
+    }
+}
+
+static void heap_mark_allocated(struct heap_header* block, uint32_t requested_size) {
+    block->is_free = 0;
+    block->requested_size = requested_size;
+    heap_current_used_bytes += requested_size;
+    heap_update_peak_used();
+}
+
+static void heap_mark_free(struct heap_header* block) {
+    if (heap_current_used_bytes >= block->requested_size) {
+        heap_current_used_bytes -= block->requested_size;
+    } else {
+        heap_current_used_bytes = 0;
+    }
+    block->is_free = 1;
+    block->requested_size = 0;
+}
+
+static void heap_zero_region(uint64_t region, uint64_t size) {
+    uint64_t qword_count = size / sizeof(uint64_t);
+    uint64_t* qwords = (uint64_t*)(uintptr_t)region;
+    for (uint64_t i = 0; i < qword_count; i++) {
+        qwords[i] = 0;
     }
 
-    struct heap_header* current = heap_start;
-    while (current != 0 && current->next != target) {
-        current = current->next;
+    uint64_t byte_start = qword_count * sizeof(uint64_t);
+    uint8_t* bytes = (uint8_t*)(uintptr_t)(region + byte_start);
+    for (uint64_t i = byte_start; i < size; i++) {
+        bytes[i - byte_start] = 0;
     }
-    return current;
 }
 
 static void split_block(struct heap_header* block, uint32_t total_size) {
@@ -34,9 +91,10 @@ static void split_block(struct heap_header* block, uint32_t total_size) {
     }
 
     struct heap_header* next_block = (struct heap_header*)((uintptr_t)block + total_size);
-    next_block->size = block->size - total_size;
-    next_block->is_free = 1;
-    next_block->next = block->next;
+    heap_init_block(next_block, block->size - total_size, 1, block->next, block);
+    if (next_block->next != 0) {
+        next_block->next->prev = next_block;
+    }
 
     block->size = total_size;
     block->next = next_block;
@@ -46,7 +104,49 @@ static void split_block(struct heap_header* block, uint32_t total_size) {
     }
 }
 
+static int heap_blocks_adjacent(const struct heap_header* left, const struct heap_header* right) {
+    return heap_block_valid(left) &&
+           heap_block_valid(right) &&
+           ((uintptr_t)left + left->size) == (uintptr_t)right;
+}
+
+static struct heap_header* merge_with_next(struct heap_header* block) {
+    if (block == 0 || block->next == 0) {
+        return block;
+    }
+    struct heap_header* next = block->next;
+    if (!block->is_free || !next->is_free || !heap_blocks_adjacent(block, next)) {
+        return block;
+    }
+
+    block->size += next->size;
+    block->requested_size = 0;
+    block->next = next->next;
+    if (block->next != 0) {
+        block->next->prev = block;
+    }
+    if (heap_tail == next) {
+        heap_tail = block;
+    }
+    return block;
+}
+
+static struct heap_header* coalesce_around(struct heap_header* block) {
+    if (block == 0 || !heap_block_valid(block) || !block->is_free) {
+        return block;
+    }
+
+    if (block->prev != 0 &&
+        block->prev->is_free &&
+        heap_blocks_adjacent(block->prev, block)) {
+        block = merge_with_next(block->prev);
+    }
+
+    return merge_with_next(block);
+}
+
 static struct heap_header* append_region(uint32_t bytes) {
+    heap_grow_requests++;
     uint32_t page_count = (bytes + PMM64_PAGE_SIZE - 1) / PMM64_PAGE_SIZE;
     uint64_t region = heap_next_virtual;
     uint64_t region_size = (uint64_t)page_count * PMM64_PAGE_SIZE;
@@ -55,55 +155,21 @@ static struct heap_header* append_region(uint32_t bytes) {
         return 0;
     }
 
-    for (uint32_t i = 0; i < page_count; i++) {
-        uint64_t virt = region + ((uint64_t)i * PMM64_PAGE_SIZE);
-        uint64_t phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
-        if (phys == 0) {
-            for (uint32_t rollback = 0; rollback < i; rollback++) {
-                uint64_t rollback_virt = region + ((uint64_t)rollback * PMM64_PAGE_SIZE);
-                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
-                paging64_unmap_page(rollback_virt);
-                if (rollback_phys != 0) {
-                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
-                    if (heap_mapped_pages > 0) {
-                        heap_mapped_pages--;
-                    }
-                }
-            }
-            return 0;
-        }
-
-        if (!paging64_map_page(virt,
-                               phys,
-                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_GLOBAL | PAGING64_FLAG_NX)) {
-            pmm64_free_block((void*)(uintptr_t)phys);
-            for (uint32_t rollback = 0; rollback < i; rollback++) {
-                uint64_t rollback_virt = region + ((uint64_t)rollback * PMM64_PAGE_SIZE);
-                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
-                paging64_unmap_page(rollback_virt);
-                if (rollback_phys != 0) {
-                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
-                    if (heap_mapped_pages > 0) {
-                        heap_mapped_pages--;
-                    }
-                }
-            }
-            return 0;
-        }
-
-        heap_mapped_pages++;
+    uint32_t mapped_pages = 0;
+    if (!paging64_alloc_map_range(region,
+                                  region_size,
+                                  PAGING64_FLAG_WRITABLE | PAGING64_FLAG_GLOBAL | PAGING64_FLAG_NX,
+                                  &mapped_pages)) {
+        return 0;
     }
+    heap_mapped_pages += mapped_pages;
 
     heap_next_virtual += region_size;
 
-    for (uint64_t i = 0; i < region_size; i++) {
-        *((volatile uint8_t*)(uintptr_t)(region + i)) = 0;
-    }
+    heap_zero_region(region, region_size);
 
     struct heap_header* block = (struct heap_header*)(uintptr_t)region;
-    block->size = page_count * PMM64_PAGE_SIZE;
-    block->is_free = 1;
-    block->next = 0;
+    heap_init_block(block, page_count * PMM64_PAGE_SIZE, 1, 0, heap_tail);
 
     if (heap_start == 0) {
         heap_start = block;
@@ -135,21 +201,18 @@ static void shrink_heap_tail() {
             break;
         }
 
-        for (uintptr_t virt = releasable_start; virt < block_end; virt += PMM64_PAGE_SIZE) {
-            uint64_t phys = paging64_get_phys((uint64_t)virt) & 0x000FFFFFFFFFF000ULL;
-            if (phys != 0) {
-                paging64_unmap_page((uint64_t)virt);
-                pmm64_free_block((void*)(uintptr_t)phys);
-                if (heap_mapped_pages > 0) {
-                    heap_mapped_pages--;
-                }
-            }
+        uint32_t page_count = (uint32_t)((block_end - releasable_start) / PMM64_PAGE_SIZE);
+        uint32_t unmapped = paging64_unmap_free_range((uint64_t)releasable_start, page_count);
+        if (unmapped > heap_mapped_pages) {
+            heap_mapped_pages = 0;
+        } else {
+            heap_mapped_pages -= unmapped;
         }
 
         heap_next_virtual = releasable_start;
 
         if (releasable_start == block_start) {
-            struct heap_header* prev = find_prev_block(heap_tail);
+            struct heap_header* prev = heap_tail->prev;
             if (prev != 0) {
                 prev->next = 0;
             } else {
@@ -169,11 +232,26 @@ extern "C" void heap_init() {
     heap_tail = 0;
     heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
     heap_mapped_pages = 0;
+    heap_alloc_requests = 0;
+    heap_free_requests = 0;
+    heap_alloc_failures = 0;
+    heap_invalid_free_requests = 0;
+    heap_double_free_requests = 0;
+    heap_current_used_bytes = 0;
+    heap_peak_used_bytes = 0;
+    heap_grow_requests = 0;
     append_region(PMM64_PAGE_SIZE * 4);
+    heap_update_peak_used();
 }
 
 extern "C" void* kmalloc(size_t size) {
+    heap_alloc_requests++;
     if (size == 0) {
+        heap_alloc_failures++;
+        return 0;
+    }
+    if (size > 0xFFFFFFFFULL - sizeof(struct heap_header)) {
+        heap_alloc_failures++;
         return 0;
     }
 
@@ -183,7 +261,7 @@ extern "C" void* kmalloc(size_t size) {
     while (current != 0) {
         if (current->is_free && current->size >= total_size) {
             split_block(current, total_size);
-            current->is_free = 0;
+            heap_mark_allocated(current, (uint32_t)size);
             return (void*)((uintptr_t)current + sizeof(struct heap_header));
         }
         current = current->next;
@@ -196,11 +274,12 @@ extern "C" void* kmalloc(size_t size) {
 
     current = append_region(grow_size);
     if (current == 0) {
+        heap_alloc_failures++;
         return 0;
     }
 
     split_block(current, total_size);
-    current->is_free = 0;
+    heap_mark_allocated(current, (uint32_t)size);
     return (void*)((uintptr_t)current + sizeof(struct heap_header));
 }
 
@@ -210,12 +289,20 @@ extern "C" void heap_coalesce() {
         uintptr_t curr_end = (uintptr_t)curr + curr->size;
         uintptr_t next_start = (uintptr_t)curr->next;
 
-        if (curr->is_free && curr->next->is_free && curr_end == next_start) {
+        if (heap_block_valid(curr) &&
+            heap_block_valid(curr->next) &&
+            curr->is_free &&
+            curr->next->is_free &&
+            curr_end == next_start) {
             curr->size += curr->next->size;
+            curr->requested_size = 0;
             if (heap_tail == curr->next) {
                 heap_tail = curr;
             }
             curr->next = curr->next->next;
+            if (curr->next != 0) {
+                curr->next->prev = curr;
+            }
         } else {
             curr = curr->next;
         }
@@ -227,9 +314,18 @@ extern "C" void kfree(void* ptr) {
         return;
     }
 
+    heap_free_requests++;
     struct heap_header* header = (struct heap_header*)((uintptr_t)ptr - sizeof(struct heap_header));
-    header->is_free = 1;
-    heap_coalesce();
+    if (!heap_block_valid(header)) {
+        heap_invalid_free_requests++;
+        return;
+    }
+    if (header->is_free) {
+        heap_double_free_requests++;
+        return;
+    }
+    heap_mark_free(header);
+    coalesce_around(header);
     shrink_heap_tail();
 }
 
@@ -237,7 +333,7 @@ extern "C" uint64_t heap_total_free() {
     uint64_t total = 0;
     struct heap_header* current = heap_start;
     while (current != 0) {
-        if (current->is_free && current->size >= sizeof(struct heap_header)) {
+        if (heap_block_valid(current) && current->is_free && current->size >= sizeof(struct heap_header)) {
             total += current->size - sizeof(struct heap_header);
         }
         current = current->next;
@@ -246,15 +342,7 @@ extern "C" uint64_t heap_total_free() {
 }
 
 extern "C" uint64_t heap_total_used() {
-    uint64_t total = 0;
-    struct heap_header* current = heap_start;
-    while (current != 0) {
-        if (!current->is_free && current->size >= sizeof(struct heap_header)) {
-            total += current->size - sizeof(struct heap_header);
-        }
-        current = current->next;
-    }
-    return total;
+    return heap_current_used_bytes;
 }
 
 extern "C" uint64_t heap_total_mapped_bytes() {
@@ -273,6 +361,38 @@ extern "C" uint32_t heap_region_count() {
         current = current->next;
     }
     return count;
+}
+
+extern "C" void heap_get_stats(HeapStats* out_stats) {
+    if (out_stats == 0) {
+        return;
+    }
+
+    uint64_t largest_free = 0;
+    struct heap_header* current = heap_start;
+    while (current != 0) {
+        if (heap_block_valid(current) && current->is_free && current->size >= sizeof(struct heap_header)) {
+            uint64_t free_bytes = current->size - sizeof(struct heap_header);
+            if (free_bytes > largest_free) {
+                largest_free = free_bytes;
+            }
+        }
+        current = current->next;
+    }
+
+    out_stats->used_bytes = heap_current_used_bytes;
+    out_stats->free_bytes = heap_total_free();
+    out_stats->mapped_bytes = heap_total_mapped_bytes();
+    out_stats->peak_used_bytes = heap_peak_used_bytes;
+    out_stats->largest_free_bytes = largest_free;
+    out_stats->alloc_requests = heap_alloc_requests;
+    out_stats->free_requests = heap_free_requests;
+    out_stats->alloc_failures = heap_alloc_failures;
+    out_stats->invalid_free_requests = heap_invalid_free_requests;
+    out_stats->double_free_requests = heap_double_free_requests;
+    out_stats->mapped_pages = heap_mapped_pages;
+    out_stats->region_count = heap_region_count();
+    out_stats->grow_requests = heap_grow_requests;
 }
 
 inline void* operator new(size_t, void* ptr) { return ptr; }

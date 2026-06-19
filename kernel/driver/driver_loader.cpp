@@ -128,14 +128,7 @@ static void free_section_pages(DriverLoadedSection* section) {
     }
 
     uint64_t base = (uint64_t)(uintptr_t)section->base;
-    for (uint32_t page = 0; page < section->page_count; page++) {
-        uint64_t virt = base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-        uint64_t phys = paging64_get_phys(virt) & 0x000FFFFFFFFFF000ULL;
-        paging64_unmap_page(virt);
-        if (phys != 0) {
-            pmm64_free_block((void*)(uintptr_t)phys);
-        }
-    }
+    paging64_unmap_free_range(base, section->page_count);
 
     section->base = 0;
     section->page_count = 0;
@@ -158,38 +151,17 @@ static uint8_t* allocate_section_pages(uint64_t memory_size, uint32_t* out_page_
         return 0;
     }
 
-    for (uint64_t page = 0; page < page_count64; page++) {
-        uint64_t virt = region + (page * PAGING64_PAGE_SIZE);
-        uint64_t phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
-        if (phys == 0) {
-            for (uint64_t rollback = 0; rollback < page; rollback++) {
-                uint64_t rollback_virt = region + (rollback * PAGING64_PAGE_SIZE);
-                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
-                paging64_unmap_page(rollback_virt);
-                if (rollback_phys != 0) {
-                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
-                }
-            }
-            return 0;
-        }
-
-        if (!paging64_map_page(virt, phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX)) {
-            pmm64_free_block((void*)(uintptr_t)phys);
-            for (uint64_t rollback = 0; rollback < page; rollback++) {
-                uint64_t rollback_virt = region + (rollback * PAGING64_PAGE_SIZE);
-                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
-                paging64_unmap_page(rollback_virt);
-                if (rollback_phys != 0) {
-                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
-                }
-            }
-            return 0;
-        }
+    uint32_t mapped_pages = 0;
+    if (!paging64_alloc_map_range(region,
+                                  region_size,
+                                  PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX,
+                                  &mapped_pages)) {
+        return 0;
     }
 
     g_driver_section_next_virtual = region + region_size;
     if (out_page_count != 0) {
-        *out_page_count = (uint32_t)page_count64;
+        *out_page_count = mapped_pages;
     }
     return (uint8_t*)(uintptr_t)region;
 }
@@ -213,18 +185,14 @@ static int protect_loaded_sections(DriverLoadedImage* loaded) {
         }
 
         uint64_t base = (uint64_t)(uintptr_t)section->base;
-        for (uint32_t page = 0; page < section->page_count; page++) {
-            uint64_t virt = base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-            uint64_t phys = paging64_get_phys(virt) & 0x000FFFFFFFFFF000ULL;
-            if (phys == 0 || !paging64_map_page(virt, phys, flags)) {
-                driver_manager_set_last_error(DRIVER_LOAD_OUT_OF_MEMORY,
-                                              "protect",
-                                              0,
-                                              section->name,
-                                              i,
-                                              virt);
-                return DRIVER_LOAD_OUT_OF_MEMORY;
-            }
+        if (!paging64_remap_range(base, (uint64_t)section->page_count * PAGING64_PAGE_SIZE, flags)) {
+            driver_manager_set_last_error(DRIVER_LOAD_OUT_OF_MEMORY,
+                                          "protect",
+                                          0,
+                                          section->name,
+                                          i,
+                                          base);
+            return DRIVER_LOAD_OUT_OF_MEMORY;
         }
     }
 

@@ -6,6 +6,13 @@
 
 static uint8_t memory_bitmap64[PMM64_BITMAP_SIZE];
 static uint32_t free_blocks64 = 0;
+static uint32_t next_free_hint64 = 0;
+static uint64_t alloc_requests64 = 0;
+static uint64_t alloc_contiguous_requests64 = 0;
+static uint64_t alloc_failures64 = 0;
+static uint64_t alloc_scan_steps64 = 0;
+static uint64_t free_requests64 = 0;
+static uint64_t peak_used_blocks64 = 0;
 
 static inline void mmap_set64(uint32_t bit) {
     memory_bitmap64[bit / 8] |= (1 << (bit % 8));
@@ -27,11 +34,29 @@ static uint64_t align_down64(uint64_t value, uint64_t align) {
     return value & ~(align - 1);
 }
 
+static void reset_stats64() {
+    next_free_hint64 = 0;
+    alloc_requests64 = 0;
+    alloc_contiguous_requests64 = 0;
+    alloc_failures64 = 0;
+    alloc_scan_steps64 = 0;
+    free_requests64 = 0;
+    peak_used_blocks64 = 0;
+}
+
+static void update_peak_used_blocks64() {
+    uint32_t used = PMM64_TOTAL_BLOCKS - free_blocks64;
+    if (used > peak_used_blocks64) {
+        peak_used_blocks64 = used;
+    }
+}
+
 static void mark_all_used64() {
     for (uint32_t i = 0; i < PMM64_BITMAP_SIZE; i++) {
         memory_bitmap64[i] = 0xFF;
     }
     free_blocks64 = 0;
+    next_free_hint64 = 0;
 }
 
 static void mark_block_used64(uint32_t index) {
@@ -43,6 +68,7 @@ static void mark_block_used64(uint32_t index) {
         if (free_blocks64 > 0) {
             free_blocks64--;
         }
+        update_peak_used_blocks64();
     }
 }
 
@@ -53,6 +79,9 @@ static void mark_block_free64(uint32_t index) {
     if (mmap_test64(index)) {
         mmap_unset64(index);
         free_blocks64++;
+        if (index < next_free_hint64) {
+            next_free_hint64 = index;
+        }
     }
 }
 
@@ -187,30 +216,61 @@ static void init_fallback64() {
 }
 
 extern "C" void pmm64_init(const BootInfo* boot_info) {
+    reset_stats64();
     if (!init_from_e820_64(boot_info)) {
         init_fallback64();
     }
+    update_peak_used_blocks64();
 }
 
 extern "C" void* pmm64_alloc_block() {
-    for (uint32_t i = 0; i < PMM64_TOTAL_BLOCKS; i++) {
+    alloc_requests64++;
+    if (free_blocks64 == 0) {
+        alloc_failures64++;
+        return 0;
+    }
+
+    uint32_t start = next_free_hint64;
+    if (start >= PMM64_TOTAL_BLOCKS) {
+        start = 0;
+    }
+
+    for (uint32_t step = 0; step < PMM64_TOTAL_BLOCKS; step++) {
+        uint32_t i = start + step;
+        if (i >= PMM64_TOTAL_BLOCKS) {
+            i -= PMM64_TOTAL_BLOCKS;
+        }
+        alloc_scan_steps64++;
         if (!mmap_test64(i)) {
             mark_block_used64(i);
+            next_free_hint64 = i + 1;
+            if (next_free_hint64 >= PMM64_TOTAL_BLOCKS) {
+                next_free_hint64 = 0;
+            }
             return (void*)((uintptr_t)i * PMM64_PAGE_SIZE);
         }
     }
+
+    alloc_failures64++;
     return 0;
 }
 
 extern "C" void* pmm64_alloc_blocks(uint32_t count) {
+    alloc_requests64++;
+    alloc_contiguous_requests64++;
     if (count == 0) {
+        alloc_failures64++;
+        return 0;
+    }
+    if (count > free_blocks64 || count > PMM64_TOTAL_BLOCKS) {
+        alloc_failures64++;
         return 0;
     }
 
     uint32_t run_start = 0;
     uint32_t run_length = 0;
-
     for (uint32_t i = 0; i < PMM64_TOTAL_BLOCKS; i++) {
+        alloc_scan_steps64++;
         if (!mmap_test64(i)) {
             if (run_length == 0) {
                 run_start = i;
@@ -220,6 +280,10 @@ extern "C" void* pmm64_alloc_blocks(uint32_t count) {
                 for (uint32_t j = 0; j < count; j++) {
                     mark_block_used64(run_start + j);
                 }
+                next_free_hint64 = run_start + count;
+                if (next_free_hint64 >= PMM64_TOTAL_BLOCKS) {
+                    next_free_hint64 = 0;
+                }
                 return (void*)((uintptr_t)run_start * PMM64_PAGE_SIZE);
             }
         } else {
@@ -227,15 +291,18 @@ extern "C" void* pmm64_alloc_blocks(uint32_t count) {
         }
     }
 
+    alloc_failures64++;
     return 0;
 }
 
 extern "C" void pmm64_free_block(void* addr) {
+    free_requests64++;
     uintptr_t block = (uintptr_t)addr / PMM64_PAGE_SIZE;
     mark_block_free64((uint32_t)block);
 }
 
 extern "C" void pmm64_free_blocks(void* addr, uint32_t count) {
+    free_requests64++;
     uintptr_t block = (uintptr_t)addr / PMM64_PAGE_SIZE;
     for (uint32_t i = 0; i < count; i++) {
         mark_block_free64((uint32_t)(block + i));
@@ -248,6 +315,22 @@ extern "C" uint32_t pmm64_get_total_block_count() {
 
 extern "C" uint32_t pmm64_get_free_block_count() {
     return free_blocks64;
+}
+
+extern "C" void pmm64_get_stats(Pmm64Stats* out_stats) {
+    if (out_stats == 0) {
+        return;
+    }
+
+    out_stats->total_blocks = PMM64_TOTAL_BLOCKS;
+    out_stats->free_blocks = free_blocks64;
+    out_stats->next_free_hint = next_free_hint64;
+    out_stats->alloc_requests = alloc_requests64;
+    out_stats->alloc_contiguous_requests = alloc_contiguous_requests64;
+    out_stats->alloc_failures = alloc_failures64;
+    out_stats->alloc_scan_steps = alloc_scan_steps64;
+    out_stats->free_requests = free_requests64;
+    out_stats->peak_used_blocks = peak_used_blocks64;
 }
 
 extern "C" int pmm64_range_is_marked_used(uint64_t start, uint64_t size) {

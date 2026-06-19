@@ -18,14 +18,7 @@ static void free_loaded_image(DriverLoadedImage* loaded) {
                 continue;
             }
             uint64_t base = (uint64_t)(uintptr_t)loaded->sections[i].base;
-            for (uint32_t page = 0; page < loaded->sections[i].page_count; page++) {
-                uint64_t virt = base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-                uint64_t phys = paging64_get_phys(virt) & 0x000FFFFFFFFFF000ULL;
-                paging64_unmap_page(virt);
-                if (phys != 0) {
-                    pmm64_free_block((void*)(uintptr_t)phys);
-                }
-            }
+            paging64_unmap_free_range(base, loaded->sections[i].page_count);
             loaded->sections[i].base = 0;
             loaded->sections[i].page_count = 0;
         }

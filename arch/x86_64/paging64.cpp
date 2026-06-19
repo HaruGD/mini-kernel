@@ -30,6 +30,14 @@ static uint64_t* entry_to_table(uint64_t entry) {
     return (uint64_t*)(uintptr_t)(entry & 0x000FFFFFFFFFF000ULL);
 }
 
+static uint64_t align_down_page(uint64_t value) {
+    return value & ~(PAGING64_PAGE_SIZE - 1ULL);
+}
+
+static uint64_t align_up_page(uint64_t value) {
+    return (value + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
+}
+
 static uint64_t read_msr(uint32_t msr) {
     uint32_t lo;
     uint32_t hi;
@@ -194,6 +202,126 @@ extern "C" int paging64_unmap_page(uint64_t virt) {
     pt[pt_index(virt)] = 0;
     paging64_flush_tlb(virt);
     return 1;
+}
+
+extern "C" int paging64_map_range_identity(uint64_t start, uint64_t size, uint64_t flags) {
+    if (size == 0) {
+        return 1;
+    }
+
+    uint64_t begin = align_down_page(start);
+    uint64_t end = align_up_page(start + size);
+    if (end < begin) {
+        return 0;
+    }
+
+    for (uint64_t addr = begin; addr < end; addr += PAGING64_PAGE_SIZE) {
+        if (!paging64_map_page(addr, addr, flags)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+extern "C" int paging64_map_range(uint64_t virt, uint64_t phys, uint64_t size, uint64_t flags) {
+    if (size == 0) {
+        return 1;
+    }
+
+    uint64_t virt_begin = align_down_page(virt);
+    uint64_t phys_begin = align_down_page(phys);
+    uint64_t end = align_up_page(virt + size);
+    if (end < virt_begin) {
+        return 0;
+    }
+
+    uint32_t mapped = 0;
+    for (uint64_t addr = virt_begin; addr < end; addr += PAGING64_PAGE_SIZE) {
+        uint64_t page_phys = phys_begin + ((uint64_t)mapped * PAGING64_PAGE_SIZE);
+        if (!paging64_map_page(addr, page_phys, flags)) {
+            for (uint32_t rollback = 0; rollback < mapped; rollback++) {
+                paging64_unmap_page(virt_begin + ((uint64_t)rollback * PAGING64_PAGE_SIZE));
+            }
+            return 0;
+        }
+        mapped++;
+    }
+
+    return 1;
+}
+
+extern "C" int paging64_remap_range(uint64_t virt, uint64_t size, uint64_t flags) {
+    if (size == 0) {
+        return 1;
+    }
+
+    uint64_t begin = align_down_page(virt);
+    uint64_t end = align_up_page(virt + size);
+    if (end < begin) {
+        return 0;
+    }
+
+    for (uint64_t addr = begin; addr < end; addr += PAGING64_PAGE_SIZE) {
+        uint64_t phys = paging64_get_phys(addr) & 0x000FFFFFFFFFF000ULL;
+        if (phys == 0 || !paging64_map_page(addr, phys, flags)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+extern "C" int paging64_alloc_map_range(uint64_t virt, uint64_t size, uint64_t flags, uint32_t* out_page_count) {
+    if (out_page_count != 0) {
+        *out_page_count = 0;
+    }
+    if (size == 0) {
+        return 1;
+    }
+
+    uint64_t begin = align_down_page(virt);
+    uint64_t end = align_up_page(virt + size);
+    if (end < begin) {
+        return 0;
+    }
+
+    uint32_t mapped = 0;
+    for (uint64_t addr = begin; addr < end; addr += PAGING64_PAGE_SIZE) {
+        uint64_t phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+        if (phys == 0) {
+            paging64_unmap_free_range(begin, mapped);
+            return 0;
+        }
+
+        if (!paging64_map_page(addr, phys, flags)) {
+            pmm64_free_block((void*)(uintptr_t)phys);
+            paging64_unmap_free_range(begin, mapped);
+            return 0;
+        }
+        mapped++;
+    }
+
+    if (out_page_count != 0) {
+        *out_page_count = mapped;
+    }
+    return 1;
+}
+
+extern "C" uint32_t paging64_unmap_free_range(uint64_t virt, uint32_t page_count) {
+    uint64_t begin = align_down_page(virt);
+    uint32_t unmapped = 0;
+
+    for (uint32_t page = 0; page < page_count; page++) {
+        uint64_t addr = begin + ((uint64_t)page * PAGING64_PAGE_SIZE);
+        uint64_t phys = paging64_get_phys(addr) & 0x000FFFFFFFFFF000ULL;
+        if (paging64_unmap_page(addr)) {
+            unmapped++;
+            if (phys != 0) {
+                pmm64_free_block((void*)(uintptr_t)phys);
+            }
+        }
+    }
+
+    return unmapped;
 }
 
 extern "C" uint64_t paging64_get_phys(uint64_t virt) {

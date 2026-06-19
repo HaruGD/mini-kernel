@@ -313,20 +313,14 @@ static void* pci_map_physical_range(uint64_t phys, uint64_t size) {
         return 0;
     }
 
-    uint64_t page_count = total_bytes / PAGING64_PAGE_SIZE;
-    for (uint64_t i = 0; i < page_count; i++) {
-        uint64_t virt = virt_base + (i * PAGING64_PAGE_SIZE);
-        uint64_t page_phys = aligned_phys + (i * PAGING64_PAGE_SIZE);
-        if (!paging64_map_page(virt, page_phys,
-                               PAGING64_FLAG_WRITABLE |
-                               PAGING64_FLAG_WRITE_THROUGH |
-                               PAGING64_FLAG_CACHE_DISABLE |
-                               PAGING64_FLAG_NX)) {
-            for (uint64_t rollback = 0; rollback < i; rollback++) {
-                paging64_unmap_page(virt_base + (rollback * PAGING64_PAGE_SIZE));
-            }
-            return 0;
-        }
+    if (!paging64_map_range(virt_base,
+                            aligned_phys,
+                            total_bytes,
+                            PAGING64_FLAG_WRITABLE |
+                            PAGING64_FLAG_WRITE_THROUGH |
+                            PAGING64_FLAG_CACHE_DISABLE |
+                            PAGING64_FLAG_NX)) {
+        return 0;
     }
 
     g_pci_mmio_next_virtual = virt_end;

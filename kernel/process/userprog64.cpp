@@ -276,23 +276,36 @@ void cleanup_user_process_mapping(Process* process) {
         return;
     }
 
-    for (uint32_t page = 0; page < process->code_page_count; page++) {
-        uint64_t virt = process->code_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-        uint64_t code_phys = paging64_get_phys(virt);
-        if (code_phys != 0) {
-            paging64_unmap_page(virt);
-            pmm64_free_block((void*)(uintptr_t)code_phys);
-        }
+    paging64_unmap_free_range(process->code_base, process->code_page_count);
+    paging64_unmap_free_range(process->stack_base, process->stack_page_count);
+}
+
+static int user_buffer_pages_mapped(const void* user_ptr, uint32_t size) {
+    if (size == 0) {
+        return 1;
+    }
+    if (user_ptr == 0) {
+        return 0;
     }
 
-    for (uint32_t page = 0; page < process->stack_page_count; page++) {
-        uint64_t virt = process->stack_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-        uint64_t stack_phys = paging64_get_phys(virt);
-        if (stack_phys != 0) {
-            paging64_unmap_page(virt);
-            pmm64_free_block((void*)(uintptr_t)stack_phys);
-        }
+    uint64_t start = (uint64_t)(uintptr_t)user_ptr;
+    uint64_t end = start + size - 1;
+    if (end < start) {
+        return 0;
     }
+
+    uint64_t page = start & ~(PAGING64_PAGE_SIZE - 1ULL);
+    uint64_t last_page = end & ~(PAGING64_PAGE_SIZE - 1ULL);
+    while (1) {
+        if (paging64_get_phys(page) == 0) {
+            return 0;
+        }
+        if (page == last_page) {
+            break;
+        }
+        page += PAGING64_PAGE_SIZE;
+    }
+    return 1;
 }
 
 int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
@@ -300,9 +313,15 @@ int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) 
         return 0;
     }
 
+    uint64_t checked_page = 0xFFFFFFFFFFFFFFFFULL;
     for (uint32_t i = 0; i < max_len - 1; i++) {
-        if (paging64_get_phys((uint64_t)(uintptr_t)(user_ptr + i)) == 0) {
-            return 0;
+        uint64_t addr = (uint64_t)(uintptr_t)(user_ptr + i);
+        uint64_t page = addr & ~(PAGING64_PAGE_SIZE - 1ULL);
+        if (page != checked_page) {
+            if (paging64_get_phys(page) == 0) {
+                return 0;
+            }
+            checked_page = page;
         }
 
         char c = user_ptr[i];
@@ -320,11 +339,11 @@ int copy_user_buffer(const uint8_t* user_ptr, uint8_t* kernel_buf, uint32_t size
     if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
         return 0;
     }
+    if (!user_buffer_pages_mapped(user_ptr, size)) {
+        return 0;
+    }
 
     for (uint32_t i = 0; i < size; i++) {
-        if (paging64_get_phys((uint64_t)(uintptr_t)(user_ptr + i)) == 0) {
-            return 0;
-        }
         kernel_buf[i] = user_ptr[i];
     }
     return 1;
@@ -334,11 +353,11 @@ int copy_kernel_to_user_buffer(uint8_t* user_ptr, const uint8_t* kernel_buf, uin
     if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
         return 0;
     }
+    if (!user_buffer_pages_mapped(user_ptr, size)) {
+        return 0;
+    }
 
     for (uint32_t i = 0; i < size; i++) {
-        if (paging64_get_phys((uint64_t)(uintptr_t)(user_ptr + i)) == 0) {
-            return 0;
-        }
         user_ptr[i] = kernel_buf[i];
     }
     return 1;

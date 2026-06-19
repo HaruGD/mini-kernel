@@ -120,22 +120,57 @@ void print_boot_info() {
 }
 
 void command_memstat() {
+    Pmm64Stats pmm_stats;
+    HeapStats heap_stats;
+    pmm64_get_stats(&pmm_stats);
+    heap_get_stats(&heap_stats);
+
     print("\nPMM total pages: ");
-    print_hex32(pmm64_get_total_block_count());
+    print_hex32(pmm_stats.total_blocks);
     print("\nPMM free pages: ");
-    print_hex32(pmm64_get_free_block_count());
+    print_hex32(pmm_stats.free_blocks);
+    print("\nPMM next hint: ");
+    print_hex32(pmm_stats.next_free_hint);
+    print("\nPMM alloc requests: ");
+    print_hex64(pmm_stats.alloc_requests);
+    print("\nPMM contiguous alloc requests: ");
+    print_hex64(pmm_stats.alloc_contiguous_requests);
+    print("\nPMM free requests: ");
+    print_hex64(pmm_stats.free_requests);
+    print("\nPMM alloc failures: ");
+    print_hex64(pmm_stats.alloc_failures);
+    print("\nPMM scan steps: ");
+    print_hex64(pmm_stats.alloc_scan_steps);
+    print("\nPMM peak used pages: ");
+    print_hex64(pmm_stats.peak_used_blocks);
     print("\nPaging root: ");
     print_hex64(paging64_get_root_phys());
     print("\nHeap used bytes: ");
-    print_hex64(heap_total_used());
+    print_hex64(heap_stats.used_bytes);
     print("\nHeap free bytes: ");
-    print_hex64(heap_total_free());
+    print_hex64(heap_stats.free_bytes);
     print("\nHeap mapped bytes: ");
-    print_hex64(heap_total_mapped_bytes());
+    print_hex64(heap_stats.mapped_bytes);
     print("\nHeap mapped pages: ");
-    print_hex32(heap_mapped_page_count());
+    print_hex32(heap_stats.mapped_pages);
     print("\nHeap regions: ");
-    print_hex32(heap_region_count());
+    print_hex32(heap_stats.region_count);
+    print("\nHeap peak used bytes: ");
+    print_hex64(heap_stats.peak_used_bytes);
+    print("\nHeap largest free bytes: ");
+    print_hex64(heap_stats.largest_free_bytes);
+    print("\nHeap alloc requests: ");
+    print_hex64(heap_stats.alloc_requests);
+    print("\nHeap free requests: ");
+    print_hex64(heap_stats.free_requests);
+    print("\nHeap alloc failures: ");
+    print_hex64(heap_stats.alloc_failures);
+    print("\nHeap invalid frees: ");
+    print_hex64(heap_stats.invalid_free_requests);
+    print("\nHeap double frees: ");
+    print_hex64(heap_stats.double_free_requests);
+    print("\nHeap grow requests: ");
+    print_hex32(heap_stats.grow_requests);
     if (boot_info_has_reserved_ranges(g_boot_info)) {
         uint32_t count = boot_reserved_range_count(g_boot_info);
         print("\nBoot reserved ranges: ");

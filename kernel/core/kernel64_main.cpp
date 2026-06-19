@@ -9,27 +9,11 @@ extern "C" uint8_t __kernel_data_end[];
 extern "C" uint8_t __kernel_bss_start[];
 extern "C" uint8_t __kernel_bss_end[];
 
-static uint64_t align_down_page(uint64_t value) {
-    return value & ~(PAGING64_PAGE_SIZE - 1ULL);
-}
-
-static uint64_t align_up_page(uint64_t value) {
-    return (value + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
-}
-
 static int remap_range_identity(uint64_t start, uint64_t end, uint64_t flags) {
     if (end <= start) {
         return 1;
     }
-
-    uint64_t page_start = align_down_page(start);
-    uint64_t page_end = align_up_page(end);
-    for (uint64_t addr = page_start; addr < page_end; addr += PAGING64_PAGE_SIZE) {
-        if (!paging64_map_page(addr, addr, flags)) {
-            return 0;
-        }
-    }
-    return 1;
+    return paging64_map_range_identity(start, end - start, flags);
 }
 
 static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
@@ -90,19 +74,11 @@ static int map_boot_framebuffer(const BootInfo* boot_info) {
         return 0;
     }
 
-    uint64_t start = boot_info->framebuffer_addr & ~(PAGING64_PAGE_SIZE - 1ULL);
-    uint64_t end = boot_info->framebuffer_addr + boot_info->framebuffer_size;
-    end = (end + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
     uint64_t flags = PAGING64_FLAG_WRITABLE |
                      PAGING64_FLAG_WRITE_THROUGH |
                      PAGING64_FLAG_CACHE_DISABLE |
                      PAGING64_FLAG_NX;
-    for (uint64_t addr = start; addr < end; addr += PAGING64_PAGE_SIZE) {
-        if (!paging64_map_page(addr, addr, flags)) {
-            return 0;
-        }
-    }
-    return 1;
+    return paging64_map_range_identity(boot_info->framebuffer_addr, boot_info->framebuffer_size, flags);
 }
 
 extern "C" void kernel64_main(const BootInfo* boot_info) {
