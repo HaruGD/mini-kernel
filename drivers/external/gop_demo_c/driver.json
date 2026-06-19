@@ -2,6 +2,7 @@
   "name": "gop_demo_c",
   "version": "0.1.0",
   "entry": "driver_entry",
+  "autoload": false,
   "permissions": ["DISPLAY"],
   "boot_modes": ["NORMAL"],
   "imports": {

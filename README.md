@@ -26,6 +26,7 @@ What works on the active 64-bit UEFI path:
 - kernel heap block guards, invalid-free and double-free diagnostics
 - kernel heap O(1) current/peak used accounting
 - kernel heap immediate adjacent-block coalescing with a doubly linked block list
+- kernel heap segregated free-list bins for faster free-block search
 - page-based user buffer validation for syscall copy helpers
 - kernel stack supplied by the UEFI loader
 - IDT, GDT/TSS, PIT, and keyboard IRQ handling
@@ -73,8 +74,9 @@ What works on the active 64-bit UEFI path:
 - driver IRQ hook registry for PIC IRQ lines
 - page-separated `.drv` code/data/BSS loading with executable code pages and NX data pages
 - stricter `.drv` ABI validation for arch, table shape, permissions, boot modes, sections, symbols, imports, exports, relocations, and signatures
-- boot-time `.drv` autoload from the FAT32 root
-- `hello.drv`, `hello_c.drv`, `hello_cpp.drv`, `provider_c.drv`, `consumer_c.drv`, `pci_probe_c.drv`, `gop_demo_c.drv`, and `irq_timer_c.drv` entry execution
+- boot-time `.drv` autoload from the FAT32 root with manifest `NO_AUTOLOAD` support
+- `hello.drv`, `hello_c.drv`, `hello_cpp.drv`, `provider_c.drv`, `consumer_c.drv`, `pci_probe_c.drv`, and `irq_timer_c.drv` entry execution
+- manual display demo loading through `gop_demo_c.drv`
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
 
 ## Build
@@ -254,10 +256,11 @@ The active kernel memory path is intentionally simple but instrumented:
 - Heap blocks carry a magic value, requested size, next/prev links, and free state.
 - `kfree()` coalesces only adjacent `prev`/`next` blocks instead of scanning the full heap.
 - Heap current and peak used bytes are maintained as counters.
+- `kmalloc()` searches segregated free-list bins before growing the heap.
 - Heap growth zeroes new regions with 64-bit stores.
 - `memstat` reports PMM and heap counters, allocation failures, largest free block, invalid frees, and double frees.
 
-The main remaining heap performance limit is first-fit free-block search in `kmalloc()`. A future allocator pass should add size bins or dedicated free lists.
+The main remaining heap performance limit is that very large or fragmented bins can still require a short linear scan inside a bin. A future allocator pass can tune bin sizes or add best-fit trees for large blocks.
 
 ## User Programs
 

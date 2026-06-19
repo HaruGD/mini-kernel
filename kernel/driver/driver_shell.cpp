@@ -443,7 +443,20 @@ static int load_drv_file_quiet(const char* path) {
     if (image == 0) {
         return DRIVER_LOAD_BAD_HEADER;
     }
-    int result = driver_manager_load_drv_image(image, bytes_read);
+
+    int result = driver_manager_validate_drv_image(image, bytes_read);
+    if (result != DRIVER_LOAD_OK) {
+        kfree(image);
+        return result;
+    }
+
+    const DrvHeader* header = (const DrvHeader*)image;
+    const DrvManifest* manifest = (const DrvManifest*)(image + header->manifest_offset);
+    if (manifest->flags & DRV_MANIFEST_FLAG_NO_AUTOLOAD) {
+        kfree(image);
+        return DRIVER_LOAD_POLICY_DENIED;
+    }
+    result = driver_manager_load_drv_image(image, bytes_read);
     kfree(image);
     return result;
 }

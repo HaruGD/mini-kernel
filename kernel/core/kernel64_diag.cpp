@@ -169,6 +169,12 @@ void command_memstat() {
     print_hex64(heap_stats.invalid_free_requests);
     print("\nHeap double frees: ");
     print_hex64(heap_stats.double_free_requests);
+    print("\nHeap free-list hits: ");
+    print_hex64(heap_stats.free_list_hits);
+    print("\nHeap free-list misses: ");
+    print_hex64(heap_stats.free_list_misses);
+    print("\nHeap free bins: ");
+    print_hex32(heap_stats.free_bin_count);
     print("\nHeap grow requests: ");
     print_hex32(heap_stats.grow_requests);
     if (boot_info_has_reserved_ranges(g_boot_info)) {

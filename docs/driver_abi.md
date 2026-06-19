@@ -91,12 +91,18 @@ Current rules:
 - `boot_modes` may only use `NORMAL`, `SAFE`, and `RECOVERY` bits.
 - `dependency_count` may be `0..8`.
 - `permissions` must only use known permission bits.
+- `flags` may use `NO_AUTOLOAD` (`0x00000001`) to opt out of boot-time
+  autoload while keeping manual `drvload` valid.
 
 When `dependency_count` is nonzero, dependency entries immediately follow
 `DrvManifest` inside the manifest block. Each dependency names another driver
 record that must already be present and at least `ready` by default. The
 autoload pass retries packages, so dependency order inside the FAT32 root does
 not need to be perfect.
+
+Packages marked `NO_AUTOLOAD` are skipped by the boot autoload pass. This is
+used for demonstration or diagnostic drivers that should only run when loaded
+manually.
 
 Current dependency entry fields:
 

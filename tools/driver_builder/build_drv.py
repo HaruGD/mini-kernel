@@ -22,6 +22,7 @@ DRV_RELOC_REL32 = 2
 DRV_BOOT_NORMAL = 0x00000001
 DRV_BOOT_SAFE = 0x00000002
 DRV_BOOT_RECOVERY = 0x00000004
+DRV_MANIFEST_FLAG_NO_AUTOLOAD = 0x00000001
 DRV_PERMISSION_PCI = 0x00000001
 DRV_PERMISSION_MMIO = 0x00000002
 DRV_PERMISSION_INTERRUPT = 0x00000004
@@ -75,6 +76,9 @@ BOOT_MODES = {
     "NORMAL": DRV_BOOT_NORMAL,
     "SAFE": DRV_BOOT_SAFE,
     "RECOVERY": DRV_BOOT_RECOVERY,
+}
+MANIFEST_FLAGS = {
+    "NO_AUTOLOAD": DRV_MANIFEST_FLAG_NO_AUTOLOAD,
 }
 
 
@@ -344,6 +348,9 @@ def load_manifest(args: argparse.Namespace) -> None:
     args.entry = manifest.get("entry", args.entry)
     args.permissions = parse_flag_list(manifest.get("permissions", args.permissions), PERMISSIONS, "permissions")
     args.boot_modes = parse_flag_list(manifest.get("boot_modes", args.boot_modes), BOOT_MODES, "boot_modes")
+    args.manifest_flags = parse_flag_list(manifest.get("flags", args.manifest_flags), MANIFEST_FLAGS, "flags")
+    if manifest.get("autoload") is False:
+        args.manifest_flags |= DRV_MANIFEST_FLAG_NO_AUTOLOAD
     args.export_specs = parse_export_specs(manifest.get("exports", args.export or []))
     args.import_permissions = parse_import_permissions(manifest.get("imports", {}))
     args.dependencies = parse_dependency_specs(manifest.get("dependencies", []))
@@ -512,7 +519,7 @@ def pack_drv(args: argparse.Namespace,
         zstr(args.entry, 32),
         args.permissions,
         args.boot_modes,
-        0,
+        args.manifest_flags,
         len(args.dependencies),
     )
     dependency_table = b"".join(
@@ -630,6 +637,7 @@ def main() -> int:
     parser.add_argument("--entry", default="driver_entry")
     parser.add_argument("--permissions", type=lambda value: int(value, 0), default=0)
     parser.add_argument("--boot-modes", dest="boot_modes", type=lambda value: int(value, 0), default=DRV_BOOT_NORMAL)
+    parser.add_argument("--manifest-flags", dest="manifest_flags", type=lambda value: int(value, 0), default=0)
     parser.add_argument("--export", action="append", default=[])
     args = parser.parse_args()
     args.export_specs = parse_export_specs(args.export)
