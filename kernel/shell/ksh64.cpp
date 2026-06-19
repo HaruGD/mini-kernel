@@ -224,8 +224,8 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, drivers, pci, drvinfo [path], drvcheck [path], drvload [path]");
-    print("\ndrvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear]");
+    print("\nfree, dump, sched, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
+    print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
@@ -251,6 +251,24 @@ static void command_gop(char* arg) {
         gop.clear(0x00000000);
         terminal.clear();
         print("\nGOP cleared.");
+        return;
+    }
+    if (arg != 0 && strcmp64(arg, "test") == 0) {
+        if (info == 0) {
+            print("\nGOP is not ready.");
+            return;
+        }
+        uint32_t box = info->width < info->height ? info->width : info->height;
+        if (box > 96) {
+            box = 96;
+        }
+        gop.fill_rect(0, 0, box, box, 0x00255EE8);
+        gop.fill_rect(box / 4, box / 4, box / 2, box / 2, 0x00F9A825);
+        for (uint32_t i = 0; i < box; i++) {
+            gop.putpixel(i, i, 0x00FFFFFF);
+            gop.putpixel(box - 1 - i, i, 0x00FFFFFF);
+        }
+        print("\nGOP test pattern drawn.");
         return;
     }
 
@@ -574,6 +592,10 @@ static void execute_command() {
         command_sched();
     } else if (strcmp64(cmd, "drivers") == 0) {
         command_drivers();
+    } else if (strcmp64(cmd, "bindings") == 0) {
+        command_bindings();
+    } else if (strcmp64(cmd, "irqhooks") == 0) {
+        command_irqhooks();
     } else if (strcmp64(cmd, "pci") == 0) {
         command_pci();
     } else if (strcmp64(cmd, "gop") == 0) {

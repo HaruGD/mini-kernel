@@ -60,6 +60,10 @@ typedef os64_i64 (*os64_pci_get_bar_fn)(const os64_pci_device_info* device, os64
 typedef void* (*os64_pci_map_bar_fn)(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out);
 typedef os64_i64 (*os64_pci_enable_memory_space_fn)(const os64_pci_device_info* device);
 typedef os64_i64 (*os64_pci_enable_bus_mastering_fn)(const os64_pci_device_info* device);
+typedef os64_i64 (*os64_pci_bind_device_fn)(const os64_pci_device_info* device, os64_u64 flags);
+typedef os64_u64 (*os64_irq_handler_fn)(os64_u64 irq);
+typedef os64_i64 (*os64_irq_register_fn)(os64_u64 irq, os64_irq_handler_fn handler);
+typedef os64_i64 (*os64_irq_unregister_fn)(os64_u64 irq, os64_irq_handler_fn handler);
 typedef os64_u32 (*os64_mmio_read32_fn)(os64_u64 address);
 typedef void (*os64_mmio_write32_fn)(os64_u64 address, os64_u32 value);
 typedef os64_i64 (*os64_vfs_open_fn)(const char* path, os64_u64 mode);
@@ -68,6 +72,10 @@ typedef os64_i64 (*os64_vfs_write_fn)(os64_u64 fd, const void* buffer, os64_u64 
 typedef os64_i64 (*os64_vfs_close_fn)(os64_u64 fd);
 typedef os64_i64 (*os64_block_read_sector_fn)(os64_u64 lba, void* buffer);
 typedef os64_i64 (*os64_block_write_sector_fn)(os64_u64 lba, const void* buffer);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 extern os64_klog_fn kernel__klog;
 extern os64_kmalloc_fn kernel__kmalloc;
@@ -85,6 +93,9 @@ extern os64_pci_get_bar_fn kernel__pci_get_bar;
 extern os64_pci_map_bar_fn kernel__pci_map_bar;
 extern os64_pci_enable_memory_space_fn kernel__pci_enable_memory_space;
 extern os64_pci_enable_bus_mastering_fn kernel__pci_enable_bus_mastering;
+extern os64_pci_bind_device_fn kernel__pci_bind_device;
+extern os64_irq_register_fn kernel__irq_register;
+extern os64_irq_unregister_fn kernel__irq_unregister;
 extern os64_mmio_read32_fn kernel__mmio_read32;
 extern os64_mmio_write32_fn kernel__mmio_write32;
 extern os64_vfs_open_fn kernel__vfs_open;
@@ -93,6 +104,10 @@ extern os64_vfs_write_fn kernel__vfs_write;
 extern os64_vfs_close_fn kernel__vfs_close;
 extern os64_block_read_sector_fn kernel__block_read_sector;
 extern os64_block_write_sector_fn kernel__block_write_sector;
+
+#ifdef __cplusplus
+}
+#endif
 
 #define OS64_EXPORT __attribute__((used))
 
@@ -158,6 +173,18 @@ static inline os64_i64 os64_pci_enable_memory_space(const os64_pci_device_info* 
 
 static inline os64_i64 os64_pci_enable_bus_mastering(const os64_pci_device_info* device) {
     return kernel__pci_enable_bus_mastering(device);
+}
+
+static inline os64_i64 os64_pci_bind_device(const os64_pci_device_info* device, os64_u64 flags) {
+    return kernel__pci_bind_device(device, flags);
+}
+
+static inline os64_i64 os64_irq_register(os64_u64 irq, os64_irq_handler_fn handler) {
+    return kernel__irq_register(irq, handler);
+}
+
+static inline os64_i64 os64_irq_unregister(os64_u64 irq, os64_irq_handler_fn handler) {
+    return kernel__irq_unregister(irq, handler);
 }
 
 static inline os64_u32 os64_mmio_read32(os64_u64 address) {

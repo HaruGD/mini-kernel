@@ -4,6 +4,7 @@
 
 static DriverRecord g_drivers[DRIVER_MAX_RECORDS];
 static DriverLoadDiagnostics g_last_error;
+static char g_lifecycle_driver[32];
 
 static void clear_driver_record(DriverRecord* record) {
     if (record == 0) {
@@ -22,6 +23,7 @@ void driver_manager_init() {
     for (uint32_t i = 0; i < DRIVER_MAX_RECORDS; i++) {
         clear_driver_record(&g_drivers[i]);
     }
+    g_lifecycle_driver[0] = '\0';
     driver_manager_clear_last_error();
 }
 
@@ -163,6 +165,10 @@ const DriverRecord* driver_manager_get(uint32_t index) {
     return 0;
 }
 
+const DriverRecord* driver_manager_find(const char* name) {
+    return find_driver_by_name(name);
+}
+
 const char* driver_state_name(uint32_t state) {
     if (state == DRIVER_STATE_REGISTERED) return "registered";
     if (state == DRIVER_STATE_READY) return "ready";
@@ -183,6 +189,14 @@ const char* driver_kind_name(uint32_t kind) {
     if (kind == DRIVER_KIND_DISPLAY) return "display";
     if (kind == DRIVER_KIND_MODULE) return "module";
     return "unknown";
+}
+
+void driver_manager_set_lifecycle_driver(const char* name) {
+    copy_string64(g_lifecycle_driver, sizeof(g_lifecycle_driver), name != 0 ? name : "");
+}
+
+const char* driver_manager_current_lifecycle_driver() {
+    return g_lifecycle_driver[0] != '\0' ? g_lifecycle_driver : 0;
 }
 
 void driver_manager_clear_last_error() {

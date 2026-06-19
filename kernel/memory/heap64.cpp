@@ -73,7 +73,9 @@ static struct heap_header* append_region(uint32_t bytes) {
             return 0;
         }
 
-        if (!paging64_map_page(virt, phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_GLOBAL)) {
+        if (!paging64_map_page(virt,
+                               phys,
+                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_GLOBAL | PAGING64_FLAG_NX)) {
             pmm64_free_block((void*)(uintptr_t)phys);
             for (uint32_t rollback = 0; rollback < i; rollback++) {
                 uint64_t rollback_virt = region + ((uint64_t)rollback * PMM64_PAGE_SIZE);

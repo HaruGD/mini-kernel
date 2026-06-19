@@ -293,6 +293,58 @@ static void puts16(CHAR16* text) {
     }
 }
 
+static void puts_ascii(const char* text) {
+    if (text == 0 || g_st == 0 || g_st->con_out == 0 || g_st->con_out->output_string == 0) {
+        return;
+    }
+
+    CHAR16 buffer[96];
+    UINTN index = 0;
+    while (*text != 0) {
+        buffer[index++] = (CHAR16)(UINT8)*text++;
+        if (index == 95 || *text == 0) {
+            buffer[index] = 0;
+            g_st->con_out->output_string(g_st->con_out, buffer);
+            index = 0;
+        }
+    }
+}
+
+static void puts_hex64(UINT64 value) {
+    static const char digits[] = "0123456789ABCDEF";
+    CHAR16 buffer[19];
+    buffer[0] = '0';
+    buffer[1] = 'x';
+    for (UINTN i = 0; i < 16; i++) {
+        UINTN shift = (15 - i) * 4;
+        buffer[2 + i] = (CHAR16)digits[(value >> shift) & 0xFULL];
+    }
+    buffer[18] = 0;
+    puts16(buffer);
+}
+
+static void log_step(const char* text) {
+    puts_ascii("[uefi] ");
+    puts_ascii(text);
+    puts_ascii("\r\n");
+}
+
+static void log_value(const char* label, UINT64 value) {
+    puts_ascii("[uefi] ");
+    puts_ascii(label);
+    puts_ascii("=");
+    puts_hex64(value);
+    puts_ascii("\r\n");
+}
+
+static void log_status(const char* label, EFI_STATUS status) {
+    puts_ascii("[uefi] ");
+    puts_ascii(label);
+    puts_ascii(" status=");
+    puts_hex64(status);
+    puts_ascii("\r\n");
+}
+
 static void stall_seconds(UINTN seconds) {
     if (g_bs == 0 || g_bs->stall == 0) {
         return;
@@ -558,34 +610,42 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     static CHAR16 jump_msg[] = {'E','x','i','t','i','n','g',' ','U','E','F','I',' ','a','n','d',' ','j','u','m','p','i','n','g',' ','i','n',' ','3','s','.','.','.','\r','\n',0};
 
     puts16(start_msg);
+    log_step("loader start");
     g_bs->set_watchdog_timer(0, 0, 0, 0);
+    log_step("watchdog disabled");
 
     EFI_PHYSICAL_ADDRESS kernel_temp_phys = 0;
     if (!allocate_any_below_4g(KERNEL_MAX_PAGES, &kernel_temp_phys)) {
         return fail_with_pause(temp_alloc_fail_msg, EFI_NOT_FOUND);
     }
+    log_value("kernel temp", kernel_temp_phys);
 
     EFI_FILE_PROTOCOL* kernel = open_kernel_file(image_handle);
     if (kernel == 0) {
         return fail_with_pause(no_kernel_msg, EFI_NOT_FOUND);
     }
+    log_step("kernel file opened");
 
     UINTN kernel_size = read_kernel(kernel, (UINT8*)(uintptr_t)kernel_temp_phys);
     kernel->close(kernel);
     if (kernel_size == 0) {
         return fail_with_pause(read_fail_msg, EFI_NOT_FOUND);
     }
+    log_value("kernel bytes", kernel_size);
 
     if (!allocate_fixed_pages(KERNEL_LOAD_ADDR, KERNEL_RUNTIME_RESERVE_PAGES)) {
         return fail_with_pause(kernel_alloc_fail_msg, EFI_NOT_FOUND);
     }
     UINTN kernel_reserved_size = KERNEL_RUNTIME_RESERVE_SIZE;
     memcpy64((void*)(uintptr_t)KERNEL_LOAD_ADDR, (const void*)(uintptr_t)kernel_temp_phys, kernel_size);
+    log_value("kernel load", KERNEL_LOAD_ADDR);
+    log_value("kernel reserve bytes", kernel_reserved_size);
 
     EFI_PHYSICAL_ADDRESS ramdisk_phys = 0;
     UINTN ramdisk_size = 0;
     EFI_FILE_PROTOCOL* ramdisk_file = open_ramdisk_file(image_handle);
     if (ramdisk_file != 0) {
+        log_step("ramdisk file opened");
         if (!allocate_any_below_4g(RAMDISK_MAX_PAGES, &ramdisk_phys)) {
             return fail_with_pause(ramdisk_alloc_fail_msg, EFI_NOT_FOUND);
         }
@@ -594,10 +654,18 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         if (ramdisk_size == 0) {
             ramdisk_phys = 0;
         }
+        log_value("ramdisk addr", ramdisk_phys);
+        log_value("ramdisk bytes", ramdisk_size);
+    } else {
+        log_step("ramdisk file missing");
     }
 
     FramebufferInfo framebuffer_info;
     collect_framebuffer_info(&framebuffer_info);
+    log_value("gop fb", framebuffer_info.base);
+    log_value("gop fb bytes", framebuffer_info.size);
+    log_value("gop width", framebuffer_info.width);
+    log_value("gop height", framebuffer_info.height);
 
     EFI_PHYSICAL_ADDRESS boot_info_phys = BOOT_INFO_ADDR;
     if (!allocate_fixed_pages(boot_info_phys, 1)) {
@@ -605,6 +673,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
             return fail_with_pause(bootinfo_alloc_fail_msg, EFI_NOT_FOUND);
         }
     }
+    log_value("bootinfo addr", boot_info_phys);
 
     EFI_PHYSICAL_ADDRESS table_phys = 0x5000;
     uint64_t pml4_phys = 0x5000;
@@ -615,6 +684,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         pml4_phys = table_phys;
     }
     build_identity_tables(table_phys, &framebuffer_info);
+    log_value("pml4 addr", pml4_phys);
 
     EFI_PHYSICAL_ADDRESS kernel_stack_phys = 0;
     if (!allocate_any_below_4g(KERNEL_STACK_PAGES, &kernel_stack_phys)) {
@@ -622,6 +692,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     }
     uint64_t kernel_stack_size = KERNEL_STACK_PAGES * PAGE_SIZE;
     uint64_t kernel_stack_top = kernel_stack_phys + kernel_stack_size;
+    log_value("kernel stack base", kernel_stack_phys);
+    log_value("kernel stack top", kernel_stack_top);
 
     UINTN map_size = 0;
     UINTN map_key = 0;
@@ -629,11 +701,15 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     UINT32 desc_version = 0;
     g_bs->get_memory_map(&map_size, 0, &map_key, &desc_size, &desc_version);
     UINTN map_capacity = map_size + desc_size * 128;
+    log_value("mmap initial bytes", map_size);
+    log_value("mmap desc bytes", desc_size);
+    log_value("mmap capacity", map_capacity);
 
     EFI_MEMORY_DESCRIPTOR* memory_map = 0;
     if (g_bs->allocate_pool(EFI_LOADER_DATA, map_capacity, (void**)&memory_map) != EFI_SUCCESS) {
         return fail_with_pause(mmap_alloc_fail_msg, EFI_NOT_FOUND);
     }
+    log_step("memory map buffer allocated");
 
     puts16(jump_msg);
     stall_seconds(3);
@@ -642,10 +718,13 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     E820Entry* e820 = (E820Entry*)((UINT8*)boot_info + sizeof(BootInfo));
 
     EFI_STATUS status = EFI_NOT_FOUND;
+    log_step("enter ExitBootServices loop");
     for (uint32_t attempt = 0; attempt < 5; attempt++) {
+        log_value("exit attempt", attempt);
         map_size = map_capacity;
         status = g_bs->get_memory_map(&map_size, memory_map, &map_key, &desc_size, &desc_version);
         if (status != EFI_SUCCESS) {
+            log_status("get_memory_map", status);
             break;
         }
 
@@ -696,6 +775,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         if (status == EFI_SUCCESS) {
             break;
         }
+        log_status("ExitBootServices retry", status);
     }
 
     if (status != EFI_SUCCESS) {

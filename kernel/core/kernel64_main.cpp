@@ -1,5 +1,86 @@
 #include "drivers/gop.h"
 
+extern "C" uint8_t __kernel_text_start[];
+extern "C" uint8_t __kernel_text_end[];
+extern "C" uint8_t __kernel_rodata_start[];
+extern "C" uint8_t __kernel_rodata_end[];
+extern "C" uint8_t __kernel_data_start[];
+extern "C" uint8_t __kernel_data_end[];
+extern "C" uint8_t __kernel_bss_start[];
+extern "C" uint8_t __kernel_bss_end[];
+
+static uint64_t align_down_page(uint64_t value) {
+    return value & ~(PAGING64_PAGE_SIZE - 1ULL);
+}
+
+static uint64_t align_up_page(uint64_t value) {
+    return (value + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
+}
+
+static int remap_range_identity(uint64_t start, uint64_t end, uint64_t flags) {
+    if (end <= start) {
+        return 1;
+    }
+
+    uint64_t page_start = align_down_page(start);
+    uint64_t page_end = align_up_page(end);
+    for (uint64_t addr = page_start; addr < page_end; addr += PAGING64_PAGE_SIZE) {
+        if (!paging64_map_page(addr, addr, flags)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
+    if (boot_info == 0 || boot_info->size < sizeof(BootInfo)) {
+        return 0;
+    }
+
+    int ok = 1;
+    for (uint32_t i = 0; i < boot_info->reserved_range_count; i++) {
+        const BootReservedRange* range = &boot_info->reserved_ranges[i];
+        if (range->type == BOOT_RESERVED_RANGE_KERNEL ||
+            range->type == BOOT_RESERVED_RANGE_FRAMEBUFFER) {
+            continue;
+        }
+        uint64_t flags = PAGING64_FLAG_NX;
+        if (range->type == BOOT_RESERVED_RANGE_PAGE_TABLES ||
+            range->type == BOOT_RESERVED_RANGE_KERNEL_STACK ||
+            range->type == BOOT_RESERVED_RANGE_RAMDISK ||
+            range->type == BOOT_RESERVED_RANGE_BOOT_INFO) {
+            flags |= PAGING64_FLAG_WRITABLE;
+        }
+        if (!remap_range_identity(range->base, range->base + range->size, flags)) {
+            ok = 0;
+        }
+    }
+    return ok;
+}
+
+static int apply_kernel_nx_policy(const BootInfo* boot_info) {
+    paging64_enable_nxe();
+    if (!paging64_is_nxe_enabled()) {
+        return 0;
+    }
+
+    int ok = 1;
+    ok &= remap_range_identity((uint64_t)(uintptr_t)__kernel_text_start,
+                               (uint64_t)(uintptr_t)__kernel_text_end,
+                               0);
+    ok &= remap_range_identity((uint64_t)(uintptr_t)__kernel_rodata_start,
+                               (uint64_t)(uintptr_t)__kernel_rodata_end,
+                               PAGING64_FLAG_NX);
+    ok &= remap_range_identity((uint64_t)(uintptr_t)__kernel_data_start,
+                               (uint64_t)(uintptr_t)__kernel_data_end,
+                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX);
+    ok &= remap_range_identity((uint64_t)(uintptr_t)__kernel_bss_start,
+                               (uint64_t)(uintptr_t)__kernel_bss_end,
+                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX);
+    ok &= protect_boot_reserved_ranges(boot_info);
+    return ok;
+}
+
 static int map_boot_framebuffer(const BootInfo* boot_info) {
     if (boot_info == 0 ||
         boot_info->size < sizeof(BootInfo) ||
@@ -12,7 +93,10 @@ static int map_boot_framebuffer(const BootInfo* boot_info) {
     uint64_t start = boot_info->framebuffer_addr & ~(PAGING64_PAGE_SIZE - 1ULL);
     uint64_t end = boot_info->framebuffer_addr + boot_info->framebuffer_size;
     end = (end + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
-    uint64_t flags = PAGING64_FLAG_WRITABLE | PAGING64_FLAG_WRITE_THROUGH | PAGING64_FLAG_CACHE_DISABLE;
+    uint64_t flags = PAGING64_FLAG_WRITABLE |
+                     PAGING64_FLAG_WRITE_THROUGH |
+                     PAGING64_FLAG_CACHE_DISABLE |
+                     PAGING64_FLAG_NX;
     for (uint64_t addr = start; addr < end; addr += PAGING64_PAGE_SIZE) {
         if (!paging64_map_page(addr, addr, flags)) {
             return 0;
@@ -67,6 +151,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
 
     pmm64_init(boot_info);
     paging64_init();
+    int nx_policy_applied = apply_kernel_nx_policy(g_boot_info);
     int framebuffer_mapped = map_boot_framebuffer(g_boot_info);
     if (framebuffer_mapped) {
         gop.init_from_boot_info(g_boot_info);
@@ -112,6 +197,9 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print("\n");
     print("Framebuffer mapped: ");
     print_hex32((uint32_t)framebuffer_mapped);
+    print("\n");
+    print("NX policy: ");
+    print_hex32((uint32_t)nx_policy_applied);
     print("\n");
     print("Driver autoloaded: ");
     print_hex32(autoloaded_drivers);

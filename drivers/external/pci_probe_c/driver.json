@@ -6,6 +6,7 @@
   "boot_modes": ["NORMAL"],
   "imports": {
     "kernel.klog": [],
-    "kernel.pci_read_config32": ["PCI"]
+    "kernel.pci_read_config32": ["PCI"],
+    "kernel.pci_bind_device": ["PCI"]
   }
 }

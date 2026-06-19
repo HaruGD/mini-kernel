@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "drivers/gop.h"
+#include "kernel/driver/driver_manager.h"
 #include "kernel/pci.h"
 
 extern "C" void driver_klog(const char* text);
@@ -22,6 +23,9 @@ extern "C" int64_t driver_pci_get_bar(const PCIDeviceInfo* device, uint64_t bar_
 extern "C" void* driver_pci_map_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out);
 extern "C" int64_t driver_pci_enable_memory_space(const PCIDeviceInfo* device);
 extern "C" int64_t driver_pci_enable_bus_mastering(const PCIDeviceInfo* device);
+extern "C" int64_t driver_pci_bind_device(const PCIDeviceInfo* device, uint64_t flags);
+extern "C" int64_t driver_irq_register(uint64_t irq, DriverIrqHandler handler);
+extern "C" int64_t driver_irq_unregister(uint64_t irq, DriverIrqHandler handler);
 extern "C" uint32_t driver_mmio_read32(uint64_t address);
 extern "C" void driver_mmio_write32(uint64_t address, uint32_t value);
 extern "C" int64_t driver_vfs_open(const char* path, uint64_t mode);

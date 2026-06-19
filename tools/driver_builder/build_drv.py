@@ -29,6 +29,7 @@ DRV_PERMISSION_BLOCK = 0x00000008
 DRV_PERMISSION_VFS = 0x00000010
 DRV_PERMISSION_INPUT = 0x00000020
 DRV_PERMISSION_TIMER = 0x00000040
+DRV_PERMISSION_DISPLAY = 0x00000080
 
 SHT_NULL = 0
 SHT_PROGBITS = 1
@@ -58,6 +59,7 @@ SYMBOL_FORMAT = "<48sIIQQ"
 IMPORT_FORMAT = "<32s48sIIQ"
 EXPORT_FORMAT = "<48sIIQ"
 RELOCATION_FORMAT = "<IIQQq"
+DEPENDENCY_FORMAT = "<32sII"
 
 PERMISSIONS = {
     "PCI": DRV_PERMISSION_PCI,
@@ -67,6 +69,7 @@ PERMISSIONS = {
     "VFS": DRV_PERMISSION_VFS,
     "INPUT": DRV_PERMISSION_INPUT,
     "TIMER": DRV_PERMISSION_TIMER,
+    "DISPLAY": DRV_PERMISSION_DISPLAY,
 }
 BOOT_MODES = {
     "NORMAL": DRV_BOOT_NORMAL,
@@ -126,6 +129,13 @@ class ImportOut:
     patch_offset: int
 
 
+@dataclass
+class DependencyOut:
+    name: str
+    flags: int
+    min_state: int
+
+
 def zstr(text: str, size: int) -> bytes:
     data = text.encode("ascii")
     if len(data) >= size:
@@ -154,6 +164,20 @@ def section_kind(section: ElfSection) -> int:
     if section.flags & SHF_WRITE:
         return DRV_SECTION_DATA
     return DRV_SECTION_RODATA
+
+
+def drv_section_name(section: ElfSection, index: int, kind: int) -> str:
+    if 0 < len(section.name.encode("ascii", errors="ignore")) < 16:
+        return section.name
+    if kind == DRV_SECTION_CODE:
+        return f".text.{index}"
+    if kind == DRV_SECTION_RODATA:
+        return f".rodata.{index}"
+    if kind == DRV_SECTION_DATA:
+        return f".data.{index}"
+    if kind == DRV_SECTION_BSS:
+        return f".bss.{index}"
+    return f".sec.{index}"
 
 
 def parse_elf(path: Path) -> tuple[bytes, list[ElfSection], list[ElfSymbol], int]:
@@ -281,6 +305,31 @@ def parse_import_permissions(value) -> dict[str, int]:
     return imports
 
 
+def parse_dependency_specs(value) -> list[DependencyOut]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SystemExit("dependencies: expected list")
+
+    dependencies: list[DependencyOut] = []
+    for item in value:
+        if isinstance(item, str):
+            validate_ascii_name(item, "dependencies.name", 32)
+            dependencies.append(DependencyOut(item, 1, 2))
+            continue
+        if isinstance(item, dict):
+            name = item.get("name")
+            validate_ascii_name(name, "dependencies.name", 32)
+            flags = int(item.get("flags", 1))
+            min_state = int(item.get("min_state", 2))
+            dependencies.append(DependencyOut(name, flags, min_state))
+            continue
+        raise SystemExit("dependencies: expected string or object")
+    if len(dependencies) > 8:
+        raise SystemExit("dependencies: too many entries")
+    return dependencies
+
+
 def load_manifest(args: argparse.Namespace) -> None:
     if args.manifest is None:
         return
@@ -297,6 +346,7 @@ def load_manifest(args: argparse.Namespace) -> None:
     args.boot_modes = parse_flag_list(manifest.get("boot_modes", args.boot_modes), BOOT_MODES, "boot_modes")
     args.export_specs = parse_export_specs(manifest.get("exports", args.export or []))
     args.import_permissions = parse_import_permissions(manifest.get("imports", {}))
+    args.dependencies = parse_dependency_specs(manifest.get("dependencies", []))
 
 
 def normalized_reloc_addend(reloc_type: int, addend: int) -> int:
@@ -321,7 +371,12 @@ def build_drv(args: argparse.Namespace) -> bytes:
         kind = section_kind(section)
         data = b"" if section.sh_type == SHT_NOBITS else elf_data[section.offset:section.offset + section.size]
         elf_to_drv[index] = len(selected)
-        selected.append(DrvSectionOut(section.name, kind, data, section.size, max(section.align, 1), index))
+        selected.append(DrvSectionOut(drv_section_name(section, len(selected), kind),
+                                      kind,
+                                      data,
+                                      section.size,
+                                      max(section.align, 1),
+                                      index))
 
     if not selected:
         raise SystemExit(f"{args.object}: no allocatable sections found")
@@ -458,7 +513,11 @@ def pack_drv(args: argparse.Namespace,
         args.permissions,
         args.boot_modes,
         0,
-        0,
+        len(args.dependencies),
+    )
+    dependency_table = b"".join(
+        struct.pack(DEPENDENCY_FORMAT, zstr(item.name, 32), item.flags, item.min_state)
+        for item in args.dependencies
     )
     section_table_placeholder = b"".join(
         struct.pack(SECTION_FORMAT, zstr(section.name, 16), section.kind, 0, 0, len(section.data), section.memory_size, section.alignment)
@@ -487,7 +546,7 @@ def pack_drv(args: argparse.Namespace,
     )
 
     manifest_offset = header_size
-    section_table_offset = manifest_offset + len(manifest)
+    section_table_offset = manifest_offset + len(manifest) + len(dependency_table)
     symbol_table_offset = section_table_offset + len(section_table_placeholder)
     import_table_offset = symbol_table_offset + len(symbol_table)
     export_table_offset = import_table_offset + len(import_table)
@@ -527,7 +586,7 @@ def pack_drv(args: argparse.Namespace,
         0,
         file_size,
         manifest_offset,
-        len(manifest),
+        len(manifest) + len(dependency_table),
         section_table_offset,
         len(sections),
         section_entry_size,
@@ -551,6 +610,7 @@ def pack_drv(args: argparse.Namespace,
     return b"".join([
         header,
         manifest,
+        dependency_table,
         b"".join(section_entries),
         symbol_table,
         import_table,
@@ -574,6 +634,7 @@ def main() -> int:
     args = parser.parse_args()
     args.export_specs = parse_export_specs(args.export)
     args.import_permissions = {}
+    args.dependencies = []
     load_manifest(args)
     if not args.name:
         raise SystemExit("--name or manifest name is required")

@@ -320,7 +320,8 @@ static void* pci_map_physical_range(uint64_t phys, uint64_t size) {
         if (!paging64_map_page(virt, page_phys,
                                PAGING64_FLAG_WRITABLE |
                                PAGING64_FLAG_WRITE_THROUGH |
-                               PAGING64_FLAG_CACHE_DISABLE)) {
+                               PAGING64_FLAG_CACHE_DISABLE |
+                               PAGING64_FLAG_NX)) {
             for (uint64_t rollback = 0; rollback < i; rollback++) {
                 paging64_unmap_page(virt_base + (rollback * PAGING64_PAGE_SIZE));
             }

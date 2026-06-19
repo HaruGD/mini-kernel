@@ -1,9 +1,10 @@
 {
-  "name": "consumer_c",
+  "name": "hello_cpp",
   "version": "0.1.0",
   "entry": "driver_entry",
   "permissions": [],
   "boot_modes": ["NORMAL"],
-  "dependencies": ["provider_c"],
-  "exports": []
+  "imports": {
+    "kernel.klog": []
+  }
 }

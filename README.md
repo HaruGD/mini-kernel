@@ -2,6 +2,8 @@
 
 Experimental x86 OS project for learning low-level systems work by building a 64-bit kernel, a small C-based userland, a VFS stack, and a UEFI boot path.
 
+This project is developed by a non-professional developer with heavy AI assistance for learning and experimentation.
+
 The current active path is:
 
 ```text
@@ -47,19 +49,26 @@ What works on the active 64-bit UEFI path:
 - kernel driver manager prototype
 - PCI discovery and device listing
 - `.drv` package validation and loading
-- ELF object based `.drv` builder for C kernel drivers
+- ELF object based `.drv` builder for C and restricted freestanding C++ kernel drivers
+- C ABI driver boundary with optional C/C++ internal implementation
 - manifest-based external driver projects under `drivers/external/`
 - separate unsigned builder and `.drv` signer
 - signature ABI v1 with `LOCAL_TEST`, `ROOT_KEY`, and `TPM_LOCAL` algorithm slots
 - local test signature validation for `.drv` packages
 - kernel export/import resolution
 - driver-to-driver export/import resolution
+- manifest dependency table resolution
 - bounded `.drv` load state transitions with failed/rejected diagnostics
 - module export rollback when `.drv` load or entry execution fails
 - `.drv` unload/reload commands with dependent-driver unload protection
 - kernel hardware exports for PCI config I/O, MMIO32, VFS handles, and ATA sector I/O
+- kernel display exports for GOP framebuffer info and drawing primitives
+- driver PCI probe/bind registry
+- driver IRQ hook registry for PIC IRQ lines
+- page-separated `.drv` code/data/BSS loading with executable code pages and NX data pages
+- stricter `.drv` ABI validation for arch, table shape, permissions, boot modes, sections, symbols, imports, exports, relocations, and signatures
 - boot-time `.drv` autoload from the FAT32 root
-- `hello.drv`, `hello_c.drv`, `provider_c.drv`, `consumer_c.drv`, and `pci_probe_c.drv` entry execution
+- `hello.drv`, `hello_c.drv`, `hello_cpp.drv`, `provider_c.drv`, `consumer_c.drv`, `pci_probe_c.drv`, `gop_demo_c.drv`, and `irq_timer_c.drv` entry execution
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
 
 ## Build
@@ -97,6 +106,12 @@ Important active artifacts:
   Hand-built test driver package loaded from the FAT32 root filesystem.
 - `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`
   C driver packages produced from `drivers/external/*/driver.c`, `driver.json`, and the separate signer.
+- `bin/hello_cpp.drv`
+  Minimal C++ driver package produced from `drivers/external/hello_cpp/driver.cpp`.
+- `bin/gop_demo_c.drv`
+  Minimal display-permission driver that draws through the kernel GOP exports.
+- `bin/irq_timer_c.drv`
+  Minimal interrupt-permission driver that registers an IRQ0 hook.
 
 ## Run
 
@@ -115,6 +130,16 @@ Equivalent helper:
 `run.sh` calls `build.sh`, embeds the FAT32 root image into the UEFI image as `OS64.BIN`, refreshes OVMF vars, and starts QEMU from that single boot image. `run_uefi.sh` is a compatibility wrapper around `run.sh`.
 
 Legacy helpers such as `run32.sh`, `run64.sh`, and `reset.sh` are disabled on the active path. The active run path is UEFI-only.
+
+Run a more real-hardware-like QEMU profile:
+
+```sh
+./run_realish.sh
+```
+
+This uses Q35, 8GB RAM, xHCI USB, e1000e networking, UEFI, and separate logs under `logs/serial_q35_8g.log` and `logs/qemu_q35_8g.log`.
+
+The current OS keyboard driver is PS/2-based, so this profile keeps QEMU's default PS/2 keyboard path by default. Use `REALISH_USB_KBD=1 ./run_realish.sh` only when testing future USB HID keyboard support.
 
 ## Boot Layout
 
@@ -154,7 +179,10 @@ Common commands:
 - `dump`
 - `sched`
 - `drivers`
+- `bindings`
+- `irqhooks`
 - `pci`
+- `gop [clear|test]`
 - `drvinfo [path]`
 - `drvcheck [path]`
 - `drvload [path]`
@@ -314,11 +342,19 @@ FAT32 still stores internal short aliases as required by the FAT32 LFN format, b
 
 The driver manager is an early kernel-driver runtime.
 
+Driver language policy:
+
+- the kernel-to-driver boundary is C ABI
+- lifecycle/probe/export symbols must be unmangled C symbols
+- driver internals may be C or restricted freestanding C++
+- C++ drivers must not depend on exceptions, RTTI, STL, global constructors, or thread-safe static initialization
+
 Built-in drivers currently registered:
 
 - `ata0`
 - `fat32`
 - `gop`
+  UEFI GOP framebuffer display service. It is marked `ready` only when the UEFI framebuffer handoff is valid.
 - `keyboard`
 - `pit`
 
@@ -332,6 +368,8 @@ Kernel exports currently available:
 - `kernel.gop_putpixel`
 - `kernel.gop_fill_rect`
 - PCI config, BAR, and enable helpers
+- PCI bind helper
+- IRQ register/unregister helpers
 - MMIO32 helpers
 - VFS handle helpers
 - ATA sector helpers
@@ -340,6 +378,8 @@ Supported commands:
 
 ```text
 OS64> drivers
+OS64> bindings
+OS64> irqhooks
 OS64> drvinfo consumer_c.drv
 OS64> drvcheck hello.drv
 OS64> drvload hello.drv
@@ -360,22 +400,30 @@ Implemented pieces:
 
 - `.drv` header validation
 - manifest validation
+- arch, boot-mode, permission, table, and relocation shape validation
+- manifest dependency table resolution
 - local test signature v0 validation
 - unsigned builder output rejected by the kernel
 - reserved signature algorithms for future root-key and TPM-local signing
 - section loading
+- section loading into a dedicated driver virtual address range
 - import resolution
 - manifest-declared import permission checks
+- `DISPLAY`-permission GOP imports through `gop_demo_c.drv`
 - import patching into loaded sections
 - ABS64 and REL32 relocation application
 - `driver_entry()` invocation
 - driver export-table registration
 - driver-to-driver import/export calls
+- optional `driver_probe_pci()` probing
+- PCI device bind registry
+- IRQ hook register/unregister and dispatch
 - boot-time `.drv` autoload with retry passes for dependency ordering
 - driver state transition to `ready`
 - unload/reload with dependent-driver protection
 - detailed load diagnostics for failed import/relocation/signature paths
-- `new/delete` and `new[]/delete[]` use in the loader
+- page-level code/data permissions for loaded `.drv` packages
+- `new/delete` use for loader metadata
 
 Not implemented yet:
 
@@ -383,7 +431,6 @@ Not implemented yet:
 - actual TPM hardware command path
 - explicit dependency metadata and dependency-sorted loading
 - full stop lifecycle for real hardware devices
-- page-level code/data permissions
 - isolation from kernel address space
 
 ## Repo Layout
@@ -403,7 +450,7 @@ Not implemented yet:
 - `drivers/builtin/`
   Terminal, GOP display, keyboard, PIT, and ATA built into the kernel.
 - `drivers/external/`
-  External C driver projects, SDK header, and per-driver manifests.
+  External C/C++ driver projects, SDK header, and per-driver manifests.
 - `fs/`
   VFS, FAT32, and memfs.
 - `user/programs/`

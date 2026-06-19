@@ -10,6 +10,7 @@ SECTION_FORMAT = "<16sIIQQQQ"
 IMPORT_FORMAT = "<32s48sIIQ"
 EXPORT_FORMAT = "<48sIIQ"
 RELOCATION_FORMAT = "<IIQQq"
+DEPENDENCY_FORMAT = "<32sII"
 SIGNATURE_FORMAT = "<QIIIIQQQQ"
 CERTIFICATE_FORMAT = "<QII32s"
 
@@ -54,6 +55,7 @@ def permission_names(value: int) -> str:
         (0x00000010, "VFS"),
         (0x00000020, "INPUT"),
         (0x00000040, "TIMER"),
+        (0x00000080, "DISPLAY"),
     ]
     text = [name for bit, name in names if value & bit]
     return "|".join(text) if text else "-"
@@ -111,9 +113,14 @@ def main() -> int:
     print(f"file={path}")
     print(f"name={cstr(manifest[0])} version={cstr(manifest[1])} entry={cstr(manifest[2])}")
     print(f"permissions={permission_names(manifest[3])} boot_modes=0x{manifest[4]:08x}")
-    print(f"sections={header[9]} symbols={header[12]} imports={header[15]} exports={header[18]} relocs={header[21]}")
+    print(f"sections={header[9]} symbols={header[12]} imports={header[15]} exports={header[18]} relocs={header[21]} deps={manifest[6]}")
     print(f"signature={check_signature(image, header)}")
 
+    dep_offset = header[6] + struct.calcsize(MANIFEST_FORMAT)
+    for index in range(manifest[6]):
+        off = dep_offset + index * struct.calcsize(DEPENDENCY_FORMAT)
+        item = struct.unpack_from(DEPENDENCY_FORMAT, image, off)
+        print(f"dep[{index}] {cstr(item[0])} flags=0x{item[1]:08x} min_state={item[2]}")
     for index in range(header[9]):
         off = header[8] + index * header[10]
         section = struct.unpack_from(SECTION_FORMAT, image, off)

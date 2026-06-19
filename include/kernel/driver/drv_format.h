@@ -1,11 +1,24 @@
 #ifndef KERNEL_DRIVER_DRV_FORMAT_H
 #define KERNEL_DRIVER_DRV_FORMAT_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define DRV_MAGIC 0x5652443436534FULL
 #define DRV_FORMAT_VERSION 1
 #define DRV_ABI_VERSION 1
+#define DRV_ARCH_X86_64 0x00008664U
+
+#define DRV_HEADER_SIZE 160
+#define DRV_MANIFEST_SIZE 96
+#define DRV_SECTION_SIZE 56
+#define DRV_SYMBOL_SIZE 72
+#define DRV_IMPORT_SIZE 96
+#define DRV_EXPORT_SIZE 64
+#define DRV_RELOCATION_SIZE 32
+#define DRV_DEPENDENCY_SIZE 40
+#define DRV_SIGNATURE_SIZE 56
+#define DRV_CERTIFICATE_SIZE 48
 
 #define DRV_SECTION_CODE 1
 #define DRV_SECTION_RODATA 2
@@ -30,6 +43,8 @@
 #define DRV_BOOT_NORMAL   0x00000001
 #define DRV_BOOT_SAFE     0x00000002
 #define DRV_BOOT_RECOVERY 0x00000004
+
+#define DRV_DEP_REQUIRED 0x00000001
 
 #define DRV_SIGNATURE_MAGIC 0x314749533436534FULL
 #define DRV_CERTIFICATE_MAGIC 0x315452433436534FULL
@@ -80,6 +95,12 @@ struct DrvManifest {
     uint32_t boot_modes;
     uint32_t flags;
     uint32_t dependency_count;
+} __attribute__((packed));
+
+struct DrvDependency {
+    char name[32];
+    uint32_t flags;
+    uint32_t min_state;
 } __attribute__((packed));
 
 struct DrvSection {
@@ -141,5 +162,21 @@ struct DrvCertificateBlock {
     uint32_t certificate_type;
     char key_id[32];
 } __attribute__((packed));
+
+#ifdef __cplusplus
+static_assert(sizeof(DrvHeader) == DRV_HEADER_SIZE, "DrvHeader ABI size changed");
+static_assert(sizeof(DrvManifest) == DRV_MANIFEST_SIZE, "DrvManifest ABI size changed");
+static_assert(sizeof(DrvSection) == DRV_SECTION_SIZE, "DrvSection ABI size changed");
+static_assert(sizeof(DrvSymbol) == DRV_SYMBOL_SIZE, "DrvSymbol ABI size changed");
+static_assert(sizeof(DrvImport) == DRV_IMPORT_SIZE, "DrvImport ABI size changed");
+static_assert(sizeof(DrvExport) == DRV_EXPORT_SIZE, "DrvExport ABI size changed");
+static_assert(sizeof(DrvRelocation) == DRV_RELOCATION_SIZE, "DrvRelocation ABI size changed");
+static_assert(sizeof(DrvDependency) == DRV_DEPENDENCY_SIZE, "DrvDependency ABI size changed");
+static_assert(sizeof(DrvSignatureBlock) == DRV_SIGNATURE_SIZE, "DrvSignatureBlock ABI size changed");
+static_assert(sizeof(DrvCertificateBlock) == DRV_CERTIFICATE_SIZE, "DrvCertificateBlock ABI size changed");
+static_assert(offsetof(DrvHeader, signature_offset) == 128, "DrvHeader signature_offset moved");
+static_assert(offsetof(DrvManifest, permissions) == 80, "DrvManifest permissions moved");
+static_assert(offsetof(DrvImport, patch_offset) == 88, "DrvImport patch_offset moved");
+#endif
 
 #endif

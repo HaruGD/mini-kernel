@@ -1,6 +1,8 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
+#include "arch/x86_64/paging64.h"
+#include "arch/x86_64/pmm64.h"
 
 typedef uint64_t (*DriverLifecycleFn)();
 
@@ -10,8 +12,22 @@ static void free_loaded_image(DriverLoadedImage* loaded) {
     }
     for (uint32_t i = 0; i < loaded->section_count && i < DRIVER_MAX_LOADED_SECTIONS; i++) {
         if (loaded->sections[i].base != 0) {
-            delete[] loaded->sections[i].base;
+            if (loaded->sections[i].page_count == 0) {
+                delete[] loaded->sections[i].base;
+                loaded->sections[i].base = 0;
+                continue;
+            }
+            uint64_t base = (uint64_t)(uintptr_t)loaded->sections[i].base;
+            for (uint32_t page = 0; page < loaded->sections[i].page_count; page++) {
+                uint64_t virt = base + ((uint64_t)page * PAGING64_PAGE_SIZE);
+                uint64_t phys = paging64_get_phys(virt) & 0x000FFFFFFFFFF000ULL;
+                paging64_unmap_page(virt);
+                if (phys != 0) {
+                    pmm64_free_block((void*)(uintptr_t)phys);
+                }
+            }
             loaded->sections[i].base = 0;
+            loaded->sections[i].page_count = 0;
         }
     }
     delete loaded;
@@ -23,7 +39,9 @@ static int call_driver_exit(const DriverRecord* record, DriverLoadedImage* loade
     }
 
     DriverLifecycleFn exit_fn = (DriverLifecycleFn)loaded->exit;
+    driver_manager_set_lifecycle_driver(record->name);
     uint64_t exit_result = exit_fn();
+    driver_manager_set_lifecycle_driver(0);
     if (exit_result != 0) {
         driver_manager_set_last_error(DRIVER_LOAD_EXIT_FAILED, "exit", record->name, "driver_exit", 0, exit_result);
         return DRIVER_LOAD_EXIT_FAILED;
@@ -43,6 +61,18 @@ static int loaded_image_imports_module(const DriverLoadedImage* loaded, const ch
     return 0;
 }
 
+static int loaded_image_depends_on_module(const DriverLoadedImage* loaded, const char* module) {
+    if (loaded == 0 || module == 0) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < loaded->dependency_count && i < DRIVER_MAX_DEPENDENCIES; i++) {
+        if (strcmp64(loaded->dependencies[i].name, module) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int driver_has_ready_dependents(const char* name) {
     uint32_t count = driver_manager_count();
     for (uint32_t i = 0; i < count; i++) {
@@ -56,7 +86,9 @@ static int driver_has_ready_dependents(const char* name) {
         if (record->state != DRIVER_STATE_READY && record->state != DRIVER_STATE_LINKED) {
             continue;
         }
-        if (loaded_image_imports_module((const DriverLoadedImage*)record->instance, name)) {
+        const DriverLoadedImage* loaded = (const DriverLoadedImage*)record->instance;
+        if (loaded_image_imports_module(loaded, name) ||
+            loaded_image_depends_on_module(loaded, name)) {
             driver_manager_set_last_error(DRIVER_LOAD_UNLOAD_DENIED, "unload", name, record->name, i, 0);
             return 1;
         }
@@ -106,6 +138,8 @@ int driver_manager_unload(const char* name) {
     }
 
     driver_export_unregister_module(snapshot.name);
+    driver_irq_unregister_module(snapshot.name);
+    driver_manager_unbind_module(snapshot.name);
     free_loaded_image(loaded);
     driver_manager_unregister(snapshot.name);
     return DRIVER_LOAD_OK;

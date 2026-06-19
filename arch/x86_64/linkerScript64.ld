@@ -11,16 +11,24 @@ SECTIONS
 {
     . = 0x100000;
 
+    . = ALIGN(0x1000);
+    __kernel_text_start = .;
     .text :
     {
         *(.text*)
     } :text
+    __kernel_text_end = .;
 
+    . = ALIGN(0x1000);
+    __kernel_rodata_start = .;
     .rodata :
     {
         *(.rodata*)
     } :rodata
+    __kernel_rodata_end = .;
 
+    . = ALIGN(0x1000);
+    __kernel_data_start = .;
     .data :
     {
         *(.data*)
@@ -32,7 +40,10 @@ SECTIONS
         KEEP(*(.init_array*))
         __init_array_end = .;
     } :data
+    __kernel_data_end = .;
 
+    . = ALIGN(0x1000);
+    __kernel_bss_start = .;
     .bss :
     {
         __bss_start = .;
@@ -40,4 +51,5 @@ SECTIONS
         *(.bss*)
         __bss_end = .;
     } :data
+    __kernel_bss_end = .;
 }

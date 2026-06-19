@@ -5,6 +5,8 @@
 
 #define DRIVER_MAX_RECORDS 32
 #define DRIVER_MAX_EXPORTS 64
+#define DRIVER_MAX_BINDINGS 64
+#define DRIVER_MAX_IRQ_HOOKS 32
 
 #define DRIVER_KIND_CORE   1
 #define DRIVER_KIND_BUS    2
@@ -38,15 +40,25 @@
 #define DRIVER_LOAD_SIGNATURE_UNSUPPORTED -12
 #define DRIVER_LOAD_UNLOAD_DENIED    -13
 #define DRIVER_LOAD_EXIT_FAILED      -14
+#define DRIVER_LOAD_MISSING_DEPENDENCY -15
+#define DRIVER_LOAD_BIND_DENIED      -16
+#define DRIVER_LOAD_IRQ_DENIED       -17
 
 #define DRIVER_MAX_LOADED_SECTIONS 16
 #define DRIVER_MAX_RESOLVED_IMPORTS 32
+#define DRIVER_MAX_DEPENDENCIES 8
+
+#define DRIVER_BIND_KIND_PCI 1
 
 struct DrvManifest;
+struct PCIDeviceInfo;
+
+typedef uint64_t (*DriverIrqHandler)(uint64_t irq);
 
 struct DriverLoadedSection {
     uint8_t* base;
     uint64_t size;
+    uint32_t page_count;
     uint32_t kind;
     char name[16];
 };
@@ -58,13 +70,22 @@ struct DriverResolvedImport {
     char name[48];
 };
 
+struct DriverResolvedDependency {
+    char name[32];
+    uint32_t flags;
+    uint32_t min_state;
+};
+
 struct DriverLoadedImage {
     uint32_t section_count;
     uint32_t import_count;
+    uint32_t dependency_count;
     DriverLoadedSection sections[DRIVER_MAX_LOADED_SECTIONS];
     DriverResolvedImport imports[DRIVER_MAX_RESOLVED_IMPORTS];
+    DriverResolvedDependency dependencies[DRIVER_MAX_DEPENDENCIES];
     void* entry;
     void* exit;
+    void* probe_pci;
 };
 
 struct DriverRecord {
@@ -94,6 +115,30 @@ struct DriverLoadDiagnostics {
     char name[48];
 };
 
+struct DriverBindingRecord {
+    uint8_t active;
+    uint8_t kind;
+    uint16_t flags;
+    char driver[32];
+    uint16_t vendor_id;
+    uint16_t device_id;
+    uint8_t bus;
+    uint8_t device;
+    uint8_t function;
+    uint8_t class_code;
+    uint8_t subclass;
+    uint8_t prog_if;
+};
+
+struct DriverIrqHookRecord {
+    uint8_t active;
+    uint8_t irq;
+    uint16_t flags;
+    uint64_t call_count;
+    char driver[32];
+    DriverIrqHandler handler;
+};
+
 void driver_manager_init();
 int driver_manager_register_builtin(const char* name,
                                     const char* version,
@@ -106,8 +151,11 @@ int driver_manager_set_instance(const char* name, void* instance);
 int driver_manager_unregister(const char* name);
 uint32_t driver_manager_count();
 const DriverRecord* driver_manager_get(uint32_t index);
+const DriverRecord* driver_manager_find(const char* name);
 const char* driver_state_name(uint32_t state);
 const char* driver_kind_name(uint32_t kind);
+void driver_manager_set_lifecycle_driver(const char* name);
+const char* driver_manager_current_lifecycle_driver();
 void driver_manager_clear_last_error();
 void driver_manager_set_last_error(int result,
                                    const char* stage,
@@ -133,7 +181,23 @@ int driver_manager_reload_drv_image(const uint8_t* image, uint64_t size);
 uint32_t driver_manager_autoload_from(const char* path);
 void driver_manager_register_kernel_exports();
 void driver_manager_register_builtin_devices();
+
+int driver_manager_probe_loaded_driver(const char* name, DriverLoadedImage* loaded);
+int driver_manager_bind_pci(const char* driver_name, const PCIDeviceInfo* device, uint32_t flags);
+void driver_manager_unbind_module(const char* name);
+uint32_t driver_manager_binding_count();
+const DriverBindingRecord* driver_manager_binding_get(uint32_t index);
+
+int driver_irq_register_handler(const char* driver_name, uint32_t irq, DriverIrqHandler handler, uint32_t flags);
+int driver_irq_unregister_handler(const char* driver_name, uint32_t irq, DriverIrqHandler handler);
+void driver_irq_unregister_module(const char* name);
+void driver_irq_dispatch(uint32_t irq);
+uint32_t driver_irq_hook_count();
+const DriverIrqHookRecord* driver_irq_hook_get(uint32_t index);
+
 void command_drivers();
+void command_bindings();
+void command_irqhooks();
 void command_drvcheck(const char* path);
 void command_drvload(const char* path);
 void command_drvunload(const char* name);

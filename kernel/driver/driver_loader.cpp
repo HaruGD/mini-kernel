@@ -1,6 +1,8 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
+#include "arch/x86_64/paging64.h"
+#include "arch/x86_64/pmm64.h"
 
 extern "C" {
     #include "heap.h"
@@ -16,7 +18,17 @@ static const uint32_t DRV_KNOWN_PERMISSIONS =
     DRV_PERMISSION_TIMER |
     DRV_PERMISSION_DISPLAY;
 
+static const uint32_t DRV_KNOWN_BOOT_MODES =
+    DRV_BOOT_NORMAL |
+    DRV_BOOT_SAFE |
+    DRV_BOOT_RECOVERY;
+
 static const char DRV_LOCAL_TEST_KEY_ID[] = "OS64 local test key";
+
+#define DRIVER_SECTION_MAP_BASE  0x0000000070000000ULL
+#define DRIVER_SECTION_MAP_LIMIT 0x0000000078000000ULL
+
+static uint64_t g_driver_section_next_virtual = DRIVER_SECTION_MAP_BASE;
 
 static int range_inside(uint64_t offset, uint64_t size, uint64_t file_size) {
     if (size == 0) {
@@ -81,6 +93,144 @@ static void bytes_zero(uint8_t* dst, uint64_t size) {
     }
 }
 
+static uint64_t align_up_u64(uint64_t value, uint64_t alignment) {
+    return (value + alignment - 1ULL) & ~(alignment - 1ULL);
+}
+
+static int is_power_of_two_u64(uint64_t value) {
+    return value != 0 && (value & (value - 1ULL)) == 0;
+}
+
+static int section_kind_supported(uint32_t kind) {
+    return kind == DRV_SECTION_CODE ||
+           kind == DRV_SECTION_RODATA ||
+           kind == DRV_SECTION_DATA ||
+           kind == DRV_SECTION_BSS;
+}
+
+static int symbol_kind_supported(uint32_t kind) {
+    return kind == DRV_SYMBOL_FUNC || kind == DRV_SYMBOL_OBJECT;
+}
+
+static int relocation_type_supported(uint32_t type) {
+    return type == DRV_RELOC_ABS64 || type == DRV_RELOC_REL32;
+}
+
+static void free_section_pages(DriverLoadedSection* section) {
+    if (section == 0 || section->base == 0) {
+        return;
+    }
+
+    if (section->page_count == 0) {
+        delete[] section->base;
+        section->base = 0;
+        return;
+    }
+
+    uint64_t base = (uint64_t)(uintptr_t)section->base;
+    for (uint32_t page = 0; page < section->page_count; page++) {
+        uint64_t virt = base + ((uint64_t)page * PAGING64_PAGE_SIZE);
+        uint64_t phys = paging64_get_phys(virt) & 0x000FFFFFFFFFF000ULL;
+        paging64_unmap_page(virt);
+        if (phys != 0) {
+            pmm64_free_block((void*)(uintptr_t)phys);
+        }
+    }
+
+    section->base = 0;
+    section->page_count = 0;
+}
+
+static uint8_t* allocate_section_pages(uint64_t memory_size, uint32_t* out_page_count) {
+    if (out_page_count != 0) {
+        *out_page_count = 0;
+    }
+
+    uint64_t alloc_size = memory_size == 0 ? 1 : memory_size;
+    uint64_t page_count64 = align_up_u64(alloc_size, PAGING64_PAGE_SIZE) / PAGING64_PAGE_SIZE;
+    if (page_count64 == 0 || page_count64 > 0xFFFFFFFFULL) {
+        return 0;
+    }
+
+    uint64_t region = align_up_u64(g_driver_section_next_virtual, PAGING64_PAGE_SIZE);
+    uint64_t region_size = page_count64 * PAGING64_PAGE_SIZE;
+    if (region + region_size > DRIVER_SECTION_MAP_LIMIT) {
+        return 0;
+    }
+
+    for (uint64_t page = 0; page < page_count64; page++) {
+        uint64_t virt = region + (page * PAGING64_PAGE_SIZE);
+        uint64_t phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+        if (phys == 0) {
+            for (uint64_t rollback = 0; rollback < page; rollback++) {
+                uint64_t rollback_virt = region + (rollback * PAGING64_PAGE_SIZE);
+                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
+                paging64_unmap_page(rollback_virt);
+                if (rollback_phys != 0) {
+                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
+                }
+            }
+            return 0;
+        }
+
+        if (!paging64_map_page(virt, phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX)) {
+            pmm64_free_block((void*)(uintptr_t)phys);
+            for (uint64_t rollback = 0; rollback < page; rollback++) {
+                uint64_t rollback_virt = region + (rollback * PAGING64_PAGE_SIZE);
+                uint64_t rollback_phys = paging64_get_phys(rollback_virt) & 0x000FFFFFFFFFF000ULL;
+                paging64_unmap_page(rollback_virt);
+                if (rollback_phys != 0) {
+                    pmm64_free_block((void*)(uintptr_t)rollback_phys);
+                }
+            }
+            return 0;
+        }
+    }
+
+    g_driver_section_next_virtual = region + region_size;
+    if (out_page_count != 0) {
+        *out_page_count = (uint32_t)page_count64;
+    }
+    return (uint8_t*)(uintptr_t)region;
+}
+
+static int protect_loaded_sections(DriverLoadedImage* loaded) {
+    if (loaded == 0) {
+        return DRIVER_LOAD_BAD_HEADER;
+    }
+
+    for (uint32_t i = 0; i < loaded->section_count && i < DRIVER_MAX_LOADED_SECTIONS; i++) {
+        DriverLoadedSection* section = &loaded->sections[i];
+        if (section->base == 0 || section->page_count == 0) {
+            continue;
+        }
+
+        uint64_t flags = PAGING64_FLAG_NX;
+        if (section->kind == DRV_SECTION_CODE) {
+            flags = 0;
+        } else if (section->kind == DRV_SECTION_DATA || section->kind == DRV_SECTION_BSS) {
+            flags = PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX;
+        }
+
+        uint64_t base = (uint64_t)(uintptr_t)section->base;
+        for (uint32_t page = 0; page < section->page_count; page++) {
+            uint64_t virt = base + ((uint64_t)page * PAGING64_PAGE_SIZE);
+            uint64_t phys = paging64_get_phys(virt) & 0x000FFFFFFFFFF000ULL;
+            if (phys == 0 || !paging64_map_page(virt, phys, flags)) {
+                driver_manager_set_last_error(DRIVER_LOAD_OUT_OF_MEMORY,
+                                              "protect",
+                                              0,
+                                              section->name,
+                                              i,
+                                              virt);
+                return DRIVER_LOAD_OUT_OF_MEMORY;
+            }
+        }
+    }
+
+    return DRIVER_LOAD_OK;
+}
+
 static const DrvSection* drv_section_at(const uint8_t* image, const DrvHeader* header, uint32_t index) {
     return (const DrvSection*)(image + header->section_table_offset + (uint64_t)index * header->section_entry_size);
 }
@@ -101,14 +251,17 @@ static const DrvRelocation* drv_relocation_at(const uint8_t* image, const DrvHea
     return (const DrvRelocation*)(image + header->relocation_table_offset + (uint64_t)index * header->relocation_entry_size);
 }
 
+static const DrvDependency* drv_dependency_at(const uint8_t* image, const DrvHeader* header, uint32_t index) {
+    return (const DrvDependency*)(image + header->manifest_offset + sizeof(DrvManifest) + (uint64_t)index * sizeof(DrvDependency));
+}
+
 static void free_loaded_image(DriverLoadedImage* loaded) {
     if (loaded == 0) {
         return;
     }
     for (uint32_t i = 0; i < loaded->section_count && i < DRIVER_MAX_LOADED_SECTIONS; i++) {
         if (loaded->sections[i].base != 0) {
-            delete[] loaded->sections[i].base;
-            loaded->sections[i].base = 0;
+            free_section_pages(&loaded->sections[i]);
         }
     }
     delete loaded;
@@ -124,14 +277,25 @@ static int validate_section_ranges(const uint8_t* image, const DrvHeader* header
             driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "name", i, 0);
             return DRIVER_LOAD_BAD_HEADER;
         }
+        if (!section_kind_supported(section->kind)) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "kind", i, section->kind);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        if (!is_power_of_two_u64(section->alignment) || section->alignment > PAGING64_PAGE_SIZE) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "alignment", i, section->alignment);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
         if (section->memory_size < section->file_size) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "memory_size", i, section->memory_size);
             return DRIVER_LOAD_BAD_HEADER;
         }
         if (section->kind != DRV_SECTION_BSS &&
             !range_inside(section->file_offset, section->file_size, size)) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "file_range", i, section->file_offset);
             return DRIVER_LOAD_BAD_HEADER;
         }
         if (section->kind == DRV_SECTION_BSS && section->file_size != 0) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "bss_file_size", i, section->file_size);
             return DRIVER_LOAD_BAD_HEADER;
         }
     }
@@ -145,14 +309,51 @@ static int validate_manifest_shape(const DrvManifest* manifest) {
         driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "manifest", 0, "strings", 0, 0);
         return DRIVER_LOAD_BAD_HEADER;
     }
-    if (manifest->dependency_count != 0) {
+    if (manifest->dependency_count > DRIVER_MAX_DEPENDENCIES) {
         driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED,
                                       "manifest",
                                       manifest->name,
-                                      "dependencies_unsupported",
+                                      "dependencies",
                                       manifest->dependency_count,
-                                      0);
+                                      DRIVER_MAX_DEPENDENCIES);
         return DRIVER_LOAD_POLICY_DENIED;
+    }
+    if ((manifest->permissions & ~DRV_KNOWN_PERMISSIONS) != 0) {
+        driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "manifest", manifest->name, "permissions", 0, manifest->permissions);
+        return DRIVER_LOAD_POLICY_DENIED;
+    }
+    if (manifest->boot_modes == 0 || (manifest->boot_modes & ~DRV_KNOWN_BOOT_MODES) != 0) {
+        driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "manifest", manifest->name, "boot_modes", 0, manifest->boot_modes);
+        return DRIVER_LOAD_POLICY_DENIED;
+    }
+    return DRIVER_LOAD_OK;
+}
+
+static int validate_dependencies(const uint8_t* image, const DrvHeader* header, const DrvManifest* manifest) {
+    uint64_t dependency_bytes = (uint64_t)manifest->dependency_count * sizeof(DrvDependency);
+    uint64_t minimum_manifest_size = sizeof(DrvManifest) + dependency_bytes;
+    if (header->manifest_size < minimum_manifest_size) {
+        driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "dependency", manifest->name, "range", 0, header->manifest_size);
+        return DRIVER_LOAD_BAD_HEADER;
+    }
+
+    for (uint32_t i = 0; i < manifest->dependency_count; i++) {
+        const DrvDependency* dependency = drv_dependency_at(image, header, i);
+        if (!fixed_string_valid(dependency->name, sizeof(dependency->name), 1)) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "dependency", manifest->name, "name", i, 0);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        if ((dependency->flags & ~DRV_DEP_REQUIRED) != 0) {
+            driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "dependency", manifest->name, dependency->name, i, dependency->flags);
+            return DRIVER_LOAD_POLICY_DENIED;
+        }
+        if (dependency->min_state != 0 &&
+            dependency->min_state != DRIVER_STATE_REGISTERED &&
+            dependency->min_state != DRIVER_STATE_LINKED &&
+            dependency->min_state != DRIVER_STATE_READY) {
+            driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "dependency", manifest->name, dependency->name, i, dependency->min_state);
+            return DRIVER_LOAD_POLICY_DENIED;
+        }
     }
     return DRIVER_LOAD_OK;
 }
@@ -164,6 +365,20 @@ static int validate_symbol_import_export_names(const uint8_t* image, const DrvHe
             driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "symbol", 0, "name", i, 0);
             return DRIVER_LOAD_BAD_HEADER;
         }
+        if (!symbol_kind_supported(symbol->kind)) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "symbol", 0, "kind", i, symbol->kind);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        if (symbol->section_index >= header->section_count) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "symbol", 0, "section", i, symbol->section_index);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        const DrvSection* section = drv_section_at(image, header, symbol->section_index);
+        if (symbol->value > section->memory_size ||
+            symbol->size > section->memory_size - symbol->value) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "symbol", 0, "range", i, symbol->value);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
     }
     for (uint32_t i = 0; i < header->import_count; i++) {
         const DrvImport* import = drv_import_at(image, header, i);
@@ -172,11 +387,52 @@ static int validate_symbol_import_export_names(const uint8_t* image, const DrvHe
             driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "import", 0, "name", i, 0);
             return DRIVER_LOAD_BAD_HEADER;
         }
+        if ((import->required_permission & ~DRV_KNOWN_PERMISSIONS) != 0) {
+            driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "import", import->module, import->name, i, import->required_permission);
+            return DRIVER_LOAD_POLICY_DENIED;
+        }
+        if (import->flags >= header->section_count) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "import", import->module, import->name, i, import->flags);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        const DrvSection* patch_section = drv_section_at(image, header, import->flags);
+        if (import->patch_offset > patch_section->memory_size ||
+            patch_section->memory_size - import->patch_offset < sizeof(uint64_t)) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "import", import->module, import->name, i, import->patch_offset);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
     }
     for (uint32_t i = 0; i < header->export_count; i++) {
         const DrvExport* export_entry = drv_export_at(image, header, i);
         if (!fixed_string_valid(export_entry->name, sizeof(export_entry->name), 1)) {
             driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "export", 0, "name", i, 0);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        if (export_entry->kind != DRV_SYMBOL_FUNC) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "export", 0, export_entry->name, i, export_entry->kind);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        if ((export_entry->flags & ~DRV_KNOWN_PERMISSIONS) != 0) {
+            driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "export", 0, export_entry->name, i, export_entry->flags);
+            return DRIVER_LOAD_POLICY_DENIED;
+        }
+    }
+    for (uint32_t i = 0; i < header->relocation_count; i++) {
+        const DrvRelocation* relocation = drv_relocation_at(image, header, i);
+        if (!relocation_type_supported(relocation->type)) {
+            driver_manager_set_last_error(DRIVER_LOAD_UNSUPPORTED_RELOC, "reloc", 0, "type", i, relocation->type);
+            return DRIVER_LOAD_UNSUPPORTED_RELOC;
+        }
+        if (relocation->section_index >= header->section_count ||
+            relocation->symbol_index >= header->symbol_count) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "reloc", 0, "index", i, relocation->section_index);
+            return DRIVER_LOAD_BAD_HEADER;
+        }
+        const DrvSection* section = drv_section_at(image, header, relocation->section_index);
+        uint64_t width = relocation->type == DRV_RELOC_ABS64 ? sizeof(uint64_t) : sizeof(uint32_t);
+        if (relocation->offset > section->memory_size ||
+            section->memory_size - relocation->offset < width) {
+            driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "reloc", 0, "range", i, relocation->offset);
             return DRIVER_LOAD_BAD_HEADER;
         }
     }
@@ -253,6 +509,10 @@ int driver_manager_validate_drv_image(const uint8_t* image, uint64_t size) {
         driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "header", 0, "magic_or_size", 0, header->file_size);
         return DRIVER_LOAD_BAD_HEADER;
     }
+    if (header->arch != DRV_ARCH_X86_64) {
+        driver_manager_set_last_error(DRIVER_LOAD_UNSUPPORTED_ABI, "header", 0, "arch", 0, header->arch);
+        return DRIVER_LOAD_UNSUPPORTED_ABI;
+    }
     if (header->format_version != DRV_FORMAT_VERSION ||
         header->abi_version != DRV_ABI_VERSION) {
         driver_manager_set_last_error(DRIVER_LOAD_UNSUPPORTED_ABI, "header", 0, "abi", 0, header->abi_version);
@@ -324,6 +584,11 @@ int driver_manager_validate_drv_image(const uint8_t* image, uint64_t size) {
         return manifest_result;
     }
 
+    int dependency_result = validate_dependencies(image, header, manifest);
+    if (dependency_result != DRIVER_LOAD_OK) {
+        return dependency_result;
+    }
+
     int names_result = validate_symbol_import_export_names(image, header);
     if (names_result != DRIVER_LOAD_OK) {
         return names_result;
@@ -336,24 +601,22 @@ static int load_sections(const uint8_t* image, const DrvHeader* header, DriverLo
     loaded->section_count = header->section_count;
     for (uint32_t i = 0; i < header->section_count; i++) {
         const DrvSection* section = drv_section_at(image, header, i);
-        uint64_t alloc_size = section->memory_size;
-        if (alloc_size == 0) {
-            alloc_size = 1;
-        }
-
-        uint8_t* memory = new uint8_t[(size_t)alloc_size];
+        uint64_t memory_size = section->memory_size == 0 ? 1 : section->memory_size;
+        uint32_t page_count = 0;
+        uint8_t* memory = allocate_section_pages(memory_size, &page_count);
         if (memory == 0) {
-            driver_manager_set_last_error(DRIVER_LOAD_OUT_OF_MEMORY, "section", 0, section->name, i, alloc_size);
+            driver_manager_set_last_error(DRIVER_LOAD_OUT_OF_MEMORY, "section", 0, section->name, i, memory_size);
             return DRIVER_LOAD_OUT_OF_MEMORY;
         }
 
-        bytes_zero(memory, alloc_size);
+        bytes_zero(memory, (uint64_t)page_count * PAGING64_PAGE_SIZE);
         if (section->file_size != 0) {
             bytes_copy(memory, image + section->file_offset, section->file_size);
         }
 
         loaded->sections[i].base = memory;
-        loaded->sections[i].size = alloc_size;
+        loaded->sections[i].size = memory_size;
+        loaded->sections[i].page_count = page_count;
         loaded->sections[i].kind = section->kind;
         copy_string64(loaded->sections[i].name, sizeof(loaded->sections[i].name), section->name);
     }
@@ -432,6 +695,45 @@ static int resolve_imports(const uint8_t* image,
         loaded->imports[i].required_permission = import->required_permission;
         copy_string64(loaded->imports[i].module, sizeof(loaded->imports[i].module), import->module);
         copy_string64(loaded->imports[i].name, sizeof(loaded->imports[i].name), import->name);
+    }
+    return DRIVER_LOAD_OK;
+}
+
+static int dependency_state_satisfies(uint32_t actual_state, uint32_t min_state) {
+    uint32_t required = min_state == 0 ? DRIVER_STATE_READY : min_state;
+    if (required == DRIVER_STATE_REGISTERED) {
+        return actual_state == DRIVER_STATE_REGISTERED ||
+               actual_state == DRIVER_STATE_LINKED ||
+               actual_state == DRIVER_STATE_READY;
+    }
+    if (required == DRIVER_STATE_LINKED) {
+        return actual_state == DRIVER_STATE_LINKED ||
+               actual_state == DRIVER_STATE_READY;
+    }
+    return actual_state == DRIVER_STATE_READY;
+}
+
+static int resolve_dependencies(const uint8_t* image,
+                                const DrvHeader* header,
+                                const DrvManifest* manifest,
+                                DriverLoadedImage* loaded) {
+    loaded->dependency_count = manifest->dependency_count;
+    for (uint32_t i = 0; i < manifest->dependency_count; i++) {
+        const DrvDependency* dependency = drv_dependency_at(image, header, i);
+        const DriverRecord* record = driver_manager_find(dependency->name);
+        if (record == 0 || !record->active ||
+            !dependency_state_satisfies(record->state, dependency->min_state)) {
+            driver_manager_set_last_error(DRIVER_LOAD_MISSING_DEPENDENCY,
+                                          "dependency",
+                                          manifest->name,
+                                          dependency->name,
+                                          i,
+                                          dependency->min_state);
+            return DRIVER_LOAD_MISSING_DEPENDENCY;
+        }
+        copy_string64(loaded->dependencies[i].name, sizeof(loaded->dependencies[i].name), dependency->name);
+        loaded->dependencies[i].flags = dependency->flags;
+        loaded->dependencies[i].min_state = dependency->min_state;
     }
     return DRIVER_LOAD_OK;
 }
@@ -574,7 +876,9 @@ static int call_driver_entry(const DrvManifest* manifest, DriverLoadedImage* loa
     }
 
     DriverLifecycleFn entry = (DriverLifecycleFn)loaded->entry;
+    driver_manager_set_lifecycle_driver(manifest->name);
     uint64_t entry_result = entry();
+    driver_manager_set_lifecycle_driver(0);
     if (entry_result != 0) {
         driver_manager_set_state(manifest->name, DRIVER_STATE_FAILED);
         driver_manager_set_last_error(DRIVER_LOAD_ENTRY_FAILED, "entry", manifest->name, manifest->entry_symbol, 0, entry_result);
@@ -602,10 +906,6 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
 
     const DrvHeader* header = (const DrvHeader*)image;
     const DrvManifest* manifest = (const DrvManifest*)(image + header->manifest_offset);
-    if ((manifest->permissions & ~DRV_KNOWN_PERMISSIONS) != 0) {
-        driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "manifest", manifest->name, "permissions", 0, manifest->permissions);
-        return DRIVER_LOAD_POLICY_DENIED;
-    }
     if ((manifest->boot_modes & DRV_BOOT_NORMAL) == 0) {
         driver_manager_set_last_error(DRIVER_LOAD_POLICY_DENIED, "manifest", manifest->name, "boot_mode", 0, manifest->boot_modes);
         return DRIVER_LOAD_POLICY_DENIED;
@@ -629,6 +929,9 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
 
     int result = load_sections(image, header, loaded);
     if (result == DRIVER_LOAD_OK) {
+        result = resolve_dependencies(image, header, manifest, loaded);
+    }
+    if (result == DRIVER_LOAD_OK) {
         result = resolve_imports(image, header, manifest, loaded);
     }
     if (result == DRIVER_LOAD_OK) {
@@ -638,6 +941,7 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
             result = DRIVER_LOAD_BAD_HEADER;
         } else {
             loaded->exit = resolve_symbol_address(image, header, loaded, "driver_exit");
+            loaded->probe_pci = resolve_symbol_address(image, header, loaded, "driver_probe_pci");
         }
     }
     if (result == DRIVER_LOAD_OK) {
@@ -645,6 +949,9 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
     }
     if (result == DRIVER_LOAD_OK) {
         result = patch_imports(image, header, loaded);
+    }
+    if (result == DRIVER_LOAD_OK) {
+        result = protect_loaded_sections(loaded);
     }
     if (result == DRIVER_LOAD_OK) {
         result = register_driver_exports(image, header, manifest, loaded);
@@ -655,6 +962,9 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
     }
     if (result == DRIVER_LOAD_OK) {
         result = call_driver_entry(manifest, loaded);
+    }
+    if (result == DRIVER_LOAD_OK) {
+        driver_manager_probe_loaded_driver(manifest->name, loaded);
     }
     if (result != DRIVER_LOAD_OK) {
         driver_export_unregister_module(manifest->name);

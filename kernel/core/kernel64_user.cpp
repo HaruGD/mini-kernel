@@ -260,7 +260,9 @@ int run_user_program(const char* command_line) {
         }
 
         uint64_t virt = user_stack_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-        if (!paging64_map_page(virt, stack_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
+        if (!paging64_map_page(virt,
+                               stack_phys,
+                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER | PAGING64_FLAG_NX)) {
             pmm64_free_block((void*)(uintptr_t)stack_phys);
             cleanup_user_process_mapping(process);
             process->code_page_count = 0;

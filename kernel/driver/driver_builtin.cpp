@@ -13,13 +13,21 @@ extern PIT pit;
 extern FAT32Driver fat32;
 extern FAT32Driver* root_fat32;
 
+static void register_builtin_state(const char* name,
+                                   uint32_t kind,
+                                   uint32_t permissions,
+                                   void* instance,
+                                   uint32_t state) {
+    if (driver_manager_register_builtin(name, "builtin", kind, permissions, instance) == DRIVER_LOAD_OK) {
+        driver_manager_set_state(name, state);
+    }
+}
+
 static void register_ready_builtin(const char* name,
                                    uint32_t kind,
                                    uint32_t permissions,
                                    void* instance) {
-    if (driver_manager_register_builtin(name, "builtin", kind, permissions, instance) == DRIVER_LOAD_OK) {
-        driver_manager_set_state(name, DRIVER_STATE_READY);
-    }
+    register_builtin_state(name, kind, permissions, instance, DRIVER_STATE_READY);
 }
 
 void driver_manager_register_builtin_devices() {
@@ -27,10 +35,11 @@ void driver_manager_register_builtin_devices() {
                            DRIVER_KIND_BLOCK,
                            DRV_PERMISSION_BLOCK,
                            &ata);
-    register_ready_builtin("gop",
+    register_builtin_state("gop",
                            DRIVER_KIND_DISPLAY,
                            DRV_PERMISSION_DISPLAY,
-                           &gop);
+                           &gop,
+                           gop.ready() ? DRIVER_STATE_READY : DRIVER_STATE_FAILED);
     register_ready_builtin("fat32",
                            DRIVER_KIND_FS,
                            DRV_PERMISSION_BLOCK | DRV_PERMISSION_VFS,

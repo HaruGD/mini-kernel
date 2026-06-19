@@ -23,6 +23,8 @@ extern "C" {
 #endif
 
 void paging64_init();
+void paging64_enable_nxe();
+int paging64_is_nxe_enabled();
 int paging64_map_page(uint64_t virt, uint64_t phys, uint64_t flags);
 int paging64_unmap_page(uint64_t virt);
 uint64_t paging64_get_phys(uint64_t virt);

@@ -30,6 +30,19 @@ static uint64_t* entry_to_table(uint64_t entry) {
     return (uint64_t*)(uintptr_t)(entry & 0x000FFFFFFFFFF000ULL);
 }
 
+static uint64_t read_msr(uint32_t msr) {
+    uint32_t lo;
+    uint32_t hi;
+    __asm__ volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr));
+    return ((uint64_t)hi << 32) | lo;
+}
+
+static void write_msr(uint32_t msr, uint64_t value) {
+    uint32_t lo = (uint32_t)value;
+    uint32_t hi = (uint32_t)(value >> 32);
+    __asm__ volatile("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
+}
+
 static uint64_t allocate_table() {
     uint64_t phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
     if (phys == 0) {
@@ -91,6 +104,21 @@ extern "C" void paging64_init() {
     __asm__ volatile("mov %%cr3, %0" : "=r"(pml4_phys));
     pml4_phys &= 0x000FFFFFFFFFF000ULL;
     pml4_table = (uint64_t*)(uintptr_t)pml4_phys;
+}
+
+extern "C" void paging64_enable_nxe() {
+    const uint32_t IA32_EFER = 0xC0000080U;
+    const uint64_t IA32_EFER_NXE = 1ULL << 11;
+    uint64_t efer = read_msr(IA32_EFER);
+    if (!(efer & IA32_EFER_NXE)) {
+        write_msr(IA32_EFER, efer | IA32_EFER_NXE);
+    }
+}
+
+extern "C" int paging64_is_nxe_enabled() {
+    const uint32_t IA32_EFER = 0xC0000080U;
+    const uint64_t IA32_EFER_NXE = 1ULL << 11;
+    return (read_msr(IA32_EFER) & IA32_EFER_NXE) ? 1 : 0;
 }
 
 extern "C" int paging64_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {

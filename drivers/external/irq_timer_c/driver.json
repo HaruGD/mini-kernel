@@ -1,0 +1,12 @@
+{
+  "name": "irq_timer_c",
+  "version": "0.1.0",
+  "entry": "driver_entry",
+  "permissions": ["INTERRUPT"],
+  "boot_modes": ["NORMAL"],
+  "imports": {
+    "kernel.klog": [],
+    "kernel.irq_register": ["INTERRUPT"],
+    "kernel.irq_unregister": ["INTERRUPT"]
+  }
+}

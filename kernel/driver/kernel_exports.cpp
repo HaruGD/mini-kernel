@@ -84,6 +84,30 @@ extern "C" int64_t driver_pci_enable_bus_mastering(const PCIDeviceInfo* device) 
     return pci_enable_bus_mastering(device) ? 0 : -1;
 }
 
+extern "C" int64_t driver_pci_bind_device(const PCIDeviceInfo* device, uint64_t flags) {
+    const char* driver_name = driver_manager_current_lifecycle_driver();
+    if (driver_name == 0) {
+        return DRIVER_LOAD_BIND_DENIED;
+    }
+    return driver_manager_bind_pci(driver_name, device, (uint32_t)flags);
+}
+
+extern "C" int64_t driver_irq_register(uint64_t irq, DriverIrqHandler handler) {
+    const char* driver_name = driver_manager_current_lifecycle_driver();
+    if (driver_name == 0) {
+        return DRIVER_LOAD_IRQ_DENIED;
+    }
+    return driver_irq_register_handler(driver_name, (uint32_t)irq, handler, 0);
+}
+
+extern "C" int64_t driver_irq_unregister(uint64_t irq, DriverIrqHandler handler) {
+    const char* driver_name = driver_manager_current_lifecycle_driver();
+    if (driver_name == 0) {
+        return DRIVER_LOAD_IRQ_DENIED;
+    }
+    return driver_irq_unregister_handler(driver_name, (uint32_t)irq, handler);
+}
+
 extern "C" uint32_t driver_mmio_read32(uint64_t address) {
     return *(volatile uint32_t*)(uintptr_t)address;
 }
@@ -143,6 +167,9 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "pci_map_bar", (void*)driver_pci_map_bar, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "pci_enable_memory_space", (void*)driver_pci_enable_memory_space, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_enable_bus_mastering", (void*)driver_pci_enable_bus_mastering, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_bind_device", (void*)driver_pci_bind_device, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "irq_register", (void*)driver_irq_register, DRV_PERMISSION_INTERRUPT);
+    driver_export_register("kernel", "irq_unregister", (void*)driver_irq_unregister, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "mmio_read32", (void*)driver_mmio_read32, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "mmio_write32", (void*)driver_mmio_write32, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "vfs_open", (void*)driver_vfs_open, DRV_PERMISSION_VFS);

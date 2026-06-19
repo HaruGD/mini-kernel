@@ -236,6 +236,9 @@ uint64_t elf64_segment_page_flags(uint32_t segment_flags) {
     if (segment_flags & ELF64_PF_W) {
         flags |= PAGING64_FLAG_WRITABLE;
     }
+    if (!(segment_flags & ELF64_PF_X)) {
+        flags |= PAGING64_FLAG_NX;
+    }
     return flags;
 }
 

@@ -1,0 +1,13 @@
+{
+  "name": "gop_demo_c",
+  "version": "0.1.0",
+  "entry": "driver_entry",
+  "permissions": ["DISPLAY"],
+  "boot_modes": ["NORMAL"],
+  "imports": {
+    "kernel.klog": [],
+    "kernel.gop_get_info": ["DISPLAY"],
+    "kernel.gop_fill_rect": ["DISPLAY"],
+    "kernel.gop_putpixel": ["DISPLAY"]
+  }
+}

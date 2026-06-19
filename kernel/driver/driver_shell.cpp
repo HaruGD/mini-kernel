@@ -75,6 +75,10 @@ void command_drivers() {
 
     print("\nexports=");
     print_hex32(driver_export_count());
+    print(" bindings=");
+    print_hex32(driver_manager_binding_count());
+    print(" irq_hooks=");
+    print_hex32(driver_irq_hook_count());
     print("\n===============");
 }
 
@@ -94,7 +98,66 @@ static const char* drv_load_result_name(int result) {
     if (result == DRIVER_LOAD_SIGNATURE_UNSUPPORTED) return "signature_unsupported";
     if (result == DRIVER_LOAD_UNLOAD_DENIED) return "unload_denied";
     if (result == DRIVER_LOAD_EXIT_FAILED) return "exit_failed";
+    if (result == DRIVER_LOAD_MISSING_DEPENDENCY) return "missing_dependency";
+    if (result == DRIVER_LOAD_BIND_DENIED) return "bind_denied";
+    if (result == DRIVER_LOAD_IRQ_DENIED) return "irq_denied";
     return "unknown";
+}
+
+void command_bindings() {
+    print("\n=== DRIVER BINDINGS ===");
+    uint32_t count = driver_manager_binding_count();
+    print("\ncount=");
+    print_hex32(count);
+    for (uint32_t i = 0; i < count; i++) {
+        const DriverBindingRecord* binding = driver_manager_binding_get(i);
+        if (binding == 0) {
+            continue;
+        }
+        print("\n[");
+        print_hex32(i);
+        print("] ");
+        print(binding->driver);
+        print(" pci ");
+        print_hex32(binding->bus);
+        print(":");
+        print_hex32(binding->device);
+        print(".");
+        print_hex32(binding->function);
+        print(" vendor=");
+        print_hex32(binding->vendor_id);
+        print(" device=");
+        print_hex32(binding->device_id);
+        print(" class=");
+        print_hex32(binding->class_code);
+        print(" subclass=");
+        print_hex32(binding->subclass);
+        print(" prog_if=");
+        print_hex32(binding->prog_if);
+    }
+    print("\n=======================");
+}
+
+void command_irqhooks() {
+    print("\n=== IRQ HOOKS ===");
+    uint32_t count = driver_irq_hook_count();
+    print("\ncount=");
+    print_hex32(count);
+    for (uint32_t i = 0; i < count; i++) {
+        const DriverIrqHookRecord* hook = driver_irq_hook_get(i);
+        if (hook == 0) {
+            continue;
+        }
+        print("\n[");
+        print_hex32(i);
+        print("] irq=");
+        print_hex32(hook->irq);
+        print(" driver=");
+        print(hook->driver);
+        print(" calls=");
+        print_hex64(hook->call_count);
+    }
+    print("\n=================");
 }
 
 static void print_last_driver_error() {
@@ -267,6 +330,18 @@ void command_drvinfo(const char* path) {
     print_hex32(header->export_count);
     print(" relocs=");
     print_hex32(header->relocation_count);
+    print(" deps=");
+    print_hex32(manifest->dependency_count);
+
+    for (uint32_t i = 0; i < manifest->dependency_count; i++) {
+        const DrvDependency* dependency = (const DrvDependency*)(image + header->manifest_offset + sizeof(DrvManifest) + (uint64_t)i * sizeof(DrvDependency));
+        print("\ndep[");
+        print_hex32(i);
+        print("] ");
+        print(dependency->name);
+        print(" min_state=");
+        print_hex32(dependency->min_state);
+    }
 
     for (uint32_t i = 0; i < header->import_count; i++) {
         const DrvImport* import = (const DrvImport*)(image + header->import_table_offset + (uint64_t)i * header->import_entry_size);

@@ -16,6 +16,7 @@ HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall
 UEFI_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fshort-wchar -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -I./user/include
 DRIVER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/external/include
+DRIVER64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/external/include
 
 # Userland
 USER_ASM_SOURCES = $(wildcard ./user/programs/*.asm)
@@ -51,6 +52,8 @@ KERNEL64_OBJECTS = \
 	./build/ksh64.o \
 	./build/driver_manager64.o \
 	./build/driver_exports64.o \
+	./build/driver_binding64.o \
+	./build/driver_irq64.o \
 	./build/driver_loader64.o \
 	./build/driver_unload64.o \
 	./build/driver_builtin64.o \
@@ -119,6 +122,12 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/driver_exports64.o: ./kernel/driver/driver_exports.cpp ./include/kernel/driver/driver_manager.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/driver_binding64.o: ./kernel/driver/driver_binding.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/pci.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/driver_irq64.o: ./kernel/driver/driver_irq.cpp ./include/kernel/driver/driver_manager.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/driver_loader64.o: ./kernel/driver/driver_loader.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/drv_format.h
@@ -249,6 +258,10 @@ $(USER_C_ELFS): ./bin/%.elf: ./build/user_c_%.o ./build/user_crt0.o ./user/progr
 ./build/driver_ext_%.o: ./drivers/external/%/driver.c ./drivers/external/include/os64_driver.h
 	@mkdir -p ./build
 	$(HOST64_CC) $(DRIVER64_CFLAGS) -c $< -o $@
+
+./build/driver_ext_%.o: ./drivers/external/%/driver.cpp ./drivers/external/include/os64_driver.h
+	@mkdir -p ./build
+	$(HOST64_CXX) $(DRIVER64_CPPFLAGS) -c $< -o $@
 
 ./build/driver_ext_%.unsigned.drv: ./build/driver_ext_%.o ./drivers/external/%/driver.json ./tools/driver_builder/build_drv.py
 	@mkdir -p ./build
