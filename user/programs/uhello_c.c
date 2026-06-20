@@ -1,7 +1,7 @@
-#include "userlib.h"
+#include <os64/os64.h>
 
 int main(void) {
-    user_puts("=== uhello_c.elf ===");
-    user_puts("Hello from the first C user program!");
+    os_puts("=== uhello_c.elf ===");
+    os_puts("Hello from the first C user program!");
     return 0x34;
 }

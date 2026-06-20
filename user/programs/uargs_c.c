@@ -1,11 +1,11 @@
-#include "userlib.h"
+#include <os64/os64.h>
 
 int main(int argc, char** argv) {
-    user_puts("=== uargs_c.elf ===");
-    user_printf("argc=%d\n", argc);
+    os_puts("=== uargs_c.elf ===");
+    os_printf("argc=%d\n", argc);
 
     for (int i = 0; i < argc; i++) {
-        user_printf("argv[%d]=%s\n", i, argv[i] != 0 ? argv[i] : "(null)");
+        os_printf("argv[%d]=%s\n", i, argv[i] != 0 ? argv[i] : "(null)");
     }
 
     return argc;

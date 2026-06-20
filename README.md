@@ -41,6 +41,11 @@ What works on the active 64-bit UEFI path:
 - child-result reaping with `wait` / `reapall` plus automatic cleanup when process slots are exhausted
 - ELF user program loading
 - C user programs with `main(void)` and `main(argc, argv)` support
+- User SDK v1 with console, string, path, file, directory, and process APIs
+- static `libos64.a` linked into C user programs
+- per-process-slot user heap backed by syscall `brk` page mapping
+- SDK `malloc`, `calloc`, `realloc`, `free`, `strdup`, and dynamic file-read helpers
+- automated `usdk_test.elf` integration test covering heap, files, paths, directories, sleep, and yield
 - default C shell userland: `ushell_c.elf`
 - VFS layer
 - FAT32 root filesystem mounted at `/`
@@ -78,6 +83,7 @@ What works on the active 64-bit UEFI path:
 - `hello.drv`, `hello_c.drv`, `hello_cpp.drv`, `provider_c.drv`, `consumer_c.drv`, `pci_probe_c.drv`, and `irq_timer_c.drv` entry execution
 - manual display demo loading through `gop_demo_c.drv`
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
+- User SDK reference: [docs/user_sdk.md](docs/user_sdk.md)
 
 ## Build
 
@@ -86,6 +92,12 @@ Active 64-bit build:
 ```sh
 make all64
 make uefi
+```
+
+Run the User SDK integration test in an isolated QEMU instance:
+
+```sh
+make test-user-sdk
 ```
 
 Equivalent default:

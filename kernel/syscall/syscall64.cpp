@@ -63,6 +63,12 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return 0;
     }
 
+    if (syscall_no == SYS_USER_BRK) {
+        Process* process = current_process();
+        uint64_t result = resize_user_process_heap(process, arg1);
+        return result != 0 ? result : (uint64_t)-1;
+    }
+
     if (syscall_no == SYS_GETCHAR) {
         while (1) {
             char ascii = 0;

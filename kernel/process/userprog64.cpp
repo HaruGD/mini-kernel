@@ -278,6 +278,53 @@ void cleanup_user_process_mapping(Process* process) {
 
     paging64_unmap_free_range(process->code_base, process->code_page_count);
     paging64_unmap_free_range(process->stack_base, process->stack_page_count);
+    paging64_unmap_free_range(process->heap_base, process->heap_page_count);
+    process->heap_page_count = 0;
+    process->heap_break = process->heap_base;
+    process->heap_mapped_end = process->heap_base;
+}
+
+static uint64_t align_up_user_page(uint64_t value) {
+    return (value + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
+}
+
+uint64_t resize_user_process_heap(Process* process, uint64_t requested_break) {
+    if (process == 0 || process->heap_base == 0 || process->heap_limit <= process->heap_base) {
+        return 0;
+    }
+    if (requested_break == 0) {
+        return process->heap_break;
+    }
+    if (requested_break < process->heap_base || requested_break > process->heap_limit) {
+        return 0;
+    }
+
+    uint64_t requested_mapped_end = align_up_user_page(requested_break);
+    if (requested_mapped_end > process->heap_mapped_end) {
+        uint64_t grow_size = requested_mapped_end - process->heap_mapped_end;
+        uint32_t added_pages = 0;
+        if (!paging64_alloc_map_range(process->heap_mapped_end,
+                                      grow_size,
+                                      PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER | PAGING64_FLAG_NX,
+                                      &added_pages)) {
+            return 0;
+        }
+
+        for (uint64_t addr = process->heap_mapped_end; addr < requested_mapped_end; addr++) {
+            *((volatile uint8_t*)(uintptr_t)addr) = 0;
+        }
+        process->heap_page_count += added_pages;
+        process->heap_mapped_end = requested_mapped_end;
+    } else if (requested_mapped_end < process->heap_mapped_end) {
+        uint32_t remove_pages = (uint32_t)((process->heap_mapped_end - requested_mapped_end) /
+                                           PAGING64_PAGE_SIZE);
+        paging64_unmap_free_range(requested_mapped_end, remove_pages);
+        process->heap_page_count -= remove_pages;
+        process->heap_mapped_end = requested_mapped_end;
+    }
+
+    process->heap_break = requested_break;
+    return process->heap_break;
 }
 
 static int user_buffer_pages_mapped(const void* user_ptr, uint32_t size) {

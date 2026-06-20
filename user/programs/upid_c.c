@@ -1,9 +1,9 @@
-#include "userlib.h"
+#include <os64/os64.h>
 
 int main(void) {
-    user_puts("=== upid_c.elf ===");
-    user_puts("Showing process identifiers from C userland.");
-    user_printf("pid: %x\n", (uint32_t)user_get_pid());
-    user_printf("ppid: %x\n", (uint32_t)user_get_ppid());
+    os_puts("=== upid_c.elf ===");
+    os_puts("Showing process identifiers from C userland.");
+    os_printf("pid: %x\n", (uint32_t)os_getpid());
+    os_printf("ppid: %x\n", (uint32_t)os_getppid());
     return 0;
 }

@@ -4,6 +4,7 @@ HOST64_CC = gcc
 HOST64_CXX = g++
 HOST64_LD = ld
 HOST64_OBJCOPY = objcopy
+HOST64_AR = ar
 UEFI_CC = gcc
 UEFI_LD = ld
 UEFI_OBJCOPY = objcopy
@@ -14,7 +15,7 @@ INCLUDES = -I./include -I.
 HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 UEFI_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fshort-wchar -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
-USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -I./user/include
+USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -fno-stack-protector -I./user/include -I./user/sdk/include
 DRIVER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/external/include
 DRIVER64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/external/include
 
@@ -29,6 +30,11 @@ USER_C_SOURCES = $(filter-out $(USER_C_RUNTIME_SOURCES),$(wildcard ./user/progra
 USER_C_OBJECTS = $(patsubst ./user/programs/%.c,./build/user_c_%.o,$(USER_C_SOURCES))
 USER_C_ELFS = $(patsubst ./user/programs/%.c,./bin/%.elf,$(USER_C_SOURCES))
 USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
+USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
+USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
+USER_SDK_LIB = ./build/libos64.a
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h)
+
 
 # External drivers
 DRIVER_PROJECT_MANIFESTS = $(wildcard ./drivers/external/*/driver.json)
@@ -40,6 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
+.PHONY: all all64 uefi drivers test-user-sdk clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -81,6 +88,8 @@ all: all64
 all64: ./bin/os64.bin
 uefi: ./bin/uefi_esp.img ./bin/OVMF_VARS_4M.fd
 drivers: $(DRIVER_PACKAGES)
+test-user-sdk: uefi
+	bash ./tools/run_usdk_test.sh
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -237,9 +246,17 @@ all32:
 	@mkdir -p ./build
 	$(AS) -f elf64 -g -o $@ $<
 
-./build/user_c_%.o: ./user/programs/%.c
+./build/user_c_%.o: ./user/programs/%.c $(USER_SDK_HEADERS)
 	@mkdir -p ./build
 	$(HOST64_CC) $(USER64_CFLAGS) -c $< -o $@
+
+./build/user_sdk_%.o: ./user/sdk/src/%.c $(USER_SDK_HEADERS)
+	@mkdir -p ./build
+	$(HOST64_CC) $(USER64_CFLAGS) -Os -c $< -o $@
+
+$(USER_SDK_LIB): $(USER_SDK_OBJECTS)
+	@mkdir -p ./build
+	$(HOST64_AR) rcs $@ $^
 
 ./build/user_crt0.o: ./user/programs/user_crt0.easm
 	@mkdir -p ./build
@@ -249,9 +266,9 @@ $(USER_EASM_ELFS): ./bin/%.elf: ./build/user_elf_%.o ./user/programs/user_elf.ld
 	@mkdir -p ./bin
 	$(HOST64_LD) -m elf_x86_64 -nostdlib -z max-page-size=0x1000 -T ./user/programs/user_elf.ld -o $@ $<
 
-$(USER_C_ELFS): ./bin/%.elf: ./build/user_c_%.o ./build/user_crt0.o ./user/programs/user_elf.ld
+$(USER_C_ELFS): ./bin/%.elf: ./build/user_c_%.o ./build/user_crt0.o $(USER_SDK_LIB) ./user/programs/user_elf.ld
 	@mkdir -p ./bin
-	$(HOST64_LD) -m elf_x86_64 -nostdlib -z max-page-size=0x1000 -T ./user/programs/user_elf.ld -o $@ ./build/user_crt0.o $<
+	$(HOST64_LD) -m elf_x86_64 -nostdlib -z max-page-size=0x1000 -T ./user/programs/user_elf.ld -o $@ ./build/user_crt0.o $< $(USER_SDK_LIB)
 
 ./build/user_c_ushell_c.o: ./user/programs/ushell/ushell_helpers.inc ./user/programs/ushell/ushell_main.inc ./user/include/userlib.h ./user/include/userlib/userlib_syscalls.h ./user/include/userlib/userlib_text.h ./user/include/userlib/userlib_path_input.h
 
@@ -304,4 +321,6 @@ clean:
 	rm -rf $(USER_C_OBJECTS)
 	rm -rf $(DRIVER_PROJECT_OBJECTS)
 	rm -rf $(DRIVER_PROJECT_PACKAGES)
+	rm -rf $(USER_SDK_OBJECTS)
+	rm -rf $(USER_SDK_LIB)
 	rm -rf ./build/*

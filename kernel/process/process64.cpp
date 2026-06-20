@@ -30,10 +30,15 @@ void process_clear(Process* process) {
     process->name[0] = '\0';
     process->code_base = 0;
     process->stack_base = 0;
+    process->heap_base = 0;
+    process->heap_break = 0;
+    process->heap_mapped_end = 0;
+    process->heap_limit = 0;
     process->entry_point = 0;
     process->image_size = 0;
     process->code_page_count = 0;
     process->stack_page_count = 0;
+    process->heap_page_count = 0;
     process->state = PROCESS_STATE_EMPTY;
     process->termination_reason = PROCESS_TERM_NONE;
     process->status_code = 0;

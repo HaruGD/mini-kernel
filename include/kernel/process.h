@@ -56,10 +56,15 @@ struct Process {
     char name[PROCESS_NAME_MAX];
     uint64_t code_base;
     uint64_t stack_base;
+    uint64_t heap_base;
+    uint64_t heap_break;
+    uint64_t heap_mapped_end;
+    uint64_t heap_limit;
     uint64_t entry_point;
     uint32_t image_size;
     uint32_t code_page_count;
     uint32_t stack_page_count;
+    uint32_t heap_page_count;
     uint32_t state;
     uint32_t termination_reason;
     uint32_t status_code;

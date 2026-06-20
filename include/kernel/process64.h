@@ -10,6 +10,8 @@
 #define PROCESS_CHILD_RESULT_HISTORY_LIMIT 3
 #define SCHED_QUEUE_SIZE PROCESS_TABLE_SIZE
 #define SCHED_DEFAULT_TIMESLICE 6
+#define USER_SLOT_SPAN 0x00200000ULL
+#define USER_HEAP_OFFSET 0x00110000ULL
 
 extern uint32_t user_program_depth;
 extern uint32_t next_pid;

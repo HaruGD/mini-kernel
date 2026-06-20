@@ -63,6 +63,7 @@
 #define SYS_RMDIR_SILENT 50
 #define SYS_RENAME_PATH 51
 #define SYS_CLEAR_SCREEN 52
+#define SYS_USER_BRK 53
 
 extern KeyboardDriver keyboard;
 extern PIT pit;

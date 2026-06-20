@@ -46,6 +46,11 @@ int run_user_program(const char* command_line) {
     process->shell_prompt_kind = infer_shell_prompt_kind(filename);
     process->code_base = user_code_base;
     process->stack_base = user_stack_base;
+    process->heap_base = user_code_base + USER_HEAP_OFFSET;
+    process->heap_break = process->heap_base;
+    process->heap_mapped_end = process->heap_base;
+    process->heap_limit = user_code_base + USER_SLOT_SPAN;
+    process->heap_page_count = 0;
     process->stack_page_count = 0;
     process->entry_point = user_code_base;
     process->state = PROCESS_STATE_LOADED;
