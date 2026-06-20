@@ -362,6 +362,7 @@ extern "C" void* kmalloc(size_t size) {
     }
 
     split_block(current, total_size);
+    heap_remove_free_block(current);
     heap_mark_allocated(current, (uint32_t)size);
     return (void*)((uintptr_t)current + sizeof(struct heap_header));
 }
