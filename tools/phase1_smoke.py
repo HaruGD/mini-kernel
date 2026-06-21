@@ -94,6 +94,19 @@ def command_interval(text: str, command: str, next_command: str | None) -> str:
     return text[start:] if end < 0 else text[start:end]
 
 
+def require_clean_recent_log(text: str, label: str) -> list[str]:
+    start_marker = "Recent kernel log (last 4 KiB):"
+    end_marker = "End recent kernel log."
+    start = text.find(start_marker)
+    end = text.find(end_marker, start + len(start_marker))
+    if start < 0 or end < 0:
+        return [f"{label}: recent kernel log boundaries not found"]
+    recent = text[start + len(start_marker):end]
+    if "OS64 KERNEL PANIC" in recent or "[FATAL][panic]" in recent:
+        return [f"{label}: panic output was captured into the recent log"]
+    return []
+
+
 def main() -> int:
     acpi_commands = (
         "debugfault acpi_rsdp_checksum",
@@ -186,6 +199,9 @@ def main() -> int:
     ], "normal rejection session")
     if "KERNEL PANIC" in normal_text:
         missing.append("normal rejection session: debugfault caused a panic")
+    missing += require_clean_recent_log(fault_text, "fault session")
+    missing += require_clean_recent_log(gp_text, "GP session")
+    missing += require_clean_recent_log(panic_text, "panic session")
 
     user_start = fault_text.find("Running user program: ufault_c.elf")
     user_gp_start = fault_text.find("Running user program: ugpfault_c.elf", user_start)

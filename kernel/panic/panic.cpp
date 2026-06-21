@@ -105,6 +105,7 @@ static void print_stack_trace(uint64_t rip, uint64_t rbp) {
         }
     }
     panic_active = 1;
+    klog_set_capture_enabled(0);
 
     print("\n\n========================================\n");
     print("OS64 KERNEL PANIC\n");

@@ -66,6 +66,12 @@ void klog_capture_char(char c) {
     irq_restore(flags);
 }
 
+void klog_set_capture_enabled(int enabled) {
+    uint64_t flags = irq_save();
+    capture_enabled = enabled != 0;
+    irq_restore(flags);
+}
+
 void klog_write(uint32_t level, const char* subsystem, const char* message) {
     print("[");
     print(level_name(level));
@@ -96,13 +102,14 @@ void klog_dump_tail(uint32_t max_bytes) {
     uint64_t flags = irq_save();
     uint32_t count = log_count < max_bytes ? log_count : max_bytes;
     uint32_t start = (log_start + log_count - count) % KLOG_BUFFER_SIZE;
+    int previous_capture_state = capture_enabled;
     capture_enabled = 0;
     irq_restore(flags);
     for (uint32_t i = 0; i < count; i++) {
         putchar_both(log_buffer[(start + i) % KLOG_BUFFER_SIZE]);
     }
     flags = irq_save();
-    capture_enabled = 1;
+    capture_enabled = previous_capture_state;
     irq_restore(flags);
 }
 

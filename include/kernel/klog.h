@@ -22,6 +22,7 @@ struct KLogStats {
 
 void klog_init();
 void klog_capture_char(char c);
+void klog_set_capture_enabled(int enabled);
 void klog_write(uint32_t level, const char* subsystem, const char* message);
 void klog_get_stats(KLogStats* stats);
 void klog_dump();
