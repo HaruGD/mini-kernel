@@ -96,6 +96,8 @@ What works on the active 64-bit UEFI path:
 - manual display demo loading through `gop_demo_c.drv`
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
 - User SDK reference: [docs/user_sdk.md](docs/user_sdk.md)
+- Project roadmap: [docs/roadmap.md](docs/roadmap.md)
+- Phase 2 task breakdown: [docs/phase2_task_breakdown.md](docs/phase2_task_breakdown.md)
 
 ## Build
 
