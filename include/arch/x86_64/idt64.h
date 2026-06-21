@@ -30,6 +30,9 @@ uint64_t page_fault_handler64(uint64_t fault_addr, uint64_t error_code, uint64_t
 uint64_t gp_fault_handler64(uint64_t error_code, uint64_t* frame);
 uint64_t double_fault_handler64(uint64_t error_code, uint64_t* frame);
 void spurious_interrupt_handler64();
+void pic_spurious_interrupt_handler64(uint64_t irq);
+uint32_t pic_spurious_irq7_count();
+uint32_t pic_spurious_irq15_count();
 
 void keyboard_handler64();
 uint64_t timer_handler64();

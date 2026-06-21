@@ -37,5 +37,8 @@ int acpi_init(uint64_t rsdp_address);
 const AcpiState* acpi_state();
 const AcpiInterruptOverride* acpi_find_override(uint8_t source_irq);
 void acpi_print_summary();
+int acpi_debug_corrupt_rsdp_checksum();
+int acpi_debug_corrupt_madt_entry_length();
+int acpi_debug_remove_ioapics();
 
 #endif

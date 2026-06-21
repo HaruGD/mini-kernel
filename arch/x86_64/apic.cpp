@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include "arch/x86_64/paging64.h"
+#include "arch/x86_64/idt64.h"
 #include "kernel/acpi.h"
 #include "kernel/klog.h"
 #include "kernel/kutil64.h"
@@ -108,13 +109,30 @@ static void disable_legacy_pic() {
     outb(0xA1, 0xFF);
 }
 
-int interrupt_controller_init(const AcpiState* acpi) {
+static void activate_legacy_pic() {
+    if (controller_mode == INTERRUPT_CONTROLLER_APIC && ioapic != 0) {
+        ioapic_mask_all();
+        if (lapic != 0) {
+            lapic_write(LAPIC_EOI, 0);
+        }
+    }
+
+    outb(0x21, 0xFC);
+    outb(0xA1, 0xFF);
     controller_mode = INTERRUPT_CONTROLLER_PIC;
+    lapic = 0;
+    ioapic = 0;
+    ioapic_gsi_base = 0;
+    ioapic_redirections = 0;
     for (uint32_t i = 0; i < 16; i++) {
         irq_gsi[i] = 0xFFFFFFFFu;
     }
+}
+
+int interrupt_controller_init(const AcpiState* acpi) {
     if (acpi == 0 || !acpi->ready || acpi->ioapic_count == 0 ||
         !cpu_has_apic()) {
+        activate_legacy_pic();
         klog_write(KLOG_WARN, "interrupt", "using legacy PIC");
         return 0;
     }
@@ -132,8 +150,7 @@ int interrupt_controller_init(const AcpiState* acpi) {
     if (!paging64_map_range_identity(acpi->local_apic_address, 4096, mmio_flags) ||
         !paging64_map_range_identity(acpi->ioapics[0].address, 4096, mmio_flags)) {
         klog_write(KLOG_ERROR, "interrupt", "failed to map APIC MMIO");
-        lapic = 0;
-        ioapic = 0;
+        activate_legacy_pic();
         return 0;
     }
 
@@ -150,8 +167,7 @@ int interrupt_controller_init(const AcpiState* acpi) {
     ioapic_mask_all();
     if (!ioapic_route(0, 32, acpi) || !ioapic_route(1, 33, acpi)) {
         klog_write(KLOG_ERROR, "interrupt", "IOAPIC routing failed; using PIC");
-        lapic = 0;
-        ioapic = 0;
+        activate_legacy_pic();
         return 0;
     }
 
@@ -227,6 +243,12 @@ void interrupt_controller_print() {
     print_hex64((uint64_t)(uintptr_t)ioapic);
     print(" redirections=");
     print_hex32(ioapic_redirections);
+    print("\npic_spurious_count=");
+    print_hex32(pic_spurious_irq7_count() + pic_spurious_irq15_count());
+    print(" irq7=");
+    print_hex32(pic_spurious_irq7_count());
+    print(" irq15=");
+    print_hex32(pic_spurious_irq15_count());
     if (controller_mode == INTERRUPT_CONTROLLER_APIC) {
         print("\nlapic_isr32=");
         print_hex32(lapic_read(0x110));

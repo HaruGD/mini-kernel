@@ -31,10 +31,12 @@ What works on the active 64-bit UEFI path:
 - kernel stack supplied by the UEFI loader
 - ACPI RSDP/XSDT/MADT discovery and checksum validation
 - Local APIC/IOAPIC routing with automatic legacy PIC fallback
+- PIC spurious IRQ7/IRQ15 detection with correct cascade EOI handling
 - IDT, GDT/TSS, double-fault IST, PIT, and keyboard IRQ handling
 - panic register dump, frame-pointer stack trace, and recent-log dump
 - 16 KiB kernel log ring with levels, subsystem tags, and shell inspection
 - diagnostic boot image with external driver autoload disabled and detailed boot reports
+- diagnostic-only kernel GP and runtime ACPI corruption fault injection
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
 - process table and scheduler prototype
@@ -117,6 +119,11 @@ and panic reporting:
 make uefi-diagnostic
 make test-phase1
 ```
+
+Diagnostic boot additionally exposes `debugfault gp`,
+`debugfault acpi_rsdp_checksum`, `debugfault acpi_madt_entry_len`, and
+`debugfault acpi_no_ioapic`. Normal boot rejects these commands. See the
+[Phase 1 regression matrix](docs/phase1_regression_matrix.md) for coverage.
 
 Equivalent default:
 
@@ -306,6 +313,7 @@ Examples:
 - `uyield_c.elf`
 - `ubusy_c.elf`
 - `ufault_c.elf`
+- `ugpfault_c.elf`
 - `uargs_c.elf`
 - `uio_c.elf`
 

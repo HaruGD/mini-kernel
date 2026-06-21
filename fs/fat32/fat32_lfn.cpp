@@ -126,6 +126,16 @@ int FAT32Driver::find_free_dir_slots(uint32_t dir_cluster,
 
             FAT32DirEntry* dir = (FAT32DirEntry*)sector;
             uint32_t entry_count = bpb.bytes_per_sector / sizeof(FAT32DirEntry);
+            uint8_t normalized = 0;
+            for (uint32_t i = 0; i < entry_count; i++) {
+                if (dir[i].name[0] == 0x00) {
+                    dir[i].name[0] = 0xE5;
+                    normalized = 1;
+                }
+            }
+            if (normalized && !write_dir_sector(cluster, sector_offset, sector)) {
+                return VFS_ERR_IO;
+            }
             for (uint32_t i = 0; i + slot_count <= entry_count; i++) {
                 uint8_t free_run = 1;
                 for (uint32_t j = 0; j < slot_count; j++) {
@@ -198,4 +208,3 @@ int FAT32Driver::find_free_dir_slot(uint32_t dir_cluster,
                                     uint32_t* out_entry_index) {
     return find_free_dir_slots(dir_cluster, 1, out_dir_cluster, out_sector_offset, out_entry_index);
 }
-

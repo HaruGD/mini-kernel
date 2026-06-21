@@ -42,6 +42,8 @@ struct __attribute__((packed)) MadtEntryHeader {
 };
 
 static AcpiState state;
+static uint64_t known_rsdp_address = 0;
+static uint64_t known_madt_address = 0;
 
 static int map_physical(uint64_t address, uint64_t size) {
     if (address == 0 || size == 0 || address + size < address) {
@@ -69,6 +71,24 @@ static int checksum_valid(const void* data, uint32_t length) {
         sum = (uint8_t)(sum + bytes[i]);
     }
     return sum == 0;
+}
+
+static void update_sdt_checksum(AcpiSdtHeader* header) {
+    header->checksum = 0;
+    uint8_t sum = 0;
+    const uint8_t* bytes = (const uint8_t*)header;
+    for (uint32_t i = 0; i < header->length; i++) {
+        sum = (uint8_t)(sum + bytes[i]);
+    }
+    header->checksum = (uint8_t)(0u - sum);
+}
+
+static int remap_table(uint64_t address, uint32_t length, int writable) {
+    uint64_t flags = PAGING64_FLAG_NX;
+    if (writable) {
+        flags |= PAGING64_FLAG_WRITABLE;
+    }
+    return paging64_remap_range(address, length, flags);
 }
 
 static int valid_sdt(const AcpiSdtHeader* header) {
@@ -150,6 +170,8 @@ int acpi_init(uint64_t rsdp_address) {
         return 0;
     }
 
+    known_rsdp_address = rsdp_address;
+
     const AcpiRsdp* rsdp = (const AcpiRsdp*)(uintptr_t)rsdp_address;
     if (!bytes_equal(rsdp->signature, "RSD PTR ", 8) ||
         !checksum_valid(rsdp, 20)) {
@@ -181,6 +203,7 @@ int acpi_init(uint64_t rsdp_address) {
             : *(const uint32_t*)(const void*)(entries + i * entry_size);
         const AcpiSdtHeader* table = map_sdt(address);
         if (table != 0 && bytes_equal(table->signature, "APIC", 4)) {
+            known_madt_address = address;
             parse_madt((const AcpiMadt*)table);
             break;
         }
@@ -193,6 +216,125 @@ int acpi_init(uint64_t rsdp_address) {
                "acpi",
                state.ready ? "MADT parsed" : "MADT or IOAPIC unavailable");
     return state.ready;
+}
+
+static AcpiMadt* prepare_debug_madt() {
+    if (known_rsdp_address == 0 || !acpi_init(known_rsdp_address) ||
+        known_madt_address == 0) {
+        return 0;
+    }
+    AcpiMadt* madt = (AcpiMadt*)(uintptr_t)known_madt_address;
+    if (!remap_table(known_madt_address, madt->header.length, 1)) {
+        return 0;
+    }
+    return madt;
+}
+
+int acpi_debug_corrupt_rsdp_checksum() {
+    if (known_rsdp_address == 0 || !acpi_init(known_rsdp_address)) {
+        return 0;
+    }
+
+    AcpiRsdp* rsdp = (AcpiRsdp*)(uintptr_t)known_rsdp_address;
+    uint32_t length = rsdp->revision >= 2 ? rsdp->length : 20u;
+    if (!remap_table(known_rsdp_address, length, 1)) {
+        return 0;
+    }
+
+    uint8_t* checksum = rsdp->revision >= 2
+        ? &rsdp->extended_checksum
+        : &rsdp->checksum;
+    uint8_t saved = *checksum;
+    *checksum ^= 0x01u;
+    int rejected = !acpi_init(known_rsdp_address);
+    if (!remap_table(known_rsdp_address, length, 1)) {
+        return 0;
+    }
+    *checksum = saved;
+    remap_table(known_rsdp_address, length, 0);
+    return rejected;
+}
+
+int acpi_debug_corrupt_madt_entry_length() {
+    AcpiMadt* madt = prepare_debug_madt();
+    if (madt == 0) {
+        return 0;
+    }
+
+    uint32_t offset = sizeof(AcpiMadt);
+    while (offset + sizeof(MadtEntryHeader) <= madt->header.length) {
+        MadtEntryHeader* entry =
+            (MadtEntryHeader*)((uint8_t*)madt + offset);
+        if (entry->length < sizeof(MadtEntryHeader) ||
+            offset + entry->length > madt->header.length) {
+            break;
+        }
+        if (entry->type == 1) {
+            uint8_t saved_length = entry->length;
+            uint8_t saved_checksum = madt->header.checksum;
+            entry->length = 0;
+            update_sdt_checksum(&madt->header);
+            int rejected = !acpi_init(known_rsdp_address);
+            if (!remap_table(known_madt_address, madt->header.length, 1)) {
+                return 0;
+            }
+            entry->length = saved_length;
+            madt->header.checksum = saved_checksum;
+            remap_table(known_madt_address, madt->header.length, 0);
+            return rejected;
+        }
+        offset += entry->length;
+    }
+
+    remap_table(known_madt_address, madt->header.length, 0);
+    return 0;
+}
+
+int acpi_debug_remove_ioapics() {
+    AcpiMadt* madt = prepare_debug_madt();
+    if (madt == 0) {
+        return 0;
+    }
+
+    uint32_t offsets[32];
+    uint32_t count = 0;
+    uint32_t offset = sizeof(AcpiMadt);
+    while (offset + sizeof(MadtEntryHeader) <= madt->header.length) {
+        MadtEntryHeader* entry =
+            (MadtEntryHeader*)((uint8_t*)madt + offset);
+        if (entry->length < sizeof(MadtEntryHeader) ||
+            offset + entry->length > madt->header.length) {
+            break;
+        }
+        if (entry->type == 1) {
+            if (count >= sizeof(offsets) / sizeof(offsets[0])) {
+                remap_table(known_madt_address, madt->header.length, 0);
+                return 0;
+            }
+            offsets[count++] = offset;
+            entry->type = 0xFFu;
+        }
+        offset += entry->length;
+    }
+    if (count == 0) {
+        remap_table(known_madt_address, madt->header.length, 0);
+        return 0;
+    }
+
+    uint8_t saved_checksum = madt->header.checksum;
+    update_sdt_checksum(&madt->header);
+    int rejected = !acpi_init(known_rsdp_address);
+    if (!remap_table(known_madt_address, madt->header.length, 1)) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        MadtEntryHeader* entry =
+            (MadtEntryHeader*)((uint8_t*)madt + offsets[i]);
+        entry->type = 1;
+    }
+    madt->header.checksum = saved_checksum;
+    remap_table(known_madt_address, madt->header.length, 0);
+    return rejected;
 }
 
 const AcpiState* acpi_state() {

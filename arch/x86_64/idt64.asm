@@ -15,6 +15,8 @@ global isr_double_fault_asm
 global irq_keyboard_asm
 global irq_timer_asm
 global irq_spurious_asm
+global irq_pic_spurious7_asm
+global irq_pic_spurious15_asm
 global user_test_asm
 global user_exit_asm
 global syscall_asm
@@ -26,6 +28,7 @@ extern double_fault_handler64
 extern keyboard_handler64
 extern timer_handler64
 extern spurious_interrupt_handler64
+extern pic_spurious_interrupt_handler64
 extern user_test_interrupt_handler64
 extern user_exit_interrupt_handler64
 extern kernel_user_return_rsp
@@ -172,6 +175,24 @@ irq_spurious_asm:
     PUSH_GPRS
     sub rsp, 8
     call spurious_interrupt_handler64
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+irq_pic_spurious7_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    mov rdi, 7
+    call pic_spurious_interrupt_handler64
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+irq_pic_spurious15_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    mov rdi, 15
+    call pic_spurious_interrupt_handler64
     add rsp, 8
     POP_GPRS
     iretq

@@ -1,6 +1,7 @@
 #include "arch/x86_64/idt64.h"
 #include "kernel/klog.h"
 #include "kernel/panic.h"
+#include "kernel/driver/driver_manager.h"
 
 extern "C" {
     #include "arch/x86_64/io.h"
@@ -19,6 +20,8 @@ extern "C" uint64_t timer_preempt_requested64();
 
 static struct idt64_entry idt64[256];
 static struct idtr64 idtr;
+static uint32_t pic_spurious7 = 0;
+static uint32_t pic_spurious15 = 0;
 
 extern "C" void isr_default_asm();
 extern "C" void isr_page_fault_asm();
@@ -27,6 +30,8 @@ extern "C" void isr_double_fault_asm();
 extern "C" void irq_keyboard_asm();
 extern "C" void irq_timer_asm();
 extern "C" void irq_spurious_asm();
+extern "C" void irq_pic_spurious7_asm();
+extern "C" void irq_pic_spurious15_asm();
 extern "C" void user_test_asm();
 extern "C" void user_exit_asm();
 extern "C" void syscall_asm();
@@ -80,6 +85,8 @@ extern "C" void idt64_init() {
     set_idt64_gate(14, (uint64_t)isr_page_fault_asm);
     set_idt64_gate(32, (uint64_t)irq_timer_asm);
     set_idt64_gate(33, (uint64_t)irq_keyboard_asm);
+    set_idt64_gate(39, (uint64_t)irq_pic_spurious7_asm);
+    set_idt64_gate(47, (uint64_t)irq_pic_spurious15_asm);
     set_idt64_gate(255, (uint64_t)irq_spurious_asm);
     set_idt64_gate_dpl(0x81, (uint64_t)user_test_asm, 3);
     set_idt64_gate_dpl(0x82, (uint64_t)user_exit_asm, 3);
@@ -163,4 +170,48 @@ extern "C" void spurious_interrupt_handler64() {
     if (spurious_count == 1) {
         klog_write(KLOG_WARN, "interrupt", "spurious APIC interrupt");
     }
+}
+
+static uint8_t pic_read_isr(uint16_t command_port) {
+    outb(command_port, 0x0B);
+    uint8_t isr = inb(command_port);
+    outb(command_port, 0x0A);
+    return isr;
+}
+
+extern "C" void pic_spurious_interrupt_handler64(uint64_t irq) {
+    if (irq == 7) {
+        if (pic_read_isr(0x20) & 0x80u) {
+            driver_irq_dispatch(7);
+            outb(0x20, 0x20);
+            return;
+        }
+        pic_spurious7++;
+        if (pic_spurious7 == 1) {
+            klog_write(KLOG_WARN, "interrupt", "spurious PIC IRQ7");
+        }
+        return;
+    }
+
+    if (irq == 15) {
+        if (pic_read_isr(0xA0) & 0x80u) {
+            driver_irq_dispatch(15);
+            outb(0xA0, 0x20);
+            outb(0x20, 0x20);
+            return;
+        }
+        pic_spurious15++;
+        if (pic_spurious15 == 1) {
+            klog_write(KLOG_WARN, "interrupt", "spurious PIC IRQ15");
+        }
+        outb(0x20, 0x20);
+    }
+}
+
+uint32_t pic_spurious_irq7_count() {
+    return pic_spurious7;
+}
+
+uint32_t pic_spurious_irq15_count() {
+    return pic_spurious15;
 }

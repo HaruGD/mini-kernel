@@ -50,6 +50,11 @@ GUI와 실컴 드라이버를 늘리기 전에 장애 원인을 안정적으로 
   - [x] IRQ0/IRQ1 routing과 MADT override
   - [x] controller 공통 mask/EOI API
   - [x] ACPI/APIC 실패 시 PIC fallback
+  - [x] PIC spurious IRQ7/IRQ15 ISR 판별과 EOI 처리
+- [x] Phase 1 fault 회귀 자동화
+  - [x] user/kernel page fault 분기
+  - [x] user/kernel general protection fault 분기
+  - [x] runtime ACPI 손상과 PIC fallback
 
 ## 2단계: 그래픽과 입력 기반
 

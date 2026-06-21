@@ -91,9 +91,6 @@ static long transfer(long fd, void* buffer, uint32_t size, int writing) {
             break;
         }
         total += (uint32_t)result;
-        if (!writing && (uint32_t)result < chunk) {
-            break;
-        }
     }
     return (long)total;
 }

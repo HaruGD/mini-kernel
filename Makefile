@@ -96,7 +96,7 @@ uefi-diagnostic: ./bin/uefi_diag_esp.img ./bin/OVMF_VARS_4M.fd
 drivers: $(DRIVER_PACKAGES)
 test-user-sdk: uefi
 	bash ./tools/run_usdk_test.sh
-test-phase1: uefi-diagnostic
+test-phase1: uefi uefi-diagnostic
 	python3 ./tools/phase1_smoke.py
 
 all32:

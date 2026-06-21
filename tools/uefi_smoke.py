@@ -55,6 +55,7 @@ def main() -> int:
         "drvcheck hello_c.drv",
         "drvload hello_c.drv",
         "drvcheck gop_demo_c.drv",
+        "drvload gop_demo_c.drv",
         "drvcheck provider_c.drv",
         "drvload provider_c.drv",
         "drvcheck consumer_c.drv",

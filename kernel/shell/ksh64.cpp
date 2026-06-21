@@ -231,7 +231,7 @@ static void command_help() {
     print("\nfree, dump, sched, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
-    print("\nklog [clear|stats], acpi, intctl, panic test");
+    print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case]");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
 
@@ -267,6 +267,45 @@ static void command_panic(char* arg) {
         return;
     }
     kernel_panic_message("manual panic test");
+}
+
+static void command_debugfault(char* arg) {
+    const BootInfo* boot_info = kernel_boot_info();
+    if (boot_info == 0 ||
+        (boot_info->flags & BOOT_INFO_FLAG_DIAGNOSTIC) == 0) {
+        print("\ndebugfault is only available in diagnostic boot mode");
+        return;
+    }
+    if (arg == 0) {
+        print("\nUsage: debugfault gp|acpi_rsdp_checksum|acpi_madt_entry_len|acpi_no_ioapic");
+        return;
+    }
+    if (strcmp64(arg, "gp") == 0) {
+        __asm__ volatile(
+            "mov $0xffff, %%ax\n"
+            "mov %%ax, %%ds\n"
+            : : : "rax", "memory");
+        return;
+    }
+
+    int injected = 0;
+    if (strcmp64(arg, "acpi_rsdp_checksum") == 0) {
+        injected = acpi_debug_corrupt_rsdp_checksum();
+    } else if (strcmp64(arg, "acpi_madt_entry_len") == 0) {
+        injected = acpi_debug_corrupt_madt_entry_length();
+    } else if (strcmp64(arg, "acpi_no_ioapic") == 0) {
+        injected = acpi_debug_remove_ioapics();
+    } else {
+        print("\nUnknown debugfault case: ");
+        print(arg);
+        return;
+    }
+
+    interrupt_controller_init(acpi_state());
+    print("\ndebugfault result=");
+    print(injected ? "ok" : "failed");
+    print(" case=");
+    print(arg);
 }
 
 static void command_sched() {
@@ -647,6 +686,8 @@ static void execute_command() {
         interrupt_controller_print();
     } else if (strcmp64(cmd, "panic") == 0) {
         command_panic(arg);
+    } else if (strcmp64(cmd, "debugfault") == 0) {
+        command_debugfault(arg);
     } else if (strcmp64(cmd, "drvinfo") == 0) {
         command_drvinfo(arg);
     } else if (strcmp64(cmd, "drvcheck") == 0) {
@@ -682,7 +723,8 @@ static void execute_command() {
     } else if (strcmp64(cmd, "resume") == 0) {
         command_resume();
     } else if (strcmp64(cmd, "pagefault") == 0) {
-        volatile uint32_t* bad_ptr = (uint32_t*)0x80000000;
+        volatile uint32_t* bad_ptr =
+            (volatile uint32_t*)(uintptr_t)0x0000000800000000ULL;
         *bad_ptr = 0x1234;
     } else if (strcmp64(cmd, "usertest") == 0) {
         command_usertest();
