@@ -109,6 +109,13 @@ void print_boot_info() {
         print("\nRamdisk bytes: ");
         print_hex64(g_boot_info->ramdisk_size);
     }
+    if (g_boot_info->size >= sizeof(BootInfo) &&
+        (g_boot_info->flags & BOOT_INFO_FLAG_ACPI)) {
+        print("\nACPI RSDP: ");
+        print_hex64(g_boot_info->acpi_rsdp_addr);
+    }
+    print("\nDiagnostic: ");
+    print((g_boot_info->flags & BOOT_INFO_FLAG_DIAGNOSTIC) ? "yes" : "no");
     if (boot_info_has_reserved_ranges(g_boot_info)) {
         uint32_t count = boot_reserved_range_count(g_boot_info);
         print("\nReserved range count: ");

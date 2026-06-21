@@ -83,8 +83,10 @@ static int map_boot_framebuffer(const BootInfo* boot_info) {
 
 extern "C" void kernel64_main(const BootInfo* boot_info) {
     serial_init();
+    klog_init();
     g_boot_info = boot_info;
     boot_tsc = read_tsc();
+    klog_write(KLOG_INFO, "boot", "kernel entry");
 
     print("Long mode OK\n");
     if (g_boot_info != 0 && g_boot_info->magic == BOOT_INFO_MAGIC) {
@@ -127,6 +129,12 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
 
     pmm64_init(boot_info);
     paging64_init();
+    int diagnostic_mode = g_boot_info != 0 &&
+        (g_boot_info->flags & BOOT_INFO_FLAG_DIAGNOSTIC);
+    uint64_t acpi_rsdp = g_boot_info != 0 && g_boot_info->size >= sizeof(BootInfo)
+        ? g_boot_info->acpi_rsdp_addr
+        : 0;
+    int acpi_ready = acpi_init(acpi_rsdp);
     int nx_policy_applied = apply_kernel_nx_policy(g_boot_info);
     int framebuffer_mapped = map_boot_framebuffer(g_boot_info);
     if (framebuffer_mapped) {
@@ -161,8 +169,11 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     vfs_init();
     vfs_mount_fat32_root(root_fat32);
     vfs_mount_memfs("/mem");
-    uint32_t autoloaded_drivers = driver_manager_autoload_from("/");
+    uint32_t autoloaded_drivers = diagnostic_mode
+        ? 0
+        : driver_manager_autoload_from("/");
     idt64_init();
+    int apic_ready = interrupt_controller_init(acpi_state());
     keyboard.init();
     pit.init();
     __asm__ volatile("sti");
@@ -180,8 +191,25 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print("Driver autoloaded: ");
     print_hex32(autoloaded_drivers);
     print("\n");
+    print("Diagnostic mode: ");
+    print_hex32((uint32_t)diagnostic_mode);
+    print("\nACPI ready: ");
+    print_hex32((uint32_t)acpi_ready);
+    print("\nInterrupt controller: ");
+    print(interrupt_controller_name());
+    print(" ready=");
+    print_hex32((uint32_t)apic_ready);
+    print("\n");
     print("GDT/TSS ready\n");
     print("Interrupts ready\n");
+    klog_write(KLOG_INFO, "boot", "kernel initialization complete");
+    if (diagnostic_mode) {
+        klog_write(KLOG_INFO, "boot", "diagnostic report follows");
+        print_boot_info();
+        acpi_print_summary();
+        interrupt_controller_print();
+        command_pci();
+    }
     print(kernel_shell_prompt());
 
     while (1) {

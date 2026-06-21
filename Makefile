@@ -13,7 +13,7 @@ OVMF_VARS_TEMPLATE = /usr/share/OVMF/OVMF_VARS_4M.fd
 # Common flags
 INCLUDES = -I./include -I.
 HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
-HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
+HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables $(INCLUDES)
 UEFI_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fshort-wchar -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -fno-stack-protector -I./user/include -I./user/sdk/include
 DRIVER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/external/include
@@ -46,7 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi drivers test-user-sdk clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -57,6 +57,10 @@ KERNEL64_OBJECTS = \
 	./build/userprog64.o \
 	./build/syscall64.o \
 	./build/sdk_syscalls64.o \
+	./build/klog64.o \
+	./build/panic64.o \
+	./build/acpi64.o \
+	./build/apic64.o \
 	./build/ksh64.o \
 	./build/driver_manager64.o \
 	./build/driver_exports64.o \
@@ -88,9 +92,12 @@ KERNEL64_OBJECTS = \
 all: all64
 all64: ./bin/os64.bin
 uefi: ./bin/uefi_esp.img ./bin/OVMF_VARS_4M.fd
+uefi-diagnostic: ./bin/uefi_diag_esp.img ./bin/OVMF_VARS_4M.fd
 drivers: $(DRIVER_PACKAGES)
 test-user-sdk: uefi
 	bash ./tools/run_usdk_test.sh
+test-phase1: uefi-diagnostic
+	python3 ./tools/phase1_smoke.py
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -126,6 +133,18 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/klog64.o: ./kernel/log/klog.cpp ./include/kernel/klog.h ./include/kernel/kutil64.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/panic64.o: ./kernel/panic/panic.cpp ./include/kernel/panic.h ./include/kernel/klog.h ./include/kernel/boot_info.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/acpi64.o: ./kernel/acpi/acpi.cpp ./include/kernel/acpi.h ./include/kernel/klog.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/apic64.o: ./arch/x86_64/apic.cpp ./include/arch/x86_64/apic.h ./include/kernel/acpi.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/ksh64.o: ./kernel/shell/ksh64.cpp ./include/kernel/pci.h ./include/drivers/gop.h
@@ -234,6 +253,9 @@ all32:
 ./bin/uefi_esp.img: ./bin/BOOTX64.EFI ./bin/kernel64.bin ./bin/os64.bin ./tools/build_uefi_esp.py
 	python3 ./tools/build_uefi_esp.py --efi ./bin/BOOTX64.EFI --kernel ./bin/kernel64.bin --root ./bin/os64.bin --output ./bin/uefi_esp.img
 
+./bin/uefi_diag_esp.img: ./bin/BOOTX64.EFI ./bin/kernel64.bin ./bin/os64.bin ./tools/build_uefi_esp.py
+	python3 ./tools/build_uefi_esp.py --efi ./bin/BOOTX64.EFI --kernel ./bin/kernel64.bin --root ./bin/os64.bin --diagnostic --output ./bin/uefi_diag_esp.img
+
 ./bin/OVMF_VARS_4M.fd:
 	@mkdir -p ./bin
 	cp $(OVMF_VARS_TEMPLATE) ./bin/OVMF_VARS_4M.fd
@@ -318,6 +340,7 @@ clean:
 	rm -rf ./bin/kernel64.elf
 	rm -rf ./bin/BOOTX64.EFI
 	rm -rf ./bin/uefi_esp.img
+	rm -rf ./bin/uefi_diag_esp.img
 	rm -rf ./bin/OVMF_VARS_4M.fd
 	rm -rf $(USER_BINS)
 	rm -rf $(USER_ELFS)

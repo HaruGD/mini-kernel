@@ -14,6 +14,7 @@ global isr_gp_fault_asm
 global isr_double_fault_asm
 global irq_keyboard_asm
 global irq_timer_asm
+global irq_spurious_asm
 global user_test_asm
 global user_exit_asm
 global syscall_asm
@@ -24,6 +25,7 @@ extern gp_fault_handler64
 extern double_fault_handler64
 extern keyboard_handler64
 extern timer_handler64
+extern spurious_interrupt_handler64
 extern user_test_interrupt_handler64
 extern user_exit_interrupt_handler64
 extern kernel_user_return_rsp
@@ -95,6 +97,7 @@ isr_page_fault_asm:
     PUSH_GPRS
     mov rdi, rax
     mov rsi, [rsp + 120]
+    lea rdx, [rsp]
     sub rsp, 8
     call page_fault_handler64
     cmp rax, FAULT_RETURN_TO_KERNEL
@@ -108,6 +111,7 @@ isr_gp_fault_asm:
     cli
     PUSH_GPRS
     mov rdi, [rsp + 120]
+    lea rsi, [rsp]
     sub rsp, 8
     call gp_fault_handler64
     cmp rax, FAULT_RETURN_TO_KERNEL
@@ -121,6 +125,7 @@ isr_double_fault_asm:
     cli
     PUSH_GPRS
     mov rdi, [rsp + 120]
+    lea rsi, [rsp]
     sub rsp, 8
     call double_fault_handler64
     cmp rax, FAULT_RETURN_TO_KERNEL
@@ -159,6 +164,14 @@ irq_timer_asm:
     mov rsp, [kernel_user_return_rsp]
     ret
 .timer_iret:
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+irq_spurious_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    call spurious_interrupt_handler64
     add rsp, 8
     POP_GPRS
     iretq

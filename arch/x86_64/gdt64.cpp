@@ -4,6 +4,7 @@ static uint64_t gdt64_table[8];
 static struct gdtr64 gdtr64_desc;
 static struct tss64 kernel_tss64;
 static uint8_t kernel_rsp0_stack[16384] __attribute__((aligned(16)));
+static uint8_t double_fault_stack[16384] __attribute__((aligned(16)));
 
 static void set_tss64_descriptor(int index, uint64_t base, uint32_t limit) {
     struct gdt64_system_descriptor* desc = (struct gdt64_system_descriptor*)&gdt64_table[index];
@@ -45,6 +46,7 @@ extern "C" void gdt64_init() {
     }
 
     kernel_tss64.rsp0 = (uint64_t)(uintptr_t)(kernel_rsp0_stack + sizeof(kernel_rsp0_stack));
+    kernel_tss64.ist1 = (uint64_t)(uintptr_t)(double_fault_stack + sizeof(double_fault_stack));
     kernel_tss64.io_map_base = sizeof(kernel_tss64);
 
     set_tss64_descriptor(6, (uint64_t)(uintptr_t)&kernel_tss64, sizeof(kernel_tss64) - 1);

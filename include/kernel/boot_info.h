@@ -4,10 +4,12 @@
 #include <stdint.h>
 
 #define BOOT_INFO_MAGIC 0x4649424D
-#define BOOT_INFO_VERSION 1
+#define BOOT_INFO_VERSION 2
 #define BOOT_INFO_FLAG_UEFI 0x00000001
 #define BOOT_INFO_FLAG_FRAMEBUFFER 0x00000002
 #define BOOT_INFO_FLAG_RAMDISK 0x00000004
+#define BOOT_INFO_FLAG_ACPI 0x00000008
+#define BOOT_INFO_FLAG_DIAGNOSTIC 0x00000010
 #define BOOT_INFO_ADDR 0x8000
 #define E820_MEMORY_MAP_ADDR 0x8200
 #define E820_ENTRY_SIZE 24
@@ -62,6 +64,7 @@ typedef struct BootInfo {
     uint64_t ramdisk_addr;
     uint64_t ramdisk_size;
     BootReservedRange reserved_ranges[BOOT_RESERVED_RANGE_MAX];
+    uint64_t acpi_rsdp_addr;
 } BootInfo;
 
 #endif

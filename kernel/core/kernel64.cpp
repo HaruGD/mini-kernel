@@ -7,6 +7,7 @@ extern "C" {
 }
 
 #include "arch/x86_64/idt64.h"
+#include "arch/x86_64/apic.h"
 #include "arch/x86_64/gdt64.h"
 #include "arch/x86_64/paging64.h"
 #include "arch/x86_64/pmm64.h"
@@ -17,6 +18,7 @@ extern "C" {
 #include "fs/fat32.h"
 #include "fs/vfs.h"
 #include "kernel/boot_info.h"
+#include "kernel/acpi.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/driver_manager.h"
 #include "kernel/pci.h"
@@ -24,6 +26,7 @@ extern "C" {
 #include "kernel/elf64.h"
 #include "kernel/ksh64.h"
 #include "kernel/kutil64.h"
+#include "kernel/klog.h"
 #include "kernel/process.h"
 #include "kernel/process64.h"
 #include "kernel/syscall64.h"

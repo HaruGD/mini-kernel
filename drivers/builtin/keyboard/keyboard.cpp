@@ -151,7 +151,6 @@ void KeyboardDriver::handle() {
 
     if (scan_code == 0xE0) {
         is_extended = true;
-        outb(0x20, 0x20);
         return;
     }
 
@@ -163,28 +162,23 @@ void KeyboardDriver::handle() {
         else if (!user_mode_input && scan_code == 0x50) {
             shell_recall_history(1);
         }
-        outb(0x20, 0x20);
         return;
     }
 
     if (scan_code == 0x2A) {
         shift_pressed |= 1;
-        outb(0x20, 0x20);
         return;
     }
     if (scan_code == 0x36) {
         shift_pressed |= 2;
-        outb(0x20, 0x20);
         return;
     }
     if (scan_code == 0xAA) {
         shift_pressed &= ~1;
-        outb(0x20, 0x20);
         return;
     }
     if (scan_code == 0xB6) {
         shift_pressed &= ~2;
-        outb(0x20, 0x20);
         return;
     }
     if (scan_code == 0x3A) {
@@ -198,5 +192,4 @@ void KeyboardDriver::handle() {
             keyboard_deliver_char64(ascii);
         }
     }
-    outb(0x20, 0x20);
 }

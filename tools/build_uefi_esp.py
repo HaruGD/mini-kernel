@@ -53,6 +53,7 @@ def main() -> int:
     parser.add_argument("--efi", required=True)
     parser.add_argument("--kernel", required=True)
     parser.add_argument("--root")
+    parser.add_argument("--diagnostic", action="store_true")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -67,7 +68,8 @@ def main() -> int:
     startup = b"FS0:\r\nBOOTX64.EFI\r\n"
 
     root_dir_sectors = (ROOT_ENTRY_COUNT * 32 + BYTES_PER_SECTOR - 1) // BYTES_PER_SECTOR
-    payload_bytes = len(efi) + len(kernel) + len(startup) + len(root_image)
+    diagnostic = b"diagnostic\r\n" if args.diagnostic else b""
+    payload_bytes = len(efi) + len(kernel) + len(startup) + len(root_image) + len(diagnostic)
     payload_clusters = cluster_count(payload_bytes) + 8
     total_sectors = 32768
     while True:
@@ -134,6 +136,7 @@ def main() -> int:
     kernel_chain = alloc_chain(kernel)
     root_chain = alloc_chain(root_image) if root_image else []
     startup_chain = alloc_chain(startup)
+    diagnostic_chain = alloc_chain(diagnostic) if diagnostic else []
 
     if next_cluster >= total_clusters:
         raise SystemExit("files do not fit in ESP image")
@@ -155,6 +158,8 @@ def main() -> int:
     ]
     if root_chain:
         root_entries.insert(3, make_entry("OS64.BIN", 0x20, root_chain[0], len(root_image)))
+    if diagnostic_chain:
+        root_entries.append(make_entry("DIAG.CFG", 0x20, diagnostic_chain[0], len(diagnostic)))
     write_dir(image, root_offset, root_entries)
 
     efi_dir = [
@@ -183,6 +188,8 @@ def main() -> int:
     if root_chain:
         write_file(root_image, root_chain)
     write_file(startup, startup_chain)
+    if diagnostic_chain:
+        write_file(diagnostic, diagnostic_chain)
 
     with open(args.output, "wb") as f:
         f.write(image)

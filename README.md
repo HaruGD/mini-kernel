@@ -18,7 +18,7 @@ What works on the active 64-bit UEFI path:
 
 - UEFI bootloader image generation
 - UEFI framebuffer handoff
-- `BootInfo` handoff with memory map and reserved ranges
+- `BootInfo` v2 handoff with memory map, reserved ranges, ACPI RSDP, and diagnostic flags
 - 64-bit long mode kernel entry
 - PMM, heap, and runtime paging helpers
 - PMM allocation statistics with next-fit single-page allocation hint
@@ -29,7 +29,12 @@ What works on the active 64-bit UEFI path:
 - kernel heap segregated free-list bins for faster free-block search
 - page-based user buffer validation for syscall copy helpers
 - kernel stack supplied by the UEFI loader
-- IDT, GDT/TSS, PIT, and keyboard IRQ handling
+- ACPI RSDP/XSDT/MADT discovery and checksum validation
+- Local APIC/IOAPIC routing with automatic legacy PIC fallback
+- IDT, GDT/TSS, double-fault IST, PIT, and keyboard IRQ handling
+- panic register dump, frame-pointer stack trace, and recent-log dump
+- 16 KiB kernel log ring with levels, subsystem tags, and shell inspection
+- diagnostic boot image with external driver autoload disabled and detailed boot reports
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
 - process table and scheduler prototype
@@ -81,7 +86,7 @@ What works on the active 64-bit UEFI path:
 - kernel hardware exports for PCI config I/O, MMIO32, VFS handles, and ATA sector I/O
 - kernel display exports for GOP framebuffer info and drawing primitives
 - driver PCI probe/bind registry
-- driver IRQ hook registry for PIC IRQ lines
+- driver IRQ hook registry for controller-independent IRQ lines
 - page-separated `.drv` code/data/BSS loading with executable code pages and NX data pages
 - stricter `.drv` ABI validation for arch, table shape, permissions, boot modes, sections, symbols, imports, exports, relocations, and signatures
 - boot-time `.drv` autoload from the FAT32 root with manifest `NO_AUTOLOAD` support
@@ -103,6 +108,14 @@ Run the User SDK integration test in an isolated QEMU instance:
 
 ```sh
 make test-user-sdk
+```
+
+Build and test the diagnostic boot path, ACPI/APIC routing, user-fault isolation,
+and panic reporting:
+
+```sh
+make uefi-diagnostic
+make test-phase1
 ```
 
 Equivalent default:
@@ -127,6 +140,8 @@ Important active artifacts:
   FAT32 root filesystem image for the active OS path.
 - `bin/uefi_esp.img`
   UEFI boot image containing `BOOTX64.EFI`, `kernel64.bin`, and `OS64.BIN`.
+- `bin/uefi_diag_esp.img`
+  Diagnostic UEFI image that disables external driver autoload and emits detailed reports.
 - `bin/hello.drv`
   Hand-built test driver package loaded from the FAT32 root filesystem.
 - `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`

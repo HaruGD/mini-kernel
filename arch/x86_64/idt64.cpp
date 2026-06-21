@@ -1,4 +1,6 @@
 #include "arch/x86_64/idt64.h"
+#include "kernel/klog.h"
+#include "kernel/panic.h"
 
 extern "C" {
     #include "arch/x86_64/io.h"
@@ -24,15 +26,10 @@ extern "C" void isr_gp_fault_asm();
 extern "C" void isr_double_fault_asm();
 extern "C" void irq_keyboard_asm();
 extern "C" void irq_timer_asm();
+extern "C" void irq_spurious_asm();
 extern "C" void user_test_asm();
 extern "C" void user_exit_asm();
 extern "C" void syscall_asm();
-
-static void halt_forever() {
-    while (1) {
-        __asm__ volatile("cli; hlt");
-    }
-}
 
 static void set_idt64_gate(int n, uint64_t handler) {
     uint8_t type_attr = 0x8E;
@@ -78,10 +75,12 @@ extern "C" void idt64_init() {
     }
 
     set_idt64_gate(8, (uint64_t)isr_double_fault_asm);
+    idt64[8].ist = 1;
     set_idt64_gate(13, (uint64_t)isr_gp_fault_asm);
     set_idt64_gate(14, (uint64_t)isr_page_fault_asm);
     set_idt64_gate(32, (uint64_t)irq_timer_asm);
     set_idt64_gate(33, (uint64_t)irq_keyboard_asm);
+    set_idt64_gate(255, (uint64_t)irq_spurious_asm);
     set_idt64_gate_dpl(0x81, (uint64_t)user_test_asm, 3);
     set_idt64_gate_dpl(0x82, (uint64_t)user_exit_asm, 3);
     set_idt64_gate_dpl(0x80, (uint64_t)syscall_asm, 3);
@@ -91,19 +90,46 @@ extern "C" void idt64_init() {
 }
 
 extern "C" void default_interrupt_handler64(uint64_t* frame) {
-    debug_print64("\n=== UNHANDLED 64-BIT INTERRUPT ===");
+    PanicInterruptInfo info = {};
+    info.registers = frame;
     if (frame != 0) {
-        debug_print64("\nRIP: ");
-        debug_print_hex64_u64(frame[15]);
-        debug_print64("\nCS: ");
-        debug_print_hex64_u64(frame[16]);
-        debug_print64("\nRFLAGS: ");
-        debug_print_hex64_u64(frame[17]);
+        info.rip = frame[15];
+        info.cs = frame[16];
+        info.rflags = frame[17];
+        if ((info.cs & 3u) != 0) {
+            info.rsp = frame[18];
+            info.ss = frame[19];
+        }
     }
-    halt_forever();
+    kernel_panic("unhandled interrupt", &info);
 }
 
-extern "C" uint64_t page_fault_handler64(uint64_t fault_addr, uint64_t error_code) {
+static PanicInterruptInfo fault_info(uint64_t* frame,
+                                     uint64_t error_code,
+                                     uint64_t fault_address) {
+    PanicInterruptInfo info = {};
+    info.registers = frame;
+    info.error_code = error_code;
+    info.fault_address = fault_address;
+    if (frame != 0) {
+        info.rip = frame[16];
+        info.cs = frame[17];
+        info.rflags = frame[18];
+        if ((info.cs & 3u) != 0) {
+            info.rsp = frame[19];
+            info.ss = frame[20];
+        }
+    }
+    return info;
+}
+
+extern "C" uint64_t page_fault_handler64(uint64_t fault_addr,
+                                           uint64_t error_code,
+                                           uint64_t* frame) {
+    PanicInterruptInfo info = fault_info(frame, error_code, fault_addr);
+    if ((info.cs & 3u) == 0) {
+        kernel_panic("kernel page fault", &info);
+    }
     process_record_fault64(PROCESS_TERM_PAGE_FAULT, (uint32_t)error_code);
     debug_print64("\n=== PAGE FAULT ===");
     debug_print64("\nFault addr: ");
@@ -113,7 +139,11 @@ extern "C" uint64_t page_fault_handler64(uint64_t fault_addr, uint64_t error_cod
     return process_fault_returnable64();
 }
 
-extern "C" uint64_t gp_fault_handler64(uint64_t error_code) {
+extern "C" uint64_t gp_fault_handler64(uint64_t error_code, uint64_t* frame) {
+    PanicInterruptInfo info = fault_info(frame, error_code, 0);
+    if ((info.cs & 3u) == 0) {
+        kernel_panic("kernel general protection fault", &info);
+    }
     process_record_fault64(PROCESS_TERM_GP_FAULT, (uint32_t)error_code);
     debug_print64("\n=== GENERAL PROTECTION FAULT ===");
     debug_print64("\nError code: ");
@@ -121,10 +151,16 @@ extern "C" uint64_t gp_fault_handler64(uint64_t error_code) {
     return process_fault_returnable64();
 }
 
-extern "C" uint64_t double_fault_handler64(uint64_t error_code) {
+extern "C" uint64_t double_fault_handler64(uint64_t error_code, uint64_t* frame) {
+    PanicInterruptInfo info = fault_info(frame, error_code, 0);
     process_record_fault64(PROCESS_TERM_DOUBLE_FAULT, (uint32_t)error_code);
-    debug_print64("\n=== DOUBLE FAULT ===");
-    debug_print64("\nError code: ");
-    debug_print_hex64_u64(error_code);
-    return process_fault_returnable64();
+    kernel_panic("double fault", &info);
+}
+
+extern "C" void spurious_interrupt_handler64() {
+    static uint32_t spurious_count = 0;
+    spurious_count++;
+    if (spurious_count == 1) {
+        klog_write(KLOG_WARN, "interrupt", "spurious APIC interrupt");
+    }
 }

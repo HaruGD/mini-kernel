@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include "drivers/terminal.h"
+#include "kernel/klog.h"
 #include "kernel/kutil64.h"
 
 extern Terminal terminal;
@@ -69,6 +70,7 @@ void serial_putchar(char c) {
 }
 
 void putchar_both(char c) {
+    klog_capture_char(c);
     terminal.putchar(c);
     if (c == '\n') {
         serial_putchar('\r');

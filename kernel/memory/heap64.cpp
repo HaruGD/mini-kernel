@@ -282,6 +282,8 @@ static void shrink_heap_tail() {
             break;
         }
 
+        int remove_entire_block = releasable_start == block_start;
+        struct heap_header* previous_tail = remove_entire_block ? heap_tail->prev : 0;
         heap_remove_free_block(heap_tail);
         uint32_t page_count = (uint32_t)((block_end - releasable_start) / PMM64_PAGE_SIZE);
         uint32_t unmapped = paging64_unmap_free_range((uint64_t)releasable_start, page_count);
@@ -293,14 +295,13 @@ static void shrink_heap_tail() {
 
         heap_next_virtual = releasable_start;
 
-        if (releasable_start == block_start) {
-            struct heap_header* prev = heap_tail->prev;
-            if (prev != 0) {
-                prev->next = 0;
+        if (remove_entire_block) {
+            if (previous_tail != 0) {
+                previous_tail->next = 0;
             } else {
                 heap_start = 0;
             }
-            heap_tail = prev;
+            heap_tail = previous_tail;
         } else {
             heap_tail->size = releasable_start - block_start;
             heap_tail->next = 0;

@@ -91,6 +91,11 @@ typedef struct EFI_SYSTEM_TABLE {
     void* configuration_table;
 } EFI_SYSTEM_TABLE;
 
+typedef struct EFI_CONFIGURATION_TABLE {
+    EFI_GUID vendor_guid;
+    void* vendor_table;
+} EFI_CONFIGURATION_TABLE;
+
 typedef struct EFI_LOADED_IMAGE_PROTOCOL {
     UINT32 revision;
     EFI_HANDLE parent_handle;
@@ -253,6 +258,14 @@ typedef struct EFI_BOOT_SERVICES {
 static EFI_GUID loaded_image_guid = {
     0x5B1B31A1, 0x9562, 0x11d2,
     {0x8E, 0x3F, 0x00, 0xA0, 0xC9, 0x69, 0x72, 0x3B}
+};
+static EFI_GUID acpi20_table_guid = {
+    0x8868E871, 0xE4F1, 0x11D3,
+    {0xBC, 0x22, 0x00, 0x80, 0xC7, 0x3C, 0x88, 0x81}
+};
+static EFI_GUID acpi10_table_guid = {
+    0xEB9D2D30, 0x2D88, 0x11D3,
+    {0x9A, 0x16, 0x00, 0x90, 0x27, 0x3F, 0xC1, 0x4D}
 };
 
 static EFI_GUID simple_file_system_guid = {
@@ -421,6 +434,74 @@ static EFI_FILE_PROTOCOL* open_ramdisk_file(EFI_HANDLE image_handle) {
         'O','S','6','4','.','B','I','N',0
     };
     return open_root_file(image_handle, os64_bin, 0);
+}
+
+static int guid_equal(const EFI_GUID* left, const EFI_GUID* right) {
+    const UINT8* a = (const UINT8*)left;
+    const UINT8* b = (const UINT8*)right;
+    for (UINTN i = 0; i < sizeof(EFI_GUID); i++) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static uint64_t find_acpi_rsdp() {
+    EFI_CONFIGURATION_TABLE* tables =
+        (EFI_CONFIGURATION_TABLE*)g_st->configuration_table;
+    uint64_t acpi10 = 0;
+    for (UINTN i = 0; i < g_st->number_of_table_entries; i++) {
+        if (guid_equal(&tables[i].vendor_guid, &acpi20_table_guid)) {
+            return (uint64_t)(uintptr_t)tables[i].vendor_table;
+        }
+        if (guid_equal(&tables[i].vendor_guid, &acpi10_table_guid)) {
+            acpi10 = (uint64_t)(uintptr_t)tables[i].vendor_table;
+        }
+    }
+    return acpi10;
+}
+
+static CHAR16 lower16(CHAR16 value) {
+    if (value >= 'A' && value <= 'Z') {
+        return (CHAR16)(value + ('a' - 'A'));
+    }
+    return value;
+}
+
+static int load_options_request_diagnostic(EFI_HANDLE image_handle) {
+    EFI_LOADED_IMAGE_PROTOCOL* loaded = 0;
+    if (g_bs->handle_protocol(image_handle, &loaded_image_guid, (void**)&loaded) != EFI_SUCCESS ||
+        loaded == 0 || loaded->load_options == 0 || loaded->load_options_size < 8) {
+        return 0;
+    }
+
+    const CHAR16* options = (const CHAR16*)loaded->load_options;
+    UINTN count = loaded->load_options_size / sizeof(CHAR16);
+    for (UINTN i = 0; i + 4 <= count; i++) {
+        if (lower16(options[i]) == 'd' &&
+            lower16(options[i + 1]) == 'i' &&
+            lower16(options[i + 2]) == 'a' &&
+            lower16(options[i + 3]) == 'g') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int diagnostic_requested(EFI_HANDLE image_handle) {
+    if (load_options_request_diagnostic(image_handle)) {
+        return 1;
+    }
+    static CHAR16 diagnostic_file[] = {
+        'D','I','A','G','.','C','F','G',0
+    };
+    EFI_FILE_PROTOCOL* file = open_root_file(image_handle, diagnostic_file, 0);
+    if (file == 0) {
+        return 0;
+    }
+    file->close(file);
+    return 1;
 }
 
 static void add_reserved_range(BootInfo* boot_info, uint64_t base, uint64_t size, uint32_t type) {
@@ -613,6 +694,10 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     log_step("loader start");
     g_bs->set_watchdog_timer(0, 0, 0, 0);
     log_step("watchdog disabled");
+    int diagnostic_mode = diagnostic_requested(image_handle);
+    uint64_t acpi_rsdp = find_acpi_rsdp();
+    log_value("diagnostic mode", diagnostic_mode);
+    log_value("acpi rsdp", acpi_rsdp);
 
     EFI_PHYSICAL_ADDRESS kernel_temp_phys = 0;
     if (!allocate_any_below_4g(KERNEL_MAX_PAGES, &kernel_temp_phys)) {
@@ -752,6 +837,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         boot_info->reserved_range_entry_size = sizeof(BootReservedRange);
         boot_info->ramdisk_addr = ramdisk_phys;
         boot_info->ramdisk_size = ramdisk_size;
+        boot_info->acpi_rsdp_addr = acpi_rsdp;
         for (uint32_t i = 0; i < BOOT_RESERVED_RANGE_MAX; i++) {
             boot_info->reserved_ranges[i].base = 0;
             boot_info->reserved_ranges[i].size = 0;
@@ -769,6 +855,12 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         if (ramdisk_phys != 0 && ramdisk_size != 0) {
             boot_info->flags |= BOOT_INFO_FLAG_RAMDISK;
             add_reserved_range(boot_info, ramdisk_phys, ramdisk_size, BOOT_RESERVED_RANGE_RAMDISK);
+        }
+        if (acpi_rsdp != 0) {
+            boot_info->flags |= BOOT_INFO_FLAG_ACPI;
+        }
+        if (diagnostic_mode) {
+            boot_info->flags |= BOOT_INFO_FLAG_DIAGNOSTIC;
         }
 
         status = g_bs->exit_boot_services(image_handle, map_key);

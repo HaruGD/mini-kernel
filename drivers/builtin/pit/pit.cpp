@@ -27,7 +27,6 @@ void PIT::init(uint32_t frequency) {
 
 void PIT::handle() {
     tick++;
-    outb(0x20, 0x20);  // PIC EOI
 }
 
 uint32_t PIT::get_tick() {

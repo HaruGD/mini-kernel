@@ -333,7 +333,7 @@ int run_user_program(const char* command_line) {
     process->state = PROCESS_STATE_LOADED;
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
-    uint8_t saved_pic1_mask = inb(0x21);
+    int saved_keyboard_mask = interrupt_controller_irq_masked(1);
     int saved_user_input_mode = user_input_mode;
     uint64_t saved_return_rsp = kernel_user_return_rsp;
     uint64_t saved_rbx = kernel_user_saved_rbx;
@@ -352,7 +352,7 @@ int run_user_program(const char* command_line) {
     print("\n");
     user_input_reset();
     user_input_mode = 1;
-    outb(0x21, saved_pic1_mask | 0x02);
+    interrupt_controller_set_mask(1, 1);
     gdt64_set_kernel_stack(current_rsp() - 8);
     process->state = PROCESS_STATE_RUNNING;
     if (parent != 0) {
@@ -366,7 +366,7 @@ int run_user_program(const char* command_line) {
     user_program_depth--;
     process_stack[stack_index] = 0;
 
-    outb(0x21, saved_pic1_mask);
+    interrupt_controller_set_mask(1, saved_keyboard_mask);
     user_input_mode = saved_user_input_mode;
     user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);
@@ -439,7 +439,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     uint32_t stack_index = user_program_depth;
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
-    uint8_t saved_pic1_mask = inb(0x21);
+    int saved_keyboard_mask = interrupt_controller_irq_masked(1);
     int saved_user_input_mode = user_input_mode;
     uint64_t saved_return_rsp = kernel_user_return_rsp;
     uint64_t saved_rbx = kernel_user_saved_rbx;
@@ -476,7 +476,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
 
     user_input_reset();
     user_input_mode = 1;
-    outb(0x21, saved_pic1_mask | 0x02);
+    interrupt_controller_set_mask(1, 1);
     gdt64_set_kernel_stack(current_rsp() - 8);
     scheduler_mark_waiting(parent);
     scheduler_mark_running(process);
@@ -488,7 +488,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     user_program_depth--;
     process_stack[stack_index] = 0;
 
-    outb(0x21, saved_pic1_mask);
+    interrupt_controller_set_mask(1, saved_keyboard_mask);
     user_input_mode = saved_user_input_mode;
     user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);

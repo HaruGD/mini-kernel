@@ -1,4 +1,5 @@
 extern "C" void keyboard_handler64() {
+    interrupt_controller_eoi(1);
     keyboard.handle();
     driver_irq_dispatch(1);
 }
@@ -29,17 +30,19 @@ uint32_t kernel_user_test_count() {
 
 extern "C" uint64_t timer_handler64() {
     pit.handle();
+    interrupt_controller_eoi(0);
     driver_irq_dispatch(0);
     scheduler_wake_sleeping_processes(pit.get_tick());
     scheduler_on_tick();
+    uint64_t result = 0;
     if (scheduler_should_preempt_current()) {
-        return TIMER_PREEMPT_TO_KERNEL;
+        result = TIMER_PREEMPT_TO_KERNEL;
     }
     Process* process = current_process();
     if (process != 0 && process->timeslice_ticks == 0) {
         process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
     }
-    return 0;
+    return result;
 }
 
 extern "C" void user_test_interrupt_handler64() {

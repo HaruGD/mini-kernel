@@ -6,15 +6,19 @@ extern "C" {
 }
 
 #include "arch/x86_64/paging64.h"
+#include "arch/x86_64/apic.h"
 #include "arch/x86_64/pmm64.h"
 #include "drivers/gop.h"
 #include "drivers/terminal.h"
 #include "fs/vfs.h"
 #include "kernel/driver/driver_manager.h"
+#include "kernel/acpi.h"
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/ksh64.h"
 #include "kernel/kutil64.h"
+#include "kernel/klog.h"
+#include "kernel/panic.h"
 #include "kernel/process.h"
 #include "kernel/process64.h"
 #include "kernel/syscall64.h"
@@ -227,7 +231,42 @@ static void command_help() {
     print("\nfree, dump, sched, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
+    print("\nklog [clear|stats], acpi, intctl, panic test");
     print("\nrun, resume, usertest, ushell, ushellc");
+}
+
+static void command_klog(char* arg) {
+    if (arg != 0 && strcmp64(arg, "clear") == 0) {
+        klog_clear();
+        print("\nKernel log cleared.");
+        return;
+    }
+    if (arg != 0 && strcmp64(arg, "stats") == 0) {
+        KLogStats stats;
+        klog_get_stats(&stats);
+        print("\n=== KLOG ===");
+        print("\ncapacity=");
+        print_hex32(stats.capacity);
+        print(" used=");
+        print_hex32(stats.bytes_used);
+        print("\nwritten=");
+        print_hex64(stats.bytes_written);
+        print(" dropped=");
+        print_hex64(stats.bytes_dropped);
+        print("\n============");
+        return;
+    }
+    print("\n=== KERNEL LOG ===\n");
+    klog_dump();
+    print("\n=== END KERNEL LOG ===");
+}
+
+static void command_panic(char* arg) {
+    if (arg == 0 || strcmp64(arg, "test") != 0) {
+        print("\nUsage: panic test");
+        return;
+    }
+    kernel_panic_message("manual panic test");
 }
 
 static void command_sched() {
@@ -600,6 +639,14 @@ static void execute_command() {
         command_pci();
     } else if (strcmp64(cmd, "gop") == 0) {
         command_gop(arg);
+    } else if (strcmp64(cmd, "klog") == 0) {
+        command_klog(arg);
+    } else if (strcmp64(cmd, "acpi") == 0) {
+        acpi_print_summary();
+    } else if (strcmp64(cmd, "intctl") == 0) {
+        interrupt_controller_print();
+    } else if (strcmp64(cmd, "panic") == 0) {
+        command_panic(arg);
     } else if (strcmp64(cmd, "drvinfo") == 0) {
         command_drvinfo(arg);
     } else if (strcmp64(cmd, "drvcheck") == 0) {
