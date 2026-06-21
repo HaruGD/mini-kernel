@@ -3,6 +3,7 @@
 #include "arch/x86_64/paging64.h"
 #include "arch/x86_64/pmm64.h"
 #include "kernel/kutil64.h"
+#include "kernel/process64.h"
 #include "kernel/userprog64.h"
 
 uint32_t parse_launch_command(char* command_line, UserLaunchInfo* launch) {
@@ -327,7 +328,25 @@ uint64_t resize_user_process_heap(Process* process, uint64_t requested_break) {
     return process->heap_break;
 }
 
-static int user_buffer_pages_mapped(const void* user_ptr, uint32_t size) {
+static int user_address_owned(const Process* process, uint64_t address) {
+    if (process == 0 || !process->active) {
+        return 0;
+    }
+
+    uint64_t code_end = process->code_base +
+        ((uint64_t)process->code_page_count * PAGING64_PAGE_SIZE);
+    uint64_t stack_end = process->stack_base +
+        ((uint64_t)process->stack_page_count * PAGING64_PAGE_SIZE);
+    if (address >= process->code_base && address < code_end) {
+        return 1;
+    }
+    if (address >= process->stack_base && address < stack_end) {
+        return 1;
+    }
+    return address >= process->heap_base && address < process->heap_break;
+}
+
+static int user_buffer_accessible(const void* user_ptr, uint32_t size, int writable) {
     if (size == 0) {
         return 1;
     }
@@ -341,18 +360,24 @@ static int user_buffer_pages_mapped(const void* user_ptr, uint32_t size) {
         return 0;
     }
 
-    uint64_t page = start & ~(PAGING64_PAGE_SIZE - 1ULL);
-    uint64_t last_page = end & ~(PAGING64_PAGE_SIZE - 1ULL);
+    Process* process = current_process();
+    uint64_t address = start;
     while (1) {
-        if (paging64_get_phys(page) == 0) {
+        if (!user_address_owned(process, address)) {
             return 0;
         }
-        if (page == last_page) {
+        uint64_t flags = paging64_get_flags(address);
+        if (!(flags & PAGING64_FLAG_USER) ||
+            (writable && !(flags & PAGING64_FLAG_WRITABLE))) {
+            return 0;
+        }
+        if ((address & ~(PAGING64_PAGE_SIZE - 1ULL)) ==
+            (end & ~(PAGING64_PAGE_SIZE - 1ULL))) {
             break;
         }
-        page += PAGING64_PAGE_SIZE;
+        address = (address & ~(PAGING64_PAGE_SIZE - 1ULL)) + PAGING64_PAGE_SIZE;
     }
-    return 1;
+    return user_address_owned(process, end);
 }
 
 int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
@@ -361,11 +386,16 @@ int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) 
     }
 
     uint64_t checked_page = 0xFFFFFFFFFFFFFFFFULL;
+    Process* process = current_process();
     for (uint32_t i = 0; i < max_len - 1; i++) {
         uint64_t addr = (uint64_t)(uintptr_t)(user_ptr + i);
         uint64_t page = addr & ~(PAGING64_PAGE_SIZE - 1ULL);
+        if (!user_address_owned(process, addr)) {
+            return 0;
+        }
         if (page != checked_page) {
-            if (paging64_get_phys(page) == 0) {
+            uint64_t flags = paging64_get_flags(addr);
+            if (!(flags & PAGING64_FLAG_USER)) {
                 return 0;
             }
             checked_page = page;
@@ -379,14 +409,14 @@ int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) 
     }
 
     kernel_buf[max_len - 1] = '\0';
-    return 1;
+    return 0;
 }
 
 int copy_user_buffer(const uint8_t* user_ptr, uint8_t* kernel_buf, uint32_t size) {
     if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
         return 0;
     }
-    if (!user_buffer_pages_mapped(user_ptr, size)) {
+    if (!user_buffer_accessible(user_ptr, size, 0)) {
         return 0;
     }
 
@@ -400,7 +430,7 @@ int copy_kernel_to_user_buffer(uint8_t* user_ptr, const uint8_t* kernel_buf, uin
     if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
         return 0;
     }
-    if (!user_buffer_pages_mapped(user_ptr, size)) {
+    if (!user_buffer_accessible(user_ptr, size, 1)) {
         return 0;
     }
 
@@ -408,4 +438,8 @@ int copy_kernel_to_user_buffer(uint8_t* user_ptr, const uint8_t* kernel_buf, uin
         user_ptr[i] = kernel_buf[i];
     }
     return 1;
+}
+
+int user_buffer_writable(uint8_t* user_ptr, uint32_t size) {
+    return user_buffer_accessible(user_ptr, size, 1);
 }

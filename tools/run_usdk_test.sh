@@ -3,12 +3,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-ESP=/tmp/os64_usdk_test_esp.img
-VARS=/tmp/os64_usdk_test_vars.fd
-MONITOR=/tmp/os64_usdk_test_monitor.sock
+RUN_ID="$$"
+ESP="/tmp/os64_usdk_test_${RUN_ID}_esp.img"
+VARS="/tmp/os64_usdk_test_${RUN_ID}_vars.fd"
+MONITOR="/tmp/os64_usdk_test_${RUN_ID}_monitor.sock"
 SERIAL=./logs/serial_usdk_test.log
 QEMU_LOG=./logs/qemu_usdk_test.log
-MONITOR_OUTPUT=/tmp/os64_usdk_test_monitor.txt
+MONITOR_OUTPUT="/tmp/os64_usdk_test_${RUN_ID}_monitor.txt"
 
 cleanup() {
     if [ -n "${QEMU_PID:-}" ]; then
@@ -49,6 +50,11 @@ for _ in $(seq 1 50); do
     sleep 0.1
 done
 
+if [ ! -S "$MONITOR" ]; then
+    echo "QEMU monitor socket was not created." >&2
+    exit 1
+fi
+
 sleep 8
 {
     echo "sendkey r"
@@ -71,7 +77,9 @@ sleep 8
     echo "sendkey ret"
 } | timeout 2s nc -U "$MONITOR" >"$MONITOR_OUTPUT" || true
 
-sleep 8
+sleep 3
+echo "sendkey z" | timeout 2s nc -U "$MONITOR" >>"$MONITOR_OUTPUT" || true
+sleep 5
 
 if ! grep -q "=== result: passed=" "$SERIAL"; then
     echo "SDK test did not complete. See $SERIAL" >&2

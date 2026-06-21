@@ -41,7 +41,16 @@ void GOPDriver::init_from_boot_info(const BootInfo* boot_info) {
         boot_info->framebuffer_addr == 0 ||
         boot_info->framebuffer_width == 0 ||
         boot_info->framebuffer_height == 0 ||
-        boot_info->framebuffer_pixels_per_scanline == 0) {
+        boot_info->framebuffer_pixels_per_scanline < boot_info->framebuffer_width ||
+        (boot_info->framebuffer_format != GOP_PIXEL_FORMAT_RGB &&
+         boot_info->framebuffer_format != GOP_PIXEL_FORMAT_BGR)) {
+        return;
+    }
+
+    uint64_t required_pixels = (uint64_t)boot_info->framebuffer_pixels_per_scanline *
+        boot_info->framebuffer_height;
+    if (required_pixels > UINT64_MAX / sizeof(uint32_t) ||
+        required_pixels * sizeof(uint32_t) > boot_info->framebuffer_size) {
         return;
     }
 

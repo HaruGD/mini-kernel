@@ -31,6 +31,10 @@ void PIT::handle() {
 }
 
 uint32_t PIT::get_tick() {
+    return (uint32_t)tick;
+}
+
+uint64_t PIT::get_tick64() const {
     return tick;
 }
 

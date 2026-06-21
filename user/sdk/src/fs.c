@@ -85,7 +85,7 @@ static long transfer(long fd, void* buffer, uint32_t size, int writing) {
             result = os_read(fd, (uint8_t*)buffer + total, chunk);
         }
         if (result < 0) {
-            return OS_ERROR;
+            return result;
         }
         if (result == 0) {
             break;
@@ -103,15 +103,16 @@ long os_read_file(const char* path, void* buffer, uint32_t capacity) {
     long result;
 
     if (path == 0 || (buffer == 0 && capacity != 0)) {
-        return OS_ERROR;
+        return OS_ERR_INVALID_ARGUMENT;
     }
     fd = os_open(path, OS_OPEN_READ);
     if (fd < 0) {
-        return OS_ERROR;
+        return fd;
     }
     result = transfer(fd, buffer, capacity, 0);
-    if (os_close(fd) < 0) {
-        return OS_ERROR;
+    long close_result = os_close(fd);
+    if (result >= 0 && close_result < 0) {
+        return close_result;
     }
     return result;
 }
@@ -120,7 +121,7 @@ long os_read_text_file(const char* path, char* buffer, uint32_t capacity) {
     long result;
 
     if (buffer == 0 || capacity == 0) {
-        return OS_ERROR;
+        return OS_ERR_INVALID_ARGUMENT;
     }
     result = os_read_file(path, buffer, capacity - 1u);
     if (result < 0) {
@@ -136,15 +137,22 @@ static long write_file(const char* path, const void* data, uint32_t size, uint32
     long result;
 
     if (path == 0 || (data == 0 && size != 0)) {
-        return OS_ERROR;
+        return OS_ERR_INVALID_ARGUMENT;
     }
     fd = os_open(path, mode);
     if (fd < 0) {
-        return OS_ERROR;
+        return fd;
     }
     result = transfer(fd, (void*)data, size, 1);
-    if (os_close(fd) < 0 || result != (long)size) {
-        return OS_ERROR;
+    long close_result = os_close(fd);
+    if (result < 0) {
+        return result;
+    }
+    if (close_result < 0) {
+        return close_result;
+    }
+    if (result != (long)size) {
+        return OS_ERR_IO;
     }
     return result;
 }

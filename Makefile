@@ -56,6 +56,7 @@ KERNEL64_OBJECTS = \
 	./build/process64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
+	./build/sdk_syscalls64.o \
 	./build/ksh64.o \
 	./build/driver_manager64.o \
 	./build/driver_exports64.o \
@@ -105,7 +106,7 @@ all32:
 	@mkdir -p ./build
 	$(AS) -f elf64 -g $< -o $@
 
-./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h
+./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/process.h ./include/kernel/syscall64.h
 	@mkdir -p ./build
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/core/kernel64.cpp -o $@
 
@@ -121,7 +122,10 @@ all32:
 ./build/userprog64.o: ./kernel/process/userprog64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/syscall64.o: ./kernel/syscall/syscall64.cpp
+./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/ksh64.o: ./kernel/shell/ksh64.cpp ./include/kernel/pci.h ./include/drivers/gop.h

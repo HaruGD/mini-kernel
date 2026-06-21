@@ -33,5 +33,6 @@ uint64_t resize_user_process_heap(Process* process, uint64_t requested_break);
 int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len);
 int copy_user_buffer(const uint8_t* user_ptr, uint8_t* kernel_buf, uint32_t size);
 int copy_kernel_to_user_buffer(uint8_t* user_ptr, const uint8_t* kernel_buf, uint32_t size);
+int user_buffer_writable(uint8_t* user_ptr, uint32_t size);
 
 #endif

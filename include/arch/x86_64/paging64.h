@@ -33,6 +33,7 @@ int paging64_remap_range(uint64_t virt, uint64_t size, uint64_t flags);
 int paging64_alloc_map_range(uint64_t virt, uint64_t size, uint64_t flags, uint32_t* out_page_count);
 uint32_t paging64_unmap_free_range(uint64_t virt, uint32_t page_count);
 uint64_t paging64_get_phys(uint64_t virt);
+uint64_t paging64_get_flags(uint64_t virt);
 void paging64_flush_tlb(uint64_t virt);
 uint64_t paging64_get_root_phys();
 

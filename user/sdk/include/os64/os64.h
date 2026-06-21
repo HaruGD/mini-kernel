@@ -5,7 +5,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define OS64_SDK_VERSION_MAJOR 1u
+#include "os64/graphics.h"
+#include "os64/input.h"
+#include "os64/result.h"
+#include "os64/time.h"
+
+#define OS64_SDK_VERSION_MAJOR 2u
 #define OS64_SDK_VERSION_MINOR 0u
 #define OS_OK 0
 #define OS_ERROR (-1)

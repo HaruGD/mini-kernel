@@ -41,11 +41,16 @@ What works on the active 64-bit UEFI path:
 - child-result reaping with `wait` / `reapall` plus automatic cleanup when process slots are exhausted
 - ELF user program loading
 - C user programs with `main(void)` and `main(argc, argv)` support
-- User SDK v1 with console, string, path, file, directory, and process APIs
+- User SDK v2 with console, string, path, file, directory, process, time, graphics, and keyboard-event APIs
+- User syscall buffers constrained to process-owned mappings and page permissions
 - static `libos64.a` linked into C user programs
 - per-process-slot user heap backed by syscall `brk` page mapping
 - SDK `malloc`, `calloc`, `realloc`, `free`, `strdup`, and dynamic file-read helpers
 - automated `usdk_test.elf` integration test covering heap, files, paths, directories, sleep, and yield
+- stable SDK result codes with readable error names
+- monotonic 64-bit PIT time exposed to user programs
+- syscall-mediated GOP drawing without exposing the physical framebuffer
+- blocking and nonblocking PS/2 keyboard event delivery with modifier state
 - default C shell userland: `ushell_c.elf`
 - VFS layer
 - FAT32 root filesystem mounted at `/`

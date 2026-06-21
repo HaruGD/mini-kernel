@@ -363,6 +363,47 @@ extern "C" uint64_t paging64_get_phys(uint64_t virt) {
     return (pte & 0x000FFFFFFFFFF000ULL) | (virt & 0xFFFULL);
 }
 
+extern "C" uint64_t paging64_get_flags(uint64_t virt) {
+    if (pml4_table == 0) {
+        paging64_init();
+    }
+
+    uint64_t pml4e = pml4_table[pml4_index(virt)];
+    if (!(pml4e & PAGING64_FLAG_PRESENT)) {
+        return 0;
+    }
+
+    uint64_t access = PAGING64_FLAG_USER | PAGING64_FLAG_WRITABLE;
+    access &= pml4e;
+    uint64_t* pdpt = entry_to_table(pml4e);
+    uint64_t pdpte = pdpt[pdpt_index(virt)];
+    if (!(pdpte & PAGING64_FLAG_PRESENT)) {
+        return 0;
+    }
+    access &= pdpte;
+    if (pdpte & PAGING64_FLAG_HUGE) {
+        return PAGING64_FLAG_PRESENT | access | (pdpte & PAGING64_FLAG_NX);
+    }
+
+    uint64_t* pd = entry_to_table(pdpte);
+    uint64_t pde = pd[pd_index(virt)];
+    if (!(pde & PAGING64_FLAG_PRESENT)) {
+        return 0;
+    }
+    access &= pde;
+    if (pde & PAGING64_FLAG_HUGE) {
+        return PAGING64_FLAG_PRESENT | access | (pde & PAGING64_FLAG_NX);
+    }
+
+    uint64_t* pt = entry_to_table(pde);
+    uint64_t pte = pt[pt_index(virt)];
+    if (!(pte & PAGING64_FLAG_PRESENT)) {
+        return 0;
+    }
+    access &= pte;
+    return PAGING64_FLAG_PRESENT | access | (pte & PAGING64_FLAG_NX);
+}
+
 extern "C" void paging64_flush_tlb(uint64_t virt) {
     __asm__ volatile("invlpg (%0)" : : "r"((void*)(uintptr_t)virt) : "memory");
 }

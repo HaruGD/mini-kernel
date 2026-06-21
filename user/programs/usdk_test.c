@@ -163,6 +163,84 @@ static void test_scheduler(void) {
     os_free(marker);
 }
 
+static void test_results(void) {
+    char long_path[OS_PATH_MAX + 16u];
+    OsFileInfo info;
+
+    check(os_result_failed(OS_ERR_NOT_FOUND), "error result detection");
+    check(os_streq(os_result_string(OS_ERR_NOT_FOUND), "not found"),
+          "error result string");
+    check(os_streq(os_result_string(-999), "unknown error"),
+          "unknown error string");
+    check(os_open("/mem/usdk_test/missing.txt", OS_OPEN_READ) == OS_ERR_NOT_FOUND,
+          "filesystem error propagation");
+    check(os_read_file(0, 0, 0) == OS_ERR_INVALID_ARGUMENT,
+          "helper argument error");
+    os_memset(long_path, 'a', sizeof(long_path));
+    long_path[sizeof(long_path) - 1u] = '\0';
+    check(os_stat(long_path, &info) == OS_ERR_INVALID_ARGUMENT,
+          "overlong path rejected");
+}
+
+static void test_time(void) {
+    OsTimeInfo before;
+    OsTimeInfo after;
+    os_time_get(&before);
+    os_sleep(2);
+    os_time_get(&after);
+
+    check(before.frequency == 100u, "time frequency");
+    check(after.ticks >= before.ticks + 2u, "monotonic ticks across sleep");
+    check(after.milliseconds >= before.milliseconds, "monotonic milliseconds");
+    uint64_t current_ms = os_time_milliseconds();
+    check(current_ms >= after.milliseconds && current_ms - after.milliseconds <= 20u,
+          "time conversion consistency");
+}
+
+static void test_graphics(void) {
+    OsGraphicsInfo info;
+    long result = os_gfx_get_info(&info);
+    check(result == OS_SUCCESS && info.width > 0 && info.height > 0,
+          "graphics information");
+    if (result < 0 || info.width == 0 || info.height == 0) {
+        return;
+    }
+
+    uint32_t x = info.width > 12u ? info.width - 12u : 0u;
+    uint32_t y = info.height > 12u ? info.height - 12u : 0u;
+    check(os_gfx_fill_rect(x, y, 8, 8, OS_RGB(30, 180, 90)) == OS_SUCCESS,
+          "graphics fill rectangle");
+    check(os_gfx_put_pixel(x, y, OS_RGB(255, 255, 255)) == OS_SUCCESS,
+          "graphics put pixel");
+    check(os_gfx_put_pixel(info.width, info.height, 0) == OS_ERR_OUT_OF_RANGE,
+          "graphics bounds error");
+    check(os_gfx_fill_rect(x, y, 0, 1, 0) == OS_ERR_INVALID_ARGUMENT,
+          "graphics empty rectangle error");
+    check(os_gfx_fill_rect(info.width - 1u, info.height - 1u,
+                           UINT32_MAX, UINT32_MAX, OS_RGB(30, 180, 90)) == OS_SUCCESS,
+          "graphics overflow-safe clipping");
+    check(os_gfx_get_info((OsGraphicsInfo*)(uintptr_t)0x100000u) ==
+              OS_ERR_INVALID_ARGUMENT,
+          "graphics rejects kernel pointer");
+}
+
+static void test_keyboard(void) {
+    OsKeyEvent event;
+    check(os_key_poll(0) == OS_ERR_INVALID_ARGUMENT,
+          "keyboard null event error");
+    long result = os_key_poll(&event);
+    int valid_pending_event = result == OS_SUCCESS &&
+        (event.type == OS_KEY_EVENT_DOWN || event.type == OS_KEY_EVENT_UP);
+    check(result == OS_ERR_WOULD_BLOCK || valid_pending_event,
+          "keyboard nonblocking poll");
+
+    os_puts("[INFO] waiting for injected key event");
+    result = os_key_wait(&event);
+    check(result == OS_SUCCESS, "keyboard blocking event");
+    check(event.type == OS_KEY_EVENT_DOWN && event.character == 'z',
+          "keyboard key-down payload");
+}
+
 static void cleanup_test_files(void) {
     os_remove(TEST_TEXT_PATH);
     os_remove(TEST_RENAMED_PATH);
@@ -183,6 +261,10 @@ int main(void) {
     test_large_file();
     test_directory();
     test_scheduler();
+    test_results();
+    test_time();
+    test_graphics();
+    test_keyboard();
 
     cleanup_test_files();
     os_printf("=== result: passed=%u failed=%u ===\n", checks_passed, checks_failed);

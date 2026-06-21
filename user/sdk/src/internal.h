@@ -31,7 +31,14 @@ enum {
     OS_SYS_RMDIR = 50,
     OS_SYS_RENAME = 51,
     OS_SYS_CLEAR = 52,
-    OS_SYS_BRK = 53
+    OS_SYS_BRK = 53,
+    OS_SYS_TIME_TICKS = 54,
+    OS_SYS_TIME_FREQUENCY = 55,
+    OS_SYS_GFX_GET_INFO = 56,
+    OS_SYS_GFX_PUT_PIXEL = 57,
+    OS_SYS_GFX_FILL_RECT = 58,
+    OS_SYS_GFX_CLEAR = 59,
+    OS_SYS_KEYBOARD_EVENT = 60
 };
 
 long os_syscall0(long number);

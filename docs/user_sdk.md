@@ -1,4 +1,4 @@
-# OS64 User SDK v1
+# OS64 User SDK v2
 
 The user SDK is the supported C interface for OS64 ELF applications.
 
@@ -22,6 +22,10 @@ The build compiles `user/sdk/src/` into `build/libos64.a` and links it into ever
 - Directories and paths: cwd, directory iteration, create/remove/rename, normalization
 - Processes: pid, run, wait, yield, tick-based sleep, uptime, and child reaping
 - Memory: `os_malloc`, `os_calloc`, `os_realloc`, `os_free`, `os_strdup`
+- Results: stable negative error codes and `os_result_string`
+- Time: monotonic ticks, timer frequency, and milliseconds
+- Graphics: GOP information, pixel, rectangle, and clear primitives
+- Input: blocking and nonblocking keyboard events with modifiers
 
 The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
 
@@ -38,3 +42,31 @@ The initial migration includes `uhello_c`, `uargs_c`, `upid_c`, `usleep_c`, `uyi
 ```sh
 make test-user-sdk
 ```
+
+## SDK v2 examples
+
+```c
+OsTimeInfo time;
+os_time_get(&time);
+os_printf("uptime=%lu ms\n", time.milliseconds);
+
+OsGraphicsInfo graphics;
+if (os_gfx_get_info(&graphics) == OS_SUCCESS) {
+    os_gfx_fill_rect(10, 10, 80, 30, OS_RGB(30, 180, 90));
+}
+
+OsKeyEvent event;
+long result = os_key_poll(&event);
+if (result == OS_ERR_WOULD_BLOCK) {
+    os_puts("no key is waiting");
+}
+```
+
+Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The current API is suitable for the PS/2 driver and can preserve the same public structure when USB HID input is added later.
+
+Graphics calls are mediated by kernel syscalls. User programs receive dimensions and pixel format but do not receive the physical framebuffer address. Rectangle drawing clips at the display boundary, while an origin outside the display returns `OS_ERR_OUT_OF_RANGE`. Zero-sized rectangles return `OS_ERR_INVALID_ARGUMENT`.
+
+All SDK buffers are checked against the current process mappings. Kernel addresses,
+another process slot, read-only code pages, and memory above the current heap break
+are rejected before the kernel copies data. File helpers preserve the specific VFS
+error code so callers can distinguish missing files, invalid paths, and I/O errors.
