@@ -25,6 +25,7 @@
   - signed DRV package
 - [x] PCI discovery
 - [x] GOP framebuffer driver
+- [x] ACPI S5 shutdown
 
 ## 1단계: 커널 진단과 하드웨어 기반
 

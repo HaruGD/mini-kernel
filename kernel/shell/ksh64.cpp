@@ -230,7 +230,7 @@ static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, sched, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test]");
-    print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime");
+    print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case]");
     print("\nrun, resume, usertest, ushell, ushellc");
 }
@@ -267,6 +267,20 @@ static void command_panic(char* arg) {
         return;
     }
     kernel_panic_message("manual panic test");
+}
+
+static void command_shutdown() {
+    if (!acpi_power_available()) {
+        print("\nShutdown unavailable: ACPI S5 was not discovered.");
+        return;
+    }
+
+    print("\nPowering off through ACPI S5...");
+    if (!acpi_poweroff()) {
+        print("\nShutdown failed: ACPI power control was not accepted.");
+        return;
+    }
+    print("\nACPI S5 request sent; the system is still running.");
 }
 
 static void command_debugfault(char* arg) {
@@ -686,6 +700,8 @@ static void execute_command() {
         interrupt_controller_print();
     } else if (strcmp64(cmd, "panic") == 0) {
         command_panic(arg);
+    } else if (strcmp64(cmd, "shutdown") == 0) {
+        command_shutdown();
     } else if (strcmp64(cmd, "debugfault") == 0) {
         command_debugfault(arg);
     } else if (strcmp64(cmd, "drvinfo") == 0) {

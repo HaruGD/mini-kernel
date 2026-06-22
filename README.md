@@ -30,6 +30,7 @@ What works on the active 64-bit UEFI path:
 - page-based user buffer validation for syscall copy helpers
 - kernel stack supplied by the UEFI loader
 - ACPI RSDP/XSDT/MADT discovery and checksum validation
+- ACPI FADT/DSDT discovery with `_S5_` shutdown through PM1 I/O or MMIO registers
 - Local APIC/IOAPIC routing with automatic legacy PIC fallback
 - PIC spurious IRQ7/IRQ15 detection with correct cascade EOI handling
 - IDT, GDT/TSS, double-fault IST, PIT, and keyboard IRQ handling
@@ -96,6 +97,7 @@ What works on the active 64-bit UEFI path:
 - manual display demo loading through `gop_demo_c.drv`
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
 - User SDK reference: [docs/user_sdk.md](docs/user_sdk.md)
+- ACPI power reference: [docs/acpi_power.md](docs/acpi_power.md)
 - Project roadmap: [docs/roadmap.md](docs/roadmap.md)
 - Phase 2 task breakdown: [docs/phase2_task_breakdown.md](docs/phase2_task_breakdown.md)
 
@@ -112,6 +114,12 @@ Run the User SDK integration test in an isolated QEMU instance:
 
 ```sh
 make test-user-sdk
+```
+
+Test ACPI power-off in an isolated QEMU instance:
+
+```sh
+make test-shutdown
 ```
 
 Build and test the diagnostic boot path, ACPI/APIC routing, user-fault isolation,

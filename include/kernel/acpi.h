@@ -26,6 +26,7 @@ struct AcpiState {
     uint64_t rsdp_address;
     uint64_t root_table_address;
     uint64_t madt_address;
+    uint64_t fadt_address;
     uint64_t local_apic_address;
     uint32_t ioapic_count;
     uint32_t override_count;
@@ -34,6 +35,11 @@ struct AcpiState {
 };
 
 int acpi_init(uint64_t rsdp_address);
+void acpi_power_reset();
+int acpi_power_init(uint64_t fadt_address);
+int acpi_power_available();
+int acpi_poweroff();
+void acpi_power_print();
 const AcpiState* acpi_state();
 const AcpiInterruptOverride* acpi_find_override(uint8_t source_irq);
 void acpi_print_summary();

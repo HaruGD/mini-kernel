@@ -46,7 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -60,6 +60,7 @@ KERNEL64_OBJECTS = \
 	./build/klog64.o \
 	./build/panic64.o \
 	./build/acpi64.o \
+	./build/acpi_power64.o \
 	./build/apic64.o \
 	./build/ksh64.o \
 	./build/driver_manager64.o \
@@ -98,6 +99,8 @@ test-user-sdk: uefi
 	bash ./tools/run_usdk_test.sh
 test-phase1: uefi uefi-diagnostic
 	python3 ./tools/phase1_smoke.py
+test-shutdown: uefi
+	python3 ./tools/acpi_shutdown_smoke.py
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -142,6 +145,9 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/acpi64.o: ./kernel/acpi/acpi.cpp ./include/kernel/acpi.h ./include/kernel/klog.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/acpi_power64.o: ./kernel/acpi/acpi_power.cpp ./include/kernel/acpi.h ./include/arch/x86_64/io.h ./include/arch/x86_64/paging64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/apic64.o: ./arch/x86_64/apic.cpp ./include/arch/x86_64/apic.h ./include/kernel/acpi.h

@@ -159,6 +159,7 @@ static void parse_madt(const AcpiMadt* madt) {
 
 int acpi_init(uint64_t rsdp_address) {
     clear_state();
+    acpi_power_reset();
     state.rsdp_address = rsdp_address;
     if (rsdp_address == 0) {
         klog_write(KLOG_WARN, "acpi", "RSDP was not supplied by UEFI");
@@ -205,8 +206,13 @@ int acpi_init(uint64_t rsdp_address) {
         if (table != 0 && bytes_equal(table->signature, "APIC", 4)) {
             known_madt_address = address;
             parse_madt((const AcpiMadt*)table);
-            break;
+        } else if (table != 0 && bytes_equal(table->signature, "FACP", 4)) {
+            state.fadt_address = address;
         }
+    }
+
+    if (state.fadt_address != 0 && !acpi_power_init(state.fadt_address)) {
+        klog_write(KLOG_WARN, "acpi", "ACPI S5 power-off unavailable");
     }
 
     state.ready = state.madt_address != 0 &&
@@ -364,6 +370,8 @@ void acpi_print_summary() {
     print_hex64(state.root_table_address);
     print("\nmadt=");
     print_hex64(state.madt_address);
+    print(" fadt=");
+    print_hex64(state.fadt_address);
     print(" lapic=");
     print_hex64(state.local_apic_address);
     for (uint32_t i = 0; i < state.ioapic_count; i++) {
@@ -386,5 +394,6 @@ void acpi_print_summary() {
         print(" flags=");
         print_hex32(state.overrides[i].flags);
     }
+    acpi_power_print();
     print("\n============\n");
 }
