@@ -2,11 +2,13 @@
 #define DRIVERS_GOP_H
 
 #include <stdint.h>
+#include "kernel/graphics/graphics2d.h"
+#include "os64/graphics_types.h"
 
 struct BootInfo;
 
-#define GOP_PIXEL_FORMAT_RGB 0
-#define GOP_PIXEL_FORMAT_BGR 1
+#define GOP_PIXEL_FORMAT_RGB OS64_PIXEL_FORMAT_RGB
+#define GOP_PIXEL_FORMAT_BGR OS64_PIXEL_FORMAT_BGR
 
 struct GOPInfo {
     uint64_t framebuffer_addr;
@@ -19,10 +21,9 @@ struct GOPInfo {
 
 class GOPDriver {
     volatile uint32_t* framebuffer;
+    GraphicsSurface surface;
     GOPInfo info_state;
     uint8_t ready_state;
-
-    uint32_t to_native_color(uint32_t color) const;
 
 public:
     GOPDriver();

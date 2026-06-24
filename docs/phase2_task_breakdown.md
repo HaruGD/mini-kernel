@@ -2,6 +2,8 @@
 
 Phase 2 builds a reusable 2D graphics path and a common input-event path on
 top of the existing GOP, syscall, process, and keyboard foundations.
+The 2D graphics library design is documented in
+`docs/2d_graphics_library.md`.
 
 ## Working Rules
 
@@ -16,19 +18,19 @@ top of the existing GOP, syscall, process, and keyboard foundations.
 
 ## 2A. Graphics Contracts
 
-- [ ] **G01: Define graphics primitives**
+- [x] **G01: Define graphics primitives**
   Add shared point, rectangle, surface, pixel-format, and color definitions.
   Completion: overflow-safe dimensions and ABI size assertions compile.
 
-- [ ] **G02: Add rectangle clipping helper**
+- [x] **G02: Add rectangle clipping helper**
   Implement intersection and framebuffer-bound clipping without drawing.
   Completion: empty, partial, full, and integer-overflow cases are tested.
 
-- [ ] **G03: Introduce a memory surface**
+- [x] **G03: Introduce a memory surface**
   Represent pixels, width, height, and stride independently from GOP MMIO.
   Completion: a RAM-backed surface can be created and bounds-checked.
 
-- [ ] **G04: Route pixel and fill operations through surfaces**
+- [x] **G04: Route pixel and fill operations through surfaces**
   Move reusable drawing loops out of the GOP hardware wrapper.
   Completion: current `put_pixel`, `fill_rect`, and clear behavior is retained.
 

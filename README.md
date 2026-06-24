@@ -98,6 +98,7 @@ What works on the active 64-bit UEFI path:
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
 - User SDK reference: [docs/user_sdk.md](docs/user_sdk.md)
 - ACPI power reference: [docs/acpi_power.md](docs/acpi_power.md)
+- 2D graphics library plan: [docs/2d_graphics_library.md](docs/2d_graphics_library.md)
 - Project roadmap: [docs/roadmap.md](docs/roadmap.md)
 - Phase 2 task breakdown: [docs/phase2_task_breakdown.md](docs/phase2_task_breakdown.md)
 

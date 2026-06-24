@@ -9,7 +9,6 @@ typedef struct OsGraphicsRectCommand {
     uint32_t color;
 } OsGraphicsRectCommand;
 
-_Static_assert(sizeof(OsGraphicsInfo) == 16, "OsGraphicsInfo ABI changed");
 _Static_assert(sizeof(OsGraphicsRectCommand) == 20, "graphics rectangle ABI changed");
 
 long os_gfx_get_info(OsGraphicsInfo* info) {

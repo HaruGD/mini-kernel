@@ -7,13 +7,6 @@
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
 
-struct UserGraphicsInfo {
-    uint32_t width;
-    uint32_t height;
-    uint32_t pixels_per_scanline;
-    uint32_t format;
-};
-
 struct UserGraphicsRect {
     uint32_t x;
     uint32_t y;
@@ -29,7 +22,7 @@ struct UserKeyboardEvent {
     uint32_t character;
 };
 
-static_assert(sizeof(UserGraphicsInfo) == 16, "UserGraphicsInfo ABI changed");
+static_assert(sizeof(OsGraphicsInfo) == 16, "OsGraphicsInfo ABI changed");
 static_assert(sizeof(UserGraphicsRect) == 20, "UserGraphicsRect ABI changed");
 static_assert(sizeof(UserKeyboardEvent) == 16, "UserKeyboardEvent ABI changed");
 
@@ -47,7 +40,7 @@ static uint64_t dispatch_graphics(uint64_t syscall_no,
             return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
         }
 
-        UserGraphicsInfo user_info;
+        OsGraphicsInfo user_info;
         user_info.width = info->width;
         user_info.height = info->height;
         user_info.pixels_per_scanline = info->pixels_per_scanline;

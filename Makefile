@@ -46,7 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics-contracts test-graphics-clip clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -73,6 +73,9 @@ KERNEL64_OBJECTS = \
 	./build/driver_shell64.o \
 	./build/kernel_exports64.o \
 	./build/pci64.o \
+	./build/graphics_clip64.o \
+	./build/graphics_surface64.o \
+	./build/graphics_draw64.o \
 	./build/terminal64.o \
 	./build/gop64.o \
 	./build/ata64.o \
@@ -101,6 +104,11 @@ test-phase1: uefi uefi-diagnostic
 	python3 ./tools/phase1_smoke.py
 test-shutdown: uefi
 	python3 ./tools/acpi_shutdown_smoke.py
+test-graphics-contracts:
+	python3 ./tools/graphics_clip_test.py
+	python3 ./tools/graphics_surface_test.py
+	python3 ./tools/graphics_draw_test.py
+test-graphics-clip: test-graphics-contracts
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -135,7 +143,7 @@ all32:
 ./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
+./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/klog64.o: ./kernel/log/klog.cpp ./include/kernel/klog.h ./include/kernel/kutil64.h
@@ -186,10 +194,19 @@ all32:
 ./build/pci64.o: ./kernel/pci/pci.cpp ./include/kernel/pci.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
+./build/graphics_clip64.o: ./kernel/graphics/graphics_clip.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/graphics_surface64.o: ./kernel/graphics/graphics_surface.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/graphics_draw64.o: ./kernel/graphics/graphics_draw.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
 ./build/terminal64.o: ./drivers/builtin/terminal/terminal.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/gop64.o: ./drivers/builtin/gop/gop.cpp ./include/drivers/gop.h ./include/kernel/boot_info.h
+./build/gop64.o: ./drivers/builtin/gop/gop.cpp ./include/drivers/gop.h ./include/kernel/boot_info.h ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/ata64.o: ./drivers/builtin/ata/ata.cpp

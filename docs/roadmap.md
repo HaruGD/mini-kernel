@@ -61,6 +61,7 @@ GUI와 실컴 드라이버를 늘리기 전에 장애 원인을 안정적으로 
 
 QEMU GOP 환경에서 먼저 완성하며 실제 GPU 드라이버는 요구하지 않는다.
 세부 구현과 검증 순서는 `docs/phase2_task_breakdown.md`를 따른다.
+2D 그래픽 라이브러리의 계층과 API 방향은 `docs/2d_graphics_library.md`를 따른다.
 
 - [ ] 2D graphics library
   - pixel, line, rectangle
