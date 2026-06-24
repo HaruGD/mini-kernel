@@ -6,6 +6,8 @@
 #define GFX_SURFACE_FLAG_FRAMEBUFFER 0x00000001u
 #define GFX_SURFACE_FLAG_OWNS_PIXELS 0x00000002u
 
+#define GFX_TEXT_FLAG_TRANSPARENT_BG 0x00000001u
+
 typedef struct GraphicsSurface {
     uint32_t* pixels;
     uint32_t width;
@@ -33,8 +35,50 @@ int gfx_surface_get_info(const GraphicsSurface* surface, OsSurfaceInfo* info);
 int gfx_surface_contains_point(const GraphicsSurface* surface, int32_t x, int32_t y);
 int gfx_surface_bounds(const GraphicsSurface* surface, OsRect* bounds);
 uint32_t gfx_surface_to_native_color(const GraphicsSurface* surface, uint32_t color);
+uint32_t gfx_surface_from_native_color(const GraphicsSurface* surface, uint32_t native_color);
 void gfx_put_pixel(GraphicsSurface* surface, int32_t x, int32_t y, uint32_t color);
 void gfx_fill_rect(GraphicsSurface* surface, const OsRect* rect, uint32_t color);
+void gfx_draw_hline(GraphicsSurface* surface,
+                    int32_t x,
+                    int32_t y,
+                    int32_t width,
+                    uint32_t color);
+void gfx_draw_vline(GraphicsSurface* surface,
+                    int32_t x,
+                    int32_t y,
+                    int32_t height,
+                    uint32_t color);
+void gfx_draw_line(GraphicsSurface* surface,
+                   int32_t x0,
+                   int32_t y0,
+                   int32_t x1,
+                   int32_t y1,
+                   uint32_t color);
+void gfx_blit(GraphicsSurface* destination,
+              const GraphicsSurface* source,
+              const OsRect* source_rect,
+              int32_t destination_x,
+              int32_t destination_y);
+void gfx_blit_keyed(GraphicsSurface* destination,
+                    const GraphicsSurface* source,
+                    const OsRect* source_rect,
+                    int32_t destination_x,
+                    int32_t destination_y,
+                    uint32_t color_key);
+void gfx_draw_glyph(GraphicsSurface* surface,
+                    int32_t x,
+                    int32_t y,
+                    char ch,
+                    uint32_t foreground,
+                    uint32_t background,
+                    uint32_t flags);
+void gfx_draw_text(GraphicsSurface* surface,
+                   int32_t x,
+                   int32_t y,
+                   const char* text,
+                   uint32_t foreground,
+                   uint32_t background,
+                   uint32_t flags);
 
 #ifdef __cplusplus
 }

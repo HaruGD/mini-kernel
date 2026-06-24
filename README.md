@@ -50,11 +50,13 @@ What works on the active 64-bit UEFI path:
 - ELF user program loading
 - C user programs with `main(void)` and `main(argc, argv)` support
 - User SDK v2 with console, string, path, file, directory, process, time, graphics, and keyboard-event APIs
+- SDK 2D helpers for user-space line drawing, bitmap blit, color-key blit, and bitmap-font text
 - User syscall buffers constrained to process-owned mappings and page permissions
 - static `libos64.a` linked into C user programs
 - per-process-slot user heap backed by syscall `brk` page mapping
 - SDK `malloc`, `calloc`, `realloc`, `free`, `strdup`, and dynamic file-read helpers
 - automated `usdk_test.elf` integration test covering heap, files, paths, directories, sleep, and yield
+- `ugfxdemo_c.elf` user-space 2D graphics demo
 - stable SDK result codes with readable error names
 - monotonic 64-bit PIT time exposed to user programs
 - syscall-mediated GOP drawing without exposing the physical framebuffer

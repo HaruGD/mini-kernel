@@ -36,28 +36,28 @@ The 2D graphics library design is documented in
 
 ## 2B. 2D Drawing
 
-- [ ] **G05: Add horizontal and vertical lines**
+- [x] **G05: Add horizontal and vertical lines**
   Completion: clipped lines render at all four framebuffer edges.
 
-- [ ] **G06: Add general line drawing**
+- [x] **G06: Add general line drawing**
   Use an integer line algorithm with clipping.
   Completion: horizontal, vertical, diagonal, reversed, and off-screen cases pass.
 
-- [ ] **G07: Add opaque bitmap blit**
+- [x] **G07: Add opaque bitmap blit**
   Copy a source surface region into a destination surface.
   Completion: source and destination clipping are tested.
 
-- [ ] **G08: Add color-key bitmap blit**
+- [x] **G08: Add color-key bitmap blit**
   Completion: transparent-key pixels leave the destination unchanged.
 
-- [ ] **G09: Add built-in bitmap font data**
+- [x] **G09: Add built-in bitmap font data**
   Keep font data separate from drawing code.
   Completion: printable ASCII glyph lookup has a deterministic fallback.
 
-- [ ] **G10: Add glyph and text rendering**
+- [x] **G10: Add glyph and text rendering**
   Completion: clipping, newline, fallback glyph, and bounded string rendering work.
 
-- [ ] **G11: Add a graphics demo program**
+- [x] **G11: Add a graphics demo program**
   Exercise lines, rectangles, bitmap blits, and text from user space.
   Completion: the demo exits cleanly and does not damage kernel memory.
 

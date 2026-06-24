@@ -24,7 +24,7 @@ The build compiles `user/sdk/src/` into `build/libos64.a` and links it into ever
 - Memory: `os_malloc`, `os_calloc`, `os_realloc`, `os_free`, `os_strdup`
 - Results: stable negative error codes and `os_result_string`
 - Time: monotonic ticks, timer frequency, and milliseconds
-- Graphics: GOP information, pixel, rectangle, and clear primitives
+- Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
 - Input: blocking and nonblocking keyboard events with modifiers
 
 The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
@@ -53,6 +53,8 @@ os_printf("uptime=%lu ms\n", time.milliseconds);
 OsGraphicsInfo graphics;
 if (os_gfx_get_info(&graphics) == OS_SUCCESS) {
     os_gfx_fill_rect(10, 10, 80, 30, OS_RGB(30, 180, 90));
+    os_gfx_draw_line(10, 10, 89, 39, OS_RGB(255, 255, 255));
+    os_gfx_draw_text(12, 44, "OS64", OS_RGB(255, 255, 255), 0, OS_GFX_TEXT_TRANSPARENT_BG);
 }
 
 OsKeyEvent event;
@@ -65,6 +67,12 @@ if (result == OS_ERR_WOULD_BLOCK) {
 Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The current API is suitable for the PS/2 driver and can preserve the same public structure when USB HID input is added later.
 
 Graphics calls are mediated by kernel syscalls. User programs receive dimensions and pixel format but do not receive the physical framebuffer address. Rectangle drawing clips at the display boundary, while an origin outside the display returns `OS_ERR_OUT_OF_RANGE`. Zero-sized rectangles return `OS_ERR_INVALID_ARGUMENT`.
+
+`ugfxdemo_c.elf` demonstrates the first 2D helper layer from user space. It uses
+SDK helpers for lines, filled rectangles, bitmap blits, color-key blits, and
+bitmap-font text. These helpers currently draw through the existing pixel and
+rectangle syscalls, so they are intended for simple demos and tests until the
+kernel exposes batched 2D drawing syscalls.
 
 All SDK buffers are checked against the current process mappings. Kernel addresses,
 another process slot, read-only code pages, and memory above the current heap break
