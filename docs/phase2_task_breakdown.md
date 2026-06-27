@@ -63,27 +63,27 @@ The 2D graphics library design is documented in
 
 ## 2C. Double Buffering
 
-- [ ] **G12: Allocate the back buffer**
+- [x] **G12: Allocate the back buffer**
   Allocate from the kernel heap with checked framebuffer dimensions.
   Completion: allocation failure keeps direct GOP output operational.
 
-- [ ] **G13: Add full-frame present**
+- [x] **G13: Add full-frame present**
   Copy the back buffer to GOP while respecting both strides and pixel format.
   Completion: QEMU screen smoke confirms a nonblank frame.
 
-- [ ] **G14: Define display ownership**
+- [x] **G14: Define display ownership**
   Serialize framebuffer terminal and graphics clients during a present.
   Completion: shell text and graphics writes cannot interleave mid-frame.
 
-- [ ] **G15: Add dirty-rectangle tracking**
+- [x] **G15: Add dirty-rectangle tracking**
   Start with a bounded rectangle list and merge overlapping regions.
   Completion: overflow falls back to one full-screen dirty rectangle.
 
-- [ ] **G16: Add partial present**
+- [x] **G16: Add partial present**
   Copy only tracked dirty rectangles and clear the tracker afterward.
   Completion: unchanged framebuffer regions remain byte-identical.
 
-- [ ] **G17: Extend screen smoke coverage**
+- [x] **G17: Extend screen smoke coverage**
   Capture full and partial presents at 1280x800 and one smaller resolution.
   Completion: pixel checks validate placement, clipping, and nonblank output.
 

@@ -229,7 +229,7 @@ extern "C" void shell_recall_history(int direction) {
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
     print("\nfree, dump, sched, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
-    print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test]");
+    print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case]");
     print("\nrun, resume, usertest, ushell, ushellc");
@@ -350,17 +350,87 @@ static void command_gop(char* arg) {
             print("\nGOP is not ready.");
             return;
         }
+        GraphicsSurface* target = gop.back_buffer_surface();
+        int used_back_buffer = target != 0;
         uint32_t box = info->width < info->height ? info->width : info->height;
         if (box > 96) {
             box = 96;
         }
-        gop.fill_rect(0, 0, box, box, 0x00255EE8);
-        gop.fill_rect(box / 4, box / 4, box / 2, box / 2, 0x00F9A825);
-        for (uint32_t i = 0; i < box; i++) {
-            gop.putpixel(i, i, 0x00FFFFFF);
-            gop.putpixel(box - 1 - i, i, 0x00FFFFFF);
+        if (target != 0) {
+            OsRect outer;
+            outer.x = 0;
+            outer.y = 0;
+            outer.width = (int32_t)box;
+            outer.height = (int32_t)box;
+            OsRect inner;
+            inner.x = (int32_t)(box / 4);
+            inner.y = (int32_t)(box / 4);
+            inner.width = (int32_t)(box / 2);
+            inner.height = (int32_t)(box / 2);
+            gfx_fill_rect(target, &outer, 0x00255EE8);
+            gfx_fill_rect(target, &inner, 0x00F9A825);
+            for (uint32_t i = 0; i < box; i++) {
+                gfx_put_pixel(target, (int32_t)i, (int32_t)i, 0x00FFFFFF);
+                gfx_put_pixel(target, (int32_t)(box - 1 - i), (int32_t)i, 0x00FFFFFF);
+            }
+            gop.mark_dirty(&outer);
+            gop.present();
+        } else {
+            gop.fill_rect(0, 0, box, box, 0x00255EE8);
+            gop.fill_rect(box / 4, box / 4, box / 2, box / 2, 0x00F9A825);
+            for (uint32_t i = 0; i < box; i++) {
+                gop.putpixel(i, i, 0x00FFFFFF);
+                gop.putpixel(box - 1 - i, i, 0x00FFFFFF);
+            }
         }
         print("\nGOP test pattern drawn.");
+        print(used_back_buffer ? " present=back-buffer." : " present=direct.");
+        return;
+    }
+    if (arg != 0 && strcmp64(arg, "partial") == 0) {
+        if (info == 0) {
+            print("\nGOP is not ready.");
+            return;
+        }
+        GraphicsSurface* target = gop.back_buffer_surface();
+        int used_back_buffer = target != 0;
+        uint32_t width = info->width / 4;
+        uint32_t height = info->height / 5;
+        if (width > 72) {
+            width = 72;
+        }
+        if (height > 48) {
+            height = 48;
+        }
+        if (width < 16) {
+            width = 16;
+        }
+        if (height < 16) {
+            height = 16;
+        }
+        uint32_t x = info->width > width + 12 ? info->width - width - 12 : 0;
+        uint32_t y = info->height > height + 12 ? info->height - height - 12 : 0;
+
+        if (target != 0) {
+            OsRect rect;
+            rect.x = (int32_t)x;
+            rect.y = (int32_t)y;
+            rect.width = (int32_t)width;
+            rect.height = (int32_t)height;
+            gfx_fill_rect(target, &rect, 0x0000D060);
+            for (uint32_t i = 0; i < width && i < height; i++) {
+                gfx_put_pixel(target, (int32_t)(x + i), (int32_t)(y + i), 0x00FFFFFF);
+            }
+            gop.mark_dirty(&rect);
+            gop.present();
+        } else {
+            gop.fill_rect(x, y, width, height, 0x0000D060);
+            for (uint32_t i = 0; i < width && i < height; i++) {
+                gop.putpixel(x + i, y + i, 0x00FFFFFF);
+            }
+        }
+        print("\nGOP partial pattern drawn.");
+        print(used_back_buffer ? " present=back-buffer." : " present=direct.");
         return;
     }
 
@@ -383,6 +453,24 @@ static void command_gop(char* arg) {
     print_hex32(info->pixels_per_scanline);
     print(" format=");
     print_hex32(info->format);
+    print("\ndisplay_owner=");
+    print_hex32(gop.display_owner());
+    const GraphicsDirtyTracker* dirty = gop.dirty_tracker_state();
+    print("\ndirty_count=");
+    print_hex32(gfx_dirty_count(dirty));
+    print(" dirty_full=");
+    print_hex32(gfx_dirty_is_full(dirty));
+    const GOPBackBufferInfo* back = gop.back_buffer_info_state();
+    print("\nback_buffer_ready=");
+    print_hex32(back != 0 ? back->ready : 0);
+    if (back != 0 && back->ready) {
+        print(" addr=");
+        print_hex64(back->address);
+        print(" size=");
+        print_hex64(back->size);
+        print(" stride=");
+        print_hex32(back->stride_pixels);
+    }
     print("\n==============");
 }
 

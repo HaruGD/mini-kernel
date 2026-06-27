@@ -8,6 +8,8 @@
 
 #define GFX_TEXT_FLAG_TRANSPARENT_BG 0x00000001u
 
+#define GFX_DIRTY_MAX_RECTS 64u
+
 typedef struct GraphicsSurface {
     uint32_t* pixels;
     uint32_t width;
@@ -16,6 +18,13 @@ typedef struct GraphicsSurface {
     uint32_t pixel_format;
     uint32_t flags;
 } GraphicsSurface;
+
+typedef struct GraphicsDirtyTracker {
+    OsRect bounds;
+    OsRect rects[GFX_DIRTY_MAX_RECTS];
+    uint32_t count;
+    uint32_t full;
+} GraphicsDirtyTracker;
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,6 +88,17 @@ void gfx_draw_text(GraphicsSurface* surface,
                    uint32_t foreground,
                    uint32_t background,
                    uint32_t flags);
+void gfx_copy_surface(GraphicsSurface* destination, const GraphicsSurface* source);
+uint32_t gfx_present_dirty_surface(GraphicsSurface* destination,
+                                   const GraphicsSurface* source,
+                                   GraphicsDirtyTracker* dirty_tracker);
+void gfx_dirty_init(GraphicsDirtyTracker* tracker, const OsRect* bounds);
+void gfx_dirty_clear(GraphicsDirtyTracker* tracker);
+void gfx_dirty_mark(GraphicsDirtyTracker* tracker, const OsRect* rect);
+void gfx_dirty_mark_full(GraphicsDirtyTracker* tracker);
+uint32_t gfx_dirty_count(const GraphicsDirtyTracker* tracker);
+uint32_t gfx_dirty_is_full(const GraphicsDirtyTracker* tracker);
+const OsRect* gfx_dirty_rects(const GraphicsDirtyTracker* tracker);
 
 #ifdef __cplusplus
 }

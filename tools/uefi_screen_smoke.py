@@ -5,6 +5,9 @@ import time
 from pathlib import Path
 
 
+OVMF_VARS_TEMPLATE = Path("/usr/share/OVMF/OVMF_VARS_4M.fd")
+
+
 def count_nonblack_ppm(path: Path) -> tuple[int, int, int]:
     data = path.read_bytes()
     if not data.startswith(b"P6\n"):
@@ -46,15 +49,20 @@ def main() -> int:
     screen.parent.mkdir(parents=True, exist_ok=True)
     screen.unlink(missing_ok=True)
     esp_image = Path("bin/uefi_esp.screen.img")
+    vars_image = Path("bin/OVMF_VARS.screen.fd")
     esp_image.unlink(missing_ok=True)
+    vars_image.unlink(missing_ok=True)
     shutil.copyfile("bin/uefi_esp.img", esp_image)
+    shutil.copyfile(OVMF_VARS_TEMPLATE, vars_image)
 
     qemu = [
         "qemu-system-x86_64",
         "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
-        "-drive", "if=pflash,format=raw,file=./bin/OVMF_VARS_4M.fd",
+        "-drive", f"if=pflash,format=raw,file={vars_image}",
         "-drive", f"if=none,id=uefi_esp,format=raw,file={esp_image}",
         "-device", "virtio-blk-pci,drive=uefi_esp,bootindex=1",
+        "-vga", "none",
+        "-device", "virtio-vga,xres=1280,yres=800",
         "-serial", "none",
         "-monitor", "stdio",
         "-display", "none",
@@ -80,6 +88,7 @@ def main() -> int:
             except BrokenPipeError:
                 pass
         esp_image.unlink(missing_ok=True)
+        vars_image.unlink(missing_ok=True)
 
     if not screen.exists():
         print("UEFI screen smoke missing screendump")

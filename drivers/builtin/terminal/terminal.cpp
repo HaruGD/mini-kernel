@@ -1,6 +1,7 @@
 #include "drivers/terminal.h"
 #include "arch/x86_64/io.h"
 #include "kernel/boot_info.h"
+#include "kernel/graphics/display_owner.h"
 #include "kernel/graphics/graphics_font.h"
 
 #define FB_FORMAT_RGB 0
@@ -211,6 +212,11 @@ void Terminal::clear() {
         return;
     }
     if (use_framebuffer) {
+        DisplayOwnerToken token;
+        display_owner_begin(DISPLAY_OWNER_TERMINAL, &token);
+        if (!token.acquired) {
+            return;
+        }
         clear_text_buffer();
         for (uint32_t y = 0; y < fb_height; y++) {
             for (uint32_t x = 0; x < fb_width; x++) {
@@ -218,6 +224,7 @@ void Terminal::clear() {
             }
         }
         cursor = 0;
+        display_owner_end(&token);
         return;
     }
 
@@ -234,6 +241,16 @@ void Terminal::putchar(char c) {
     if (!active) {
         return;
     }
+    DisplayOwnerToken token;
+    if (use_framebuffer) {
+        display_owner_begin(DISPLAY_OWNER_TERMINAL, &token);
+        if (!token.acquired) {
+            return;
+        }
+    } else {
+        token.acquired = 0;
+    }
+
     if (cursor >= columns * rows) {
         scroll();
     }
@@ -266,6 +283,9 @@ void Terminal::putchar(char c) {
         scroll();
     }
     update_cursor();
+    if (token.acquired) {
+        display_owner_end(&token);
+    }
 }
 
 void Terminal::print(const char* str) {

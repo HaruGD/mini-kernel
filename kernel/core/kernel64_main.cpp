@@ -144,6 +144,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
         early_framebuffer_marker(g_boot_info, 0, 0x000000FF);
     }
     heap_init();
+    int gop_back_buffer_ready = gop.init_back_buffer();
     driver_manager_init();
     driver_manager_register_kernel_exports();
     pci_discover();
@@ -184,6 +185,9 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print("\n");
     print("Framebuffer mapped: ");
     print_hex32((uint32_t)framebuffer_mapped);
+    print("\n");
+    print("GOP back buffer: ");
+    print_hex32((uint32_t)gop_back_buffer_ready);
     print("\n");
     print("NX policy: ");
     print_hex32((uint32_t)nx_policy_applied);

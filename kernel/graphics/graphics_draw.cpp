@@ -301,3 +301,12 @@ void gfx_draw_text(GraphicsSurface* surface,
         cursor_x += GFX_FONT_ADVANCE;
     }
 }
+
+void gfx_copy_surface(GraphicsSurface* destination, const GraphicsSurface* source) {
+    OsRect source_rect;
+    if (!gfx_surface_bounds(source, &source_rect) ||
+        !gfx_surface_is_valid(destination)) {
+        return;
+    }
+    gfx_blit(destination, source, &source_rect, 0, 0);
+}
