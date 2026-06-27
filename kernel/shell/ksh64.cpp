@@ -15,6 +15,7 @@ extern "C" {
 #include "kernel/acpi.h"
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
+#include "kernel/input/input_events.h"
 #include "kernel/ksh64.h"
 #include "kernel/kutil64.h"
 #include "kernel/klog.h"
@@ -228,11 +229,26 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
+    print("\nfree, dump, sched, input, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case]");
     print("\nrun, resume, usertest, ushell, ushellc");
+}
+
+static void command_input() {
+    KernelInputStats stats;
+    input_events_get_stats(&stats);
+    print("\n=== INPUT ===");
+    print("\ncapacity=");
+    print_hex32(stats.capacity);
+    print(" count=");
+    print_hex32(stats.count);
+    print("\ndelivered=");
+    print_hex32(stats.delivered_count);
+    print(" dropped=");
+    print_hex32(stats.dropped_count);
+    print("\n=============");
 }
 
 static void command_klog(char* arg) {
@@ -770,6 +786,8 @@ static void execute_command() {
         dump_state();
     } else if (strcmp64(cmd, "sched") == 0) {
         command_sched();
+    } else if (strcmp64(cmd, "input") == 0) {
+        command_input();
     } else if (strcmp64(cmd, "drivers") == 0) {
         command_drivers();
     } else if (strcmp64(cmd, "bindings") == 0) {

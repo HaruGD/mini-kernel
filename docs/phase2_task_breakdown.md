@@ -89,33 +89,33 @@ The 2D graphics library design is documented in
 
 ## 2D. Input Event Queue
 
-- [ ] **I01: Define the common input event ABI**
+- [x] **I01: Define the common input event ABI**
   Add event type, timestamp, key code, modifiers, button, and pointer fields.
   Completion: kernel/user ABI size assertions match.
 
-- [ ] **I02: Add a bounded kernel event ring**
+- [x] **I02: Add a bounded kernel event ring**
   Completion: FIFO order, wraparound, empty state, and full state are tested.
 
-- [ ] **I03: Define the overflow policy**
+- [x] **I03: Define the overflow policy**
   Drop the oldest event and increment a visible counter.
   Completion: a forced overflow preserves the newest events and reports drops.
 
-- [ ] **I04: Convert PS/2 keyboard input into common events**
+- [x] **I04: Convert PS/2 keyboard input into common events**
   Preserve the existing shell character path while adding event production.
   Completion: key up/down and modifier transitions are correct.
 
-- [ ] **I05: Add nonblocking event-read syscall**
+- [x] **I05: Add nonblocking event-read syscall**
   Completion: user space receives one event or a stable would-block result.
 
-- [ ] **I06: Add blocking event-read syscall**
+- [x] **I06: Add blocking event-read syscall**
   Sleep the caller until an event arrives without busy waiting.
   Completion: injected QEMU input wakes exactly one waiting process.
 
-- [ ] **I07: Reserve mouse event semantics**
+- [x] **I07: Reserve mouse event semantics**
   Finalize relative motion, absolute position, wheel, and button representation.
   Completion: synthetic mouse events round-trip through the ABI.
 
-- [ ] **I08: Add input diagnostics**
+- [x] **I08: Add input diagnostics**
   Add queue depth, capacity, delivered count, and dropped count inspection.
   Completion: shell diagnostics do not consume queued events.
 

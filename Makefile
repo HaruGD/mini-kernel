@@ -33,7 +33,7 @@ USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
 USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
 USER_SDK_LIB = ./build/libos64.a
-USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h)
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h
 
 
 # External drivers
@@ -46,7 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input-queue clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -73,6 +73,8 @@ KERNEL64_OBJECTS = \
 	./build/driver_shell64.o \
 	./build/kernel_exports64.o \
 	./build/pci64.o \
+	./build/input_event_queue64.o \
+	./build/input_events64.o \
 	./build/graphics_clip64.o \
 	./build/graphics_surface64.o \
 	./build/graphics_draw64.o \
@@ -120,6 +122,9 @@ test-graphics-demo: uefi
 	python3 ./tools/graphics_demo_smoke.py
 test-gop-present: uefi
 	python3 ./tools/gop_present_smoke.py
+test-input-queue:
+	python3 ./tools/input_event_queue_test.py
+	python3 ./tools/keyboard_event_translation_test.py
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -154,7 +159,7 @@ all32:
 ./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h
+./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/klog64.o: ./kernel/log/klog.cpp ./include/kernel/klog.h ./include/kernel/kutil64.h
@@ -205,6 +210,12 @@ all32:
 ./build/pci64.o: ./kernel/pci/pci.cpp ./include/kernel/pci.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
+./build/input_event_queue64.o: ./kernel/input/input_event_queue.cpp ./include/kernel/input/input_event_queue.h ./include/os64/input_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/input_events64.o: ./kernel/input/input_events.cpp ./include/kernel/input/input_events.h ./include/kernel/input/input_event_queue.h ./include/os64/input_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
 ./build/graphics_clip64.o: ./kernel/graphics/graphics_clip.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
@@ -235,7 +246,7 @@ all32:
 ./build/ata64.o: ./drivers/builtin/ata/ata.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/keyboard64.o: ./drivers/builtin/keyboard/keyboard.cpp
+./build/keyboard64.o: ./drivers/builtin/keyboard/keyboard.cpp ./include/drivers/keyboard.h ./include/kernel/input/input_events.h ./include/os64/input_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/pit64.o: ./drivers/builtin/pit/pit.cpp

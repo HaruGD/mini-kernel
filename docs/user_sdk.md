@@ -25,7 +25,7 @@ The build compiles `user/sdk/src/` into `build/libos64.a` and links it into ever
 - Results: stable negative error codes and `os_result_string`
 - Time: monotonic ticks, timer frequency, and milliseconds
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
-- Input: blocking and nonblocking keyboard events with modifiers
+- Input: blocking and nonblocking key/pointer events with modifiers and button state
 
 The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
 
@@ -62,9 +62,22 @@ long result = os_key_poll(&event);
 if (result == OS_ERR_WOULD_BLOCK) {
     os_puts("no key is waiting");
 }
+
+OsInputEvent input;
+if (os_input_poll(&input) == OS_SUCCESS && input.type == OS_INPUT_EVENT_KEY) {
+    os_printf("key=%u\n", input.data.key.keycode);
+}
+os_input_wait(&input);
 ```
 
-Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The current API is suitable for the PS/2 driver and can preserve the same public structure when USB HID input is added later.
+Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The stable input ABI lives in `os64/input_types.h`: `OsKeyEvent` is the legacy keyboard-specific payload, while `OsInputEvent` is the common event envelope used by the input queue. `os_input_poll` returns `OS_ERR_WOULD_BLOCK` when no event is ready; `os_input_wait` blocks without busy-spinning until an event arrives. The kernel shell `input` command reports queue capacity, queued events, delivered events, and dropped events without consuming pending input.
+
+Pointer events are reserved in the same ABI even before a hardware mouse driver
+exists. `OsPointerEvent.x` and `y` contain absolute coordinates when known, or
+`OS_POINTER_POSITION_UNKNOWN` for purely relative devices. `delta_x` and
+`delta_y` carry relative motion, `wheel_delta` carries vertical wheel movement,
+`buttons` is the post-event pressed-button mask, and `changed_buttons` marks the
+button bits that changed for button up/down events.
 
 Graphics calls are mediated by kernel syscalls. User programs receive dimensions and pixel format but do not receive the physical framebuffer address. Rectangle drawing clips at the display boundary, while an origin outside the display returns `OS_ERR_OUT_OF_RANGE`. Zero-sized rectangles return `OS_ERR_INVALID_ARGUMENT`.
 

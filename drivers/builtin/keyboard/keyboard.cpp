@@ -1,5 +1,7 @@
 #include "drivers/keyboard.h"
 #include "arch/x86_64/io.h"
+#include "drivers/pit.h"
+#include "kernel/input/input_events.h"
 
 #include "shell/shell.h"
 
@@ -7,6 +9,7 @@ extern "C" void shell_recall_history(int direction);
 extern "C" void shell_input(char c);
 extern "C" int user_input_active64();
 extern "C" void keyboard_deliver_char64(char c);
+extern PIT pit;
 
 const char KeyboardDriver::kbd_US[128] = {
     0,  27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
@@ -79,7 +82,7 @@ bool KeyboardDriver::try_read_char(char* out_char) {
         return false;
     }
 
-    KeyboardEvent event;
+    OsKeyEvent event;
     if (!try_read_event(&event) || event.type != KEYBOARD_EVENT_DOWN || event.character == 0) {
         return false;
     }
@@ -88,12 +91,27 @@ bool KeyboardDriver::try_read_char(char* out_char) {
     return true;
 }
 
-bool KeyboardDriver::try_read_event(KeyboardEvent* out_event) {
+bool KeyboardDriver::try_read_event(OsKeyEvent* out_event) {
     if (out_event == 0 || (inb(0x64) & 0x01) == 0) {
         return false;
     }
 
-    uint8_t raw_code = inb(0x60);
+    OsInputEvent input_event;
+    if (!process_scan_code(inb(0x60), pit.get_tick64(), &input_event) ||
+        input_event.type != OS_INPUT_EVENT_KEY) {
+        return false;
+    }
+
+    *out_event = input_event.data.key;
+    return true;
+}
+
+bool KeyboardDriver::process_scan_code(uint8_t raw_code,
+                                       uint64_t timestamp_ticks,
+                                       OsInputEvent* out_event) {
+    if (out_event == 0) {
+        return false;
+    }
     if (raw_code == 0xE0) {
         is_extended = true;
         return false;
@@ -138,24 +156,29 @@ bool KeyboardDriver::try_read_event(KeyboardEvent* out_event) {
         modifiers |= KEYBOARD_MOD_CAPS_LOCK;
     }
 
-    out_event->type = released ? KEYBOARD_EVENT_UP : KEYBOARD_EVENT_DOWN;
-    out_event->keycode = (extended ? 0x100u : 0u) | scan_code;
-    out_event->modifiers = modifiers;
-    out_event->character = (!released && !extended) ? (uint32_t)(uint8_t)get_char(scan_code) : 0;
+    out_event->type = OS_INPUT_EVENT_KEY;
+    out_event->size = sizeof(OsInputEvent);
+    out_event->timestamp_ticks = timestamp_ticks;
+    out_event->data.key.type = released ? KEYBOARD_EVENT_UP : KEYBOARD_EVENT_DOWN;
+    out_event->data.key.keycode = (extended ? 0x100u : 0u) | scan_code;
+    out_event->data.key.modifiers = modifiers;
+    out_event->data.key.character =
+        (!released && !extended) ? (uint32_t)(uint8_t)get_char(scan_code) : 0;
     return true;
 }
 
 void KeyboardDriver::handle() {
-    uint8_t scan_code = inb(0x60);
-    bool user_mode_input = user_input_active64() != 0;
-
-    if (scan_code == 0xE0) {
-        is_extended = true;
+    OsInputEvent event;
+    if (!process_scan_code(inb(0x60), pit.get_tick64(), &event)) {
         return;
     }
 
-    if (is_extended) {
-        is_extended = false;
+    input_events_push(&event);
+    bool user_mode_input = user_input_active64() != 0;
+
+    if ((event.data.key.keycode & 0x100u) != 0 &&
+        event.data.key.type == KEYBOARD_EVENT_DOWN) {
+        uint32_t scan_code = event.data.key.keycode & 0x7Fu;
         if (!user_mode_input && scan_code == 0x48) {
             shell_recall_history(-1);
         }
@@ -165,31 +188,8 @@ void KeyboardDriver::handle() {
         return;
     }
 
-    if (scan_code == 0x2A) {
-        shift_pressed |= 1;
-        return;
-    }
-    if (scan_code == 0x36) {
-        shift_pressed |= 2;
-        return;
-    }
-    if (scan_code == 0xAA) {
-        shift_pressed &= ~1;
-        return;
-    }
-    if (scan_code == 0xB6) {
-        shift_pressed &= ~2;
-        return;
-    }
-    if (scan_code == 0x3A) {
-        caps_lock_on = !caps_lock_on;
-        outb(0x20, 0x20);
-        return;
-    }
-    if (!(scan_code & 0x80)) {
-        char ascii = get_char(scan_code);
-        if (ascii != 0) {
-            keyboard_deliver_char64(ascii);
-        }
+    if (event.data.key.type == KEYBOARD_EVENT_DOWN &&
+        event.data.key.character != 0) {
+        keyboard_deliver_char64((char)event.data.key.character);
     }
 }

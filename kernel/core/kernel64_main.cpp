@@ -1,4 +1,5 @@
 #include "drivers/gop.h"
+#include "kernel/input/input_events.h"
 
 extern "C" uint8_t __kernel_text_start[];
 extern "C" uint8_t __kernel_text_end[];
@@ -175,6 +176,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
         : driver_manager_autoload_from("/");
     idt64_init();
     int apic_ready = interrupt_controller_init(acpi_state());
+    input_events_init();
     keyboard.init();
     pit.init();
     __asm__ volatile("sti");

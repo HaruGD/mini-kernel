@@ -226,6 +226,39 @@ static void test_graphics(void) {
 
 static void test_keyboard(void) {
     OsKeyEvent event;
+    OsInputEvent input_event;
+    OsPointerEvent pointer_event;
+    check(sizeof(event) == 16u &&
+          sizeof(pointer_event) == 32u &&
+          sizeof(input_event) == 48u,
+          "input ABI sizes");
+    pointer_event.type = OS_POINTER_EVENT_BUTTON_DOWN;
+    pointer_event.x = OS_POINTER_POSITION_UNKNOWN;
+    pointer_event.y = OS_POINTER_POSITION_UNKNOWN;
+    pointer_event.delta_x = -2;
+    pointer_event.delta_y = 3;
+    pointer_event.wheel_delta = 0;
+    pointer_event.buttons = OS_POINTER_BUTTON_LEFT | OS_POINTER_BUTTON_X1;
+    pointer_event.changed_buttons = OS_POINTER_BUTTON_LEFT;
+    check(pointer_event.x == OS_POINTER_POSITION_UNKNOWN &&
+          pointer_event.buttons == (OS_POINTER_BUTTON_LEFT | OS_POINTER_BUTTON_X1) &&
+          pointer_event.changed_buttons == OS_POINTER_BUTTON_LEFT,
+          "pointer ABI semantics");
+    check(os_input_poll(0) == OS_ERR_INVALID_ARGUMENT,
+          "input poll null event error");
+    long input_result = os_input_poll(&input_event);
+    int valid_input_event = input_result == OS_SUCCESS &&
+        input_event.type == OS_INPUT_EVENT_KEY &&
+        input_event.size == sizeof(OsInputEvent) &&
+        (input_event.data.key.type == OS_KEY_EVENT_DOWN ||
+         input_event.data.key.type == OS_KEY_EVENT_UP);
+    check(input_result == OS_ERR_WOULD_BLOCK || valid_input_event,
+          "input nonblocking poll");
+    for (uint32_t i = 0; i < 256u; i++) {
+        if (os_input_poll(&input_event) == OS_ERR_WOULD_BLOCK) {
+            break;
+        }
+    }
     check(os_key_poll(0) == OS_ERR_INVALID_ARGUMENT,
           "keyboard null event error");
     long result = os_key_poll(&event);
@@ -233,12 +266,31 @@ static void test_keyboard(void) {
         (event.type == OS_KEY_EVENT_DOWN || event.type == OS_KEY_EVENT_UP);
     check(result == OS_ERR_WOULD_BLOCK || valid_pending_event,
           "keyboard nonblocking poll");
+    for (uint32_t i = 0; i < 256u; i++) {
+        if (os_input_poll(&input_event) == OS_ERR_WOULD_BLOCK) {
+            break;
+        }
+    }
+
+    os_puts("[INFO] waiting for injected input event");
+    result = os_input_wait(&input_event);
+    check(result == OS_SUCCESS, "input blocking event");
+    check(input_event.type == OS_INPUT_EVENT_KEY &&
+          input_event.data.key.type == OS_KEY_EVENT_DOWN &&
+          input_event.data.key.character == 'z',
+          "input key-down payload");
 
     os_puts("[INFO] waiting for injected key event");
-    result = os_key_wait(&event);
-    check(result == OS_SUCCESS, "keyboard blocking event");
-    check(event.type == OS_KEY_EVENT_DOWN && event.character == 'z',
-          "keyboard key-down payload");
+    int found_key = 0;
+    for (uint32_t i = 0; i < 8u && !found_key; i++) {
+        result = os_key_wait(&event);
+        if (result == OS_SUCCESS &&
+            event.type == OS_KEY_EVENT_DOWN &&
+            event.character == 'x') {
+            found_key = 1;
+        }
+    }
+    check(found_key, "keyboard blocking event payload");
 }
 
 static void cleanup_test_files(void) {

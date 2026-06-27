@@ -3,9 +3,11 @@
 #include "drivers/gop.h"
 #include "drivers/keyboard.h"
 #include "drivers/pit.h"
+#include "kernel/input/input_events.h"
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
+#include "os64/input_types.h"
 
 struct UserGraphicsRect {
     uint32_t x;
@@ -15,19 +17,25 @@ struct UserGraphicsRect {
     uint32_t color;
 };
 
-struct UserKeyboardEvent {
-    uint32_t type;
-    uint32_t keycode;
-    uint32_t modifiers;
-    uint32_t character;
-};
-
 static_assert(sizeof(OsGraphicsInfo) == 16, "OsGraphicsInfo ABI changed");
 static_assert(sizeof(UserGraphicsRect) == 20, "UserGraphicsRect ABI changed");
-static_assert(sizeof(UserKeyboardEvent) == 16, "UserKeyboardEvent ABI changed");
+static_assert(sizeof(OsKeyEvent) == 16, "OsKeyEvent ABI changed");
+static_assert(sizeof(OsInputEvent) == 48, "OsInputEvent ABI changed");
 
 static uint64_t invalid_argument() {
     return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+}
+
+static void input_wait_begin_check() {
+    __asm__ volatile("cli" ::: "memory");
+}
+
+static void input_wait_end_check() {
+    __asm__ volatile("sti" ::: "memory");
+}
+
+static void input_wait_halt_once() {
+    __asm__ volatile("sti; hlt; cli" ::: "memory");
 }
 
 static uint64_t dispatch_graphics(uint64_t syscall_no,
@@ -96,21 +104,23 @@ static uint64_t dispatch_graphics(uint64_t syscall_no,
 
 static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_event_address,
-                              sizeof(UserKeyboardEvent))) {
+                              sizeof(OsKeyEvent))) {
         return invalid_argument();
     }
 
     while (1) {
-        KeyboardEvent event;
-        if (keyboard.try_read_event(&event)) {
-            UserKeyboardEvent user_event;
-            user_event.type = event.type;
-            user_event.keycode = event.keycode;
-            user_event.modifiers = event.modifiers;
-            user_event.character = event.character;
+        OsInputEvent input_event;
+        if (wait) {
+            input_wait_begin_check();
+        }
+        if (input_events_pop(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
+            OsKeyEvent event = input_event.data.key;
+            if (wait) {
+                input_wait_end_check();
+            }
             if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
-                                            (const uint8_t*)&user_event,
-                                            sizeof(user_event))) {
+                                            (const uint8_t*)&event,
+                                            sizeof(event))) {
                 return invalid_argument();
             }
             return 0;
@@ -118,6 +128,7 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
         if (!wait) {
             return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
         }
+        input_wait_end_check();
         if (continue_woken_processes(0)) {
             redraw_user_shell_prompt_if_needed();
             continue;
@@ -126,7 +137,66 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
             redraw_user_shell_prompt_if_needed();
             continue;
         }
-        __asm__ volatile("sti; hlt; cli");
+        input_wait_begin_check();
+        if (input_events_pop(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
+            OsKeyEvent event = input_event.data.key;
+            input_wait_end_check();
+            if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
+                                            (const uint8_t*)&event,
+                                            sizeof(event))) {
+                return invalid_argument();
+            }
+            return 0;
+        }
+        input_wait_halt_once();
+    }
+}
+
+static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_event_address,
+                              sizeof(OsInputEvent))) {
+        return invalid_argument();
+    }
+
+    while (1) {
+        OsInputEvent event;
+        if (wait) {
+            input_wait_begin_check();
+        }
+        if (input_events_pop(&event)) {
+            if (wait) {
+                input_wait_end_check();
+            }
+            if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
+                                            (const uint8_t*)&event,
+                                            sizeof(event))) {
+                return invalid_argument();
+            }
+            return 0;
+        }
+        if (!wait) {
+            return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
+        }
+        input_wait_end_check();
+        if (continue_woken_processes(0)) {
+            redraw_user_shell_prompt_if_needed();
+            continue;
+        }
+        if (continue_background_processes(0)) {
+            redraw_user_shell_prompt_if_needed();
+            continue;
+        }
+        input_wait_begin_check();
+        if (input_events_pop(&event)) {
+            input_wait_end_check();
+            if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
+                                            (const uint8_t*)&event,
+                                            sizeof(event))) {
+                return invalid_argument();
+            }
+            return 0;
+        }
+        input_wait_halt_once();
     }
 }
 
@@ -152,6 +222,14 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_KEYBOARD_EVENT) {
         *result = dispatch_keyboard(arg1, arg2 != 0);
+        return true;
+    }
+    if (syscall_no == SYS_INPUT_EVENT_POLL) {
+        *result = dispatch_input_event(arg1, false);
+        return true;
+    }
+    if (syscall_no == SYS_INPUT_EVENT_WAIT) {
+        *result = dispatch_input_event(arg1, true);
         return true;
     }
     return false;

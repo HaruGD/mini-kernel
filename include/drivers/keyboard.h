@@ -3,25 +3,19 @@
 
 #include "driver.h"
 #include <stdint.h>
+#include "os64/input_types.h"
 
 enum KeyboardEventType : uint32_t {
-    KEYBOARD_EVENT_NONE = 0,
-    KEYBOARD_EVENT_DOWN = 1,
-    KEYBOARD_EVENT_UP = 2,
+    KEYBOARD_EVENT_NONE = OS_KEY_EVENT_NONE,
+    KEYBOARD_EVENT_DOWN = OS_KEY_EVENT_DOWN,
+    KEYBOARD_EVENT_UP = OS_KEY_EVENT_UP,
 };
 
 enum KeyboardModifier : uint32_t {
-    KEYBOARD_MOD_SHIFT = 1u << 0,
-    KEYBOARD_MOD_CTRL = 1u << 1,
-    KEYBOARD_MOD_ALT = 1u << 2,
-    KEYBOARD_MOD_CAPS_LOCK = 1u << 3,
-};
-
-struct KeyboardEvent {
-    uint32_t type;
-    uint32_t keycode;
-    uint32_t modifiers;
-    uint32_t character;
+    KEYBOARD_MOD_SHIFT = OS_KEY_MOD_SHIFT,
+    KEYBOARD_MOD_CTRL = OS_KEY_MOD_CTRL,
+    KEYBOARD_MOD_ALT = OS_KEY_MOD_ALT,
+    KEYBOARD_MOD_CAPS_LOCK = OS_KEY_MOD_CAPS_LOCK,
 };
 
 class KeyboardDriver : public Driver {
@@ -39,8 +33,9 @@ public:
     void init() override;
     void handle();
     char get_char(uint8_t scan_code);
+    bool process_scan_code(uint8_t raw_code, uint64_t timestamp_ticks, OsInputEvent* out_event);
     bool try_read_char(char* out_char);
-    bool try_read_event(KeyboardEvent* out_event);
+    bool try_read_event(OsKeyEvent* out_event);
     char read_char_blocking();
 };
 

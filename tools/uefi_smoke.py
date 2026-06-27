@@ -31,6 +31,19 @@ def send_shell_command(proc: subprocess.Popen, command: str) -> None:
     send_monitor_line(proc, "sendkey ret")
 
 
+def wait_for_serial_contains(path: Path, needle: str, timeout: float) -> None:
+    deadline = time.time() + timeout
+    encoded = needle.encode("ascii")
+    while time.time() < deadline:
+        try:
+            if encoded in path.read_bytes():
+                return
+        except FileNotFoundError:
+            pass
+        time.sleep(0.1)
+    raise TimeoutError(f"timed out waiting for serial output {needle!r}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial-log", default="logs/serial_uefi_smoke.log")
@@ -38,6 +51,7 @@ def main() -> int:
     parser.add_argument("commands", nargs="*", default=[
         "bootinfo",
         "memstat",
+        "input",
         "drivers",
         "bindings",
         "irqhooks",
@@ -99,17 +113,17 @@ def main() -> int:
         "-display", "none",
     ]
 
-    proc = subprocess.Popen(qemu, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(qemu, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     deadline = time.time() + args.timeout
     try:
-        time.sleep(10.0)
+        wait_for_serial_contains(serial_log, "OS64>", args.timeout)
         for command in args.commands:
             send_shell_command(proc, command)
             time.sleep(1.2)
         time.sleep(2.0)
         send_monitor_line(proc, "quit")
         proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, TimeoutError):
         proc.kill()
         proc.wait()
     finally:
@@ -199,6 +213,9 @@ def main() -> int:
         "provider_c.drv",
         "consumer_c.drv",
         "PMM total pages:",
+        "=== INPUT ===",
+        "delivered=",
+        "dropped=",
         "=== VFS MOUNTS ===",
     ]
     missing = [check for check in checks if check not in log_text]

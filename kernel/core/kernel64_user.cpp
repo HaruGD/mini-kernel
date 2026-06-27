@@ -352,7 +352,7 @@ int run_user_program(const char* command_line) {
     print("\n");
     user_input_reset();
     user_input_mode = 1;
-    interrupt_controller_set_mask(1, 1);
+    interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
     process->state = PROCESS_STATE_RUNNING;
     if (parent != 0) {
@@ -476,7 +476,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
 
     user_input_reset();
     user_input_mode = 1;
-    interrupt_controller_set_mask(1, 1);
+    interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
     scheduler_mark_waiting(parent);
     scheduler_mark_running(process);

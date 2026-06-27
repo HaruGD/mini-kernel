@@ -38,7 +38,9 @@ enum {
     OS_SYS_GFX_PUT_PIXEL = 57,
     OS_SYS_GFX_FILL_RECT = 58,
     OS_SYS_GFX_CLEAR = 59,
-    OS_SYS_KEYBOARD_EVENT = 60
+    OS_SYS_KEYBOARD_EVENT = 60,
+    OS_SYS_INPUT_EVENT_POLL = 61,
+    OS_SYS_INPUT_EVENT_WAIT = 62
 };
 
 long os_syscall0(long number);
