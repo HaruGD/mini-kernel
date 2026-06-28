@@ -70,7 +70,7 @@ if (os_input_poll(&input) == OS_SUCCESS && input.type == OS_INPUT_EVENT_KEY) {
 os_input_wait(&input);
 ```
 
-Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The stable input ABI lives in `os64/input_types.h`: `OsKeyEvent` is the legacy keyboard-specific payload, while `OsInputEvent` is the common event envelope used by the input queue. `os_input_poll` returns `OS_ERR_WOULD_BLOCK` when no event is ready; `os_input_wait` blocks without busy-spinning until an event arrives. The kernel shell `input` command reports queue capacity, queued events, delivered events, and dropped events without consuming pending input.
+Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The stable input ABI lives in `os64/input_types.h`: `OsKeyEvent` is the legacy keyboard-specific payload, while `OsInputEvent` is the common event envelope used by the input queue. `os_input_poll` returns `OS_ERR_WOULD_BLOCK` when no event is ready; `os_input_wait` blocks without busy-spinning until an event arrives, or returns `OS_ERR_NOT_READY` if the process loses input focus while waiting. The kernel shell `input` command reports queue capacity, queued events, delivered events, and dropped events without consuming pending input.
 
 Pointer events are reserved in the same ABI even before a hardware mouse driver
 exists. `OsPointerEvent.x` and `y` contain absolute coordinates when known, or

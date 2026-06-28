@@ -116,19 +116,26 @@ int main() {
     check(process_set_focus(11) == 1);
     check(process_focused_pid() == 11);
     check(process_focused() == first);
+    process_input_wait_begin(first);
+    check(process_input_waiting(first) == 1);
     check(process_set_focus(12) == 1);
+    check(process_input_waiting(first) == 0);
     check(process_focused_pid() == 12);
     check(process_focused() == second);
+    process_input_wait_begin(second);
 
     second->active = 0;
     second->state = PROCESS_STATE_RETURNED;
     check(process_focused_pid() == 0);
     check(process_focused() == 0);
+    check(process_input_waiting(second) == 0);
     check(process_set_focus(12) == 0);
 
     check(process_set_focus(11) == 1);
+    process_input_wait_begin(first);
     process_mark_failed(first, PROCESS_TERM_KILLED, 4);
     check(process_focused_pid() == 0);
+    check(process_input_waiting(first) == 0);
     check(process_set_focus(11) == 0);
 
     process_clear(second);
@@ -136,8 +143,10 @@ int main() {
     second->active = 1;
     second->state = PROCESS_STATE_LOADED;
     check(process_set_focus(13) == 1);
+    process_input_wait_begin(second);
     process_clear(second);
     check(process_focused_pid() == 0);
+    check(process_input_waiting(second) == 0);
 
     clear_process_table();
     input_events_init();

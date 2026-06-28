@@ -47,6 +47,15 @@ static int pop_current_input_event(OsInputEvent* event) {
     return input_events_pop(event);
 }
 
+static int input_wait_target_ready(Process* process) {
+    return process == 0 || process_focused_pid() == process->pid;
+}
+
+static uint64_t finish_input_wait(Process* process, int64_t result) {
+    process_input_wait_end(process);
+    return (uint64_t)result;
+}
+
 static uint64_t dispatch_graphics(uint64_t syscall_no,
                                   uint64_t arg1,
                                   uint64_t arg2,
@@ -117,6 +126,11 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
         return invalid_argument();
     }
 
+    Process* wait_process = wait ? current_process() : 0;
+    if (wait) {
+        process_input_wait_begin(wait_process);
+    }
+
     while (1) {
         OsInputEvent input_event;
         if (wait) {
@@ -127,6 +141,7 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
             if (wait) {
                 input_wait_end_check();
             }
+            process_input_wait_end(wait_process);
             if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
                                             (const uint8_t*)&event,
                                             sizeof(event))) {
@@ -136,6 +151,10 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
         }
         if (!wait) {
             return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
+        }
+        if (!input_wait_target_ready(wait_process)) {
+            input_wait_end_check();
+            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
         }
         input_wait_end_check();
         if (continue_woken_processes(0)) {
@@ -150,12 +169,17 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
         if (pop_current_input_event(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
             OsKeyEvent event = input_event.data.key;
             input_wait_end_check();
+            process_input_wait_end(wait_process);
             if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
                                             (const uint8_t*)&event,
                                             sizeof(event))) {
                 return invalid_argument();
             }
             return 0;
+        }
+        if (!input_wait_target_ready(wait_process)) {
+            input_wait_end_check();
+            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
         }
         input_wait_halt_once();
     }
@@ -167,6 +191,11 @@ static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
         return invalid_argument();
     }
 
+    Process* wait_process = wait ? current_process() : 0;
+    if (wait) {
+        process_input_wait_begin(wait_process);
+    }
+
     while (1) {
         OsInputEvent event;
         if (wait) {
@@ -176,6 +205,7 @@ static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
             if (wait) {
                 input_wait_end_check();
             }
+            process_input_wait_end(wait_process);
             if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
                                             (const uint8_t*)&event,
                                             sizeof(event))) {
@@ -185,6 +215,10 @@ static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
         }
         if (!wait) {
             return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
+        }
+        if (!input_wait_target_ready(wait_process)) {
+            input_wait_end_check();
+            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
         }
         input_wait_end_check();
         if (continue_woken_processes(0)) {
@@ -198,12 +232,17 @@ static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
         input_wait_begin_check();
         if (pop_current_input_event(&event)) {
             input_wait_end_check();
+            process_input_wait_end(wait_process);
             if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
                                             (const uint8_t*)&event,
                                             sizeof(event))) {
                 return invalid_argument();
             }
             return 0;
+        }
+        if (!input_wait_target_ready(wait_process)) {
+            input_wait_end_check();
+            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
         }
         input_wait_halt_once();
     }

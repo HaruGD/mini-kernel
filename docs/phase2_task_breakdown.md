@@ -131,7 +131,7 @@ The 2D graphics library design is documented in
 - [x] **P03: Route input to the focused process**
   Completion: background processes cannot consume focused input.
 
-- [ ] **P04: Wake blocked focused processes**
+- [x] **P04: Wake blocked focused processes**
   Completion: focus changes and process exit cannot leave stale waiters.
 
 - [ ] **P05: Add a user event-loop sample**
