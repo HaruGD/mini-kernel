@@ -125,6 +125,7 @@ test-gop-present: uefi
 test-input-queue:
 	python3 ./tools/input_event_queue_test.py
 	python3 ./tools/keyboard_event_translation_test.py
+	python3 ./tools/process_event_queue_test.py
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."

@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "kernel/input/input_event_queue.h"
+
 #define PROCESS_NAME_MAX 32
 #define PROCESS_ARG_MAX 8
 #define PROCESS_CMDLINE_MAX 96
@@ -100,6 +102,7 @@ struct Process {
     uint64_t saved_rip;
     uint64_t saved_rsp;
     uint64_t saved_rflags;
+    KernelInputEventQueue event_queue;
 };
 
 #endif

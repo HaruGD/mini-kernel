@@ -20,6 +20,39 @@ Process* current_process() {
     return process_stack[user_program_depth - 1];
 }
 
+void process_event_queue_reset(Process* process) {
+    if (process == 0) {
+        return;
+    }
+    input_event_queue_init(&process->event_queue);
+}
+
+int process_event_queue_push(Process* process, const OsInputEvent* event) {
+    if (process == 0) {
+        return 0;
+    }
+    return input_event_queue_push_drop_oldest(&process->event_queue, event);
+}
+
+int process_event_queue_pop(Process* process, OsInputEvent* event) {
+    if (process == 0) {
+        return 0;
+    }
+    return input_event_queue_pop(&process->event_queue, event);
+}
+
+uint32_t process_event_queue_count(const Process* process) {
+    return process == 0 ? 0 : input_event_queue_count(&process->event_queue);
+}
+
+uint32_t process_event_queue_delivered_count(const Process* process) {
+    return process == 0 ? 0 : input_event_queue_delivered_count(&process->event_queue);
+}
+
+uint32_t process_event_queue_dropped_count(const Process* process) {
+    return process == 0 ? 0 : input_event_queue_dropped_count(&process->event_queue);
+}
+
 void process_clear(Process* process) {
     if (process == 0) {
         return;
@@ -75,6 +108,7 @@ void process_clear(Process* process) {
     process->saved_rip = 0;
     process->saved_rsp = 0;
     process->saved_rflags = 0;
+    process_event_queue_reset(process);
 }
 
 const char* process_get_cwd(const Process* process) {
@@ -143,6 +177,7 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
+    process_event_queue_reset(process);
     reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
 
@@ -161,6 +196,7 @@ void process_mark_returned(Process* process, uint32_t reason, uint32_t status_co
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
+    process_event_queue_reset(process);
     reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
 

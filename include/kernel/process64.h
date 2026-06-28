@@ -29,6 +29,12 @@ Process* current_process();
 void process_clear(Process* process);
 void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code);
 void process_mark_returned(Process* process, uint32_t reason, uint32_t status_code);
+void process_event_queue_reset(Process* process);
+int process_event_queue_push(Process* process, const OsInputEvent* event);
+int process_event_queue_pop(Process* process, OsInputEvent* event);
+uint32_t process_event_queue_count(const Process* process);
+uint32_t process_event_queue_delivered_count(const Process* process);
+uint32_t process_event_queue_dropped_count(const Process* process);
 const char* process_get_cwd(const Process* process);
 void process_copy_cwd(Process* process, const char* cwd);
 

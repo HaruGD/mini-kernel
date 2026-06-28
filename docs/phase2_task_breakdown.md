@@ -121,7 +121,7 @@ The 2D graphics library design is documented in
 
 ## 2E. Process Event Delivery
 
-- [ ] **P01: Add a per-process event queue**
+- [x] **P01: Add a per-process event queue**
   Completion: queues are initialized and released with the process slot.
 
 - [ ] **P02: Add focused-process selection**
