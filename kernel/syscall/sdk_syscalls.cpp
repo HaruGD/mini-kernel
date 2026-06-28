@@ -4,6 +4,7 @@
 #include "drivers/keyboard.h"
 #include "drivers/pit.h"
 #include "kernel/input/input_events.h"
+#include "kernel/process64.h"
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
@@ -36,6 +37,14 @@ static void input_wait_end_check() {
 
 static void input_wait_halt_once() {
     __asm__ volatile("sti; hlt; cli" ::: "memory");
+}
+
+static int pop_current_input_event(OsInputEvent* event) {
+    Process* process = current_process();
+    if (process != 0) {
+        return process_event_queue_pop(process, event);
+    }
+    return input_events_pop(event);
 }
 
 static uint64_t dispatch_graphics(uint64_t syscall_no,
@@ -113,7 +122,7 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
         if (wait) {
             input_wait_begin_check();
         }
-        if (input_events_pop(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
+        if (pop_current_input_event(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
             OsKeyEvent event = input_event.data.key;
             if (wait) {
                 input_wait_end_check();
@@ -138,7 +147,7 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
             continue;
         }
         input_wait_begin_check();
-        if (input_events_pop(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
+        if (pop_current_input_event(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
             OsKeyEvent event = input_event.data.key;
             input_wait_end_check();
             if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
@@ -163,7 +172,7 @@ static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
         if (wait) {
             input_wait_begin_check();
         }
-        if (input_events_pop(&event)) {
+        if (pop_current_input_event(&event)) {
             if (wait) {
                 input_wait_end_check();
             }
@@ -187,7 +196,7 @@ static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
             continue;
         }
         input_wait_begin_check();
-        if (input_events_pop(&event)) {
+        if (pop_current_input_event(&event)) {
             input_wait_end_check();
             if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
                                             (const uint8_t*)&event,

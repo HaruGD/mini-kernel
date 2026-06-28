@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TEST_SOURCE = r"""
 #include <stdint.h>
+#include "kernel/input/input_events.h"
 #include "kernel/process64.h"
 
 static int failures = 0;
@@ -138,6 +139,40 @@ int main() {
     process_clear(second);
     check(process_focused_pid() == 0);
 
+    clear_process_table();
+    input_events_init();
+    first = &process_table[0];
+    second = &process_table[1];
+    first->pid = 21;
+    first->active = 1;
+    first->state = PROCESS_STATE_RUNNING;
+    second->pid = 22;
+    second->active = 1;
+    second->state = PROCESS_STATE_PAUSED;
+
+    event = make_key_event(400);
+    check(input_events_push(&event) == 1);
+    check(process_event_queue_count(first) == 0);
+    check(process_event_queue_count(second) == 0);
+
+    check(process_set_focus(21) == 1);
+    event = make_key_event(401);
+    check(input_events_push(&event) == 1);
+    check(process_event_queue_count(first) == 1);
+    check(process_event_queue_count(second) == 0);
+    check(process_event_queue_pop(second, &event) == 0);
+    check(process_event_queue_pop(first, &event) == 1);
+    check(event.data.key.keycode == 401);
+
+    check(process_set_focus(22) == 1);
+    event = make_key_event(402);
+    check(input_events_push(&event) == 1);
+    check(process_event_queue_count(first) == 0);
+    check(process_event_queue_count(second) == 1);
+    check(process_event_queue_pop(first, &event) == 0);
+    check(process_event_queue_pop(second, &event) == 1);
+    check(event.data.key.keycode == 402);
+
     return failures == 0 ? 0 : 1;
 }
 """
@@ -182,6 +217,7 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/input/input_event_queue.cpp"),
+            str(REPO_ROOT / "kernel/input/input_events.cpp"),
             str(REPO_ROOT / "kernel/process/process64.cpp"),
             str(source_path),
             str(stub_path),

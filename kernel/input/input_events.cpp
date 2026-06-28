@@ -1,4 +1,5 @@
 #include "kernel/input/input_events.h"
+#include "kernel/process64.h"
 
 static KernelInputEventQueue input_queue;
 
@@ -7,7 +8,12 @@ void input_events_init() {
 }
 
 int input_events_push(const OsInputEvent* event) {
-    return input_event_queue_push_drop_oldest(&input_queue, event);
+    int result = input_event_queue_push_drop_oldest(&input_queue, event);
+    Process* focused = process_focused();
+    if (focused != 0) {
+        process_event_queue_push(focused, event);
+    }
+    return result;
 }
 
 int input_events_pop(OsInputEvent* event) {

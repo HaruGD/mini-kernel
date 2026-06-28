@@ -128,7 +128,7 @@ The 2D graphics library design is documented in
   Keep focus policy minimal and expose an explicit kernel setter.
   Completion: invalid or exited targets are rejected.
 
-- [ ] **P03: Route input to the focused process**
+- [x] **P03: Route input to the focused process**
   Completion: background processes cannot consume focused input.
 
 - [ ] **P04: Wake blocked focused processes**

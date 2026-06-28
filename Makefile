@@ -214,7 +214,7 @@ all32:
 ./build/input_event_queue64.o: ./kernel/input/input_event_queue.cpp ./include/kernel/input/input_event_queue.h ./include/os64/input_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/input_events64.o: ./kernel/input/input_events.cpp ./include/kernel/input/input_events.h ./include/kernel/input/input_event_queue.h ./include/os64/input_types.h
+./build/input_events64.o: ./kernel/input/input_events.cpp ./include/kernel/input/input_events.h ./include/kernel/input/input_event_queue.h ./include/kernel/process64.h ./include/os64/input_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/graphics_clip64.o: ./kernel/graphics/graphics_clip.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
