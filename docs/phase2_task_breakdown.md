@@ -134,7 +134,7 @@ The 2D graphics library design is documented in
 - [x] **P04: Wake blocked focused processes**
   Completion: focus changes and process exit cannot leave stale waiters.
 
-- [ ] **P05: Add a user event-loop sample**
+- [x] **P05: Add a user event-loop sample**
   Completion: a user program blocks, receives keyboard events, and exits normally.
 
 ## 2F. Phase Closure

@@ -87,6 +87,9 @@ bitmap-font text. These helpers currently draw through the existing pixel and
 rectangle syscalls, so they are intended for simple demos and tests until the
 kernel exposes batched 2D drawing syscalls.
 
+`uevent_c.elf` demonstrates the focused input-event path. It blocks in
+`os_input_wait`, prints key events, and exits when it receives `q` or Enter.
+
 All SDK buffers are checked against the current process mappings. Kernel addresses,
 another process slot, read-only code pages, and memory above the current heap break
 are rejected before the kernel copies data. File helpers preserve the specific VFS
