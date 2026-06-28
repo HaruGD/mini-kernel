@@ -141,23 +141,23 @@ all32:
 	@mkdir -p ./build
 	$(AS) -f elf64 -g $< -o $@
 
-./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/process.h ./include/kernel/syscall64.h
+./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/syscall64.h
 	@mkdir -p ./build
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/core/kernel64.cpp -o $@
 
 ./build/kutil64.o: ./kernel/util/kutil64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/kernel_diag64.o: ./kernel/process/kernel_diag.cpp
+./build/kernel_diag64.o: ./kernel/process/kernel_diag.cpp ./include/kernel/kernel_diag.h ./include/kernel/process.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/process64.o: ./kernel/process/process64.cpp
+./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/input/input_event_queue.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
+./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process64.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h

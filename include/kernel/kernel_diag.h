@@ -22,6 +22,7 @@ void print_scheduler_info(Process* const* sched_queue,
                           uint32_t sched_last_pid,
                           uint32_t sched_switch_count,
                           uint32_t sched_yield_count,
+                          uint32_t focused_pid,
                           uint32_t tick_now);
 void print_vfs_mounts();
 

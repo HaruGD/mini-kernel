@@ -584,6 +584,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
                              sched_last_pid,
                              sched_switch_count,
                              sched_yield_count,
+                             process_focused_pid(),
                              pit.get_tick());
         return 0;
     }

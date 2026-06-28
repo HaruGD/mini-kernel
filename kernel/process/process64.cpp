@@ -12,6 +12,7 @@ uint32_t sched_queue_head = 0;
 uint32_t sched_last_pid = 0;
 uint32_t sched_switch_count = 0;
 uint32_t sched_yield_count = 0;
+uint32_t input_focus_pid = 0;
 
 Process* current_process() {
     if (user_program_depth == 0) {
@@ -53,11 +54,51 @@ uint32_t process_event_queue_dropped_count(const Process* process) {
     return process == 0 ? 0 : input_event_queue_dropped_count(&process->event_queue);
 }
 
+static int process_can_receive_focus(const Process* process) {
+    if (process == 0 || process->pid == 0 || !process->active) {
+        return 0;
+    }
+    if (process->state == PROCESS_STATE_RETURNED || process->state == PROCESS_STATE_FAILED ||
+        process->state == PROCESS_STATE_EMPTY) {
+        return 0;
+    }
+    return 1;
+}
+
+uint32_t process_focused_pid() {
+    Process* process = find_process_by_pid(input_focus_pid);
+    if (!process_can_receive_focus(process)) {
+        input_focus_pid = 0;
+    }
+    return input_focus_pid;
+}
+
+Process* process_focused() {
+    uint32_t pid = process_focused_pid();
+    return pid == 0 ? 0 : find_process_by_pid(pid);
+}
+
+int process_set_focus(uint32_t pid) {
+    Process* process = find_process_by_pid(pid);
+    if (!process_can_receive_focus(process)) {
+        return 0;
+    }
+    input_focus_pid = pid;
+    return 1;
+}
+
+void process_clear_focus(uint32_t pid) {
+    if (pid == 0 || input_focus_pid == pid) {
+        input_focus_pid = 0;
+    }
+}
+
 void process_clear(Process* process) {
     if (process == 0) {
         return;
     }
 
+    process_clear_focus(process->pid);
     process->pid = 0;
     process->parent_pid = 0;
     process->name[0] = '\0';
@@ -177,6 +218,7 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
+    process_clear_focus(process->pid);
     process_event_queue_reset(process);
     reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
@@ -196,6 +238,7 @@ void process_mark_returned(Process* process, uint32_t reason, uint32_t status_co
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
+    process_clear_focus(process->pid);
     process_event_queue_reset(process);
     reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
@@ -542,6 +585,9 @@ Process* find_last_paused_child_process(uint32_t parent_pid) {
 }
 
 Process* find_process_by_pid(uint32_t pid) {
+    if (pid == 0) {
+        return 0;
+    }
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         if (process_table[i].pid == pid) {
             return &process_table[i];

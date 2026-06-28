@@ -256,6 +256,7 @@ void print_scheduler_info(Process* const* sched_queue,
                           uint32_t sched_last_pid,
                           uint32_t sched_switch_count,
                           uint32_t sched_yield_count,
+                          uint32_t focused_pid,
                           uint32_t tick_now) {
     print("\n=== SCHEDULER ===");
     print("\nQueue count: ");
@@ -268,6 +269,8 @@ void print_scheduler_info(Process* const* sched_queue,
     print_hex32(sched_switch_count);
     print("\nYields: ");
     print_hex32(sched_yield_count);
+    print("\nInput focus PID: ");
+    print_hex32(focused_pid);
 
     for (uint32_t i = 0; i < sched_queue_count; i++) {
         uint32_t index = (sched_queue_head + i) % sched_queue_capacity;

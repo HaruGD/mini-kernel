@@ -346,6 +346,7 @@ static void command_sched() {
                          sched_last_pid,
                          sched_switch_count,
                          sched_yield_count,
+                         process_focused_pid(),
                          pit.get_tick());
 }
 

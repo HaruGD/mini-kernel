@@ -1,3 +1,9 @@
+static void focus_foreground_process(Process* process) {
+    if (process != 0 && !process->background) {
+        process_set_focus(process->pid);
+    }
+}
+
 int run_user_program(const char* command_line) {
     if (command_line == 0 || command_line[0] == '\0') {
         print("\nUser program filename is empty.");
@@ -359,6 +365,7 @@ int run_user_program(const char* command_line) {
         scheduler_mark_waiting(parent);
     }
     scheduler_mark_running(process);
+    focus_foreground_process(process);
     process_stack[stack_index] = process;
     user_program_depth++;
     uint64_t initial_user_rsp = prepare_user_stack_with_argv(process, user_stack_top, &launch);
@@ -391,6 +398,7 @@ int run_user_program(const char* command_line) {
 
         if (parent_should_resume_immediately(parent)) {
             scheduler_mark_running(parent);
+            focus_foreground_process(parent);
             return 1;
         }
         return idle_until_ready_process();
@@ -406,6 +414,7 @@ int run_user_program(const char* command_line) {
     scheduler_mark_finished(process);
     if (parent != 0 && parent->active) {
         scheduler_mark_running(parent);
+        focus_foreground_process(parent);
     }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
@@ -427,6 +436,7 @@ int run_user_program(const char* command_line) {
 
     if (parent_should_resume_immediately(parent)) {
         scheduler_mark_running(parent);
+        focus_foreground_process(parent);
         return 1;
     }
     return idle_until_ready_process();
@@ -480,6 +490,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     gdt64_set_kernel_stack(current_rsp() - 8);
     scheduler_mark_waiting(parent);
     scheduler_mark_running(process);
+    focus_foreground_process(process);
     process->state = PROCESS_STATE_RUNNING;
     process->resumable = 0;
     process_stack[stack_index] = process;
@@ -513,6 +524,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
 
         if (parent_should_resume_immediately(parent)) {
             scheduler_mark_running(parent);
+            focus_foreground_process(parent);
             return 1;
         }
         return idle_until_ready_process();
@@ -527,6 +539,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     scheduler_mark_finished(process);
     if (parent_should_resume_immediately(parent)) {
         scheduler_mark_running(parent);
+        focus_foreground_process(parent);
     }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
@@ -548,6 +561,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
 
     if (parent_should_resume_immediately(parent)) {
         scheduler_mark_running(parent);
+        focus_foreground_process(parent);
         return 1;
     }
     return idle_until_ready_process();

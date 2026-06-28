@@ -32,6 +32,13 @@ static OsInputEvent make_key_event(uint32_t sequence) {
     return event;
 }
 
+static void clear_process_table() {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        process_clear(&process_table[i]);
+    }
+    process_clear_focus(0);
+}
+
 int main() {
     Process process;
     OsInputEvent event;
@@ -88,6 +95,48 @@ int main() {
     check(process_event_queue_count(0) == 0);
     check(process_event_queue_delivered_count(0) == 0);
     check(process_event_queue_dropped_count(0) == 0);
+
+    clear_process_table();
+    Process* first = &process_table[0];
+    Process* second = &process_table[1];
+    process_clear(first);
+    process_clear(second);
+    first->pid = 11;
+    first->active = 1;
+    first->state = PROCESS_STATE_RUNNING;
+    second->pid = 12;
+    second->active = 1;
+    second->state = PROCESS_STATE_PAUSED;
+
+    check(process_focused_pid() == 0);
+    check(process_focused() == 0);
+    check(process_set_focus(0) == 0);
+    check(process_set_focus(99) == 0);
+    check(process_set_focus(11) == 1);
+    check(process_focused_pid() == 11);
+    check(process_focused() == first);
+    check(process_set_focus(12) == 1);
+    check(process_focused_pid() == 12);
+    check(process_focused() == second);
+
+    second->active = 0;
+    second->state = PROCESS_STATE_RETURNED;
+    check(process_focused_pid() == 0);
+    check(process_focused() == 0);
+    check(process_set_focus(12) == 0);
+
+    check(process_set_focus(11) == 1);
+    process_mark_failed(first, PROCESS_TERM_KILLED, 4);
+    check(process_focused_pid() == 0);
+    check(process_set_focus(11) == 0);
+
+    process_clear(second);
+    second->pid = 13;
+    second->active = 1;
+    second->state = PROCESS_STATE_LOADED;
+    check(process_set_focus(13) == 1);
+    process_clear(second);
+    check(process_focused_pid() == 0);
 
     return failures == 0 ? 0 : 1;
 }

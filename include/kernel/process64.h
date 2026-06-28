@@ -23,6 +23,7 @@ extern uint32_t sched_queue_head;
 extern uint32_t sched_last_pid;
 extern uint32_t sched_switch_count;
 extern uint32_t sched_yield_count;
+extern uint32_t input_focus_pid;
 
 Process* current_process();
 
@@ -35,6 +36,10 @@ int process_event_queue_pop(Process* process, OsInputEvent* event);
 uint32_t process_event_queue_count(const Process* process);
 uint32_t process_event_queue_delivered_count(const Process* process);
 uint32_t process_event_queue_dropped_count(const Process* process);
+uint32_t process_focused_pid();
+Process* process_focused();
+int process_set_focus(uint32_t pid);
+void process_clear_focus(uint32_t pid);
 const char* process_get_cwd(const Process* process);
 void process_copy_cwd(Process* process, const char* cwd);
 

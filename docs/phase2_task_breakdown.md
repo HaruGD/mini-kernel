@@ -124,7 +124,7 @@ The 2D graphics library design is documented in
 - [x] **P01: Add a per-process event queue**
   Completion: queues are initialized and released with the process slot.
 
-- [ ] **P02: Add focused-process selection**
+- [x] **P02: Add focused-process selection**
   Keep focus policy minimal and expose an explicit kernel setter.
   Completion: invalid or exited targets are rejected.
 
