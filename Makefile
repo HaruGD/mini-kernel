@@ -54,6 +54,7 @@ KERNEL64_OBJECTS = \
 	./build/kutil64.o \
 	./build/kernel_diag64.o \
 	./build/ipc_mailbox64.o \
+	./build/ipc64.o \
 	./build/process64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
@@ -133,6 +134,7 @@ test-input-event-loop: uefi
 test-input: test-input-queue test-input-event-loop
 test-ipc-contracts:
 	python3 ./tools/ipc_mailbox_test.py
+	python3 ./tools/ipc_core_test.py
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -161,6 +163,9 @@ all32:
 ./build/ipc_mailbox64.o: ./kernel/ipc/ipc_mailbox.cpp ./include/kernel/ipc/ipc_mailbox.h ./include/os64/ipc_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
+./build/ipc64.o: ./kernel/ipc/ipc.cpp ./include/kernel/ipc/ipc.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/ipc_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
 ./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
@@ -170,7 +175,7 @@ all32:
 ./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process64.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h
+./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/ipc/ipc.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/klog64.o: ./kernel/log/klog.cpp ./include/kernel/klog.h ./include/kernel/kutil64.h

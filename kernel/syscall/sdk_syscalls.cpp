@@ -4,6 +4,7 @@
 #include "drivers/keyboard.h"
 #include "drivers/pit.h"
 #include "kernel/input/input_events.h"
+#include "kernel/ipc/ipc.h"
 #include "kernel/process64.h"
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
@@ -22,9 +23,14 @@ static_assert(sizeof(OsGraphicsInfo) == 16, "OsGraphicsInfo ABI changed");
 static_assert(sizeof(UserGraphicsRect) == 20, "UserGraphicsRect ABI changed");
 static_assert(sizeof(OsKeyEvent) == 16, "OsKeyEvent ABI changed");
 static_assert(sizeof(OsInputEvent) == 48, "OsInputEvent ABI changed");
+static_assert(sizeof(OsIpcMessage) == 88, "OsIpcMessage ABI changed");
 
 static uint64_t invalid_argument() {
     return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+}
+
+static uint64_t bad_buffer() {
+    return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
 }
 
 static void input_wait_begin_check() {
@@ -54,6 +60,107 @@ static int input_wait_target_ready(Process* process) {
 static uint64_t finish_input_wait(Process* process, int64_t result) {
     process_input_wait_end(process);
     return (uint64_t)result;
+}
+
+static void ipc_wait_begin_check() {
+    __asm__ volatile("cli" ::: "memory");
+}
+
+static void ipc_wait_end_check() {
+    __asm__ volatile("sti" ::: "memory");
+}
+
+static void ipc_wait_halt_once() {
+    __asm__ volatile("sti; hlt; cli" ::: "memory");
+}
+
+static uint64_t dispatch_ipc_send(uint64_t target_pid, uint64_t user_message_address) {
+    OsIpcMessage message;
+    if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_message_address,
+                          (uint8_t*)&message,
+                          sizeof(message))) {
+        return bad_buffer();
+    }
+
+    Process* sender = current_process();
+    Process* target = find_process_by_pid((uint32_t)target_pid);
+    return (uint64_t)(int64_t)ipc_send_message(sender, target, &message);
+}
+
+static uint64_t copy_ipc_message_to_user(uint64_t user_message_address,
+                                         const OsIpcMessage* message) {
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
+                              sizeof(OsIpcMessage))) {
+        return bad_buffer();
+    }
+    return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_message_address,
+                                      (const uint8_t*)message,
+                                      sizeof(OsIpcMessage))
+        ? 0
+        : bad_buffer();
+}
+
+static uint64_t dispatch_ipc_receive(uint64_t user_message_address, bool wait) {
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
+                              sizeof(OsIpcMessage))) {
+        return bad_buffer();
+    }
+
+    Process* receiver = current_process();
+    if (!wait) {
+        OsIpcMessage message;
+        int result = ipc_receive_message(receiver, &message);
+        if (result != IPC_OK) {
+            return (uint64_t)(int64_t)result;
+        }
+        return copy_ipc_message_to_user(user_message_address, &message);
+    }
+
+    process_ipc_wait_begin(receiver);
+    while (1) {
+        OsIpcMessage message;
+        ipc_wait_begin_check();
+        int result = ipc_receive_message(receiver, &message);
+        if (result == IPC_OK) {
+            ipc_wait_end_check();
+            process_ipc_wait_end(receiver);
+            return copy_ipc_message_to_user(user_message_address, &message);
+        }
+        if (result != IPC_ERR_WOULD_BLOCK) {
+            ipc_wait_end_check();
+            process_ipc_wait_end(receiver);
+            return (uint64_t)(int64_t)result;
+        }
+        if (!ipc_process_can_receive(receiver)) {
+            ipc_wait_end_check();
+            process_ipc_wait_end(receiver);
+            return (uint64_t)(int64_t)IPC_ERR_NOT_READY;
+        }
+        ipc_wait_end_check();
+
+        if (continue_woken_processes(0)) {
+            redraw_user_shell_prompt_if_needed();
+            continue;
+        }
+        if (continue_background_processes(0)) {
+            redraw_user_shell_prompt_if_needed();
+            continue;
+        }
+
+        ipc_wait_begin_check();
+        result = ipc_receive_message(receiver, &message);
+        if (result == IPC_OK) {
+            ipc_wait_end_check();
+            process_ipc_wait_end(receiver);
+            return copy_ipc_message_to_user(user_message_address, &message);
+        }
+        if (result != IPC_ERR_WOULD_BLOCK || !ipc_process_can_receive(receiver)) {
+            ipc_wait_end_check();
+            process_ipc_wait_end(receiver);
+            return (uint64_t)(int64_t)(result == IPC_ERR_WOULD_BLOCK ? IPC_ERR_NOT_READY : result);
+        }
+        ipc_wait_halt_once();
+    }
 }
 
 static uint64_t dispatch_graphics(uint64_t syscall_no,
@@ -278,6 +385,18 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_INPUT_EVENT_WAIT) {
         *result = dispatch_input_event(arg1, true);
+        return true;
+    }
+    if (syscall_no == SYS_IPC_SEND) {
+        *result = dispatch_ipc_send(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_IPC_RECV) {
+        *result = dispatch_ipc_receive(arg1, false);
+        return true;
+    }
+    if (syscall_no == SYS_IPC_WAIT) {
+        *result = dispatch_ipc_receive(arg1, true);
         return true;
     }
     return false;

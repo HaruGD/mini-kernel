@@ -40,7 +40,10 @@ enum {
     OS_SYS_GFX_CLEAR = 59,
     OS_SYS_KEYBOARD_EVENT = 60,
     OS_SYS_INPUT_EVENT_POLL = 61,
-    OS_SYS_INPUT_EVENT_WAIT = 62
+    OS_SYS_INPUT_EVENT_WAIT = 62,
+    OS_SYS_IPC_SEND = 63,
+    OS_SYS_IPC_RECV = 64,
+    OS_SYS_IPC_WAIT = 65
 };
 
 long os_syscall0(long number);

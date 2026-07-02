@@ -83,6 +83,7 @@ struct Process {
     uint8_t background;
     uint8_t pause_reason;
     uint8_t input_waiting;
+    uint8_t ipc_waiting;
     uint32_t wake_tick;
     char cwd[PROCESS_CMDLINE_MAX];
     char command_line[PROCESS_CMDLINE_MAX];

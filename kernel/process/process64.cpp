@@ -87,6 +87,22 @@ uint32_t process_ipc_mailbox_dropped_count(const Process* process) {
     return process == 0 ? 0 : ipc_mailbox_dropped_count(&process->ipc_mailbox);
 }
 
+void process_ipc_wait_begin(Process* process) {
+    if (process != 0) {
+        process->ipc_waiting = 1;
+    }
+}
+
+void process_ipc_wait_end(Process* process) {
+    if (process != 0) {
+        process->ipc_waiting = 0;
+    }
+}
+
+int process_ipc_waiting(const Process* process) {
+    return process != 0 && process->ipc_waiting != 0;
+}
+
 void process_input_wait_begin(Process* process) {
     if (process != 0) {
         process->input_waiting = 1;
@@ -186,6 +202,7 @@ void process_clear(Process* process) {
     process->background = 0;
     process->pause_reason = PROCESS_PAUSE_NONE;
     process->input_waiting = 0;
+    process->ipc_waiting = 0;
     process->wake_tick = 0;
     process->cwd[0] = '/';
     process->cwd[1] = '\0';
@@ -279,6 +296,7 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     process->active = 0;
     process->reaped = 0;
     process_input_wait_end(process);
+    process_ipc_wait_end(process);
     process_clear_focus(process->pid);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);
@@ -301,6 +319,7 @@ void process_mark_returned(Process* process, uint32_t reason, uint32_t status_co
     process->active = 0;
     process->reaped = 0;
     process_input_wait_end(process);
+    process_ipc_wait_end(process);
     process_clear_focus(process->pid);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);

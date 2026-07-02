@@ -42,26 +42,26 @@ future GUI policy into the kernel.
 
 ## 3B. IPC Syscalls
 
-- [ ] **M05: Add nonblocking send syscall**
+- [x] **M05: Add nonblocking send syscall**
   Copy a user message into the target process mailbox.
   Completion: invalid pid, self-send, full queue, and bad user pointers are
   covered.
 
-- [ ] **M06: Add nonblocking receive syscall**
+- [x] **M06: Add nonblocking receive syscall**
   Copy one queued message from the current process mailbox to user space.
   Completion: empty queue returns a stable would-block error.
 
-- [ ] **M07: Add blocking receive syscall**
+- [x] **M07: Add blocking receive syscall**
   Put the current process to sleep until a message arrives, without busy
   waiting.
   Completion: injected message wakes exactly one waiting process.
 
-- [ ] **M08: Add reply helper semantics**
+- [x] **M08: Add reply helper semantics**
   Standardize request/reply message types and sender pid handling.
   Completion: a user program can send a request and receive a reply from a
   child or sibling process.
 
-- [ ] **M09: Clean up IPC on process exit**
+- [x] **M09: Clean up IPC on process exit**
   Drop queued messages to dead processes and wake receivers with a stable
   not-ready result.
   Completion: exiting senders/receivers do not leave stale waiters.
