@@ -8,6 +8,7 @@ extern "C" {
 #include "fs/vfs.h"
 #include "drivers/terminal.h"
 #include "kernel/boot_info.h"
+#include "kernel/input/input_events.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/kutil64.h"
 #include "kernel/process.h"
@@ -24,6 +25,29 @@ static uint32_t syscall_count = 0;
 
 uint32_t kernel_syscall_count() {
     return syscall_count;
+}
+
+static int pop_keyboard_character_from_events(char* out_char) {
+    if (out_char == 0) {
+        return 0;
+    }
+
+    Process* process = current_process();
+    while (1) {
+        OsInputEvent event;
+        int has_event = process != 0 ? process_event_queue_pop(process, &event) : input_events_pop(&event);
+        if (!has_event) {
+            return 0;
+        }
+        if (event.type != OS_INPUT_EVENT_KEY ||
+            event.data.key.type != KEYBOARD_EVENT_DOWN ||
+            event.data.key.character == 0) {
+            continue;
+        }
+
+        *out_char = (char)event.data.key.character;
+        return 1;
+    }
 }
 
 extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
@@ -78,7 +102,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     if (syscall_no == SYS_GETCHAR) {
         while (1) {
             char ascii = 0;
-            if (keyboard.try_read_char(&ascii)) {
+            if (pop_keyboard_character_from_events(&ascii)) {
                 return (uint64_t)(unsigned char)ascii;
             }
 

@@ -45,6 +45,28 @@ def send_shell_command(proc: subprocess.Popen, command: str) -> None:
     send_monitor_line(proc, "sendkey ret")
 
 
+def serial_text(serial_log: Path) -> str:
+    return serial_log.read_text(errors="replace") if serial_log.exists() else ""
+
+
+def wait_for_serial_contains(serial_log: Path, needle: str, timeout: float) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if needle in serial_text(serial_log):
+            return
+        time.sleep(0.1)
+    raise TimeoutError(f"timed out waiting for serial output {needle!r}")
+
+
+def wait_for_serial_count(serial_log: Path, needle: str, count: int, timeout: float) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if serial_text(serial_log).count(needle) >= count:
+            return
+        time.sleep(0.1)
+    raise TimeoutError(f"timed out waiting for {count} occurrences of {needle!r}")
+
+
 def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
     serial_log.unlink(missing_ok=True)
     esp_image = Path("bin/uefi_esp.userland.img")
@@ -64,13 +86,20 @@ def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
 
     proc = subprocess.Popen(qemu, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:
-        time.sleep(10.0)
+        wait_for_serial_contains(serial_log, "OS64>", 25.0)
         for command, delay in commands:
-            send_shell_command(proc, command)
-            time.sleep(delay)
+            if command == "exit":
+                send_shell_command(proc, command)
+                wait_for_serial_contains(serial_log, "Returned from user program", 15.0)
+            else:
+                prompt_count = serial_text(serial_log).count("csh>")
+                send_shell_command(proc, command)
+                wait_for_serial_count(serial_log, "csh>", prompt_count + 1, 15.0)
+            if delay > 0:
+                time.sleep(delay)
         send_monitor_line(proc, "quit")
         proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, TimeoutError):
         proc.kill()
         proc.wait()
     finally:

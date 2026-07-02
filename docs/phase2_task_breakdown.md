@@ -145,7 +145,7 @@ The 2D graphics library design is documented in
 - [x] **T02: Add `make test-input`**
   Cover queue ordering, overflow, blocking wakeup, and focused delivery.
 
-- [ ] **T03: Run the full regression suite**
+- [x] **T03: Run the full regression suite**
   Run clean build, Phase 1, UEFI, userland, screen, SDK, graphics, and input tests.
 
 - [ ] **T04: Update documentation and close Phase 2**
