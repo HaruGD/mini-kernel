@@ -142,7 +142,7 @@ The 2D graphics library design is documented in
 - [x] **T01: Add `make test-graphics`**
   Cover clipping, drawing primitives, blit, text, and full/partial present.
 
-- [ ] **T02: Add `make test-input`**
+- [x] **T02: Add `make test-input`**
   Cover queue ordering, overflow, blocking wakeup, and focused delivery.
 
 - [ ] **T03: Run the full regression suite**
