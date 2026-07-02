@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "kernel/ipc/ipc_mailbox.h"
 #include "kernel/input/input_event_queue.h"
 
 #define PROCESS_NAME_MAX 32
@@ -104,6 +105,7 @@ struct Process {
     uint64_t saved_rsp;
     uint64_t saved_rflags;
     KernelInputEventQueue event_queue;
+    KernelIpcMailbox ipc_mailbox;
 };
 
 #endif

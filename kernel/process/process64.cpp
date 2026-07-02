@@ -28,6 +28,13 @@ void process_event_queue_reset(Process* process) {
     input_event_queue_init(&process->event_queue);
 }
 
+void process_ipc_mailbox_reset(Process* process) {
+    if (process == 0) {
+        return;
+    }
+    ipc_mailbox_init(&process->ipc_mailbox);
+}
+
 int process_event_queue_push(Process* process, const OsInputEvent* event) {
     if (process == 0) {
         return 0;
@@ -52,6 +59,32 @@ uint32_t process_event_queue_delivered_count(const Process* process) {
 
 uint32_t process_event_queue_dropped_count(const Process* process) {
     return process == 0 ? 0 : input_event_queue_dropped_count(&process->event_queue);
+}
+
+int process_ipc_mailbox_push(Process* process, const OsIpcMessage* message) {
+    if (process == 0) {
+        return 0;
+    }
+    return ipc_mailbox_push(&process->ipc_mailbox, message);
+}
+
+int process_ipc_mailbox_pop(Process* process, OsIpcMessage* message) {
+    if (process == 0) {
+        return 0;
+    }
+    return ipc_mailbox_pop(&process->ipc_mailbox, message);
+}
+
+uint32_t process_ipc_mailbox_count(const Process* process) {
+    return process == 0 ? 0 : ipc_mailbox_count(&process->ipc_mailbox);
+}
+
+uint32_t process_ipc_mailbox_delivered_count(const Process* process) {
+    return process == 0 ? 0 : ipc_mailbox_delivered_count(&process->ipc_mailbox);
+}
+
+uint32_t process_ipc_mailbox_dropped_count(const Process* process) {
+    return process == 0 ? 0 : ipc_mailbox_dropped_count(&process->ipc_mailbox);
 }
 
 void process_input_wait_begin(Process* process) {
@@ -176,6 +209,7 @@ void process_clear(Process* process) {
     process->saved_rsp = 0;
     process->saved_rflags = 0;
     process_event_queue_reset(process);
+    process_ipc_mailbox_reset(process);
 }
 
 const char* process_get_cwd(const Process* process) {
@@ -247,6 +281,7 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     process_input_wait_end(process);
     process_clear_focus(process->pid);
     process_event_queue_reset(process);
+    process_ipc_mailbox_reset(process);
     reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
 
@@ -268,6 +303,7 @@ void process_mark_returned(Process* process, uint32_t reason, uint32_t status_co
     process_input_wait_end(process);
     process_clear_focus(process->pid);
     process_event_queue_reset(process);
+    process_ipc_mailbox_reset(process);
     reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
 }
 

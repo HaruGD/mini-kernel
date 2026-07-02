@@ -30,12 +30,12 @@ future GUI policy into the kernel.
   permission denied, and would-block.
   Completion: SDK result strings and kernel errors match.
 
-- [ ] **M03: Add process mailbox fields**
+- [x] **M03: Add process mailbox fields**
   Add a bounded per-process IPC queue separate from the input-event queue.
   Completion: process creation, clear, return, failure, and reap paths reset
   mailbox state.
 
-- [ ] **M04: Add mailbox unit tests**
+- [x] **M04: Add mailbox unit tests**
   Test empty/full state, FIFO order, wraparound, bad arguments, and overflow
   policy.
   Completion: host-side mailbox tests pass without booting QEMU.

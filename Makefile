@@ -33,7 +33,7 @@ USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
 USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
 USER_SDK_LIB = ./build/libos64.a
-USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h
 
 
 # External drivers
@@ -46,13 +46,14 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
 	./build/kernel64.o \
 	./build/kutil64.o \
 	./build/kernel_diag64.o \
+	./build/ipc_mailbox64.o \
 	./build/process64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
@@ -130,6 +131,8 @@ test-input-queue:
 test-input-event-loop: uefi
 	python3 ./tools/input_event_loop_smoke.py
 test-input: test-input-queue test-input-event-loop
+test-ipc-contracts:
+	python3 ./tools/ipc_mailbox_test.py
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -155,7 +158,10 @@ all32:
 ./build/kernel_diag64.o: ./kernel/process/kernel_diag.cpp ./include/kernel/kernel_diag.h ./include/kernel/process.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/input/input_event_queue.h
+./build/ipc_mailbox64.o: ./kernel/ipc/ipc_mailbox.cpp ./include/kernel/ipc/ipc_mailbox.h ./include/os64/ipc_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp
