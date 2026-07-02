@@ -20,12 +20,12 @@ future GUI policy into the kernel.
 
 ## 3A. IPC Contracts
 
-- [ ] **M01: Define the IPC message ABI**
+- [x] **M01: Define the IPC message ABI**
   Add fixed-size message headers, sender pid, type, flags, payload length, and
   a small inline payload.
   Completion: kernel/user ABI size assertions compile.
 
-- [ ] **M02: Define IPC result codes and limits**
+- [x] **M02: Define IPC result codes and limits**
   Add stable errors for no target, queue full, bad buffer, message too large,
   permission denied, and would-block.
   Completion: SDK result strings and kernel errors match.

@@ -18,6 +18,11 @@ const char* os_result_string(long result) {
         case OS_ERR_WOULD_BLOCK: return "would block";
         case OS_ERR_OUT_OF_MEMORY: return "out of memory";
         case OS_ERR_OUT_OF_RANGE: return "out of range";
+        case OS_ERR_NO_TARGET: return "no target";
+        case OS_ERR_QUEUE_FULL: return "queue full";
+        case OS_ERR_MESSAGE_TOO_LARGE: return "message too large";
+        case OS_ERR_PERMISSION_DENIED: return "permission denied";
+        case OS_ERR_BAD_BUFFER: return "bad buffer";
         default: return "unknown error";
     }
 }

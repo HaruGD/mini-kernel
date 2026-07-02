@@ -79,6 +79,11 @@
 #define SYS_ERR_WOULD_BLOCK (-9)
 #define SYS_ERR_OUT_OF_MEMORY (-10)
 #define SYS_ERR_OUT_OF_RANGE (-11)
+#define SYS_ERR_NO_TARGET (-12)
+#define SYS_ERR_QUEUE_FULL (-13)
+#define SYS_ERR_MESSAGE_TOO_LARGE (-14)
+#define SYS_ERR_PERMISSION_DENIED (-15)
+#define SYS_ERR_BAD_BUFFER (-16)
 
 extern KeyboardDriver keyboard;
 extern PIT pit;

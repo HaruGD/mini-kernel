@@ -14,6 +14,11 @@ typedef enum OsResult {
     OS_ERR_WOULD_BLOCK = -9,
     OS_ERR_OUT_OF_MEMORY = -10,
     OS_ERR_OUT_OF_RANGE = -11,
+    OS_ERR_NO_TARGET = -12,
+    OS_ERR_QUEUE_FULL = -13,
+    OS_ERR_MESSAGE_TOO_LARGE = -14,
+    OS_ERR_PERMISSION_DENIED = -15,
+    OS_ERR_BAD_BUFFER = -16,
 } OsResult;
 
 int os_result_failed(long result);
