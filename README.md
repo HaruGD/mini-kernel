@@ -100,9 +100,10 @@ What works on the active 64-bit UEFI path:
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
 - User SDK reference: [docs/user_sdk.md](docs/user_sdk.md)
 - ACPI power reference: [docs/acpi_power.md](docs/acpi_power.md)
-- 2D graphics library plan: [docs/2d_graphics_library.md](docs/2d_graphics_library.md)
+- 2D graphics library status: [docs/2d_graphics_library.md](docs/2d_graphics_library.md)
 - Project roadmap: [docs/roadmap.md](docs/roadmap.md)
 - Phase 2 task breakdown: [docs/phase2_task_breakdown.md](docs/phase2_task_breakdown.md)
+- Phase 2 regression matrix: [docs/phase2_regression_matrix.md](docs/phase2_regression_matrix.md)
 
 ## Build
 
@@ -117,6 +118,13 @@ Run the User SDK integration test in an isolated QEMU instance:
 
 ```sh
 make test-user-sdk
+```
+
+Run the graphics and input regression groups:
+
+```sh
+make test-graphics
+make test-input
 ```
 
 Test ACPI power-off in an isolated QEMU instance:
@@ -576,6 +584,19 @@ python3 tools/uefi_screen_smoke.py
 ```
 
 The smoke scripts use temporary image copies so they can run even when another QEMU instance has the main images open.
+
+Full Phase 2 closure baseline:
+
+```sh
+make clean && make all && make uefi
+make test-phase1
+python3 tools/uefi_smoke.py
+python3 tools/uefi_userland_smoke.py
+python3 tools/uefi_screen_smoke.py
+make test-user-sdk
+make test-graphics
+make test-input
+```
 
 ## Notes
 

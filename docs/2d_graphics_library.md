@@ -1,9 +1,10 @@
-# OS64 2D Graphics Library Plan
+# OS64 2D Graphics Library
 
 This document defines the first reusable 2D graphics layer for OS64.
-The goal is not a full GUI yet. The goal is a small, stable drawing library
-that can support demos, simple games, a future compositor, and eventually a
-desktop UI without tying applications directly to GOP hardware details.
+The goal of Phase 2 was not a full GUI. The goal was a small, stable drawing
+library that can support demos, simple games, a future compositor, and
+eventually a desktop UI without tying applications directly to GOP hardware
+details.
 
 ## Current Baseline
 
@@ -17,16 +18,25 @@ OS64 currently has:
   - clear the screen
 - syscall-mediated user graphics calls through the SDK.
 - external display-capable `.drv` modules through kernel GOP exports.
+- reusable kernel graphics surfaces
+- clipping helpers
+- pixel, rectangle, line, bitmap blit, color-key blit, glyph, and text drawing
+- a kernel-owned RAM back buffer
+- full-frame and dirty-rectangle GOP present
+- display ownership between terminal and graphics clients
+- `ugfxdemo_c.elf` as the first user-space graphics demo
+- QEMU screen smoke coverage at 1280x800 and 800x600
 
 Current limitations:
 
-- Drawing loops are still tied closely to GOP framebuffer access.
-- User programs can draw, but there is no reusable 2D primitive layer.
-- There is no RAM back buffer.
-- There is no dirty-rectangle tracking.
-- There is no bitmap, text, clipping, or sprite API.
-- Direct per-pixel user calls are too expensive for real animation because
-  every pixel call crosses the syscall boundary.
+- User programs still draw through synchronous graphics syscalls.
+- There is no compositor, window server, mouse cursor, or surface ownership per
+  application yet.
+- User-space drawing helpers are good enough for demos and simple games, but
+  high-frame-rate animation will need batched drawing or compositor-owned
+  shared surfaces.
+- There are no image file decoders, alpha compositing, font shaping, or Unicode
+  text layout yet.
 
 ## Direction
 
@@ -173,24 +183,27 @@ The first SDK layer should avoid per-pixel animation as the normal path.
 Per-pixel access can exist for tests and tiny demos, but application drawing
 should prefer batched primitives.
 
-Initial SDK API:
+Implemented SDK API:
 
 ```c
 long os_gfx_get_info(OsGraphicsInfo* info);
 long os_gfx_clear(uint32_t color);
 long os_gfx_put_pixel(uint32_t x, uint32_t y, uint32_t color);
 long os_gfx_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color);
-long os_gfx_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color);
-long os_gfx_text(int32_t x, int32_t y, const char* text, uint32_t fg, uint32_t bg, uint32_t flags);
-long os_gfx_blit(const OsBitmap* bitmap, const OsRect* src_rect, int32_t dst_x, int32_t dst_y, uint32_t flags);
+long os_gfx_draw_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color);
+long os_gfx_blit(const OsBitmap* bitmap, const OsRect* src_rect, int32_t dst_x, int32_t dst_y);
+long os_gfx_blit_keyed(const OsBitmap* bitmap, const OsRect* src_rect, int32_t dst_x, int32_t dst_y, uint32_t color_key);
+long os_gfx_draw_text(int32_t x, int32_t y, const char* text, uint32_t fg, uint32_t bg, uint32_t flags);
 ```
 
-Later SDK API after back buffering:
+Future SDK API after compositor work:
 
 ```c
 long os_gfx_begin_frame(void);
 long os_gfx_present(void);
 long os_gfx_present_rect(const OsRect* rect);
+long os_surface_create(...);
+long os_surface_submit(...);
 ```
 
 The SDK should hide syscall details. User programs should include:
@@ -270,9 +283,13 @@ interleaving mid-frame.
 
 ## Test Plan
 
-Add `make test-graphics` when the first primitives land.
+Run the graphics regression group with:
 
-Minimum coverage:
+```sh
+make test-graphics
+```
+
+Current automated coverage:
 
 - rectangle clipping:
   - empty rect
@@ -299,9 +316,7 @@ Screen smoke should verify:
 
 ## Implementation Order
 
-Follow `docs/phase2_task_breakdown.md`.
-
-Recommended first commits:
+Phase 2 implementation is complete. Historical task order:
 
 1. `G01`: shared primitive type definitions
 2. `G02`: clipping helper and tests
@@ -313,6 +328,11 @@ Recommended first commits:
 8. `G11`: graphics demo program
 9. `G12` to `G17`: back buffer, present, dirty rectangles, smoke tests
 
+Current closure status and full regression coverage are tracked in:
+
+- `docs/phase2_task_breakdown.md`
+- `docs/phase2_regression_matrix.md`
+
 ## Design Rules
 
 - Keep hardware access in GOP/driver code.
@@ -323,4 +343,3 @@ Recommended first commits:
 - Make every draw primitive clip before writing.
 - Prefer fixed-size ABI structs and explicit versioning.
 - Keep the first library simple enough to test completely in QEMU.
-

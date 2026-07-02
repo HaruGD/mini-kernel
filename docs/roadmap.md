@@ -30,7 +30,7 @@
   - bitmap blit, color-key blit, bitmap font/text
   - back buffer, dirty rectangles, partial present
   - 1280x800 and 800x600 screen smoke coverage
-- [~] Common input-event path
+- [x] Common input-event path
   - stable key/pointer/common event ABI
   - bounded kernel event ring
   - drop-oldest overflow policy
@@ -38,7 +38,7 @@
   - nonblocking common event read syscall
   - blocking common event read syscall
   - PS/2 key poll/wait syscall remains compatible
-  - input diagnostics are next
+  - input diagnostics and per-process focused delivery
 - [x] ACPI S5 shutdown
 
 ## 1단계: 커널 진단과 하드웨어 기반
@@ -163,14 +163,14 @@ QEMU GOP 환경에서 먼저 완성하며 실제 GPU 드라이버는 요구하�
 
 ## 가까운 작업 순서
 
-1. Input event queue (`I02`~`I08`)
-2. Process event delivery (`P01`~`P05`)
-3. Phase 2 regression closure (`T01`~`T04`)
-4. IPC core
-5. Framebuffer compositor prototype
-6. Window server prototype
-7. GUI application SDK
-8. Desktop shell prototype
+1. IPC core
+2. Service Manager v1
+3. Framebuffer compositor prototype
+4. Window server prototype
+5. GUI application SDK
+6. Desktop shell prototype
+7. USB xHCI/HID keyboard track for real hardware input
+8. DMA/storage driver track for real hardware expansion
 
 ## 원칙
 

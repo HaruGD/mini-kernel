@@ -43,6 +43,13 @@ The initial migration includes `uhello_c`, `uargs_c`, `upid_c`, `usleep_c`, `uyi
 make test-user-sdk
 ```
 
+Phase 2 adds focused graphics and input regression groups:
+
+```sh
+make test-graphics
+make test-input
+```
+
 ## SDK v2 examples
 
 ```c
@@ -72,6 +79,10 @@ os_input_wait(&input);
 
 Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The stable input ABI lives in `os64/input_types.h`: `OsKeyEvent` is the legacy keyboard-specific payload, while `OsInputEvent` is the common event envelope used by the input queue. `os_input_poll` returns `OS_ERR_WOULD_BLOCK` when no event is ready; `os_input_wait` blocks without busy-spinning until an event arrives, or returns `OS_ERR_NOT_READY` if the process loses input focus while waiting. The kernel shell `input` command reports queue capacity, queued events, delivered events, and dropped events without consuming pending input.
 
+The compatibility `user_getchar()` path used by older `userlib.h` programs now
+reads from the focused process event queue as well. This keeps `ushell_c.elf`
+working while new applications move to `os_key_*` and `os_input_*`.
+
 Pointer events are reserved in the same ABI even before a hardware mouse driver
 exists. `OsPointerEvent.x` and `y` contain absolute coordinates when known, or
 `OS_POINTER_POSITION_UNKNOWN` for purely relative devices. `delta_x` and
@@ -89,6 +100,9 @@ kernel exposes batched 2D drawing syscalls.
 
 `uevent_c.elf` demonstrates the focused input-event path. It blocks in
 `os_input_wait`, prints key events, and exits when it receives `q` or Enter.
+
+The full Phase 2 closure matrix is documented in
+`docs/phase2_regression_matrix.md`.
 
 All SDK buffers are checked against the current process mappings. Kernel addresses,
 another process slot, read-only code pages, and memory above the current heap break

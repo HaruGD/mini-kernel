@@ -148,7 +148,7 @@ The 2D graphics library design is documented in
 - [x] **T03: Run the full regression suite**
   Run clean build, Phase 1, UEFI, userland, screen, SDK, graphics, and input tests.
 
-- [ ] **T04: Update documentation and close Phase 2**
+- [x] **T04: Update documentation and close Phase 2**
   Update README, roadmap, API references, and a Phase 2 regression matrix.
 
 ## Required Test Baseline
