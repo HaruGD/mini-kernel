@@ -104,6 +104,7 @@ What works on the active 64-bit UEFI path:
 - Project roadmap: [docs/roadmap.md](docs/roadmap.md)
 - Phase 2 task breakdown: [docs/phase2_task_breakdown.md](docs/phase2_task_breakdown.md)
 - Phase 2 regression matrix: [docs/phase2_regression_matrix.md](docs/phase2_regression_matrix.md)
+- Phase 3 task breakdown: [docs/phase3_task_breakdown.md](docs/phase3_task_breakdown.md)
 
 ## Build
 

@@ -106,21 +106,34 @@ QEMU GOP 환경에서 먼저 완성하며 실제 GPU 드라이버는 요구하�
 ## 3단계: IPC와 사용자 공간 서비스
 
 창 서버와 서비스 매니저가 커널 내부 기능에 직접 결합되지 않도록 한다.
+세부 구현과 검증 순서는 `docs/phase3_task_breakdown.md`를 따른다.
 
 - [ ] IPC core
-  - message channel
-  - blocking send/receive
-  - handle과 권한 검사
+  - message ABI와 process mailbox
+  - nonblocking/blocking send/receive
+  - request/reply helper semantics
   - process 종료 시 정리
+- [ ] Service registry
+  - 서비스 이름 등록과 조회
+  - owner pid와 generation 추적
+  - process 종료 시 unregister
 - [ ] Service Manager v1
-  - 서비스 등록
-  - 시작, 중지, 재시작
+  - `serviced.elf`
+  - 서비스 시작, 중지, 재시작
   - dependency와 상태 관리
-  - 로그 연결
+  - shell/SDK front end
 - [ ] 기본 사용자 공간 서비스
-  - input service
-  - display service
-  - 향후 device service 기반
+  - `inputd.elf` placeholder
+  - `displayd.elf` placeholder
+  - service client sample
+  - service smoke test
+
+초기 서비스 원칙:
+
+- 서비스는 일반 ELF user program이다.
+- 드라이버는 계속 `.drv` 패키지다.
+- 커널은 IPC와 registry 같은 최소 메커니즘만 제공한다.
+- 서비스 정책은 가능한 한 `serviced.elf`와 user space에 둔다.
 
 ## 4단계: Compositor와 창 서버
 
