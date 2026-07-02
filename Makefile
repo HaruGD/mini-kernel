@@ -46,7 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input-queue test-input-event-loop clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input-queue test-input-event-loop clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -117,6 +117,7 @@ test-graphics-contracts:
 	python3 ./tools/graphics_dirty_test.py
 	python3 ./tools/graphics_dirty_present_test.py
 	python3 ./tools/graphics_font_test.py
+test-graphics: test-graphics-contracts test-graphics-demo test-gop-present
 test-graphics-clip: test-graphics-contracts
 test-graphics-demo: uefi
 	python3 ./tools/graphics_demo_smoke.py

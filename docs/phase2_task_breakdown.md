@@ -139,7 +139,7 @@ The 2D graphics library design is documented in
 
 ## 2F. Phase Closure
 
-- [ ] **T01: Add `make test-graphics`**
+- [x] **T01: Add `make test-graphics`**
   Cover clipping, drawing primitives, blit, text, and full/partial present.
 
 - [ ] **T02: Add `make test-input`**
