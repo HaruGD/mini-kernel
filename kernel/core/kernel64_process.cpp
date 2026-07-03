@@ -161,7 +161,7 @@ static int parent_should_resume_immediately(const Process* parent) {
     return 1;
 }
 
-static int continue_ready_processes(uint32_t exclude_pid) {
+int continue_ready_processes(uint32_t exclude_pid) {
     Process* next_ready = find_next_ready_process(exclude_pid);
     if (next_ready == 0) {
         return 0;

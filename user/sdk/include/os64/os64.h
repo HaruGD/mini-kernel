@@ -7,6 +7,7 @@
 
 #include "os64/graphics.h"
 #include "os64/input.h"
+#include "os64/ipc.h"
 #include "os64/ipc_types.h"
 #include "os64/result.h"
 #include "os64/time.h"

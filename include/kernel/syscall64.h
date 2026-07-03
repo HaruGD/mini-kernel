@@ -92,6 +92,7 @@ extern KeyboardDriver keyboard;
 extern PIT pit;
 
 void redraw_user_shell_prompt_if_needed();
+int continue_ready_processes(uint32_t exclude_pid);
 int continue_woken_processes(uint32_t exclude_pid);
 int continue_background_processes(uint32_t exclude_pid);
 int run_user_program(const char* command_line);

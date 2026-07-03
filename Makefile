@@ -46,7 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -135,6 +135,9 @@ test-input: test-input-queue test-input-event-loop
 test-ipc-contracts:
 	python3 ./tools/ipc_mailbox_test.py
 	python3 ./tools/ipc_core_test.py
+test-ipc-smoke: uefi
+	python3 ./tools/ipc_smoke.py
+test-ipc: test-ipc-contracts test-ipc-smoke
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."

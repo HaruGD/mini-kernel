@@ -138,11 +138,15 @@ static uint64_t dispatch_ipc_receive(uint64_t user_message_address, bool wait) {
         }
         ipc_wait_end_check();
 
-        if (continue_woken_processes(0)) {
+        if (continue_ready_processes(receiver != 0 ? receiver->pid : 0)) {
             redraw_user_shell_prompt_if_needed();
             continue;
         }
-        if (continue_background_processes(0)) {
+        if (continue_woken_processes(receiver != 0 ? receiver->pid : 0)) {
+            redraw_user_shell_prompt_if_needed();
+            continue;
+        }
+        if (continue_background_processes(receiver != 0 ? receiver->pid : 0)) {
             redraw_user_shell_prompt_if_needed();
             continue;
         }

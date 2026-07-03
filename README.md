@@ -61,6 +61,8 @@ What works on the active 64-bit UEFI path:
 - monotonic 64-bit PIT time exposed to user programs
 - syscall-mediated GOP drawing without exposing the physical framebuffer
 - blocking and nonblocking PS/2 keyboard event delivery with modifier state
+- IPC message ABI, per-process mailboxes, send/receive/wait syscalls, and SDK wrappers
+- `uping_c.elf` / `upong_c.elf` IPC round-trip sample
 - default C shell userland: `ushell_c.elf`
 - VFS layer
 - FAT32 root filesystem mounted at `/`
@@ -250,6 +252,7 @@ Common commands:
 - `drivers`
 - `bindings`
 - `irqhooks`
+- `ipc`
 - `pci`
 - `gop [clear|test]`
 - `drvinfo [path]`

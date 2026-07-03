@@ -68,21 +68,21 @@ future GUI policy into the kernel.
 
 ## 3C. IPC SDK And Diagnostics
 
-- [ ] **M10: Add SDK IPC API**
+- [x] **M10: Add SDK IPC API**
   Add `os_msg_send`, `os_msg_recv`, `os_msg_wait`, and small helper types under
   `<os64/os64.h>`.
   Completion: SDK callers do not use raw syscall numbers.
 
-- [ ] **M11: Add IPC diagnostics**
+- [x] **M11: Add IPC diagnostics**
   Add kernel shell inspection for per-process mailbox depth and dropped/woken
   counters.
   Completion: diagnostics do not consume queued messages.
 
-- [ ] **M12: Add IPC sample programs**
+- [x] **M12: Add IPC sample programs**
   Add `uping_c.elf` and `upong_c.elf` or equivalent request/reply examples.
   Completion: QEMU smoke confirms round-trip message delivery.
 
-- [ ] **M13: Add `make test-ipc`**
+- [x] **M13: Add `make test-ipc`**
   Combine host mailbox tests and QEMU IPC smoke into one target.
   Completion: `make test-ipc` passes from a clean build.
 

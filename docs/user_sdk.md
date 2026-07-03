@@ -26,6 +26,7 @@ The build compiles `user/sdk/src/` into `build/libos64.a` and links it into ever
 - Time: monotonic ticks, timer frequency, and milliseconds
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
+- IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 
 The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
 
@@ -48,6 +49,12 @@ Phase 2 adds focused graphics and input regression groups:
 ```sh
 make test-graphics
 make test-input
+```
+
+Phase 3 adds the first IPC regression group:
+
+```sh
+make test-ipc
 ```
 
 ## SDK v2 examples
@@ -100,6 +107,12 @@ kernel exposes batched 2D drawing syscalls.
 
 `uevent_c.elf` demonstrates the focused input-event path. It blocks in
 `os_input_wait`, prints key events, and exits when it receives `q` or Enter.
+
+`uping_c.elf` and `upong_c.elf` demonstrate the first IPC path. `uping` starts
+`upong`, sends a request message, waits for a reply, and verifies the `pong`
+payload. The kernel shell `ipc` command reports mailbox capacity, queued
+messages, delivered messages, dropped messages, and wait state per process
+without consuming pending messages.
 
 The full Phase 2 closure matrix is documented in
 `docs/phase2_regression_matrix.md`.

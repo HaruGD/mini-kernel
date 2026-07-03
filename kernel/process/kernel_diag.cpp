@@ -249,6 +249,42 @@ void print_jobs_for_process(const Process* parent, uint32_t tick_now) {
     print("\n============\n");
 }
 
+void print_ipc_info() {
+    print("\n=== IPC ===");
+    print("\nmailbox_capacity=");
+    print_hex32(IPC_MAILBOX_CAPACITY);
+
+    uint32_t active_count = 0;
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        const Process* process = &process_table[i];
+        if (process->pid == 0) {
+            continue;
+        }
+        active_count++;
+        print("\n[");
+        print_hex32(i);
+        print("] pid=");
+        print_hex32(process->pid);
+        print(" name=");
+        print(process->name);
+        print(" state=");
+        print(process_state_name(process->state));
+        print(" wait=");
+        print_hex32(process_ipc_waiting(process) ? 1 : 0);
+        print(" queued=");
+        print_hex32(process_ipc_mailbox_count(process));
+        print(" delivered=");
+        print_hex32(process_ipc_mailbox_delivered_count(process));
+        print(" dropped=");
+        print_hex32(process_ipc_mailbox_dropped_count(process));
+    }
+
+    if (active_count == 0) {
+        print("\n(no processes)");
+    }
+    print("\n===========");
+}
+
 void print_scheduler_info(Process* const* sched_queue,
                           uint32_t sched_queue_count,
                           uint32_t sched_queue_head,
