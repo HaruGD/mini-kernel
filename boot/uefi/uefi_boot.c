@@ -53,6 +53,25 @@ typedef struct EFI_TABLE_HEADER {
 #define RAMDISK_MAX_PAGES (RAMDISK_MAX_SIZE / PAGE_SIZE)
 #define KERNEL_STACK_PAGES 16
 #define PAGE_SIZE 4096ULL
+#define EFI_TEXT_BLACK 0x00
+#define EFI_TEXT_BLUE 0x01
+#define EFI_TEXT_GREEN 0x02
+#define EFI_TEXT_CYAN 0x03
+#define EFI_TEXT_RED 0x04
+#define EFI_TEXT_MAGENTA 0x05
+#define EFI_TEXT_BROWN 0x06
+#define EFI_TEXT_LIGHTGRAY 0x07
+#define EFI_TEXT_BRIGHT 0x08
+#define EFI_TEXT_WHITE (EFI_TEXT_LIGHTGRAY | EFI_TEXT_BRIGHT)
+#define EFI_TEXT_YELLOW (EFI_TEXT_BROWN | EFI_TEXT_BRIGHT)
+#define EFI_TEXT_LIGHTGREEN (EFI_TEXT_GREEN | EFI_TEXT_BRIGHT)
+#define EFI_TEXT_LIGHTCYAN (EFI_TEXT_CYAN | EFI_TEXT_BRIGHT)
+#define EFI_TEXT_LIGHTRED (EFI_TEXT_RED | EFI_TEXT_BRIGHT)
+#define EFI_TEXT_DEFAULT EFI_TEXT_LIGHTGRAY
+#define EFI_TEXT_STATUS EFI_TEXT_LIGHTCYAN
+#define EFI_TEXT_OK EFI_TEXT_LIGHTGREEN
+#define EFI_TEXT_WARN EFI_TEXT_YELLOW
+#define EFI_TEXT_ERROR EFI_TEXT_LIGHTRED
 
 struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
 struct EFI_BOOT_SERVICES;
@@ -60,10 +79,17 @@ struct EFI_BOOT_SERVICES;
 typedef EFI_STATUS (EFIAPI *EFI_TEXT_STRING)(
     struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* self,
     CHAR16* string);
+typedef EFI_STATUS (EFIAPI *EFI_TEXT_SET_ATTRIBUTE)(
+    struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* self,
+    UINTN attribute);
 
 typedef struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
     void* reset;
     EFI_TEXT_STRING output_string;
+    void* test_string;
+    void* query_mode;
+    void* set_mode;
+    EFI_TEXT_SET_ATTRIBUTE set_attribute;
 } EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
 
 typedef struct EFI_MEMORY_DESCRIPTOR {
@@ -306,6 +332,20 @@ static void puts16(CHAR16* text) {
     }
 }
 
+static void set_text_attribute(UINTN attribute) {
+    if (g_st != 0 &&
+        g_st->con_out != 0 &&
+        g_st->con_out->set_attribute != 0) {
+        g_st->con_out->set_attribute(g_st->con_out, attribute);
+    }
+}
+
+static void puts16_color(CHAR16* text, UINTN attribute) {
+    set_text_attribute(attribute);
+    puts16(text);
+    set_text_attribute(EFI_TEXT_DEFAULT);
+}
+
 static void puts_ascii(const char* text) {
     if (text == 0 || g_st == 0 || g_st->con_out == 0 || g_st->con_out->output_string == 0) {
         return;
@@ -323,6 +363,12 @@ static void puts_ascii(const char* text) {
     }
 }
 
+static void puts_ascii_color(const char* text, UINTN attribute) {
+    set_text_attribute(attribute);
+    puts_ascii(text);
+    set_text_attribute(EFI_TEXT_DEFAULT);
+}
+
 static void puts_hex64(UINT64 value) {
     static const char digits[] = "0123456789ABCDEF";
     CHAR16 buffer[19];
@@ -337,24 +383,34 @@ static void puts_hex64(UINT64 value) {
 }
 
 static void log_step(const char* text) {
-    puts_ascii("[uefi] ");
+    puts_ascii_color("[uefi] ", EFI_TEXT_STATUS);
     puts_ascii(text);
     puts_ascii("\r\n");
 }
 
 static void log_value(const char* label, UINT64 value) {
-    puts_ascii("[uefi] ");
+    puts_ascii_color("[uefi] ", EFI_TEXT_STATUS);
     puts_ascii(label);
     puts_ascii("=");
+    set_text_attribute(EFI_TEXT_OK);
     puts_hex64(value);
+    set_text_attribute(EFI_TEXT_DEFAULT);
     puts_ascii("\r\n");
 }
 
 static void log_status(const char* label, EFI_STATUS status) {
-    puts_ascii("[uefi] ");
+    puts_ascii_color("[uefi] ", EFI_TEXT_ERROR);
     puts_ascii(label);
     puts_ascii(" status=");
+    set_text_attribute(EFI_TEXT_ERROR);
     puts_hex64(status);
+    set_text_attribute(EFI_TEXT_DEFAULT);
+    puts_ascii("\r\n");
+}
+
+static void log_warn(const char* text) {
+    puts_ascii_color("[uefi] ", EFI_TEXT_WARN);
+    puts_ascii_color(text, EFI_TEXT_WARN);
     puts_ascii("\r\n");
 }
 
@@ -371,8 +427,8 @@ static EFI_STATUS fail_with_pause(CHAR16* text, EFI_STATUS status) {
     static CHAR16 pause_msg[] = {
         'O','S','6','4',' ','b','o','o','t',' ','s','t','o','p','p','e','d','.','\r','\n',0
     };
-    puts16(text);
-    puts16(pause_msg);
+    puts16_color(text, EFI_TEXT_ERROR);
+    puts16_color(pause_msg, EFI_TEXT_ERROR);
     stall_seconds(8);
     return status;
 }
@@ -690,7 +746,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     static CHAR16 mmap_alloc_fail_msg[] = {'M','e','m','o','r','y',' ','m','a','p',' ','a','l','l','o','c',' ','f','a','i','l','e','d','\r','\n',0};
     static CHAR16 jump_msg[] = {'E','x','i','t','i','n','g',' ','U','E','F','I',' ','a','n','d',' ','j','u','m','p','i','n','g',' ','i','n',' ','3','s','.','.','.','\r','\n',0};
 
-    puts16(start_msg);
+    puts16_color(start_msg, EFI_TEXT_WHITE);
     log_step("loader start");
     g_bs->set_watchdog_timer(0, 0, 0, 0);
     log_step("watchdog disabled");
@@ -742,7 +798,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         log_value("ramdisk addr", ramdisk_phys);
         log_value("ramdisk bytes", ramdisk_size);
     } else {
-        log_step("ramdisk file missing");
+        log_warn("ramdisk file missing");
     }
 
     FramebufferInfo framebuffer_info;
@@ -796,7 +852,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
     }
     log_step("memory map buffer allocated");
 
-    puts16(jump_msg);
+    puts16_color(jump_msg, EFI_TEXT_WARN);
     stall_seconds(3);
 
     BootInfo* boot_info = (BootInfo*)(uintptr_t)boot_info_phys;

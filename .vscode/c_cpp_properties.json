@@ -1,0 +1,35 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "OS64 WSL",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-gcc-x64",
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/drivers/external/include",
+                "${workspaceFolder}/user/include",
+                "${workspaceFolder}/user/sdk/include"
+            ],
+            "defines": [
+                "__OS64__=1"
+            ],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/boot",
+                    "${workspaceFolder}/kernel",
+                    "${workspaceFolder}/drivers",
+                    "${workspaceFolder}/drivers/external/include",
+                    "${workspaceFolder}/fs",
+                    "${workspaceFolder}/user"
+                ],
+                "limitSymbolsToIncludedHeaders": false
+            }
+        }
+    ]
+}

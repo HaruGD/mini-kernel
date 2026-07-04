@@ -1,0 +1,90 @@
+{
+    "C_Cpp.enhancedColorization": "enabled",
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.default.compilerPath": "/usr/bin/gcc",
+    "C_Cpp.default.cStandard": "gnu11",
+    "C_Cpp.default.cppStandard": "gnu++17",
+    "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/drivers/external/include",
+        "${workspaceFolder}/user/include",
+        "${workspaceFolder}/user/sdk/include"
+    ],
+    "C_Cpp.default.defines": [
+        "__OS64__=1"
+    ],
+    "C_Cpp.intelliSenseEngine": "default",
+    "editor.semanticHighlighting.enabled": true,
+    "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+            "type": "#4EC9B0",
+            "struct": "#4EC9B0",
+            "enum": "#4EC9B0",
+            "function": "#DCDCAA",
+            "method": "#DCDCAA",
+            "property": "#9CDCFE",
+            "parameter": "#9CDCFE",
+            "macro": "#C586C0",
+            "enumMember": "#B5CEA8"
+        }
+    },
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": [
+                    "entity.name.type.struct.c",
+                    "entity.name.type.struct.cpp",
+                    "entity.name.type.typedef.c",
+                    "entity.name.type.typedef.cpp"
+                ],
+                "settings": {
+                    "foreground": "#4EC9B0"
+                }
+            },
+            {
+                "scope": [
+                    "variable.other.member.c",
+                    "variable.other.member.cpp",
+                    "variable.other.property.c",
+                    "variable.other.property.cpp"
+                ],
+                "settings": {
+                    "foreground": "#9CDCFE"
+                }
+            },
+            {
+                "scope": [
+                    "entity.name.function.c",
+                    "entity.name.function.cpp"
+                ],
+                "settings": {
+                    "foreground": "#DCDCAA"
+                }
+            },
+            {
+                "scope": [
+                    "entity.name.function.preprocessor.c",
+                    "entity.name.function.preprocessor.cpp",
+                    "entity.name.function.macro.c",
+                    "entity.name.function.macro.cpp"
+                ],
+                "settings": {
+                    "foreground": "#C586C0"
+                }
+            }
+        ]
+    },
+    "files.associations": {
+        "*.asm": "x86asm",
+        "*.easm": "x86asm",
+        "*.inc": "x86asm",
+        "*.ld": "c",
+        "*.S": "x86asm",
+        "*.s": "x86asm",
+        "*.h": "c",
+        "Makefile": "makefile"
+    }
+}
