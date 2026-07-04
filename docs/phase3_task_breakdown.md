@@ -112,26 +112,26 @@ future GUI policy into the kernel.
 
 ## 3E. Service Manager v1
 
-- [ ] **S06: Add `serviced.elf` skeleton**
+- [x] **S06: Add `serviced.elf` skeleton**
   Build the first user-space service manager as a normal ELF program.
   Completion: it starts, registers as `service`, waits for IPC, and exits on a
   test command.
 
-- [ ] **S07: Add service start policy**
+- [x] **S07: Add service start policy**
   Let `serviced.elf` start known service binaries by name through existing
   process launch mechanisms.
   Completion: starting an already running service is idempotent.
 
-- [ ] **S08: Add service stop/restart policy**
+- [x] **S08: Add service stop/restart policy**
   Stop and restart owned child services without leaking process table entries.
   Completion: stopped services disappear from lookup and can be restarted.
 
-- [ ] **S09: Add dependency metadata v1**
+- [x] **S09: Add dependency metadata v1**
   Use a small static table first; defer package manifests until the behavior is
   proven.
   Completion: dependent services start after their prerequisites.
 
-- [ ] **S10: Add service manager shell commands**
+- [x] **S10: Add service manager shell commands**
   Add `service start`, `service stop`, `service restart`, and `services` front
   ends.
   Completion: commands route through IPC where possible.

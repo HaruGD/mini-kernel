@@ -28,6 +28,7 @@ The build compiles `user/sdk/src/` into `build/libos64.a` and links it into ever
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
+- Service manager protocol: fixed request/reply structs for `serviced_c.elf`
 
 The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
 
@@ -128,6 +129,13 @@ service, verifies duplicate and invalid names are rejected, finds its own
 path can prove stale pids are not returned. Service names are fixed-size
 lowercase identifiers up to `OS_SERVICE_NAME_MAX - 1` bytes and services remain
 ordinary ELF user programs.
+
+`serviced_c.elf` is the first user-space service manager. It registers as
+`service`, receives `OsServiceManagerRequest` messages over IPC, starts known
+service ELF binaries, stops/restarts owned children, and replies with
+`OsServiceManagerReply`. The kernel shell `service ...` command is a thin
+frontend that runs `usvcctl_c.elf`, so service policy remains in user space.
+The first static dependency table starts `base` before `demo`.
 
 The full Phase 2 closure matrix is documented in
 `docs/phase2_regression_matrix.md`.

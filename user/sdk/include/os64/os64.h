@@ -11,6 +11,7 @@
 #include "os64/ipc_types.h"
 #include "os64/result.h"
 #include "os64/service.h"
+#include "os64/service_manager_types.h"
 #include "os64/service_types.h"
 #include "os64/time.h"
 
@@ -103,4 +104,7 @@ long os_yield(void);
 long os_sleep(uint32_t ticks);
 long os_uptime(void);
 long os_reap_children(void);
+long os_kill(uint32_t pid);
+long os_set_background(uint32_t pid, uint32_t enabled);
+long os_children_active(void);
 #endif

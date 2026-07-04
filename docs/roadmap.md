@@ -117,7 +117,7 @@ QEMU GOP 환경에서 먼저 완성하며 실제 GPU 드라이버는 요구하�
   - 서비스 이름 등록과 조회
   - owner pid와 generation 추적
   - process 종료 시 unregister
-- [ ] Service Manager v1
+- [x] Service Manager v1
   - `serviced.elf`
   - 서비스 시작, 중지, 재시작
   - dependency와 상태 관리

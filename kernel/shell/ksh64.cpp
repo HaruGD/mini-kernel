@@ -233,7 +233,7 @@ static void command_help() {
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case]");
-    print("\nrun, resume, usertest, ushell, ushellc");
+    print("\nrun, resume, service [cmd] [name], usertest, ushell, ushellc");
 }
 
 static void command_input() {
@@ -727,6 +727,24 @@ static void command_run(char* arg) {
     run_user_program(arg);
 }
 
+static void command_service(char* arg) {
+    char command_line[128];
+    const char prefix[] = "usvcctl_c.elf";
+    uint32_t index = 0;
+
+    for (uint32_t i = 0; prefix[i] != '\0' && index + 1 < sizeof(command_line); i++) {
+        command_line[index++] = prefix[i];
+    }
+    if (arg != 0 && arg[0] != '\0' && index + 2 < sizeof(command_line)) {
+        command_line[index++] = ' ';
+        for (uint32_t i = 0; arg[i] != '\0' && index + 1 < sizeof(command_line); i++) {
+            command_line[index++] = arg[i];
+        }
+    }
+    command_line[index] = '\0';
+    command_run(command_line);
+}
+
 static void command_usertest() {
     char default_program[] = "utest.bin";
     command_run(default_program);
@@ -847,6 +865,8 @@ static void execute_command() {
         command_rmdir(arg);
     } else if (strcmp64(cmd, "run") == 0) {
         command_run(arg);
+    } else if (strcmp64(cmd, "service") == 0) {
+        command_service(arg);
     } else if (strcmp64(cmd, "resume") == 0) {
         command_resume();
     } else if (strcmp64(cmd, "pagefault") == 0) {

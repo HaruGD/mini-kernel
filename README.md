@@ -65,6 +65,8 @@ What works on the active 64-bit UEFI path:
 - `uping_c.elf` / `upong_c.elf` IPC round-trip sample
 - service identity ABI, kernel service registry, register/find/unregister syscalls, and SDK wrappers
 - `services` kernel shell diagnostics plus `usvc_c.elf` service-registry sample
+- `serviced_c.elf` user-space service manager with IPC ping/start/stop/restart/status/exit control
+- `service [cmd] [name]` shell frontend routed through `usvcctl_c.elf`
 - default C shell userland: `ushell_c.elf`
 - VFS layer
 - FAT32 root filesystem mounted at `/`

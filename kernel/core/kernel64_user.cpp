@@ -392,16 +392,18 @@ int run_user_program(const char* command_line) {
         print_hex32(process->pid);
         print("].\n");
 
-        if (continue_ready_processes(process->pid)) {
-            return 1;
-        }
-
-        if (parent_should_resume_immediately(parent)) {
+        if (parent != 0 && parent->active) {
             scheduler_mark_running(parent);
             focus_foreground_process(parent);
             return 1;
         }
-        return idle_until_ready_process();
+        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_YIELD) {
+            return continue_ready_processes(0) ? 1 : 1;
+        }
+        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+            return idle_until_ready_process();
+        }
+        return 1;
     }
 
     cleanup_user_process_mapping(process);
@@ -518,16 +520,18 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         print_hex32(process->pid);
         print("].\n");
 
-        if (continue_ready_processes(process->pid)) {
-            return 1;
-        }
-
-        if (parent_should_resume_immediately(parent)) {
+        if (parent != 0 && parent->active) {
             scheduler_mark_running(parent);
             focus_foreground_process(parent);
             return 1;
         }
-        return idle_until_ready_process();
+        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_YIELD) {
+            return continue_ready_processes(0) ? 1 : 1;
+        }
+        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+            return idle_until_ready_process();
+        }
+        return 1;
     }
 
     cleanup_user_process_mapping(process);

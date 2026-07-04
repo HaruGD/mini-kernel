@@ -78,6 +78,10 @@ int ipc_send_message(Process* sender, Process* target, const OsIpcMessage* messa
         return IPC_ERR_QUEUE_FULL;
     }
     process_ipc_wait_end(target);
+    if (target->state == PROCESS_STATE_PAUSED && target->resumable) {
+        target->wake_tick = 0;
+        scheduler_enqueue(target);
+    }
     return IPC_OK;
 }
 
