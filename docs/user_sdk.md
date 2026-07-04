@@ -36,11 +36,23 @@ The kernel reserves a separate heap range for each active process slot. The SDK 
 
 Add a C source under `user/programs/`; the Makefile discovers it, links the SDK, emits `bin/<name>.elf`, and includes it in the FAT32 root image. Existing programs may continue using `userlib.h` while they are migrated.
 
+Current ELF user programs are linked as fixed-address executable images, then
+loaded into a per-process execution slot. The kernel also maps a temporary
+link-address alias for the active process, so C constructs such as global
+pointer tables, string-literal pointers, mutable global data, and BSS globals
+work through syscalls and across yield/sleep/resume. This is a compatibility
+layer for the current loader, not a full dynamic relocation system; PIE or
+explicit ELF relocations remain future work.
+
 The initial migration includes `uhello_c`, `uargs_c`, `upid_c`, `usleep_c`, `uyield_c`, `utouch_c`, `urm_c`, and `ucat_c`. More complex shell utilities remain on the compatibility header until their command-specific helpers move into the SDK.
 
 ## Integration test
 
-`usdk_test.elf` automatically checks formatted output, allocation and reallocation, heap shrinking, dynamic strings, file create/read/append/rename/delete, a 12 KiB multi-chunk FAT32 transfer, directory iteration, relative paths, sleep, and yield. Run it with:
+`usdk_test.elf` automatically checks formatted output, ELF global pointer data,
+mutable globals, BSS globals, allocation and reallocation, heap shrinking,
+dynamic strings, file create/read/append/rename/delete, a 12 KiB multi-chunk
+FAT32 transfer, directory iteration, relative paths, sleep, and yield. Run it
+with:
 
 ```sh
 make test-user-sdk

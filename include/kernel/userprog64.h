@@ -24,6 +24,8 @@ int elf64_collect_load_info(const uint8_t* image,
                             uint64_t* out_last_vaddr,
                             uint32_t* out_error_code);
 uint64_t elf64_segment_page_flags(uint32_t segment_flags);
+int map_user_elf_alias(Process* process);
+void unmap_user_elf_alias(Process* process);
 
 void copy_process_name(char* dest, const char* src);
 uint32_t infer_shell_prompt_kind(const char* filename);

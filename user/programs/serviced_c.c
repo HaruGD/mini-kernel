@@ -10,6 +10,11 @@ typedef struct ManagedService {
 
 #define MANAGED_SERVICE_COUNT 2u
 
+static ManagedService services[MANAGED_SERVICE_COUNT] = {
+    {"base", "svc_base_c.elf", 0, 0, 0},
+    {"demo", "svc_demo_c.elf", "base", 0, 0},
+};
+
 static void copy_name(char* out, const char* name) {
     uint32_t i = 0;
     if (out == 0) {
@@ -192,10 +197,6 @@ static int handle_request(ManagedService* services, uint32_t count, const OsIpcM
 }
 
 int main(void) {
-    ManagedService services[MANAGED_SERVICE_COUNT] = {
-        {"base", "svc_base_c.elf", 0, 0, 0},
-        {"demo", "svc_demo_c.elf", "base", 0, 0},
-    };
     long result = os_service_register(OS_SERVICE_MANAGER_NAME, OS_SERVICE_FLAG_SYSTEM);
     if (result < 0) {
         os_printf("[serviced] register failed %ld\n", result);

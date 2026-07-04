@@ -48,6 +48,7 @@ What works on the active 64-bit UEFI path:
 - foreground / background job control
 - child-result reaping with `wait` / `reapall` plus automatic cleanup when process slots are exhausted
 - ELF user program loading
+- ELF link-address alias mapping for C globals, string pointers, and BSS data
 - C user programs with `main(void)` and `main(argc, argv)` support
 - User SDK v2 with console, string, path, file, directory, process, time, graphics, keyboard-event, IPC, and service-registry APIs
 - SDK 2D helpers for user-space line drawing, bitmap blit, color-key blit, and bitmap-font text

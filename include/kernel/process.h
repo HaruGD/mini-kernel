@@ -58,6 +58,7 @@ struct Process {
     uint32_t parent_pid;
     char name[PROCESS_NAME_MAX];
     uint64_t code_base;
+    uint64_t elf_link_base;
     uint64_t stack_base;
     uint64_t heap_base;
     uint64_t heap_break;
@@ -66,6 +67,7 @@ struct Process {
     uint64_t entry_point;
     uint32_t image_size;
     uint32_t code_page_count;
+    uint32_t elf_alias_page_count;
     uint32_t stack_page_count;
     uint32_t heap_page_count;
     uint32_t state;

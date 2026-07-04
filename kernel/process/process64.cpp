@@ -179,6 +179,7 @@ void process_clear(Process* process) {
     process->parent_pid = 0;
     process->name[0] = '\0';
     process->code_base = 0;
+    process->elf_link_base = 0;
     process->stack_base = 0;
     process->heap_base = 0;
     process->heap_break = 0;
@@ -187,6 +188,7 @@ void process_clear(Process* process) {
     process->entry_point = 0;
     process->image_size = 0;
     process->code_page_count = 0;
+    process->elf_alias_page_count = 0;
     process->stack_page_count = 0;
     process->heap_page_count = 0;
     process->state = PROCESS_STATE_EMPTY;

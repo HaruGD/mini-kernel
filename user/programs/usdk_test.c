@@ -8,6 +8,9 @@
 
 static uint32_t checks_passed = 0;
 static uint32_t checks_failed = 0;
+static uint32_t global_counter = 7;
+static const char* global_words[] = {"alpha", "beta", "gamma"};
+static char global_bss_buffer[16];
 
 static void check(int condition, const char* name) {
     if (condition) {
@@ -26,6 +29,27 @@ static int buffer_has_pattern(const uint8_t* buffer, uint32_t size) {
         }
     }
     return 1;
+}
+
+static void test_global_data(void) {
+    check(os_streq(global_words[0], "alpha") &&
+          os_streq(global_words[1], "beta") &&
+          os_streq(global_words[2], "gamma"),
+          "ELF global pointer data");
+
+    global_counter += 5;
+    check(global_counter == 12, "ELF mutable global data");
+
+    for (uint32_t i = 0; i < sizeof(global_bss_buffer); i++) {
+        if (global_bss_buffer[i] != 0) {
+            check(0, "ELF global BSS zero fill");
+            return;
+        }
+    }
+    global_bss_buffer[0] = 'O';
+    global_bss_buffer[1] = 'K';
+    global_bss_buffer[2] = '\0';
+    check(os_streq(global_bss_buffer, "OK"), "ELF global BSS write");
 }
 
 static void test_allocator(void) {
@@ -307,6 +331,7 @@ int main(void) {
     cleanup_test_files();
     check(os_mkdir(TEST_DIR) == OS_OK, "create test directory");
 
+    test_global_data();
     test_allocator();
     test_paths();
     test_text_file();

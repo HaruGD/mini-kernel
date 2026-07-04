@@ -51,6 +51,7 @@ int run_user_program(const char* command_line) {
     copy_process_name(process->name, filename);
     process->shell_prompt_kind = infer_shell_prompt_kind(filename);
     process->code_base = user_code_base;
+    process->elf_link_base = 0;
     process->stack_base = user_stack_base;
     process->heap_base = user_code_base + USER_HEAP_OFFSET;
     process->heap_break = process->heap_base;
@@ -84,6 +85,7 @@ int run_user_program(const char* command_line) {
         return 0;
     }
     process->image_size = file_info.size;
+    process->elf_alias_page_count = 0;
 
     uint32_t program_buffer_size = file_info.size;
     if (program_buffer_size < 512) {
@@ -166,8 +168,20 @@ int run_user_program(const char* command_line) {
             return 0;
         }
 
+        if ((elf_first_vaddr & (PAGING64_PAGE_SIZE - 1ULL)) != 0) {
+            process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 6);
+            scheduler_mark_finished(process);
+            print("\nELF64 first load address must be page aligned: ");
+            print(filename);
+            print("\n");
+            kfree(program_buffer);
+            return 0;
+        }
+
         code_page_count = (uint32_t)((elf_load_size + PAGING64_PAGE_SIZE - 1) / PAGING64_PAGE_SIZE);
         process->entry_point = user_code_base + (elf_header->e_entry - elf_first_vaddr);
+        process->elf_link_base = elf_first_vaddr;
+        process->elf_alias_page_count = code_page_count;
         is_elf_image = 1;
     } else {
         if (file_info.size > PAGING64_PAGE_SIZE) {
@@ -360,6 +374,14 @@ int run_user_program(const char* command_line) {
     user_input_mode = 1;
     interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
+    if (!map_user_elf_alias(process)) {
+        cleanup_user_process_mapping(process);
+        process->code_page_count = 0;
+        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 9);
+        scheduler_mark_finished(process);
+        print("\nFailed to map user ELF link-address alias.");
+        return 0;
+    }
     process->state = PROCESS_STATE_RUNNING;
     if (parent != 0) {
         scheduler_mark_waiting(parent);
@@ -393,6 +415,11 @@ int run_user_program(const char* command_line) {
         print("].\n");
 
         if (parent != 0 && parent->active) {
+            if (!map_user_elf_alias(parent)) {
+                process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
+                scheduler_mark_finished(parent);
+                return 0;
+            }
             scheduler_mark_running(parent);
             focus_foreground_process(parent);
             return 1;
@@ -415,6 +442,11 @@ int run_user_program(const char* command_line) {
     process->resumable = 0;
     scheduler_mark_finished(process);
     if (parent != 0 && parent->active) {
+        if (!map_user_elf_alias(parent)) {
+            process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
+            scheduler_mark_finished(parent);
+            return 0;
+        }
         scheduler_mark_running(parent);
         focus_foreground_process(parent);
     }
@@ -437,6 +469,11 @@ int run_user_program(const char* command_line) {
     }
 
     if (parent_should_resume_immediately(parent)) {
+        if (!map_user_elf_alias(parent)) {
+            process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
+            scheduler_mark_finished(parent);
+            return 0;
+        }
         scheduler_mark_running(parent);
         focus_foreground_process(parent);
         return 1;
@@ -490,6 +527,12 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     user_input_mode = 1;
     interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
+    if (!map_user_elf_alias(process)) {
+        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 9);
+        scheduler_mark_finished(process);
+        print("\nFailed to map user ELF link-address alias.");
+        return 0;
+    }
     scheduler_mark_waiting(parent);
     scheduler_mark_running(process);
     focus_foreground_process(process);
@@ -521,6 +564,11 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         print("].\n");
 
         if (parent != 0 && parent->active) {
+            if (!map_user_elf_alias(parent)) {
+                process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
+                scheduler_mark_finished(parent);
+                return 0;
+            }
             scheduler_mark_running(parent);
             focus_foreground_process(parent);
             return 1;
@@ -542,6 +590,11 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     process->resumable = 0;
     scheduler_mark_finished(process);
     if (parent_should_resume_immediately(parent)) {
+        if (!map_user_elf_alias(parent)) {
+            process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
+            scheduler_mark_finished(parent);
+            return 0;
+        }
         scheduler_mark_running(parent);
         focus_foreground_process(parent);
     }

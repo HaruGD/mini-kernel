@@ -243,6 +243,72 @@ uint64_t elf64_segment_page_flags(uint32_t segment_flags) {
     return flags;
 }
 
+static uint32_t current_alias_owner_pid = 0;
+static uint64_t current_alias_base = 0;
+static uint32_t current_alias_page_count = 0;
+
+static void unmap_current_alias() {
+    if (current_alias_base == 0 || current_alias_page_count == 0) {
+        current_alias_owner_pid = 0;
+        current_alias_base = 0;
+        current_alias_page_count = 0;
+        return;
+    }
+
+    for (uint32_t i = 0; i < current_alias_page_count; i++) {
+        paging64_unmap_page(current_alias_base + ((uint64_t)i * PAGING64_PAGE_SIZE));
+    }
+    current_alias_owner_pid = 0;
+    current_alias_base = 0;
+    current_alias_page_count = 0;
+}
+
+int map_user_elf_alias(Process* process) {
+    if (process == 0 || process->pid == 0 ||
+        process->elf_link_base == 0 ||
+        process->elf_alias_page_count == 0) {
+        unmap_current_alias();
+        return 1;
+    }
+
+    if (current_alias_owner_pid == process->pid &&
+        current_alias_base == process->elf_link_base &&
+        current_alias_page_count == process->elf_alias_page_count) {
+        return 1;
+    }
+
+    unmap_current_alias();
+    for (uint32_t i = 0; i < process->elf_alias_page_count; i++) {
+        uint64_t slot_virt = process->code_base + ((uint64_t)i * PAGING64_PAGE_SIZE);
+        uint64_t alias_virt = process->elf_link_base + ((uint64_t)i * PAGING64_PAGE_SIZE);
+        uint64_t phys = paging64_get_phys(slot_virt);
+        uint64_t flags = paging64_get_flags(slot_virt);
+        if (phys == 0 || (flags & PAGING64_FLAG_PRESENT) == 0) {
+            unmap_current_alias();
+            return 0;
+        }
+        if (!paging64_map_page(alias_virt, phys & 0x000FFFFFFFFFF000ULL,
+                               flags & (0xFFFULL | PAGING64_FLAG_NX))) {
+            unmap_current_alias();
+            return 0;
+        }
+    }
+
+    current_alias_owner_pid = process->pid;
+    current_alias_base = process->elf_link_base;
+    current_alias_page_count = process->elf_alias_page_count;
+    return 1;
+}
+
+void unmap_user_elf_alias(Process* process) {
+    if (process == 0 || process->pid == 0) {
+        return;
+    }
+    if (current_alias_owner_pid == process->pid) {
+        unmap_current_alias();
+    }
+}
+
 void copy_process_name(char* dest, const char* src) {
     if (dest == 0) {
         return;
@@ -277,6 +343,7 @@ void cleanup_user_process_mapping(Process* process) {
         return;
     }
 
+    unmap_user_elf_alias(process);
     paging64_unmap_free_range(process->code_base, process->code_page_count);
     paging64_unmap_free_range(process->stack_base, process->stack_page_count);
     paging64_unmap_free_range(process->heap_base, process->heap_page_count);
@@ -337,7 +404,15 @@ static int user_address_owned(const Process* process, uint64_t address) {
         ((uint64_t)process->code_page_count * PAGING64_PAGE_SIZE);
     uint64_t stack_end = process->stack_base +
         ((uint64_t)process->stack_page_count * PAGING64_PAGE_SIZE);
+    uint64_t alias_end = process->elf_link_base +
+        ((uint64_t)process->elf_alias_page_count * PAGING64_PAGE_SIZE);
     if (address >= process->code_base && address < code_end) {
+        return 1;
+    }
+    if (process->elf_link_base != 0 &&
+        current_alias_owner_pid == process->pid &&
+        address >= process->elf_link_base &&
+        address < alias_end) {
         return 1;
     }
     if (address >= process->stack_base && address < stack_end) {
