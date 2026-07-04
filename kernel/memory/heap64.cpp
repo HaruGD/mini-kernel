@@ -32,8 +32,27 @@ static uintptr_t align_down_heap(uintptr_t value, uintptr_t align) {
 
 struct heap_header* heap_start = 0;
 
+static int heap_address_in_mapped_range(const void* address, uintptr_t size) {
+    if (address == 0 || size == 0) {
+        return 0;
+    }
+
+    uintptr_t start = (uintptr_t)address;
+    uintptr_t end = start + size;
+    return end >= start &&
+           start >= PAGING64_KERNEL_HEAP_BASE &&
+           end <= heap_next_virtual;
+}
+
 static int heap_block_valid(const struct heap_header* block) {
-    return block != 0 && block->magic == HEAP_BLOCK_MAGIC;
+    if (!heap_address_in_mapped_range(block, sizeof(struct heap_header))) {
+        return 0;
+    }
+    if (block->magic != HEAP_BLOCK_MAGIC ||
+        block->size < sizeof(struct heap_header)) {
+        return 0;
+    }
+    return heap_address_in_mapped_range(block, block->size);
 }
 
 static uint32_t heap_bin_index(uint32_t size) {
@@ -342,7 +361,13 @@ extern "C" void* kmalloc(size_t size) {
         return 0;
     }
 
-    uint32_t total_size = (uint32_t)align_up_heap(size + sizeof(struct heap_header), 16);
+    uintptr_t aligned_total = align_up_heap(size + sizeof(struct heap_header), 16);
+    if (aligned_total > 0xFFFFFFFFULL) {
+        heap_alloc_failures++;
+        return 0;
+    }
+
+    uint32_t total_size = (uint32_t)aligned_total;
     struct heap_header* current = heap_find_free_block(total_size);
     if (current != 0) {
         split_block(current, total_size);

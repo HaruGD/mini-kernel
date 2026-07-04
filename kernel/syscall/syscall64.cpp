@@ -18,6 +18,8 @@ extern "C" {
 #include "kernel/syscall/sdk_syscalls.h"
 
 #define USER_PATH_MAX PROCESS_CMDLINE_MAX
+#define USER_WRITE_MAX 4096u
+#define USER_WRITE_CHUNK_MAX 128u
 
 extern Terminal terminal;
 
@@ -62,14 +64,32 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     syscall_count++;
 
     if (syscall_no == SYS_WRITE) {
-        const char* msg = (const char*)(uintptr_t)arg1;
-        if (msg == 0) {
+        const uint8_t* user_buffer = (const uint8_t*)(uintptr_t)arg1;
+        uint32_t length = (uint32_t)arg2;
+        uint8_t chunk[USER_WRITE_CHUNK_MAX];
+        uint32_t written = 0;
+
+        if (length == 0) {
             return 0;
         }
-        while (*msg) {
-            putchar_both(*msg++);
+        if (arg2 > USER_WRITE_MAX || user_buffer == 0) {
+            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
         }
-        return 0;
+
+        while (written < length) {
+            uint32_t chunk_size = length - written;
+            if (chunk_size > USER_WRITE_CHUNK_MAX) {
+                chunk_size = USER_WRITE_CHUNK_MAX;
+            }
+            if (!copy_user_buffer(user_buffer + written, chunk, chunk_size)) {
+                return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+            }
+            for (uint32_t i = 0; i < chunk_size; i++) {
+                putchar_both((char)chunk[i]);
+            }
+            written += chunk_size;
+        }
+        return written;
     }
 
     if (syscall_no == SYS_EXIT) {

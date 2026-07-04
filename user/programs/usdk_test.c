@@ -5,6 +5,7 @@
 #define TEST_RENAMED_PATH TEST_DIR "/result.txt"
 #define TEST_LARGE_PATH "/sdk_large_test.bin"
 #define TEST_LARGE_SIZE 12000u
+#define LEGACY_SYS_WRITE 1
 
 static uint32_t checks_passed = 0;
 static uint32_t checks_failed = 0;
@@ -31,6 +32,16 @@ static int buffer_has_pattern(const uint8_t* buffer, uint32_t size) {
     return 1;
 }
 
+static long raw_syscall2(long number, long arg1, long arg2) {
+    long result;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(number), "D"(arg1), "S"(arg2)
+        : "memory");
+    return result;
+}
+
 static void test_global_data(void) {
     check(os_streq(global_words[0], "alpha") &&
           os_streq(global_words[1], "beta") &&
@@ -50,6 +61,11 @@ static void test_global_data(void) {
     global_bss_buffer[1] = 'K';
     global_bss_buffer[2] = '\0';
     check(os_streq(global_bss_buffer, "OK"), "ELF global BSS write");
+}
+
+static void test_syscall_pointer_validation(void) {
+    long result = raw_syscall2(LEGACY_SYS_WRITE, (long)0xFFFFFFFF80000000ULL, 4);
+    check(result == OS_ERR_INVALID_ARGUMENT, "legacy write rejects kernel pointer");
 }
 
 static void test_allocator(void) {
@@ -332,6 +348,7 @@ int main(void) {
     check(os_mkdir(TEST_DIR) == OS_OK, "create test directory");
 
     test_global_data();
+    test_syscall_pointer_validation();
     test_allocator();
     test_paths();
     test_text_file();
