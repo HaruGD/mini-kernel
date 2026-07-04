@@ -33,7 +33,7 @@ USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
 USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
 USER_SDK_LIB = ./build/libos64.a
-USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/service_types.h
 
 
 # External drivers
@@ -46,7 +46,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-service-registry test-service-smoke test-services clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -55,6 +55,7 @@ KERNEL64_OBJECTS = \
 	./build/kernel_diag64.o \
 	./build/ipc_mailbox64.o \
 	./build/ipc64.o \
+	./build/service_registry64.o \
 	./build/process64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
@@ -138,6 +139,11 @@ test-ipc-contracts:
 test-ipc-smoke: uefi
 	python3 ./tools/ipc_smoke.py
 test-ipc: test-ipc-contracts test-ipc-smoke
+test-service-registry:
+	python3 ./tools/service_registry_test.py
+test-service-smoke: uefi
+	python3 ./tools/service_registry_smoke.py
+test-services: test-service-registry test-service-smoke
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."
@@ -169,7 +175,10 @@ all32:
 ./build/ipc64.o: ./kernel/ipc/ipc.cpp ./include/kernel/ipc/ipc.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/ipc_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h
+./build/service_registry64.o: ./kernel/service/service_registry.cpp ./include/kernel/service/service_registry.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/service_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp
@@ -178,7 +187,7 @@ all32:
 ./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process64.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/ipc/ipc.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h
+./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/ipc/ipc.h ./include/kernel/service/service_registry.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/service_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/klog64.o: ./kernel/log/klog.cpp ./include/kernel/klog.h ./include/kernel/kutil64.h

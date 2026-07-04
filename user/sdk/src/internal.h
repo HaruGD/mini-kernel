@@ -43,7 +43,10 @@ enum {
     OS_SYS_INPUT_EVENT_WAIT = 62,
     OS_SYS_IPC_SEND = 63,
     OS_SYS_IPC_RECV = 64,
-    OS_SYS_IPC_WAIT = 65
+    OS_SYS_IPC_WAIT = 65,
+    OS_SYS_SERVICE_REGISTER = 66,
+    OS_SYS_SERVICE_FIND = 67,
+    OS_SYS_SERVICE_UNREGISTER = 68
 };
 
 long os_syscall0(long number);

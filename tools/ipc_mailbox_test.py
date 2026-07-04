@@ -222,6 +222,7 @@ def main() -> int:
             str(REPO_ROOT / "kernel/ipc/ipc_mailbox.cpp"),
             str(REPO_ROOT / "kernel/input/input_event_queue.cpp"),
             str(REPO_ROOT / "kernel/process/process64.cpp"),
+            str(REPO_ROOT / "kernel/service/service_registry.cpp"),
             str(source_path),
             str(stub_path),
             "-o",

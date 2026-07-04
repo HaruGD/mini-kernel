@@ -27,6 +27,7 @@ The build compiles `user/sdk/src/` into `build/libos64.a` and links it into ever
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
+- Services: register, find, and unregister short-lived service names
 
 The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
 
@@ -55,6 +56,13 @@ Phase 3 adds the first IPC regression group:
 
 ```sh
 make test-ipc
+```
+
+Service registry tests cover the fixed service identity ABI, automatic owner
+cleanup, SDK wrappers, and `services` shell diagnostics:
+
+```sh
+make test-services
 ```
 
 ## SDK v2 examples
@@ -113,6 +121,13 @@ kernel exposes batched 2D drawing syscalls.
 payload. The kernel shell `ipc` command reports mailbox capacity, queued
 messages, delivered messages, dropped messages, and wait state per process
 without consuming pending messages.
+
+`usvc_c.elf` demonstrates the service registry path. It registers the `demo`
+service, verifies duplicate and invalid names are rejected, finds its own
+`OsServiceInfo`, then exits without explicit unregister so the kernel cleanup
+path can prove stale pids are not returned. Service names are fixed-size
+lowercase identifiers up to `OS_SERVICE_NAME_MAX - 1` bytes and services remain
+ordinary ELF user programs.
 
 The full Phase 2 closure matrix is documented in
 `docs/phase2_regression_matrix.md`.

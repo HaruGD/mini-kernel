@@ -10,6 +10,8 @@
 #include "os64/ipc.h"
 #include "os64/ipc_types.h"
 #include "os64/result.h"
+#include "os64/service.h"
+#include "os64/service_types.h"
 #include "os64/time.h"
 
 #define OS64_SDK_VERSION_MAJOR 2u

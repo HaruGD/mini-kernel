@@ -6,10 +6,12 @@
 #include "kernel/input/input_events.h"
 #include "kernel/ipc/ipc.h"
 #include "kernel/process64.h"
+#include "kernel/service/service_registry.h"
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
 #include "os64/input_types.h"
+#include "os64/service_types.h"
 
 struct UserGraphicsRect {
     uint32_t x;
@@ -24,6 +26,7 @@ static_assert(sizeof(UserGraphicsRect) == 20, "UserGraphicsRect ABI changed");
 static_assert(sizeof(OsKeyEvent) == 16, "OsKeyEvent ABI changed");
 static_assert(sizeof(OsInputEvent) == 48, "OsInputEvent ABI changed");
 static_assert(sizeof(OsIpcMessage) == 88, "OsIpcMessage ABI changed");
+static_assert(sizeof(OsServiceInfo) == 36, "OsServiceInfo ABI changed");
 
 static uint64_t invalid_argument() {
     return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
@@ -165,6 +168,44 @@ static uint64_t dispatch_ipc_receive(uint64_t user_message_address, bool wait) {
         }
         ipc_wait_halt_once();
     }
+}
+
+static uint64_t dispatch_service_register(uint64_t user_name_address, uint64_t flags) {
+    char name[OS_SERVICE_NAME_MAX];
+    if (!copy_user_cstring((const char*)(uintptr_t)user_name_address, name, sizeof(name))) {
+        return invalid_argument();
+    }
+    return (uint64_t)(int64_t)service_register(current_process(), name, (uint32_t)flags);
+}
+
+static uint64_t dispatch_service_find(uint64_t user_name_address, uint64_t user_info_address) {
+    char name[OS_SERVICE_NAME_MAX];
+    if (!copy_user_cstring((const char*)(uintptr_t)user_name_address, name, sizeof(name))) {
+        return invalid_argument();
+    }
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_info_address, sizeof(OsServiceInfo))) {
+        return bad_buffer();
+    }
+
+    OsServiceInfo info;
+    int result = service_find(name, &info);
+    if (result != SERVICE_OK) {
+        return (uint64_t)(int64_t)result;
+    }
+    if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_info_address,
+                                    (const uint8_t*)&info,
+                                    sizeof(info))) {
+        return bad_buffer();
+    }
+    return 0;
+}
+
+static uint64_t dispatch_service_unregister(uint64_t user_name_address) {
+    char name[OS_SERVICE_NAME_MAX];
+    if (!copy_user_cstring((const char*)(uintptr_t)user_name_address, name, sizeof(name))) {
+        return invalid_argument();
+    }
+    return (uint64_t)(int64_t)service_unregister(current_process(), name);
 }
 
 static uint64_t dispatch_graphics(uint64_t syscall_no,
@@ -401,6 +442,18 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_IPC_WAIT) {
         *result = dispatch_ipc_receive(arg1, true);
+        return true;
+    }
+    if (syscall_no == SYS_SERVICE_REGISTER) {
+        *result = dispatch_service_register(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_SERVICE_FIND) {
+        *result = dispatch_service_find(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_SERVICE_UNREGISTER) {
+        *result = dispatch_service_unregister(arg1);
         return true;
     }
     return false;

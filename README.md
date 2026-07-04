@@ -49,7 +49,7 @@ What works on the active 64-bit UEFI path:
 - child-result reaping with `wait` / `reapall` plus automatic cleanup when process slots are exhausted
 - ELF user program loading
 - C user programs with `main(void)` and `main(argc, argv)` support
-- User SDK v2 with console, string, path, file, directory, process, time, graphics, and keyboard-event APIs
+- User SDK v2 with console, string, path, file, directory, process, time, graphics, keyboard-event, IPC, and service-registry APIs
 - SDK 2D helpers for user-space line drawing, bitmap blit, color-key blit, and bitmap-font text
 - User syscall buffers constrained to process-owned mappings and page permissions
 - static `libos64.a` linked into C user programs
@@ -63,6 +63,8 @@ What works on the active 64-bit UEFI path:
 - blocking and nonblocking PS/2 keyboard event delivery with modifier state
 - IPC message ABI, per-process mailboxes, send/receive/wait syscalls, and SDK wrappers
 - `uping_c.elf` / `upong_c.elf` IPC round-trip sample
+- service identity ABI, kernel service registry, register/find/unregister syscalls, and SDK wrappers
+- `services` kernel shell diagnostics plus `usvc_c.elf` service-registry sample
 - default C shell userland: `ushell_c.elf`
 - VFS layer
 - FAT32 root filesystem mounted at `/`
@@ -128,6 +130,13 @@ Run the graphics and input regression groups:
 ```sh
 make test-graphics
 make test-input
+```
+
+Run IPC and service-registry regression groups:
+
+```sh
+make test-ipc
+make test-services
 ```
 
 Test ACPI power-off in an isolated QEMU instance:

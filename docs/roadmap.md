@@ -108,12 +108,12 @@ QEMU GOP 환경에서 먼저 완성하며 실제 GPU 드라이버는 요구하�
 창 서버와 서비스 매니저가 커널 내부 기능에 직접 결합되지 않도록 한다.
 세부 구현과 검증 순서는 `docs/phase3_task_breakdown.md`를 따른다.
 
-- [ ] IPC core
+- [x] IPC core
   - message ABI와 process mailbox
   - nonblocking/blocking send/receive
   - request/reply helper semantics
   - process 종료 시 정리
-- [ ] Service registry
+- [x] Service registry
   - 서비스 이름 등록과 조회
   - owner pid와 generation 추적
   - process 종료 시 unregister

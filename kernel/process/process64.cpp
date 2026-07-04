@@ -1,6 +1,7 @@
 #include "fs/vfs.h"
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
+#include "kernel/service/service_registry.h"
 
 uint32_t user_program_depth = 0;
 uint32_t next_pid = 1;
@@ -172,6 +173,7 @@ void process_clear(Process* process) {
         return;
     }
 
+    service_unregister_owner(process->pid);
     process_clear_focus(process->pid);
     process->pid = 0;
     process->parent_pid = 0;
@@ -286,6 +288,7 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     }
 
     vfs_close_all_for_owner(process->pid);
+    service_unregister_owner(process->pid);
     process->state = PROCESS_STATE_FAILED;
     process->termination_reason = reason;
     process->status_code = status_code;
@@ -309,6 +312,7 @@ void process_mark_returned(Process* process, uint32_t reason, uint32_t status_co
     }
 
     vfs_close_all_for_owner(process->pid);
+    service_unregister_owner(process->pid);
     process->state = PROCESS_STATE_RETURNED;
     process->termination_reason = reason;
     process->status_code = status_code;

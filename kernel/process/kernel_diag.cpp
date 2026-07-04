@@ -2,6 +2,7 @@
 #include "kernel/kernel_diag.h"
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
+#include "kernel/service/service_registry.h"
 
 const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_LOADED) {
@@ -283,6 +284,41 @@ void print_ipc_info() {
         print("\n(no processes)");
     }
     print("\n===========");
+}
+
+void print_service_registry() {
+    print("\n=== SERVICES ===");
+    print("\ncapacity=");
+    print_hex32(service_registry_capacity());
+    print(" count=");
+    print_hex32(service_registry_count());
+
+    uint32_t printed = 0;
+    for (uint32_t i = 0; i < service_registry_capacity(); i++) {
+        OsServiceInfo info;
+        if (service_registry_get_info(i, &info) != SERVICE_OK) {
+            continue;
+        }
+
+        printed++;
+        print("\n[");
+        print_hex32(i);
+        print("] name=");
+        print(info.name);
+        print(" pid=");
+        print_hex32(info.owner_pid);
+        print(" state=");
+        print(service_state_name(info.state));
+        print(" flags=");
+        print_hex32(info.flags);
+        print(" generation=");
+        print_hex32(info.generation);
+    }
+
+    if (printed == 0) {
+        print("\n(no services)");
+    }
+    print("\n================");
 }
 
 void print_scheduler_info(Process* const* sched_queue,

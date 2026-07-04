@@ -88,25 +88,25 @@ future GUI policy into the kernel.
 
 ## 3D. Service Registry
 
-- [ ] **S01: Define service identity ABI**
+- [x] **S01: Define service identity ABI**
   Use short fixed names such as `input`, `display`, and `window`; service files
   remain normal `.elf` binaries.
   Completion: invalid names and duplicate names are rejected.
 
-- [ ] **S02: Add kernel service registry table**
+- [x] **S02: Add kernel service registry table**
   Track service name, owner pid, state, flags, and generation.
   Completion: process exit unregisters owned services.
 
-- [ ] **S03: Add service register/find/unregister syscalls**
+- [x] **S03: Add service register/find/unregister syscalls**
   Allow a service process to publish itself and clients to find its pid.
   Completion: stale pids are never returned.
 
-- [ ] **S04: Add SDK service API**
+- [x] **S04: Add SDK service API**
   Add `os_service_register`, `os_service_find`, and
   `os_service_unregister`.
   Completion: user programs can discover services without kernel-shell help.
 
-- [ ] **S05: Add service diagnostics**
+- [x] **S05: Add service diagnostics**
   Add `services` shell command to list names, pids, states, and flags.
   Completion: diagnostics survive service exit and restart.
 
