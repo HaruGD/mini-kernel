@@ -61,13 +61,21 @@ static long ensure_service_manager(OsServiceInfo* info) {
     return os_service_find(OS_SERVICE_MANAGER_NAME, info);
 }
 
-static int parse_reply(const OsIpcMessage* message, OsServiceManagerReply* reply) {
+static int parse_reply(const OsIpcMessage* message,
+                       const OsServiceInfo* manager,
+                       const OsServiceManagerRequest* request,
+                       OsServiceManagerReply* reply) {
     if (message == 0 || reply == 0 || message->type != OS_IPC_MESSAGE_REPLY ||
         message->length != sizeof(*reply)) {
         return 0;
     }
+    if (manager == 0 || request == 0 || message->sender_pid != manager->owner_pid) {
+        return 0;
+    }
     os_memcpy(reply, message->payload, sizeof(*reply));
-    return reply->size == sizeof(*reply);
+    return reply->size == sizeof(*reply) &&
+           reply->command == request->command &&
+           reply->request_id == request->request_id;
 }
 
 int main(int argc, char** argv) {
@@ -115,7 +123,7 @@ int main(int argc, char** argv) {
     }
 
     OsServiceManagerReply reply;
-    if (!parse_reply(&raw_reply, &reply)) {
+    if (!parse_reply(&raw_reply, &manager, &request, &reply)) {
         os_puts("[usvcctl] bad reply");
         return 1;
     }

@@ -1,5 +1,7 @@
 #include <os64/os64.h>
 
+#define SERVICE_IDLE_TICKS 100000u
+
 typedef struct ManagedService {
     const char* name;
     const char* program;
@@ -16,6 +18,11 @@ static ManagedService services[MANAGED_SERVICE_COUNT] = {
     {"input", "inputd_c.elf", 0, 0, 0},
     {"display", "displayd_c.elf", 0, 0, 0},
 };
+
+static int start_service_checked(ManagedService* services,
+                                 uint32_t count,
+                                 ManagedService* service,
+                                 uint32_t depth);
 
 static void copy_name(char* out, const char* name) {
     uint32_t i = 0;
@@ -53,16 +60,26 @@ static int service_registry_running(ManagedService* service, OsServiceInfo* info
 }
 
 static int start_service(ManagedService* services, uint32_t count, ManagedService* service) {
+    return start_service_checked(services, count, service, 0);
+}
+
+static int start_service_checked(ManagedService* services,
+                                 uint32_t count,
+                                 ManagedService* service,
+                                 uint32_t depth) {
     OsServiceInfo info;
     if (service == 0) {
         return OS_ERR_NOT_FOUND;
+    }
+    if (depth >= count) {
+        return OS_ERR_INVALID_ARGUMENT;
     }
     if (service_registry_running(service, &info)) {
         return OS_SUCCESS;
     }
     if (service->dependency != 0) {
         ManagedService* dependency = find_managed(services, count, service->dependency);
-        int dep_result = start_service(services, count, dependency);
+        int dep_result = start_service_checked(services, count, dependency, depth + 1);
         if (dep_result < 0) {
             return dep_result;
         }
@@ -137,6 +154,7 @@ static void send_reply(const OsIpcMessage* request_message,
     reply.pid = pid;
     reply.state = state;
     reply.generation = generation;
+    reply.request_id = request->request_id;
     copy_name(reply.name, request->name);
 
     OsIpcMessage message;
@@ -211,7 +229,7 @@ int main(void) {
 
     os_printf("[serviced] ready pid=%u\n", (uint32_t)os_getpid());
     while (1) {
-        os_sleep(100000u);
+        os_sleep(SERVICE_IDLE_TICKS);
         OsIpcMessage message;
         result = os_msg_wait(&message);
         if (result < 0) {

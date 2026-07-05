@@ -36,6 +36,7 @@ typedef struct OsServiceManagerReply {
     uint32_t pid;
     uint32_t state;
     uint32_t generation;
+    uint32_t request_id;
     char name[OS_SERVICE_NAME_MAX];
 } OsServiceManagerReply;
 
@@ -47,11 +48,11 @@ typedef struct OsServiceManagerReply {
 
 OS64_SVCD_STATIC_ASSERT(sizeof(OsServiceManagerRequest) == 32,
                         "OsServiceManagerRequest ABI changed");
-OS64_SVCD_STATIC_ASSERT(sizeof(OsServiceManagerReply) == 40,
+OS64_SVCD_STATIC_ASSERT(sizeof(OsServiceManagerReply) == 44,
                         "OsServiceManagerReply ABI changed");
 OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerRequest, name) == 16,
                         "OsServiceManagerRequest.name offset changed");
-OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, name) == 24,
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, name) == 28,
                         "OsServiceManagerReply.name offset changed");
 
 #undef OS64_SVCD_STATIC_ASSERT

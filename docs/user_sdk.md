@@ -145,9 +145,10 @@ ordinary ELF user programs.
 `serviced_c.elf` is the first user-space service manager. It registers as
 `service`, receives `OsServiceManagerRequest` messages over IPC, starts known
 service ELF binaries, stops/restarts owned children, and replies with
-`OsServiceManagerReply`. The kernel shell `service ...` command is a thin
-frontend that runs `usvcctl_c.elf`, so service policy remains in user space.
-The first static dependency table starts `base` before `demo`.
+`OsServiceManagerReply`. Replies echo the request id so clients can reject
+stale or unrelated IPC messages. The kernel shell `service ...` command is a
+thin frontend that runs `usvcctl_c.elf`, so service policy remains in user
+space. The first static dependency table starts `base` before `demo`.
 
 `inputd_c.elf` and `displayd_c.elf` are the first placeholder user-space
 services. They register as `input` and `display`, then answer small IPC query
