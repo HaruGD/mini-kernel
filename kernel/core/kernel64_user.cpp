@@ -533,7 +533,9 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         print("\nFailed to map user ELF link-address alias.");
         return 0;
     }
-    scheduler_mark_waiting(parent);
+    if (parent != 0 && parent->active) {
+        scheduler_mark_waiting(parent);
+    }
     scheduler_mark_running(process);
     focus_foreground_process(process);
     process->state = PROCESS_STATE_RUNNING;
@@ -619,6 +621,9 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     if (parent_should_resume_immediately(parent)) {
         scheduler_mark_running(parent);
         focus_foreground_process(parent);
+        return 1;
+    }
+    if (nested_syscall_waiter_active(process)) {
         return 1;
     }
     return idle_until_ready_process();

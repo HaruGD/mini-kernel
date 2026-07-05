@@ -161,6 +161,11 @@ static int parent_should_resume_immediately(const Process* parent) {
     return 1;
 }
 
+static int nested_syscall_waiter_active(const Process* completed) {
+    Process* caller = current_process();
+    return caller != 0 && caller != completed && caller->active;
+}
+
 int continue_ready_processes(uint32_t exclude_pid) {
     Process* next_ready = find_next_ready_process(exclude_pid);
     if (next_ready == 0) {

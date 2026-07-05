@@ -194,8 +194,12 @@ static int handle_request(ManagedService* services, uint32_t count, const OsIpcM
         result = OS_ERR_INVALID_ARGUMENT;
     }
 
+    int should_exit = request.command == OS_SERVICE_MANAGER_CMD_EXIT && result == OS_SUCCESS;
     send_reply(message, &request, result, pid, state, generation);
-    return request.command == OS_SERVICE_MANAGER_CMD_EXIT && result == OS_SUCCESS;
+    if (should_exit) {
+        os_yield();
+    }
+    return should_exit;
 }
 
 int main(void) {

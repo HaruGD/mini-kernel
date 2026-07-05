@@ -103,6 +103,12 @@ def run() -> int:
         wait_for_serial("[usvcprobe] display OK", 20)
         wait_for_serial("[usvcprobe] service probe OK", 20)
         wait_for_serial("state=returned term=exit code=0x00000000", 20)
+
+        send_command(process, "service exit")
+        wait_for_serial("[serviced] stopped display", 20)
+        wait_for_serial("[serviced] stopped input", 20)
+        wait_for_serial("[serviced] exit", 20)
+        wait_for_serial("[usvcctl] exit service OK", 20)
     finally:
         if process.poll() is None:
             process.terminate()
@@ -125,6 +131,10 @@ def run() -> int:
         "[usvcprobe] input OK",
         "[usvcprobe] display OK",
         "[usvcprobe] service probe OK",
+        "[serviced] stopped display",
+        "[serviced] stopped input",
+        "[serviced] exit",
+        "[usvcctl] exit service OK",
     ]
     missing = [item for item in required if item not in serial_text]
     if missing:
