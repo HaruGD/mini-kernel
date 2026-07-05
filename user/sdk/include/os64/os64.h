@@ -12,6 +12,7 @@
 #include "os64/result.h"
 #include "os64/service.h"
 #include "os64/service_manager_types.h"
+#include "os64/service_protocol_types.h"
 #include "os64/service_types.h"
 #include "os64/time.h"
 

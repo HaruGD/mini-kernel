@@ -149,6 +149,12 @@ service ELF binaries, stops/restarts owned children, and replies with
 frontend that runs `usvcctl_c.elf`, so service policy remains in user space.
 The first static dependency table starts `base` before `demo`.
 
+`inputd_c.elf` and `displayd_c.elf` are the first placeholder user-space
+services. They register as `input` and `display`, then answer small IPC query
+messages using the shared `service_protocol_types.h` ABI. `usvcprobe_c.elf`
+discovers both services through the registry and verifies request/reply status
+without special kernel policy.
+
 The full Phase 2 closure matrix is documented in
 `docs/phase2_regression_matrix.md`.
 

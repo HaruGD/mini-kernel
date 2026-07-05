@@ -138,20 +138,20 @@ future GUI policy into the kernel.
 
 ## 3F. First User-Space Services
 
-- [ ] **V01: Add `inputd.elf` placeholder**
+- [x] **V01: Add `inputd.elf` placeholder**
   Register as `input` and expose a minimal request/reply API over IPC.
   Completion: clients can query input service status.
 
-- [ ] **V02: Add `displayd.elf` placeholder**
+- [x] **V02: Add `displayd.elf` placeholder**
   Register as `display` and expose graphics/display capability info over IPC.
   Completion: clients can query current display dimensions.
 
-- [ ] **V03: Add service client sample**
+- [x] **V03: Add service client sample**
   Add a small user program that discovers `input` and `display` and sends test
   requests.
   Completion: the sample reports success/failure without manual inspection.
 
-- [ ] **V04: Add service smoke test**
+- [x] **V04: Add service smoke test**
   Boot QEMU, start `serviced.elf`, start placeholder services, run the client,
   and verify the serial log.
   Completion: service startup and IPC request/reply are automated.

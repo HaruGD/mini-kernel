@@ -68,6 +68,8 @@ What works on the active 64-bit UEFI path:
 - `services` kernel shell diagnostics plus `usvc_c.elf` service-registry sample
 - `serviced_c.elf` user-space service manager with IPC ping/start/stop/restart/status/exit control
 - `service [cmd] [name]` shell frontend routed through `usvcctl_c.elf`
+- `inputd_c.elf` and `displayd_c.elf` placeholder user-space services with IPC query replies
+- `usvcprobe_c.elf` client sample for input/display service discovery and request/reply checks
 - default C shell userland: `ushell_c.elf`
 - VFS layer
 - FAT32 root filesystem mounted at `/`

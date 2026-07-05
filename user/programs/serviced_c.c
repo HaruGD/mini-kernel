@@ -8,11 +8,13 @@ typedef struct ManagedService {
     uint32_t running;
 } ManagedService;
 
-#define MANAGED_SERVICE_COUNT 2u
+#define MANAGED_SERVICE_COUNT 4u
 
 static ManagedService services[MANAGED_SERVICE_COUNT] = {
     {"base", "svc_base_c.elf", 0, 0, 0},
     {"demo", "svc_demo_c.elf", "base", 0, 0},
+    {"input", "inputd_c.elf", 0, 0, 0},
+    {"display", "displayd_c.elf", 0, 0, 0},
 };
 
 static void copy_name(char* out, const char* name) {
