@@ -116,6 +116,9 @@ What works on the active 64-bit UEFI path:
 - Phase 3 task breakdown: [docs/phase3_task_breakdown.md](docs/phase3_task_breakdown.md)
 - Phase 3 regression matrix: [docs/phase3_regression_matrix.md](docs/phase3_regression_matrix.md)
 - Phase 3.5 stabilization plan: [docs/phase3_5_stabilization.md](docs/phase3_5_stabilization.md)
+- Phase 3.5 starting baseline: [docs/phase3_5_baseline.md](docs/phase3_5_baseline.md)
+- Process/scheduler invariants: [docs/process_scheduler_invariants.md](docs/process_scheduler_invariants.md)
+- Kernel context rules: [docs/kernel_context_rules.md](docs/kernel_context_rules.md)
 
 ## Build
 

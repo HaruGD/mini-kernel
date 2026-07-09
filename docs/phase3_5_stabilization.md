@@ -31,19 +31,25 @@ them.
 
 ## 3.5A. Baseline And Invariants
 
-- [ ] **A01: Record the pre-stabilization regression baseline**
+- [x] **A01: Record the pre-stabilization regression baseline**
   Run the complete Phase 3 closure matrix and archive a concise result.
   Completion: the starting revision and every test group are recorded.
 
-- [ ] **A02: Document scheduler and process state transitions**
+- [x] **A02: Document scheduler and process state transitions**
   Define valid transitions for ready, running, sleeping, waiting, returned,
   failed, and reaped processes.
   Completion: every state has an owner, entry condition, and exit condition.
 
-- [ ] **A03: Document lock and interrupt-context rules**
+- [x] **A03: Document lock and interrupt-context rules**
   State which process, IPC, service, and memory operations may run with
   interrupts disabled or from IRQ context.
   Completion: prohibited blocking and allocation paths are explicit.
+
+Phase 3.5A contracts:
+
+- `docs/phase3_5_baseline.md`
+- `docs/process_scheduler_invariants.md`
+- `docs/kernel_context_rules.md`
 
 ## 3.5B. Common Wait And Wakeup Core
 
