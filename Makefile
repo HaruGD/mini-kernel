@@ -98,9 +98,10 @@ KERNEL64_OBJECTS = \
 	./build/gdt64.o \
 	./build/gdt64_asm.o \
 	./build/user64_asm.o \
-	./build/pmm64.o \
-	./build/paging64.o \
-	./build/heap64.o
+	./build/pmm.o \
+	./build/vm.o \
+	./build/paging_x86_64.o \
+	./build/heap.o
 
 all: all64
 all64: ./bin/os64.bin
@@ -203,7 +204,7 @@ all32:
 ./build/acpi64.o: ./kernel/acpi/acpi.cpp ./include/kernel/acpi.h ./include/kernel/klog.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/acpi_power64.o: ./kernel/acpi/acpi_power.cpp ./include/kernel/acpi.h ./include/arch/x86_64/io.h ./include/arch/x86_64/paging64.h
+./build/acpi_power64.o: ./kernel/acpi/acpi_power.cpp ./include/kernel/acpi.h ./include/arch/x86_64/io.h ./include/kernel/mm/vm.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/apic64.o: ./arch/x86_64/apic.cpp ./include/arch/x86_64/apic.h ./include/kernel/acpi.h
@@ -308,13 +309,16 @@ all32:
 ./build/user64_asm.o: ./arch/x86_64/user64.asm
 	$(AS) -f elf64 -g $< -o $@
 
-./build/pmm64.o: ./arch/x86_64/pmm64.cpp
+./build/pmm.o: ./kernel/mm/pmm.cpp ./include/kernel/mm/pmm.h ./include/kernel/boot_info.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/paging64.o: ./arch/x86_64/paging64.cpp
+./build/vm.o: ./kernel/mm/vm.cpp ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h ./include/kernel/mm/arch_vm.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/heap64.o: ./kernel/memory/heap64.cpp
+./build/paging_x86_64.o: ./arch/x86_64/mm/paging.cpp ./include/kernel/mm/arch_vm.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/heap.o: ./kernel/mm/heap.cpp ./include/kernel/mm/heap.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./bin/kernel64.elf: $(KERNEL64_OBJECTS)

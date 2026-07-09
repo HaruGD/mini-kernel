@@ -1,8 +1,8 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
-#include "arch/x86_64/paging64.h"
-#include "arch/x86_64/pmm64.h"
+#include "kernel/mm/vm.h"
+#include "kernel/mm/pmm.h"
 
 typedef uint64_t (*DriverLifecycleFn)();
 
@@ -18,7 +18,7 @@ static void free_loaded_image(DriverLoadedImage* loaded) {
                 continue;
             }
             uint64_t base = (uint64_t)(uintptr_t)loaded->sections[i].base;
-            paging64_unmap_free_range(base, loaded->sections[i].page_count);
+            vm_unmap_free_range(base, loaded->sections[i].page_count);
             loaded->sections[i].base = 0;
             loaded->sections[i].page_count = 0;
         }

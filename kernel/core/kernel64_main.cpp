@@ -14,7 +14,7 @@ static int remap_range_identity(uint64_t start, uint64_t end, uint64_t flags) {
     if (end <= start) {
         return 1;
     }
-    return paging64_map_range_identity(start, end - start, flags);
+    return vm_map_identity(start, end - start, flags);
 }
 
 static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
@@ -29,12 +29,12 @@ static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
             range->type == BOOT_RESERVED_RANGE_FRAMEBUFFER) {
             continue;
         }
-        uint64_t flags = PAGING64_FLAG_NX;
+        uint64_t flags = VM_FLAG_NO_EXECUTE;
         if (range->type == BOOT_RESERVED_RANGE_PAGE_TABLES ||
             range->type == BOOT_RESERVED_RANGE_KERNEL_STACK ||
             range->type == BOOT_RESERVED_RANGE_RAMDISK ||
             range->type == BOOT_RESERVED_RANGE_BOOT_INFO) {
-            flags |= PAGING64_FLAG_WRITABLE;
+            flags |= VM_FLAG_WRITABLE;
         }
         if (!remap_range_identity(range->base, range->base + range->size, flags)) {
             ok = 0;
@@ -44,8 +44,8 @@ static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
 }
 
 static int apply_kernel_nx_policy(const BootInfo* boot_info) {
-    paging64_enable_nxe();
-    if (!paging64_is_nxe_enabled()) {
+    vm_enable_execute_disable();
+    if (!vm_is_execute_disable_enabled()) {
         return 0;
     }
 
@@ -55,13 +55,13 @@ static int apply_kernel_nx_policy(const BootInfo* boot_info) {
                                0);
     ok &= remap_range_identity((uint64_t)(uintptr_t)__kernel_rodata_start,
                                (uint64_t)(uintptr_t)__kernel_rodata_end,
-                               PAGING64_FLAG_NX);
+                               VM_FLAG_NO_EXECUTE);
     ok &= remap_range_identity((uint64_t)(uintptr_t)__kernel_data_start,
                                (uint64_t)(uintptr_t)__kernel_data_end,
-                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX);
+                               VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE);
     ok &= remap_range_identity((uint64_t)(uintptr_t)__kernel_bss_start,
                                (uint64_t)(uintptr_t)__kernel_bss_end,
-                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX);
+                               VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE);
     ok &= protect_boot_reserved_ranges(boot_info);
     return ok;
 }
@@ -75,11 +75,11 @@ static int map_boot_framebuffer(const BootInfo* boot_info) {
         return 0;
     }
 
-    uint64_t flags = PAGING64_FLAG_WRITABLE |
-                     PAGING64_FLAG_WRITE_THROUGH |
-                     PAGING64_FLAG_CACHE_DISABLE |
-                     PAGING64_FLAG_NX;
-    return paging64_map_range_identity(boot_info->framebuffer_addr, boot_info->framebuffer_size, flags);
+    uint64_t flags = VM_FLAG_WRITABLE |
+                     VM_FLAG_WRITE_THROUGH |
+                     VM_FLAG_CACHE_DISABLE |
+                     VM_FLAG_NO_EXECUTE;
+    return vm_map_identity(boot_info->framebuffer_addr, boot_info->framebuffer_size, flags);
 }
 
 extern "C" void kernel64_main(const BootInfo* boot_info) {
@@ -128,8 +128,8 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
         print("BootInfo invalid\n");
     }
 
-    pmm64_init(boot_info);
-    paging64_init();
+    pmm_init(boot_info);
+    vm_init();
     int diagnostic_mode = g_boot_info != 0 &&
         (g_boot_info->flags & BOOT_INFO_FLAG_DIAGNOSTIC);
     uint64_t acpi_rsdp = g_boot_info != 0 && g_boot_info->size >= sizeof(BootInfo)

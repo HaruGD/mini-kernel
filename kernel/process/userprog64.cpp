@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-#include "arch/x86_64/paging64.h"
-#include "arch/x86_64/pmm64.h"
+#include "kernel/mm/vm.h"
+#include "kernel/mm/pmm.h"
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
 #include "kernel/userprog64.h"
@@ -233,12 +233,12 @@ int elf64_collect_load_info(const uint8_t* image,
 }
 
 uint64_t elf64_segment_page_flags(uint32_t segment_flags) {
-    uint64_t flags = PAGING64_FLAG_USER;
+    uint64_t flags = VM_FLAG_USER;
     if (segment_flags & ELF64_PF_W) {
-        flags |= PAGING64_FLAG_WRITABLE;
+        flags |= VM_FLAG_WRITABLE;
     }
     if (!(segment_flags & ELF64_PF_X)) {
-        flags |= PAGING64_FLAG_NX;
+        flags |= VM_FLAG_NO_EXECUTE;
     }
     return flags;
 }
@@ -256,7 +256,7 @@ static void unmap_current_alias() {
     }
 
     for (uint32_t i = 0; i < current_alias_page_count; i++) {
-        paging64_unmap_page(current_alias_base + ((uint64_t)i * PAGING64_PAGE_SIZE));
+        vm_unmap_page(current_alias_base + ((uint64_t)i * VM_PAGE_SIZE));
     }
     current_alias_owner_pid = 0;
     current_alias_base = 0;
@@ -279,16 +279,16 @@ int map_user_elf_alias(Process* process) {
 
     unmap_current_alias();
     for (uint32_t i = 0; i < process->elf_alias_page_count; i++) {
-        uint64_t slot_virt = process->code_base + ((uint64_t)i * PAGING64_PAGE_SIZE);
-        uint64_t alias_virt = process->elf_link_base + ((uint64_t)i * PAGING64_PAGE_SIZE);
-        uint64_t phys = paging64_get_phys(slot_virt);
-        uint64_t flags = paging64_get_flags(slot_virt);
-        if (phys == 0 || (flags & PAGING64_FLAG_PRESENT) == 0) {
+        uint64_t slot_virt = process->code_base + ((uint64_t)i * VM_PAGE_SIZE);
+        uint64_t alias_virt = process->elf_link_base + ((uint64_t)i * VM_PAGE_SIZE);
+        uint64_t phys = vm_get_phys(slot_virt);
+        uint64_t flags = vm_get_flags(slot_virt);
+        if (phys == 0 || (flags & VM_FLAG_PRESENT) == 0) {
             unmap_current_alias();
             return 0;
         }
-        if (!paging64_map_page(alias_virt, phys & 0x000FFFFFFFFFF000ULL,
-                               flags & (0xFFFULL | PAGING64_FLAG_NX))) {
+        if (!vm_map_page(alias_virt, phys & 0x000FFFFFFFFFF000ULL,
+                               flags & (0xFFFULL | VM_FLAG_NO_EXECUTE))) {
             unmap_current_alias();
             return 0;
         }
@@ -344,16 +344,16 @@ void cleanup_user_process_mapping(Process* process) {
     }
 
     unmap_user_elf_alias(process);
-    paging64_unmap_free_range(process->code_base, process->code_page_count);
-    paging64_unmap_free_range(process->stack_base, process->stack_page_count);
-    paging64_unmap_free_range(process->heap_base, process->heap_page_count);
+    vm_unmap_free_range(process->code_base, process->code_page_count);
+    vm_unmap_free_range(process->stack_base, process->stack_page_count);
+    vm_unmap_free_range(process->heap_base, process->heap_page_count);
     process->heap_page_count = 0;
     process->heap_break = process->heap_base;
     process->heap_mapped_end = process->heap_base;
 }
 
 static uint64_t align_up_user_page(uint64_t value) {
-    return (value + PAGING64_PAGE_SIZE - 1ULL) & ~(PAGING64_PAGE_SIZE - 1ULL);
+    return (value + VM_PAGE_SIZE - 1ULL) & ~(VM_PAGE_SIZE - 1ULL);
 }
 
 uint64_t resize_user_process_heap(Process* process, uint64_t requested_break) {
@@ -371,9 +371,9 @@ uint64_t resize_user_process_heap(Process* process, uint64_t requested_break) {
     if (requested_mapped_end > process->heap_mapped_end) {
         uint64_t grow_size = requested_mapped_end - process->heap_mapped_end;
         uint32_t added_pages = 0;
-        if (!paging64_alloc_map_range(process->heap_mapped_end,
+        if (!vm_alloc_map_range(process->heap_mapped_end,
                                       grow_size,
-                                      PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER | PAGING64_FLAG_NX,
+                                      VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXECUTE,
                                       &added_pages)) {
             return 0;
         }
@@ -385,8 +385,8 @@ uint64_t resize_user_process_heap(Process* process, uint64_t requested_break) {
         process->heap_mapped_end = requested_mapped_end;
     } else if (requested_mapped_end < process->heap_mapped_end) {
         uint32_t remove_pages = (uint32_t)((process->heap_mapped_end - requested_mapped_end) /
-                                           PAGING64_PAGE_SIZE);
-        paging64_unmap_free_range(requested_mapped_end, remove_pages);
+                                           VM_PAGE_SIZE);
+        vm_unmap_free_range(requested_mapped_end, remove_pages);
         process->heap_page_count -= remove_pages;
         process->heap_mapped_end = requested_mapped_end;
     }
@@ -401,11 +401,11 @@ static int user_address_owned(const Process* process, uint64_t address) {
     }
 
     uint64_t code_end = process->code_base +
-        ((uint64_t)process->code_page_count * PAGING64_PAGE_SIZE);
+        ((uint64_t)process->code_page_count * VM_PAGE_SIZE);
     uint64_t stack_end = process->stack_base +
-        ((uint64_t)process->stack_page_count * PAGING64_PAGE_SIZE);
+        ((uint64_t)process->stack_page_count * VM_PAGE_SIZE);
     uint64_t alias_end = process->elf_link_base +
-        ((uint64_t)process->elf_alias_page_count * PAGING64_PAGE_SIZE);
+        ((uint64_t)process->elf_alias_page_count * VM_PAGE_SIZE);
     if (address >= process->code_base && address < code_end) {
         return 1;
     }
@@ -441,16 +441,16 @@ static int user_buffer_accessible(const void* user_ptr, uint32_t size, int writa
         if (!user_address_owned(process, address)) {
             return 0;
         }
-        uint64_t flags = paging64_get_flags(address);
-        if (!(flags & PAGING64_FLAG_USER) ||
-            (writable && !(flags & PAGING64_FLAG_WRITABLE))) {
+        uint64_t flags = vm_get_flags(address);
+        if (!(flags & VM_FLAG_USER) ||
+            (writable && !(flags & VM_FLAG_WRITABLE))) {
             return 0;
         }
-        if ((address & ~(PAGING64_PAGE_SIZE - 1ULL)) ==
-            (end & ~(PAGING64_PAGE_SIZE - 1ULL))) {
+        if ((address & ~(VM_PAGE_SIZE - 1ULL)) ==
+            (end & ~(VM_PAGE_SIZE - 1ULL))) {
             break;
         }
-        address = (address & ~(PAGING64_PAGE_SIZE - 1ULL)) + PAGING64_PAGE_SIZE;
+        address = (address & ~(VM_PAGE_SIZE - 1ULL)) + VM_PAGE_SIZE;
     }
     return user_address_owned(process, end);
 }
@@ -464,13 +464,13 @@ int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) 
     Process* process = current_process();
     for (uint32_t i = 0; i < max_len - 1; i++) {
         uint64_t addr = (uint64_t)(uintptr_t)(user_ptr + i);
-        uint64_t page = addr & ~(PAGING64_PAGE_SIZE - 1ULL);
+        uint64_t page = addr & ~(VM_PAGE_SIZE - 1ULL);
         if (!user_address_owned(process, addr)) {
             return 0;
         }
         if (page != checked_page) {
-            uint64_t flags = paging64_get_flags(addr);
-            if (!(flags & PAGING64_FLAG_USER)) {
+            uint64_t flags = vm_get_flags(addr);
+            if (!(flags & VM_FLAG_USER)) {
                 return 0;
             }
             checked_page = page;

@@ -4,7 +4,7 @@ extern "C" {
     #include "arch/x86_64/io.h"
 }
 
-#include "arch/x86_64/paging64.h"
+#include "kernel/mm/vm.h"
 #include "arch/x86_64/idt64.h"
 #include "kernel/acpi.h"
 #include "kernel/klog.h"
@@ -144,11 +144,11 @@ int interrupt_controller_init(const AcpiState* acpi) {
         return 0;
     }
 
-    uint64_t mmio_flags = PAGING64_FLAG_WRITABLE |
-                          PAGING64_FLAG_CACHE_DISABLE |
-                          PAGING64_FLAG_NX;
-    if (!paging64_map_range_identity(acpi->local_apic_address, 4096, mmio_flags) ||
-        !paging64_map_range_identity(acpi->ioapics[0].address, 4096, mmio_flags)) {
+    uint64_t mmio_flags = VM_FLAG_WRITABLE |
+                          VM_FLAG_CACHE_DISABLE |
+                          VM_FLAG_NO_EXECUTE;
+    if (!vm_map_identity(acpi->local_apic_address, 4096, mmio_flags) ||
+        !vm_map_identity(acpi->ioapics[0].address, 4096, mmio_flags)) {
         klog_write(KLOG_ERROR, "interrupt", "failed to map APIC MMIO");
         activate_legacy_pic();
         return 0;

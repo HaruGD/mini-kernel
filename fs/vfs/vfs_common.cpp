@@ -1,6 +1,6 @@
 #include "fs/vfs.h"
 
-#include "heap.h"
+#include "kernel/mm/heap.h"
 #include "arch/x86_64/io.h"
 #include "drivers/terminal.h"
 

@@ -1,23 +1,22 @@
-#ifndef HEAP_H
-#define HEAP_H
+#ifndef KERNEL_MM_HEAP_H
+#define KERNEL_MM_HEAP_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// 메모리 블록의 정보를 담는 머리표(Header)
 struct heap_header {
     uint32_t magic;
-    uint32_t size;     // 블록의 크기 (헤더 포함)
+    uint32_t size;
     uint32_t requested_size;
-    uint8_t  is_free;  // 1이면 비어있음, 0이면 사용 중
-    uint8_t  in_free_list;
+    uint8_t is_free;
+    uint8_t in_free_list;
     uint8_t reserved[2];
-    struct heap_header* next; // 다음 블록을 가리키는 포인터
-    struct heap_header* prev; // 이전 블록을 가리키는 포인터
+    struct heap_header* next;
+    struct heap_header* prev;
     struct heap_header* free_next;
     struct heap_header* free_prev;
 };

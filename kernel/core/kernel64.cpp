@@ -3,14 +3,14 @@
 
 extern "C" {
     #include "arch/x86_64/io.h"
-    #include "heap.h"
+    #include "kernel/mm/heap.h"
 }
 
 #include "arch/x86_64/idt64.h"
 #include "arch/x86_64/apic.h"
 #include "arch/x86_64/gdt64.h"
-#include "arch/x86_64/paging64.h"
-#include "arch/x86_64/pmm64.h"
+#include "kernel/mm/vm.h"
+#include "kernel/mm/pmm.h"
 #include "drivers/terminal.h"
 #include "drivers/ata.h"
 #include "drivers/keyboard.h"

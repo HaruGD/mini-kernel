@@ -1,5 +1,5 @@
 #include "arch/x86_64/io.h"
-#include "arch/x86_64/paging64.h"
+#include "kernel/mm/vm.h"
 #include "kernel/kutil64.h"
 #include "kernel/pci.h"
 
@@ -301,25 +301,25 @@ static void* pci_map_physical_range(uint64_t phys, uint64_t size) {
         return 0;
     }
     if (size == 0) {
-        size = PAGING64_PAGE_SIZE;
+        size = VM_PAGE_SIZE;
     }
 
-    uint64_t aligned_phys = phys & ~(PAGING64_PAGE_SIZE - 1ULL);
+    uint64_t aligned_phys = phys & ~(VM_PAGE_SIZE - 1ULL);
     uint64_t offset = phys - aligned_phys;
-    uint64_t total_bytes = pci_align_up(offset + size, PAGING64_PAGE_SIZE);
-    uint64_t virt_base = pci_align_up(g_pci_mmio_next_virtual, PAGING64_PAGE_SIZE);
+    uint64_t total_bytes = pci_align_up(offset + size, VM_PAGE_SIZE);
+    uint64_t virt_base = pci_align_up(g_pci_mmio_next_virtual, VM_PAGE_SIZE);
     uint64_t virt_end = virt_base + total_bytes;
     if (virt_end > PCI_MMIO_MAP_LIMIT) {
         return 0;
     }
 
-    if (!paging64_map_range(virt_base,
+    if (!vm_map_range(virt_base,
                             aligned_phys,
                             total_bytes,
-                            PAGING64_FLAG_WRITABLE |
-                            PAGING64_FLAG_WRITE_THROUGH |
-                            PAGING64_FLAG_CACHE_DISABLE |
-                            PAGING64_FLAG_NX)) {
+                            VM_FLAG_WRITABLE |
+                            VM_FLAG_WRITE_THROUGH |
+                            VM_FLAG_CACHE_DISABLE |
+                            VM_FLAG_NO_EXECUTE)) {
         return 0;
     }
 

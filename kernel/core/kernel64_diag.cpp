@@ -49,10 +49,10 @@ static void print_reserved_range(const BootReservedRange* range, uint32_t index,
     print_hex64(range->size);
     if (with_pmm_status) {
         print(" pmm=");
-        if (range->base >= PMM64_MAX_RAM_SIZE) {
+        if (range->base >= PMM_MAX_RAM_SIZE) {
             print("outside");
         } else {
-            print(pmm64_range_is_marked_used(range->base, range->size) ? "used" : "FREE");
+            print(pmm_range_is_marked_used(range->base, range->size) ? "used" : "FREE");
         }
     }
 }
@@ -127,9 +127,9 @@ void print_boot_info() {
 }
 
 void command_memstat() {
-    Pmm64Stats pmm_stats;
+    PmmStats pmm_stats;
     HeapStats heap_stats;
-    pmm64_get_stats(&pmm_stats);
+    pmm_get_stats(&pmm_stats);
     heap_get_stats(&heap_stats);
 
     print("\nPMM total pages: ");
@@ -151,7 +151,7 @@ void command_memstat() {
     print("\nPMM peak used pages: ");
     print_hex64(pmm_stats.peak_used_blocks);
     print("\nPaging root: ");
-    print_hex64(paging64_get_root_phys());
+    print_hex64(vm_get_root_phys());
     print("\nHeap used bytes: ");
     print_hex64(heap_stats.used_bytes);
     print("\nHeap free bytes: ");

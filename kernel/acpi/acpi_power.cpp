@@ -4,7 +4,7 @@ extern "C" {
     #include "arch/x86_64/io.h"
 }
 
-#include "arch/x86_64/paging64.h"
+#include "kernel/mm/vm.h"
 #include "kernel/klog.h"
 #include "kernel/kutil64.h"
 
@@ -70,7 +70,7 @@ static int map_table(uint64_t address, uint32_t size) {
     if (address == 0 || size == 0 || address + size < address) {
         return 0;
     }
-    return paging64_map_range_identity(address, size, PAGING64_FLAG_NX);
+    return vm_map_identity(address, size, VM_FLAG_NO_EXECUTE);
 }
 
 static int checksum_valid(const void* pointer, uint32_t size) {
@@ -264,10 +264,10 @@ static int read_control(const AcpiGenericAddress& gas, uint16_t* value_out) {
         *value_out = inw((uint16_t)gas.address);
         return 1;
     }
-    uint64_t flags = PAGING64_FLAG_WRITABLE |
-                     PAGING64_FLAG_CACHE_DISABLE |
-                     PAGING64_FLAG_NX;
-    if (!paging64_map_range_identity(gas.address, sizeof(uint16_t), flags)) {
+    uint64_t flags = VM_FLAG_WRITABLE |
+                     VM_FLAG_CACHE_DISABLE |
+                     VM_FLAG_NO_EXECUTE;
+    if (!vm_map_identity(gas.address, sizeof(uint16_t), flags)) {
         return 0;
     }
     *value_out = *(volatile uint16_t*)(uintptr_t)gas.address;
@@ -282,10 +282,10 @@ static int write_control(const AcpiGenericAddress& gas, uint16_t value) {
         outw((uint16_t)gas.address, value);
         return 1;
     }
-    uint64_t flags = PAGING64_FLAG_WRITABLE |
-                     PAGING64_FLAG_CACHE_DISABLE |
-                     PAGING64_FLAG_NX;
-    if (!paging64_map_range_identity(gas.address, sizeof(uint16_t), flags)) {
+    uint64_t flags = VM_FLAG_WRITABLE |
+                     VM_FLAG_CACHE_DISABLE |
+                     VM_FLAG_NO_EXECUTE;
+    if (!vm_map_identity(gas.address, sizeof(uint16_t), flags)) {
         return 0;
     }
     *(volatile uint16_t*)(uintptr_t)gas.address = value;

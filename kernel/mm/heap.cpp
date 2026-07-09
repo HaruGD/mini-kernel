@@ -1,6 +1,6 @@
-#include "heap.h"
-#include "arch/x86_64/paging64.h"
-#include "arch/x86_64/pmm64.h"
+#include "kernel/mm/heap.h"
+#include "kernel/mm/pmm.h"
+#include "kernel/mm/vm.h"
 
 #define HEAP_BLOCK_MAGIC 0x48454150U
 #define HEAP_FREE_BIN_COUNT 8
@@ -9,7 +9,7 @@ typedef char heap_header_alignment_check[(sizeof(struct heap_header) % 16 == 0) 
 
 static struct heap_header* heap_free_bins[HEAP_FREE_BIN_COUNT];
 static struct heap_header* heap_tail = 0;
-static uint64_t heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
+static uint64_t heap_next_virtual = VM_KERNEL_HEAP_BASE;
 static uint32_t heap_mapped_pages = 0;
 static uint64_t heap_alloc_requests = 0;
 static uint64_t heap_free_requests = 0;
@@ -40,7 +40,7 @@ static int heap_address_in_mapped_range(const void* address, uintptr_t size) {
     uintptr_t start = (uintptr_t)address;
     uintptr_t end = start + size;
     return end >= start &&
-           start >= PAGING64_KERNEL_HEAP_BASE &&
+           start >= VM_KERNEL_HEAP_BASE &&
            end <= heap_next_virtual;
 }
 
@@ -246,18 +246,18 @@ static struct heap_header* coalesce_around(struct heap_header* block) {
 
 static struct heap_header* append_region(uint32_t bytes) {
     heap_grow_requests++;
-    uint32_t page_count = (bytes + PMM64_PAGE_SIZE - 1) / PMM64_PAGE_SIZE;
+    uint32_t page_count = (bytes + PMM_PAGE_SIZE - 1) / PMM_PAGE_SIZE;
     uint64_t region = heap_next_virtual;
-    uint64_t region_size = (uint64_t)page_count * PMM64_PAGE_SIZE;
+    uint64_t region_size = (uint64_t)page_count * PMM_PAGE_SIZE;
 
-    if (region + region_size > PAGING64_KERNEL_HEAP_LIMIT) {
+    if (region + region_size > VM_KERNEL_HEAP_LIMIT) {
         return 0;
     }
 
     uint32_t mapped_pages = 0;
-    if (!paging64_alloc_map_range(region,
+    if (!vm_alloc_map_range(region,
                                   region_size,
-                                  PAGING64_FLAG_WRITABLE | PAGING64_FLAG_GLOBAL | PAGING64_FLAG_NX,
+                                  VM_FLAG_WRITABLE | VM_FLAG_GLOBAL | VM_FLAG_NO_EXECUTE,
                                   &mapped_pages)) {
         return 0;
     }
@@ -268,7 +268,7 @@ static struct heap_header* append_region(uint32_t bytes) {
     heap_zero_region(region, region_size);
 
     struct heap_header* block = (struct heap_header*)(uintptr_t)region;
-    heap_init_block(block, page_count * PMM64_PAGE_SIZE, 1, 0, heap_tail);
+    heap_init_block(block, page_count * PMM_PAGE_SIZE, 1, 0, heap_tail);
 
     if (heap_start == 0) {
         heap_start = block;
@@ -291,9 +291,9 @@ static void shrink_heap_tail() {
             break;
         }
 
-        uintptr_t releasable_start = align_up_heap(block_start + sizeof(struct heap_header), PMM64_PAGE_SIZE);
-        if (block_start == align_down_heap(block_start, PMM64_PAGE_SIZE) &&
-            heap_tail->size >= PMM64_PAGE_SIZE) {
+        uintptr_t releasable_start = align_up_heap(block_start + sizeof(struct heap_header), PMM_PAGE_SIZE);
+        if (block_start == align_down_heap(block_start, PMM_PAGE_SIZE) &&
+            heap_tail->size >= PMM_PAGE_SIZE) {
             releasable_start = block_start;
         }
 
@@ -304,8 +304,8 @@ static void shrink_heap_tail() {
         int remove_entire_block = releasable_start == block_start;
         struct heap_header* previous_tail = remove_entire_block ? heap_tail->prev : 0;
         heap_remove_free_block(heap_tail);
-        uint32_t page_count = (uint32_t)((block_end - releasable_start) / PMM64_PAGE_SIZE);
-        uint32_t unmapped = paging64_unmap_free_range((uint64_t)releasable_start, page_count);
+        uint32_t page_count = (uint32_t)((block_end - releasable_start) / PMM_PAGE_SIZE);
+        uint32_t unmapped = vm_unmap_free_range((uint64_t)releasable_start, page_count);
         if (unmapped > heap_mapped_pages) {
             heap_mapped_pages = 0;
         } else {
@@ -334,7 +334,7 @@ extern "C" void heap_init() {
     heap_start = 0;
     heap_tail = 0;
     heap_reset_free_bins();
-    heap_next_virtual = PAGING64_KERNEL_HEAP_BASE;
+    heap_next_virtual = VM_KERNEL_HEAP_BASE;
     heap_mapped_pages = 0;
     heap_alloc_requests = 0;
     heap_free_requests = 0;
@@ -346,7 +346,7 @@ extern "C" void heap_init() {
     heap_current_used_bytes = 0;
     heap_peak_used_bytes = 0;
     heap_grow_requests = 0;
-    append_region(PMM64_PAGE_SIZE * 4);
+    append_region(PMM_PAGE_SIZE * 4);
     heap_update_peak_used();
 }
 
@@ -377,8 +377,8 @@ extern "C" void* kmalloc(size_t size) {
     }
 
     uint32_t grow_size = total_size;
-    if (grow_size < PMM64_PAGE_SIZE * 4) {
-        grow_size = PMM64_PAGE_SIZE * 4;
+    if (grow_size < PMM_PAGE_SIZE * 4) {
+        grow_size = PMM_PAGE_SIZE * 4;
     }
 
     current = append_region(grow_size);
@@ -459,7 +459,7 @@ extern "C" uint64_t heap_total_used() {
 }
 
 extern "C" uint64_t heap_total_mapped_bytes() {
-    return (uint64_t)heap_mapped_pages * PMM64_PAGE_SIZE;
+    return (uint64_t)heap_mapped_pages * PMM_PAGE_SIZE;
 }
 
 extern "C" uint32_t heap_mapped_page_count() {

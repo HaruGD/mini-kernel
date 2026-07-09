@@ -1,10 +1,10 @@
-#include "arch/x86_64/pmm64.h"
+#include "kernel/mm/pmm.h"
 #include <stddef.h>
 
 #define E820_TYPE_USABLE 1
 #define LOW_MEMORY_RESERVE_SIZE (2 * 1024 * 1024)
 
-static uint8_t memory_bitmap64[PMM64_BITMAP_SIZE];
+static uint8_t memory_bitmap64[PMM_BITMAP_SIZE];
 static uint32_t free_blocks64 = 0;
 static uint32_t next_free_hint64 = 0;
 static uint64_t alloc_requests64 = 0;
@@ -45,14 +45,14 @@ static void reset_stats64() {
 }
 
 static void update_peak_used_blocks64() {
-    uint32_t used = PMM64_TOTAL_BLOCKS - free_blocks64;
+    uint32_t used = PMM_TOTAL_BLOCKS - free_blocks64;
     if (used > peak_used_blocks64) {
         peak_used_blocks64 = used;
     }
 }
 
 static void mark_all_used64() {
-    for (uint32_t i = 0; i < PMM64_BITMAP_SIZE; i++) {
+    for (uint32_t i = 0; i < PMM_BITMAP_SIZE; i++) {
         memory_bitmap64[i] = 0xFF;
     }
     free_blocks64 = 0;
@@ -60,7 +60,7 @@ static void mark_all_used64() {
 }
 
 static void mark_block_used64(uint32_t index) {
-    if (index >= PMM64_TOTAL_BLOCKS) {
+    if (index >= PMM_TOTAL_BLOCKS) {
         return;
     }
     if (!mmap_test64(index)) {
@@ -73,7 +73,7 @@ static void mark_block_used64(uint32_t index) {
 }
 
 static void mark_block_free64(uint32_t index) {
-    if (index >= PMM64_TOTAL_BLOCKS) {
+    if (index >= PMM_TOTAL_BLOCKS) {
         return;
     }
     if (mmap_test64(index)) {
@@ -90,11 +90,11 @@ static void mark_range_used64(uint64_t start, uint64_t end) {
         return;
     }
 
-    uint64_t first_block = align_down64(start, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
-    uint64_t last_block = align_up64(end, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
+    uint64_t first_block = align_down64(start, PMM_PAGE_SIZE) / PMM_PAGE_SIZE;
+    uint64_t last_block = align_up64(end, PMM_PAGE_SIZE) / PMM_PAGE_SIZE;
 
-    if (last_block > PMM64_TOTAL_BLOCKS) {
-        last_block = PMM64_TOTAL_BLOCKS;
+    if (last_block > PMM_TOTAL_BLOCKS) {
+        last_block = PMM_TOTAL_BLOCKS;
     }
 
     for (uint64_t i = first_block; i < last_block; i++) {
@@ -109,20 +109,20 @@ static void mark_range_size_used64(uint64_t start, uint64_t size) {
 
     uint64_t end = start + size;
     if (end < start) {
-        end = PMM64_MAX_RAM_SIZE;
+        end = PMM_MAX_RAM_SIZE;
     }
     mark_range_used64(start, end);
 }
 
 static void mark_range_free64(uint64_t start, uint64_t end) {
-    uint64_t first_block = align_up64(start, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
-    uint64_t last_block = align_down64(end, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
+    uint64_t first_block = align_up64(start, PMM_PAGE_SIZE) / PMM_PAGE_SIZE;
+    uint64_t last_block = align_down64(end, PMM_PAGE_SIZE) / PMM_PAGE_SIZE;
 
-    if (first_block >= PMM64_TOTAL_BLOCKS) {
+    if (first_block >= PMM_TOTAL_BLOCKS) {
         return;
     }
-    if (last_block > PMM64_TOTAL_BLOCKS) {
-        last_block = PMM64_TOTAL_BLOCKS;
+    if (last_block > PMM_TOTAL_BLOCKS) {
+        last_block = PMM_TOTAL_BLOCKS;
     }
     if (first_block >= last_block) {
         return;
@@ -138,8 +138,8 @@ static uint64_t e820_entry_end64(const E820Entry* entry) {
     uint64_t length = ((uint64_t)entry->length_high << 32) | entry->length_low;
     uint64_t end = base + length;
 
-    if (end < base || end > PMM64_MAX_RAM_SIZE) {
-        end = PMM64_MAX_RAM_SIZE;
+    if (end < base || end > PMM_MAX_RAM_SIZE) {
+        end = PMM_MAX_RAM_SIZE;
     }
     return end;
 }
@@ -196,7 +196,7 @@ static int init_from_e820_64(const BootInfo* boot_info) {
 
         uint64_t base = ((uint64_t)entries[i].base_high << 32) | entries[i].base_low;
         uint64_t end = e820_entry_end64(&entries[i]);
-        if (base >= PMM64_MAX_RAM_SIZE) {
+        if (base >= PMM_MAX_RAM_SIZE) {
             continue;
         }
         mark_range_free64(base, end);
@@ -208,14 +208,14 @@ static int init_from_e820_64(const BootInfo* boot_info) {
 }
 
 static void init_fallback64() {
-    for (uint32_t i = 0; i < PMM64_BITMAP_SIZE; i++) {
+    for (uint32_t i = 0; i < PMM_BITMAP_SIZE; i++) {
         memory_bitmap64[i] = 0;
     }
-    free_blocks64 = PMM64_TOTAL_BLOCKS;
+    free_blocks64 = PMM_TOTAL_BLOCKS;
     mark_range_used64(0, LOW_MEMORY_RESERVE_SIZE);
 }
 
-extern "C" void pmm64_init(const BootInfo* boot_info) {
+extern "C" void pmm_init(const BootInfo* boot_info) {
     reset_stats64();
     if (!init_from_e820_64(boot_info)) {
         init_fallback64();
@@ -223,7 +223,7 @@ extern "C" void pmm64_init(const BootInfo* boot_info) {
     update_peak_used_blocks64();
 }
 
-extern "C" void* pmm64_alloc_block() {
+extern "C" void* pmm_alloc_block() {
     alloc_requests64++;
     if (free_blocks64 == 0) {
         alloc_failures64++;
@@ -231,23 +231,23 @@ extern "C" void* pmm64_alloc_block() {
     }
 
     uint32_t start = next_free_hint64;
-    if (start >= PMM64_TOTAL_BLOCKS) {
+    if (start >= PMM_TOTAL_BLOCKS) {
         start = 0;
     }
 
-    for (uint32_t step = 0; step < PMM64_TOTAL_BLOCKS; step++) {
+    for (uint32_t step = 0; step < PMM_TOTAL_BLOCKS; step++) {
         uint32_t i = start + step;
-        if (i >= PMM64_TOTAL_BLOCKS) {
-            i -= PMM64_TOTAL_BLOCKS;
+        if (i >= PMM_TOTAL_BLOCKS) {
+            i -= PMM_TOTAL_BLOCKS;
         }
         alloc_scan_steps64++;
         if (!mmap_test64(i)) {
             mark_block_used64(i);
             next_free_hint64 = i + 1;
-            if (next_free_hint64 >= PMM64_TOTAL_BLOCKS) {
+            if (next_free_hint64 >= PMM_TOTAL_BLOCKS) {
                 next_free_hint64 = 0;
             }
-            return (void*)((uintptr_t)i * PMM64_PAGE_SIZE);
+            return (void*)((uintptr_t)i * PMM_PAGE_SIZE);
         }
     }
 
@@ -255,21 +255,21 @@ extern "C" void* pmm64_alloc_block() {
     return 0;
 }
 
-extern "C" void* pmm64_alloc_blocks(uint32_t count) {
+extern "C" void* pmm_alloc_blocks(uint32_t count) {
     alloc_requests64++;
     alloc_contiguous_requests64++;
     if (count == 0) {
         alloc_failures64++;
         return 0;
     }
-    if (count > free_blocks64 || count > PMM64_TOTAL_BLOCKS) {
+    if (count > free_blocks64 || count > PMM_TOTAL_BLOCKS) {
         alloc_failures64++;
         return 0;
     }
 
     uint32_t run_start = 0;
     uint32_t run_length = 0;
-    for (uint32_t i = 0; i < PMM64_TOTAL_BLOCKS; i++) {
+    for (uint32_t i = 0; i < PMM_TOTAL_BLOCKS; i++) {
         alloc_scan_steps64++;
         if (!mmap_test64(i)) {
             if (run_length == 0) {
@@ -281,10 +281,10 @@ extern "C" void* pmm64_alloc_blocks(uint32_t count) {
                     mark_block_used64(run_start + j);
                 }
                 next_free_hint64 = run_start + count;
-                if (next_free_hint64 >= PMM64_TOTAL_BLOCKS) {
+                if (next_free_hint64 >= PMM_TOTAL_BLOCKS) {
                     next_free_hint64 = 0;
                 }
-                return (void*)((uintptr_t)run_start * PMM64_PAGE_SIZE);
+                return (void*)((uintptr_t)run_start * PMM_PAGE_SIZE);
             }
         } else {
             run_length = 0;
@@ -295,34 +295,34 @@ extern "C" void* pmm64_alloc_blocks(uint32_t count) {
     return 0;
 }
 
-extern "C" void pmm64_free_block(void* addr) {
+extern "C" void pmm_free_block(void* addr) {
     free_requests64++;
-    uintptr_t block = (uintptr_t)addr / PMM64_PAGE_SIZE;
+    uintptr_t block = (uintptr_t)addr / PMM_PAGE_SIZE;
     mark_block_free64((uint32_t)block);
 }
 
-extern "C" void pmm64_free_blocks(void* addr, uint32_t count) {
+extern "C" void pmm_free_blocks(void* addr, uint32_t count) {
     free_requests64++;
-    uintptr_t block = (uintptr_t)addr / PMM64_PAGE_SIZE;
+    uintptr_t block = (uintptr_t)addr / PMM_PAGE_SIZE;
     for (uint32_t i = 0; i < count; i++) {
         mark_block_free64((uint32_t)(block + i));
     }
 }
 
-extern "C" uint32_t pmm64_get_total_block_count() {
-    return PMM64_TOTAL_BLOCKS;
+extern "C" uint32_t pmm_get_total_block_count() {
+    return PMM_TOTAL_BLOCKS;
 }
 
-extern "C" uint32_t pmm64_get_free_block_count() {
+extern "C" uint32_t pmm_get_free_block_count() {
     return free_blocks64;
 }
 
-extern "C" void pmm64_get_stats(Pmm64Stats* out_stats) {
+extern "C" void pmm_get_stats(PmmStats* out_stats) {
     if (out_stats == 0) {
         return;
     }
 
-    out_stats->total_blocks = PMM64_TOTAL_BLOCKS;
+    out_stats->total_blocks = PMM_TOTAL_BLOCKS;
     out_stats->free_blocks = free_blocks64;
     out_stats->next_free_hint = next_free_hint64;
     out_stats->alloc_requests = alloc_requests64;
@@ -333,26 +333,26 @@ extern "C" void pmm64_get_stats(Pmm64Stats* out_stats) {
     out_stats->peak_used_blocks = peak_used_blocks64;
 }
 
-extern "C" int pmm64_range_is_marked_used(uint64_t start, uint64_t size) {
+extern "C" int pmm_range_is_marked_used(uint64_t start, uint64_t size) {
     if (size == 0) {
         return 1;
     }
 
     uint64_t end = start + size;
     if (end < start) {
-        end = PMM64_MAX_RAM_SIZE;
+        end = PMM_MAX_RAM_SIZE;
     }
-    if (start >= PMM64_MAX_RAM_SIZE) {
+    if (start >= PMM_MAX_RAM_SIZE) {
         return 1;
     }
-    if (end > PMM64_MAX_RAM_SIZE) {
-        end = PMM64_MAX_RAM_SIZE;
+    if (end > PMM_MAX_RAM_SIZE) {
+        end = PMM_MAX_RAM_SIZE;
     }
 
-    uint64_t first_block = align_down64(start, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
-    uint64_t last_block = align_up64(end, PMM64_PAGE_SIZE) / PMM64_PAGE_SIZE;
-    if (last_block > PMM64_TOTAL_BLOCKS) {
-        last_block = PMM64_TOTAL_BLOCKS;
+    uint64_t first_block = align_down64(start, PMM_PAGE_SIZE) / PMM_PAGE_SIZE;
+    uint64_t last_block = align_up64(end, PMM_PAGE_SIZE) / PMM_PAGE_SIZE;
+    if (last_block > PMM_TOTAL_BLOCKS) {
+        last_block = PMM_TOTAL_BLOCKS;
     }
 
     for (uint64_t i = first_block; i < last_block; i++) {

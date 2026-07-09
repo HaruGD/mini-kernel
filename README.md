@@ -540,14 +540,16 @@ Not implemented yet:
 - `boot/uefi/`
   UEFI loader, PE/COFF link script, and kernel entry bridge.
 - `arch/x86_64/`
-  Long mode entry, interrupt stubs, PMM, paging, GDT/TSS, and IDT.
+  Long mode entry, interrupt stubs, x86_64 page-table backend, GDT/TSS, and IDT.
 - `kernel/`
   64-bit kernel runtime and orchestration.
 - `kernel/core/`
   Split kernel64 initialization, diagnostics, IRQ, process, and user-mode logic.
 - `kernel/driver/`
   Driver manager, loader, exports, built-ins, and shell commands.
-- `kernel/pci/`, `kernel/process/`, `kernel/syscall/`, `kernel/shell/`, `kernel/memory/`, `kernel/util/`
+- `kernel/mm/`
+  Architecture-neutral physical memory, virtual memory policy, and kernel heap.
+- `kernel/pci/`, `kernel/process/`, `kernel/syscall/`, `kernel/shell/`, `kernel/util/`
   Kernel subsystems split by responsibility.
 - `drivers/builtin/`
   Terminal, GOP display, keyboard, PIT, and ATA built into the kernel.

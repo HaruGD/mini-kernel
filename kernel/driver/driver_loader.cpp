@@ -1,11 +1,11 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
-#include "arch/x86_64/paging64.h"
-#include "arch/x86_64/pmm64.h"
+#include "kernel/mm/vm.h"
+#include "kernel/mm/pmm.h"
 
 extern "C" {
-    #include "heap.h"
+    #include "kernel/mm/heap.h"
 }
 
 static const uint32_t DRV_KNOWN_PERMISSIONS =
@@ -128,7 +128,7 @@ static void free_section_pages(DriverLoadedSection* section) {
     }
 
     uint64_t base = (uint64_t)(uintptr_t)section->base;
-    paging64_unmap_free_range(base, section->page_count);
+    vm_unmap_free_range(base, section->page_count);
 
     section->base = 0;
     section->page_count = 0;
@@ -140,21 +140,21 @@ static uint8_t* allocate_section_pages(uint64_t memory_size, uint32_t* out_page_
     }
 
     uint64_t alloc_size = memory_size == 0 ? 1 : memory_size;
-    uint64_t page_count64 = align_up_u64(alloc_size, PAGING64_PAGE_SIZE) / PAGING64_PAGE_SIZE;
+    uint64_t page_count64 = align_up_u64(alloc_size, VM_PAGE_SIZE) / VM_PAGE_SIZE;
     if (page_count64 == 0 || page_count64 > 0xFFFFFFFFULL) {
         return 0;
     }
 
-    uint64_t region = align_up_u64(g_driver_section_next_virtual, PAGING64_PAGE_SIZE);
-    uint64_t region_size = page_count64 * PAGING64_PAGE_SIZE;
+    uint64_t region = align_up_u64(g_driver_section_next_virtual, VM_PAGE_SIZE);
+    uint64_t region_size = page_count64 * VM_PAGE_SIZE;
     if (region + region_size > DRIVER_SECTION_MAP_LIMIT) {
         return 0;
     }
 
     uint32_t mapped_pages = 0;
-    if (!paging64_alloc_map_range(region,
+    if (!vm_alloc_map_range(region,
                                   region_size,
-                                  PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX,
+                                  VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE,
                                   &mapped_pages)) {
         return 0;
     }
@@ -177,15 +177,15 @@ static int protect_loaded_sections(DriverLoadedImage* loaded) {
             continue;
         }
 
-        uint64_t flags = PAGING64_FLAG_NX;
+        uint64_t flags = VM_FLAG_NO_EXECUTE;
         if (section->kind == DRV_SECTION_CODE) {
             flags = 0;
         } else if (section->kind == DRV_SECTION_DATA || section->kind == DRV_SECTION_BSS) {
-            flags = PAGING64_FLAG_WRITABLE | PAGING64_FLAG_NX;
+            flags = VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE;
         }
 
         uint64_t base = (uint64_t)(uintptr_t)section->base;
-        if (!paging64_remap_range(base, (uint64_t)section->page_count * PAGING64_PAGE_SIZE, flags)) {
+        if (!vm_protect_range(base, (uint64_t)section->page_count * VM_PAGE_SIZE, flags)) {
             driver_manager_set_last_error(DRIVER_LOAD_OUT_OF_MEMORY,
                                           "protect",
                                           0,
@@ -249,7 +249,7 @@ static int validate_section_ranges(const uint8_t* image, const DrvHeader* header
             driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "kind", i, section->kind);
             return DRIVER_LOAD_BAD_HEADER;
         }
-        if (!is_power_of_two_u64(section->alignment) || section->alignment > PAGING64_PAGE_SIZE) {
+        if (!is_power_of_two_u64(section->alignment) || section->alignment > VM_PAGE_SIZE) {
             driver_manager_set_last_error(DRIVER_LOAD_BAD_HEADER, "section", 0, "alignment", i, section->alignment);
             return DRIVER_LOAD_BAD_HEADER;
         }
@@ -577,7 +577,7 @@ static int load_sections(const uint8_t* image, const DrvHeader* header, DriverLo
             return DRIVER_LOAD_OUT_OF_MEMORY;
         }
 
-        bytes_zero(memory, (uint64_t)page_count * PAGING64_PAGE_SIZE);
+        bytes_zero(memory, (uint64_t)page_count * VM_PAGE_SIZE);
         if (section->file_size != 0) {
             bytes_copy(memory, image + section->file_offset, section->file_size);
         }

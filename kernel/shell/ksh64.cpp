@@ -2,12 +2,12 @@
 #include <stddef.h>
 
 extern "C" {
-    #include "heap.h"
+    #include "kernel/mm/heap.h"
 }
 
-#include "arch/x86_64/paging64.h"
+#include "kernel/mm/vm.h"
 #include "arch/x86_64/apic.h"
-#include "arch/x86_64/pmm64.h"
+#include "kernel/mm/pmm.h"
 #include "drivers/gop.h"
 #include "drivers/terminal.h"
 #include "fs/vfs.h"
@@ -121,9 +121,9 @@ static void dump_state() {
     print("\nNotebook bytes: ");
     print_hex32(notebook_length);
     print("\nPMM free pages: ");
-    print_hex32(pmm64_get_free_block_count());
+    print_hex32(pmm_get_free_block_count());
     print("\nPaging root: ");
-    print_hex64(paging64_get_root_phys());
+    print_hex64(vm_get_root_phys());
     print("\nHeap used bytes: ");
     print_hex64(heap_total_used());
     print("\nHeap free bytes: ");
@@ -138,7 +138,7 @@ static void dump_state() {
     print_hex64((uint64_t)(uintptr_t)notebook_ptr);
     if (notebook_ptr != 0) {
         print("\nNotebook phys: ");
-        print_hex64(paging64_get_phys((uint64_t)(uintptr_t)notebook_ptr));
+        print_hex64(vm_get_phys((uint64_t)(uintptr_t)notebook_ptr));
     }
     print("\nPIT hz: ");
     print_hex32(pit.get_frequency());

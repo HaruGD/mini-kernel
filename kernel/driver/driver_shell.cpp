@@ -4,7 +4,7 @@
 #include "fs/vfs.h"
 
 extern "C" {
-    #include "heap.h"
+    #include "kernel/mm/heap.h"
 }
 
 static void print_permission_names(uint32_t permissions) {

@@ -4,7 +4,7 @@
 #include "kernel/graphics/display_owner.h"
 
 extern "C" {
-    #include "heap.h"
+    #include "kernel/mm/heap.h"
 }
 
 GOPDriver gop;

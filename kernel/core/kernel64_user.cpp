@@ -24,7 +24,7 @@ int run_user_program(const char* command_line) {
     uint64_t user_code_base = 0;
     uint64_t user_stack_base = 0;
     get_execution_slot_bases(slot_index, &user_code_base, &user_stack_base);
-    uint64_t user_stack_top = user_stack_base + ((uint64_t)USER_STACK_PAGE_COUNT * PAGING64_PAGE_SIZE);
+    uint64_t user_stack_top = user_stack_base + ((uint64_t)USER_STACK_PAGE_COUNT * VM_PAGE_SIZE);
     Process* parent = current_process();
     Process* process = allocate_process_record();
     if (process == 0) {
@@ -168,7 +168,7 @@ int run_user_program(const char* command_line) {
             return 0;
         }
 
-        if ((elf_first_vaddr & (PAGING64_PAGE_SIZE - 1ULL)) != 0) {
+        if ((elf_first_vaddr & (VM_PAGE_SIZE - 1ULL)) != 0) {
             process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 6);
             scheduler_mark_finished(process);
             print("\nELF64 first load address must be page aligned: ");
@@ -178,13 +178,13 @@ int run_user_program(const char* command_line) {
             return 0;
         }
 
-        code_page_count = (uint32_t)((elf_load_size + PAGING64_PAGE_SIZE - 1) / PAGING64_PAGE_SIZE);
+        code_page_count = (uint32_t)((elf_load_size + VM_PAGE_SIZE - 1) / VM_PAGE_SIZE);
         process->entry_point = user_code_base + (elf_header->e_entry - elf_first_vaddr);
         process->elf_link_base = elf_first_vaddr;
         process->elf_alias_page_count = code_page_count;
         is_elf_image = 1;
     } else {
-        if (file_info.size > PAGING64_PAGE_SIZE) {
+        if (file_info.size > VM_PAGE_SIZE) {
             process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 6);
             scheduler_mark_finished(process);
             print("\nFlat user program is too large for the current loader.\n");
@@ -206,7 +206,7 @@ int run_user_program(const char* command_line) {
             return 0;
         }
         for (uint32_t i = 0; i < code_page_count; i++) {
-            elf_page_flags[i] = PAGING64_FLAG_USER;
+            elf_page_flags[i] = VM_FLAG_USER;
         }
 
         const Elf64_Phdr* phdrs = (const Elf64_Phdr*)(const void*)(program_buffer + elf_header->e_phoff);
@@ -221,18 +221,18 @@ int run_user_program(const char* command_line) {
 
             uint64_t seg_start = phdr->p_vaddr - elf_first_vaddr;
             uint64_t seg_end = seg_start + phdr->p_memsz;
-            uint32_t first_page = (uint32_t)(seg_start / PAGING64_PAGE_SIZE);
-            uint32_t last_page = (uint32_t)((seg_end - 1) / PAGING64_PAGE_SIZE);
+            uint32_t first_page = (uint32_t)(seg_start / VM_PAGE_SIZE);
+            uint32_t last_page = (uint32_t)((seg_end - 1) / VM_PAGE_SIZE);
             uint64_t final_flags = elf64_segment_page_flags(phdr->p_flags);
             for (uint32_t page = first_page; page <= last_page; page++) {
-                elf_page_flags[page] |= (final_flags & PAGING64_FLAG_WRITABLE);
+                elf_page_flags[page] |= (final_flags & VM_FLAG_WRITABLE);
             }
         }
     }
 
     uint32_t mapped_code_pages = 0;
     for (uint32_t page = 0; page < code_page_count; page++) {
-        uint64_t code_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+        uint64_t code_phys = (uint64_t)(uintptr_t)pmm_alloc_block();
         if (code_phys == 0) {
             process->code_page_count = mapped_code_pages;
             cleanup_user_process_mapping(process);
@@ -246,9 +246,9 @@ int run_user_program(const char* command_line) {
             return 0;
         }
 
-        uint64_t virt = user_code_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-        if (!paging64_map_page(virt, code_phys, PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER)) {
-            pmm64_free_block((void*)(uintptr_t)code_phys);
+        uint64_t virt = user_code_base + ((uint64_t)page * VM_PAGE_SIZE);
+        if (!vm_map_page(virt, code_phys, VM_FLAG_WRITABLE | VM_FLAG_USER)) {
+            pmm_free_block((void*)(uintptr_t)code_phys);
             process->code_page_count = mapped_code_pages;
             cleanup_user_process_mapping(process);
             kfree(program_buffer);
@@ -261,7 +261,7 @@ int run_user_program(const char* command_line) {
             return 0;
         }
 
-        for (uint64_t i = 0; i < PAGING64_PAGE_SIZE; i++) {
+        for (uint64_t i = 0; i < VM_PAGE_SIZE; i++) {
             *((volatile uint8_t*)(uintptr_t)(virt + i)) = 0;
         }
         mapped_code_pages++;
@@ -269,7 +269,7 @@ int run_user_program(const char* command_line) {
     process->code_page_count = code_page_count;
 
     for (uint32_t page = 0; page < USER_STACK_PAGE_COUNT; page++) {
-        uint64_t stack_phys = (uint64_t)(uintptr_t)pmm64_alloc_block();
+        uint64_t stack_phys = (uint64_t)(uintptr_t)pmm_alloc_block();
         if (stack_phys == 0) {
             cleanup_user_process_mapping(process);
             process->code_page_count = 0;
@@ -284,11 +284,11 @@ int run_user_program(const char* command_line) {
             return 0;
         }
 
-        uint64_t virt = user_stack_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-        if (!paging64_map_page(virt,
+        uint64_t virt = user_stack_base + ((uint64_t)page * VM_PAGE_SIZE);
+        if (!vm_map_page(virt,
                                stack_phys,
-                               PAGING64_FLAG_WRITABLE | PAGING64_FLAG_USER | PAGING64_FLAG_NX)) {
-            pmm64_free_block((void*)(uintptr_t)stack_phys);
+                               VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXECUTE)) {
+            pmm_free_block((void*)(uintptr_t)stack_phys);
             cleanup_user_process_mapping(process);
             process->code_page_count = 0;
             process->stack_page_count = 0;
@@ -302,7 +302,7 @@ int run_user_program(const char* command_line) {
             return 0;
         }
 
-        for (uint64_t i = 0; i < PAGING64_PAGE_SIZE; i++) {
+        for (uint64_t i = 0; i < VM_PAGE_SIZE; i++) {
             *((volatile uint8_t*)(uintptr_t)(virt + i)) = 0;
         }
         process->stack_page_count = page + 1;
@@ -329,9 +329,9 @@ int run_user_program(const char* command_line) {
         }
 
         for (uint32_t page = 0; page < code_page_count; page++) {
-            uint64_t virt = user_code_base + ((uint64_t)page * PAGING64_PAGE_SIZE);
-            uint64_t phys = paging64_get_phys(virt);
-            if (phys == 0 || !paging64_map_page(virt, phys & 0x000FFFFFFFFFF000ULL, elf_page_flags[page])) {
+            uint64_t virt = user_code_base + ((uint64_t)page * VM_PAGE_SIZE);
+            uint64_t phys = vm_get_phys(virt);
+            if (phys == 0 || !vm_map_page(virt, phys & 0x000FFFFFFFFFF000ULL, elf_page_flags[page])) {
                 cleanup_user_process_mapping(process);
                 process->code_page_count = 0;
                 kfree(program_buffer);

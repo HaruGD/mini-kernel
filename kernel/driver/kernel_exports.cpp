@@ -9,7 +9,7 @@
 #include <stddef.h>
 
 extern "C" {
-    #include "heap.h"
+    #include "kernel/mm/heap.h"
 }
 
 extern ATADriver ata;

@@ -1,5 +1,5 @@
 #include "kernel/acpi.h"
-#include "arch/x86_64/paging64.h"
+#include "kernel/mm/vm.h"
 #include "kernel/klog.h"
 #include "kernel/kutil64.h"
 
@@ -49,7 +49,7 @@ static int map_physical(uint64_t address, uint64_t size) {
     if (address == 0 || size == 0 || address + size < address) {
         return 0;
     }
-    return paging64_map_range_identity(address, size, PAGING64_FLAG_NX);
+    return vm_map_identity(address, size, VM_FLAG_NO_EXECUTE);
 }
 
 static int bytes_equal(const char* left, const char* right, uint32_t count) {
@@ -84,11 +84,11 @@ static void update_sdt_checksum(AcpiSdtHeader* header) {
 }
 
 static int remap_table(uint64_t address, uint32_t length, int writable) {
-    uint64_t flags = PAGING64_FLAG_NX;
+    uint64_t flags = VM_FLAG_NO_EXECUTE;
     if (writable) {
-        flags |= PAGING64_FLAG_WRITABLE;
+        flags |= VM_FLAG_WRITABLE;
     }
-    return paging64_remap_range(address, length, flags);
+    return vm_protect_range(address, length, flags);
 }
 
 static int valid_sdt(const AcpiSdtHeader* header) {
