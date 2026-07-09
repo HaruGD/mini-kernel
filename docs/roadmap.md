@@ -94,6 +94,22 @@ Service principles:
 - The kernel supplies bounded transport, ownership, and cleanup mechanisms.
 - Service startup and dependency policy stay in `serviced_c.elf`.
 
+## Phase 3.5: Foundation Stabilization
+
+Detailed tasks and Phase 4 entry criteria:
+
+- `docs/phase3_5_stabilization.md`
+
+Planned work:
+
+- [ ] Common wait and wakeup core
+- [ ] Hardened process identity and lifecycle cleanup
+- [ ] Independent user address spaces and recoverable user faults
+- [ ] Typed per-process handles and shared-memory objects
+- [ ] IPC v2 with correlation, timeout, and handle transfer
+- [ ] Service supervision, permissions, and bounded restart policy
+- [ ] Concurrency rules, fault injection, and long-running soak coverage
+
 ## Phase 4: Compositor And Window Server
 
 The next phase must preserve the existing layering:

@@ -1,0 +1,304 @@
+# Phase 3.5 Foundation Stabilization
+
+Phase 3.5 hardens the kernel, process, IPC, and service foundations before the
+compositor and window server are introduced. The goal is not abstract
+perfection. The goal is a measurable platform that can host long-running GUI
+services without process-slot leaks, kernel faults, stale identities, or
+unbounded message copies.
+
+## Working Rules
+
+- Complete one numbered task per commit unless two tasks share one invariant.
+- Keep all existing Phase 1 through Phase 3 tests passing.
+- Add a focused host test or QEMU smoke test for every new failure path.
+- Preserve the current C ABI. Version an ABI before changing its layout.
+- Keep scheduling mechanisms in the kernel and service policy in user space.
+- Do not begin compositor, window, widget, or desktop implementation here.
+- Split modules when responsibilities diverge; do not split only to satisfy a
+  line-count target.
+
+## Out Of Scope
+
+- SMP scheduling
+- AArch64 implementation
+- Dynamic linking and shared libraries
+- General network or package services
+- A production cryptographic trust chain
+- Compositor and window policy
+
+The design must leave room for these features, but Phase 3.5 does not implement
+them.
+
+## 3.5A. Baseline And Invariants
+
+- [ ] **A01: Record the pre-stabilization regression baseline**
+  Run the complete Phase 3 closure matrix and archive a concise result.
+  Completion: the starting revision and every test group are recorded.
+
+- [ ] **A02: Document scheduler and process state transitions**
+  Define valid transitions for ready, running, sleeping, waiting, returned,
+  failed, and reaped processes.
+  Completion: every state has an owner, entry condition, and exit condition.
+
+- [ ] **A03: Document lock and interrupt-context rules**
+  State which process, IPC, service, and memory operations may run with
+  interrupts disabled or from IRQ context.
+  Completion: prohibited blocking and allocation paths are explicit.
+
+## 3.5B. Common Wait And Wakeup Core
+
+- [ ] **W01: Add a kernel wait-reason contract**
+  Represent sleep, child wait, IPC receive, and input wait with explicit wait
+  reasons instead of unrelated flags.
+  Completion: diagnostics report one unambiguous reason per blocked process.
+
+- [ ] **W02: Add common block and wake operations**
+  Centralize transition to waiting and restoration to ready state.
+  Completion: callers cannot directly assemble partial waiting state.
+
+- [ ] **W03: Convert timer sleep to the common wait core**
+  Keep deadline ordering and wake each expired process exactly once.
+  Completion: existing sleep and scheduler tests pass without special cases.
+
+- [ ] **W04: Convert IPC and input waits**
+  Remove duplicated cooperative polling loops and route both through common
+  blocking primitives.
+  Completion: service programs no longer need a pacing sleep before blocking.
+
+- [ ] **W05: Add timeout and cancellation results**
+  Support finite waits and deterministic cancellation during process exit or
+  focus loss.
+  Completion: timeout, wake, and cancel races each have automated coverage.
+
+## 3.5C. Process Lifecycle Hardening
+
+- [ ] **P01: Centralize process termination**
+  Route normal return, user fault, forced stop, and launch failure through one
+  cleanup sequence.
+  Completion: each path releases the same owned resources exactly once.
+
+- [ ] **P02: Strengthen process identity**
+  Pair each reusable process slot with a generation value.
+  Completion: stale process identities cannot target a replacement process.
+
+- [ ] **P03: Replace raw PID IPC targets with process identities**
+  Preserve a compatibility wrapper for existing SDK programs while the new
+  ABI is introduced.
+  Completion: queued requests cannot cross a PID-generation boundary.
+
+- [ ] **P04: Stabilize parent, child, wait, and reap policy**
+  Define orphan handling, bounded result retention, and forced child cleanup.
+  Completion: repeated nested launches do not fill the process table.
+
+- [ ] **P05: Add process lifecycle stress coverage**
+  Exercise normal exits, faults, background children, waits, and forced stops
+  for at least 1,000 cycles.
+  Completion: active slots and owned-resource counts return to baseline.
+
+## 3.5D. Address Space And User Fault Isolation
+
+- [ ] **M01: Introduce an address-space object**
+  Move user mappings, heap break, code, stack, and ownership metadata behind
+  one process-owned object.
+  Completion: user-pointer checks query the address-space interface.
+
+- [ ] **M02: Give each process an independent page-table root**
+  Retain required kernel mappings while separating user mappings.
+  Completion: one process cannot resolve another process's user pages.
+
+- [ ] **M03: Switch address spaces during scheduling**
+  Update the architecture backend and preserve TLB correctness.
+  Completion: yield, sleep, preemption, and nested process launch remain stable.
+
+- [ ] **M04: Add guarded user stacks**
+  Leave at least one unmapped guard page adjacent to each user stack.
+  Completion: stack overflow terminates only the offending process.
+
+- [ ] **M05: Enforce W^X and mapping ownership**
+  Prevent writable and executable user mappings and reject foreign mappings in
+  every syscall copy path.
+  Completion: code, data, heap, and stack permissions are regression tested.
+
+- [ ] **M06: Make user faults recoverable**
+  Convert user page fault and GP fault into process failure and scheduler
+  continuation.
+  Completion: the shell and unrelated services survive repeated user faults.
+
+## 3.5E. Kernel Objects And Handles
+
+- [ ] **H01: Define a typed kernel-handle ABI**
+  Include object type, slot, generation, and rights without exposing pointers.
+  Completion: malformed, stale, and wrong-type handles are rejected.
+
+- [ ] **H02: Add per-process handle tables**
+  Track ownership and close all handles during centralized process cleanup.
+  Completion: process exit leaves no live owned handles.
+
+- [ ] **H03: Move VFS handles behind the common handle layer**
+  Preserve SDK file behavior while eliminating subsystem-specific ownership
+  rules.
+  Completion: file close, duplicate close, and exit cleanup are tested.
+
+- [ ] **H04: Add transferable shared-memory objects**
+  Support bounded page-backed regions and explicit mapping rights.
+  Completion: two processes can share data without sharing arbitrary memory.
+
+- [ ] **H05: Add graphics-surface handles**
+  Define ownership, dimensions, format, stride, mapping, and destruction.
+  Completion: a future compositor can receive a surface handle over IPC.
+
+## 3.5F. IPC v2
+
+- [ ] **I01: Version the IPC ABI**
+  Keep the Phase 3 fixed message format as v1 and define explicit v2 feature
+  negotiation.
+  Completion: v1 programs continue to run or fail with a clear version error.
+
+- [ ] **I02: Add correlated request helpers**
+  Standardize request ids, expected sender identity, timeout, and cancellation.
+  Completion: unrelated messages cannot satisfy a pending request.
+
+- [ ] **I03: Transfer handles through IPC**
+  Validate sender rights and create receiver-owned handle entries atomically.
+  Completion: failed delivery does not leak or partially transfer a handle.
+
+- [ ] **I04: Define mailbox backpressure**
+  Document nonblocking failure, bounded blocking send, timeout, and process-exit
+  behavior.
+  Completion: queue saturation cannot deadlock the system.
+
+- [ ] **I05: Add IPC stress and fault injection**
+  Cover wraparound, saturation, receiver exit, stale identity, timeout, and
+  concurrent request/reply traffic.
+  Completion: at least 100,000 local messages complete without leaks or hangs.
+
+## 3.5G. Service Supervision And Permissions
+
+- [ ] **S01: Formalize service states**
+  Use stopped, starting, running, stopping, and failed transitions with a
+  monotonic generation.
+  Completion: registry and manager diagnostics agree on each state.
+
+- [ ] **S02: Add start and stop timeouts**
+  Detect services that never register or never exit.
+  Completion: the manager remains responsive and reports a stable timeout.
+
+- [ ] **S03: Add health checks and failure reporting**
+  Define a bounded ping/status protocol and retain the last failure reason.
+  Completion: diagnostics distinguish stopped, failed, and unresponsive.
+
+- [ ] **S04: Add restart policy**
+  Support disabled, on-failure, and bounded retry modes with backoff.
+  Completion: a crash loop cannot consume all process slots or CPU time.
+
+- [ ] **S05: Validate the dependency graph before launch**
+  Reject missing dependencies and cycles without recursive runtime failure.
+  Completion: dependency errors identify the involved services.
+
+- [ ] **S06: Add service permission metadata v1**
+  Start with static permissions for service discovery, IPC targets, input,
+  display, and shared surfaces.
+  Completion: a service without a permission receives a stable denial.
+
+- [ ] **S07: Add service lifecycle stress coverage**
+  Start, query, stop, crash, and restart services for at least 1,000 cycles.
+  Completion: process, registry, mailbox, handle, and memory counts return to
+  baseline.
+
+## 3.5H. Concurrency Readiness
+
+- [ ] **C01: Add interrupt-safe spinlock primitives**
+  Define lock ordering and save/restore interrupt-state behavior.
+  Completion: nested misuse is detectable in diagnostic builds.
+
+- [ ] **C02: Protect process, IPC, service, and handle tables**
+  Add the smallest lock boundaries that preserve each invariant.
+  Completion: no code blocks, sleeps, or performs user copies while holding an
+  inappropriate spinlock.
+
+- [ ] **C03: Add counter and snapshot consistency**
+  Make shell diagnostics observe coherent state without consuming queues.
+  Completion: stress tests cannot produce impossible counts or partial records.
+
+SMP remains out of scope. These tasks only prevent the current single-CPU
+interrupt and scheduler paths from depending on accidental atomicity.
+
+## 3.5I. Fault Injection And Soak Testing
+
+- [ ] **T01: Add deterministic allocation-failure injection**
+  Cover PMM, heap, process, mailbox, registry, handle, and shared-memory
+  allocation failures.
+  Completion: each failure unwinds without leaks or kernel panic.
+
+- [ ] **T02: Add malformed syscall and IPC fuzz cases**
+  Exercise invalid pointers, lengths, flags, handles, names, and ABI versions.
+  Completion: only the offending request or process fails.
+
+- [ ] **T03: Add a long-running service soak test**
+  Run shell, service manager, input, display, IPC traffic, sleep, and process
+  churn together.
+  Completion: a one-hour QEMU run has no panic, hang, or monotonic leak.
+
+- [ ] **T04: Add resource accounting diagnostics**
+  Report active processes, mappings, PMM pages, heap use, mailboxes, services,
+  handles, and shared surfaces.
+  Completion: tests can compare a baseline snapshot with the final snapshot.
+
+## 3.5J. Closure
+
+- [ ] **Z01: Run all Phase 1 through Phase 3 regressions**
+  Completion: every existing regression group passes from a clean build.
+
+- [ ] **Z02: Run the new stabilization stress matrix**
+  Completion: lifecycle, IPC, service, fault-injection, and soak tests pass.
+
+- [ ] **Z03: Freeze ABI versions for Phase 4**
+  Record process identity, handle, shared-memory, surface, IPC v2, and service
+  protocol layouts.
+  Completion: kernel and SDK compile-time assertions cover every shared type.
+
+- [ ] **Z04: Publish the Phase 3.5 regression matrix**
+  Map each invariant to an automated command and document residual risks.
+
+## Phase 4 Entry Criteria
+
+Phase 4 may begin when all of the following are true:
+
+- User faults terminate only the offending process.
+- Every process has an independent user address space.
+- IPC and input waits use the common wait/wakeup core.
+- Stale process and handle identities are rejected by generation checks.
+- Large GUI payloads use shared-memory surface handles, not inline IPC copies.
+- Service start, stop, crash, timeout, and restart are bounded.
+- 1,000 process and service lifecycle cycles return all resources to baseline.
+- 100,000 IPC messages complete without leaks, corruption, or deadlock.
+- The one-hour QEMU soak test passes.
+- The complete Phase 1 through Phase 3 regression baseline remains green.
+
+## Required Test Baseline
+
+After each numbered task, run the smallest relevant test plus:
+
+```sh
+make test-phase1
+```
+
+Before closing Phase 3.5, run:
+
+```sh
+make clean
+make all
+make uefi
+make test-phase1
+python3 tools/uefi_smoke.py
+python3 tools/uefi_userland_smoke.py
+python3 tools/uefi_screen_smoke.py
+make test-user-sdk
+make test-graphics
+make test-input
+make test-ipc
+make test-services
+```
+
+The Phase 3.5 implementation must add its own process, address-space, handle,
+IPC v2, service-supervision, fault-injection, and soak targets to this list.

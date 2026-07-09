@@ -115,6 +115,7 @@ What works on the active 64-bit UEFI path:
 - Phase 2 regression matrix: [docs/phase2_regression_matrix.md](docs/phase2_regression_matrix.md)
 - Phase 3 task breakdown: [docs/phase3_task_breakdown.md](docs/phase3_task_breakdown.md)
 - Phase 3 regression matrix: [docs/phase3_regression_matrix.md](docs/phase3_regression_matrix.md)
+- Phase 3.5 stabilization plan: [docs/phase3_5_stabilization.md](docs/phase3_5_stabilization.md)
 
 ## Build
 
