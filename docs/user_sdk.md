@@ -65,14 +65,14 @@ make test-graphics
 make test-input
 ```
 
-Phase 3 adds the first IPC regression group:
+Phase 3 provides the IPC and service regression groups:
 
 ```sh
 make test-ipc
 ```
 
-Service registry tests cover the fixed service identity ABI, automatic owner
-cleanup, SDK wrappers, and `services` shell diagnostics:
+Service tests cover the fixed service identity ABI, automatic owner cleanup,
+SDK wrappers, Service Manager v1, and the input/display placeholder services:
 
 ```sh
 make test-services
@@ -158,6 +158,11 @@ without special kernel policy.
 
 The full Phase 2 closure matrix is documented in
 `docs/phase2_regression_matrix.md`.
+
+The completed IPC and service coverage is documented in
+`docs/phase3_regression_matrix.md`. Phase 4 will build compositor and window
+protocols on these transport and discovery APIs without exposing raw
+framebuffer memory to applications.
 
 All SDK buffers are checked against the current process mappings. Kernel addresses,
 another process slot, read-only code pages, and memory above the current heap break

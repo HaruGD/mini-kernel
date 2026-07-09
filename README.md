@@ -114,6 +114,7 @@ What works on the active 64-bit UEFI path:
 - Phase 2 task breakdown: [docs/phase2_task_breakdown.md](docs/phase2_task_breakdown.md)
 - Phase 2 regression matrix: [docs/phase2_regression_matrix.md](docs/phase2_regression_matrix.md)
 - Phase 3 task breakdown: [docs/phase3_task_breakdown.md](docs/phase3_task_breakdown.md)
+- Phase 3 regression matrix: [docs/phase3_regression_matrix.md](docs/phase3_regression_matrix.md)
 
 ## Build
 
@@ -143,6 +144,10 @@ Run IPC and service-registry regression groups:
 make test-ipc
 make test-services
 ```
+
+Phase 3 is closed with bounded IPC, service discovery, Service Manager v1,
+and the first input/display user-space services. The next phase introduces a
+compositor and window-server protocol above these service foundations.
 
 Test ACPI power-off in an isolated QEMU instance:
 

@@ -158,14 +158,14 @@ future GUI policy into the kernel.
 
 ## 3G. Phase Closure
 
-- [ ] **T01: Run the Phase 3 regression baseline**
+- [x] **T01: Run the Phase 3 regression baseline**
   Run Phase 1, UEFI, userland, SDK, graphics, input, IPC, and service tests.
 
-- [ ] **T02: Add a Phase 3 regression matrix**
+- [x] **T02: Add a Phase 3 regression matrix**
   Document IPC, service registry, service manager, and placeholder service
   coverage.
 
-- [ ] **T03: Update README, roadmap, and SDK docs**
+- [x] **T03: Update README, roadmap, and SDK docs**
   Close Phase 3 documentation and point Phase 4 at compositor/window work.
 
 ## Required Test Baseline

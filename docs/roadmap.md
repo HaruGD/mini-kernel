@@ -1,195 +1,168 @@
 # OS64 Roadmap
 
-상태 표기:
-- [x] 완료
-- [~] 기반 구현 또는 안정화 진행 중
-- [ ] 미구현
+Status:
 
-## 현재 기반
+- `[x]` complete
+- `[~]` foundation implemented; stabilization or expansion remains
+- `[ ]` not implemented
 
-- [x] UEFI 부팅과 BootInfo/메모리 맵 전달
-- [x] PMM, paging, NX, kernel heap, process user heap
-- [x] FAT32 기반 root VFS와 memfs
-- [x] ELF64 user program, scheduler, syscall
+## Current Foundation
+
+- [x] UEFI boot and BootInfo v2 handoff
+- [x] Architecture-neutral PMM, VM policy, and kernel heap under `kernel/mm`
+- [x] x86_64 paging backend under `arch/x86_64/mm`
+- [x] FAT32 root VFS and memfs
+- [x] ELF64 user programs, scheduler, and syscall layer
 - [x] User SDK v2
-  - 오류 코드
-  - 시간 API
-  - GOP 그래픽 API
-  - 키보드 이벤트 API
+  - result codes
+  - memory and dynamic file APIs
+  - time API
+  - 2D graphics API
+  - keyboard and common input-event API
+  - IPC and service APIs
 - [x] Driver Manager v2
-  - dependency
-  - probe/bind
+  - dependency resolution
+  - probe and bind
   - import/export ABI
   - IRQ ABI
-  - unload/reload
-  - signed DRV package
+  - unload and reload
+  - signed DRV packages
 - [x] PCI discovery
-- [x] GOP framebuffer driver
-- [x] 2D graphics library and GOP present pipeline
-  - surface/clipping/drawing primitives
-  - bitmap blit, color-key blit, bitmap font/text
-  - back buffer, dirty rectangles, partial present
-  - 1280x800 and 800x600 screen smoke coverage
+- [x] GOP framebuffer driver and 2D present pipeline
 - [x] Common input-event path
-  - stable key/pointer/common event ABI
-  - bounded kernel event ring
-  - drop-oldest overflow policy
-  - PS/2 keyboard events produced into the common queue
-  - nonblocking common event read syscall
-  - blocking common event read syscall
-  - PS/2 key poll/wait syscall remains compatible
-  - input diagnostics and per-process focused delivery
 - [x] ACPI S5 shutdown
 
-## 1단계: 커널 진단과 하드웨어 기반
+## Phase 1: Kernel Diagnostics And Hardware Foundation
 
-GUI와 실컴 드라이버를 늘리기 전에 장애 원인을 안정적으로 추적할 수 있게 한다.
+Detailed tasks and regression coverage:
 
-- [x] Panic subsystem
-  - [x] exception register dump
-  - [x] frame-pointer stack trace 기초
-  - [x] panic 화면과 serial 동시 출력
-  - [x] double-fault IST stack
-- [x] Kernel log ring buffer
-  - [x] log level과 subsystem tag
-  - [x] 부팅 이후 로그 조회
-  - [x] panic 시 최근 4 KiB 로그 출력
+- `docs/phase1_regression_matrix.md`
+
+Completed:
+
+- [x] Panic subsystem and register dump
+- [x] Frame-pointer stack trace foundation
+- [x] Double-fault IST stack
+- [x] Kernel log ring with levels and subsystem tags
 - [x] Diagnostic boot mode
-  - [x] 외부 드라이버 autoload 없는 부팅
-  - [x] 상세 UEFI/메모리/PCI 로그
-  - [x] 전용 QEMU smoke test
-- [x] ACPI table parser
-  - [x] RSDP, RSDT/XSDT, MADT
-  - [x] checksum과 table length 검증
-- [x] Local APIC와 IOAPIC
-  - [x] IRQ0/IRQ1 routing과 MADT override
-  - [x] controller 공통 mask/EOI API
-  - [x] ACPI/APIC 실패 시 PIC fallback
-  - [x] PIC spurious IRQ7/IRQ15 ISR 판별과 EOI 처리
-- [x] Phase 1 fault 회귀 자동화
-  - [x] user/kernel page fault 분기
-  - [x] user/kernel general protection fault 분기
-  - [x] runtime ACPI 손상과 PIC fallback
+- [x] ACPI RSDP, RSDT/XSDT, and MADT parsing
+- [x] Local APIC and IOAPIC with PIC fallback
+- [x] User/kernel page-fault and GP-fault separation
+- [x] Automated QEMU fault and fallback coverage
 
-## 2단계: 그래픽과 입력 기반
+## Phase 2: Graphics And Input Foundation
 
-QEMU GOP 환경에서 먼저 완성하며 실제 GPU 드라이버는 요구하지 않는다.
-세부 구현과 검증 순서는 `docs/phase2_task_breakdown.md`를 따른다.
-2D 그래픽 라이브러리의 계층과 API 방향은 `docs/2d_graphics_library.md`를 따른다.
+Detailed tasks and regression coverage:
 
-- [x] 2D graphics library
-  - [x] pixel, line, rectangle
-  - [x] bitmap/image blit
-  - [x] bitmap font와 text
-  - [x] clipping
-  - [x] dirty rectangle
-- [x] Double buffering
-  - [x] back buffer
-  - [x] framebuffer present
-  - [x] 부분 화면 갱신
-- [x] Input event queue
-  - [x] common key/pointer/input event ABI
-  - [x] bounded kernel event ring
-  - [x] keyboard event queue
-  - [x] mouse event 형식 예약
-  - [x] overflow 정책
-  - [x] blocking/nonblocking read
-  - [x] shell diagnostics
-- [x] Process event delivery
-  - [x] 프로세스별 event queue
-  - [x] focus 대상 선택
-  - [x] focus 대상 전달
-  - [x] focus 변경과 종료 시 input waiter 정리
-  - [x] event-loop sample
-  - [x] 기존 PS/2와 이후 USB HID의 공통 이벤트 형식
+- `docs/phase2_task_breakdown.md`
+- `docs/phase2_regression_matrix.md`
+- `docs/2d_graphics_library.md`
 
-## 3단계: IPC와 사용자 공간 서비스
+Completed:
 
-창 서버와 서비스 매니저가 커널 내부 기능에 직접 결합되지 않도록 한다.
-세부 구현과 검증 순서는 `docs/phase3_task_breakdown.md`를 따른다.
+- [x] Reusable 2D surface, clipping, drawing, blit, and text primitives
+- [x] Back buffer, dirty rectangles, and partial GOP present
+- [x] Stable key, pointer, and common input-event ABI
+- [x] Bounded input queues with overflow policy
+- [x] Blocking and nonblocking input syscalls
+- [x] Focused per-process input delivery
+- [x] User-space graphics and event-loop samples
 
-- [x] IPC core
-  - message ABI와 process mailbox
-  - nonblocking/blocking send/receive
-  - request/reply helper semantics
-  - process 종료 시 정리
-- [x] Service registry
-  - 서비스 이름 등록과 조회
-  - owner pid와 generation 추적
-  - process 종료 시 unregister
-- [x] Service Manager v1
-  - `serviced.elf`
-  - 서비스 시작, 중지, 재시작
-  - dependency와 상태 관리
-  - shell/SDK front end
-- [ ] 기본 사용자 공간 서비스
-  - `inputd.elf` placeholder
-  - `displayd.elf` placeholder
-  - service client sample
-  - service smoke test
+## Phase 3: IPC And User-Space Services
 
-초기 서비스 원칙:
+Detailed tasks and regression coverage:
 
-- 서비스는 일반 ELF user program이다.
-- 드라이버는 계속 `.drv` 패키지다.
-- 커널은 IPC와 registry 같은 최소 메커니즘만 제공한다.
-- 서비스 정책은 가능한 한 `serviced.elf`와 user space에 둔다.
+- `docs/phase3_task_breakdown.md`
+- `docs/phase3_regression_matrix.md`
 
-## 4단계: Compositor와 창 서버
+Completed:
 
+- [x] Fixed-size IPC message ABI and bounded process mailboxes
+- [x] Nonblocking send/receive and blocking receive
+- [x] Request/reply helpers, diagnostics, and process-exit cleanup
+- [x] Service identity ABI and kernel service registry
+- [x] Owner cleanup and stale-pid prevention
+- [x] User-space Service Manager v1
+- [x] Start, stop, restart, status, and static dependency policy
+- [x] `inputd_c.elf` and `displayd_c.elf` placeholder services
+- [x] Automated IPC and service integration coverage
+
+Service principles:
+
+- Services are ordinary ELF user programs.
+- Drivers remain signed `.drv` packages.
+- The kernel supplies bounded transport, ownership, and cleanup mechanisms.
+- Service startup and dependency policy stay in `serviced_c.elf`.
+
+## Phase 4: Compositor And Window Server
+
+The next phase must preserve the existing layering:
+
+```text
+application
+  -> GUI SDK
+  -> window protocol over IPC
+  -> window service
+  -> compositor
+  -> display service / graphics driver interface
+  -> GOP fallback or hardware graphics driver
+```
+
+Planned work:
+
+- [ ] Display-driver abstraction above built-in GOP
+- [ ] Shared or transferable graphics surfaces
 - [ ] Framebuffer compositor prototype
-  - surface 생성과 제거
+  - surface ownership
   - z-order
   - damage tracking
-  - 화면 합성
-- [ ] Window server
-  - 창 생성, 이동, 크기 변경
-  - focus 관리
-  - 키보드와 마우스 전달
-  - 애플리케이션 IPC protocol
+  - screen composition
+- [ ] Window service
+  - create, destroy, move, and resize
+  - focus and input routing
+  - application IPC protocol
 - [ ] GUI application SDK
-  - window API
+  - window lifecycle API
   - drawing surface API
-  - input callback/event loop
-  - 공통 widget 기초
+  - event loop
+  - basic widget foundation
 
-## 5단계: GUI Desktop
+## Phase 5: Desktop Foundation
 
 - [ ] GUI terminal
 - [ ] Desktop background
-- [ ] Panel과 application launcher
+- [ ] Panel and application launcher
 - [ ] File manager
-- [ ] 설정과 종료 UI
+- [ ] Settings and shutdown UI
+- [ ] Windows-style installed system layout and package conventions
 
-## 실컴 하드웨어 확장 트랙
+## Parallel Hardware Track
 
-이 트랙은 GUI 개발과 병행할 수 있지만 ACPI/APIC와 DMA 기반이 먼저 필요하다.
+This track may progress beside GUI work, but DMA infrastructure comes first.
 
-- [ ] DMA allocation/mapping API
+- [ ] DMA allocation and mapping API
 - [ ] USB xHCI host controller
-- [ ] USB enumeration과 hub
-- [ ] USB HID keyboard와 mouse
-- [ ] AHCI 또는 NVMe boot/storage driver
-- [ ] Network driver와 network stack
-- [ ] Audio subsystem과 driver
-- [ ] 실제 GPU driver
+- [ ] USB enumeration and hub support
+- [ ] USB HID keyboard and mouse
+- [ ] AHCI or NVMe storage
+- [ ] Network driver and network stack
+- [ ] Audio subsystem and driver
+- [ ] Native GPU driver
 
-## 가까운 작업 순서
+## Multi-Architecture Track
 
-1. IPC core
-2. Service Manager v1
-3. Framebuffer compositor prototype
-4. Window server prototype
-5. GUI application SDK
-6. Desktop shell prototype
-7. USB xHCI/HID keyboard track for real hardware input
-8. DMA/storage driver track for real hardware expansion
+- [x] Separate generic memory policy from the x86_64 paging backend
+- [ ] Select architecture backends from the build system
+- [ ] Move remaining x86_64 CPU and boot assumptions behind architecture APIs
+- [ ] Define architecture-neutral interrupt, timer, and context-switch contracts
+- [ ] Add an AArch64 UEFI loader and kernel entry
+- [ ] Implement AArch64 paging, exception, timer, and context-switch backends
 
-## 원칙
+## Engineering Principles
 
-- 커널에는 정책보다 최소 메커니즘을 둔다.
-- 하드웨어 드라이버는 Driver Manager ABI를 사용한다.
-- GUI 구성 요소와 서비스는 가능한 한 사용자 공간에서 실행한다.
-- QEMU에서 자동 검증한 뒤 VirtualBox와 실컴으로 확장한다.
-- 기능과 책임이 달라지면 파일을 분리하고, 줄 수만을 기준으로 억지로 나누지 않는다.
-- 큰 단계는 한 가지 책임과 한 가지 검증 목표를 가진 작은 작업표로 나눈다.
+- Keep kernel mechanisms smaller than user-space policy.
+- Keep hardware drivers behind the Driver Manager ABI.
+- Keep services and GUI components in user space where practical.
+- Add one focused regression test for each new responsibility.
+- Split modules by responsibility, not by an arbitrary line-count target.
+- Stabilize each phase before expanding the next one.
