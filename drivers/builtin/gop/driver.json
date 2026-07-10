@@ -1,0 +1,12 @@
+{
+  "name": "gop",
+  "kind": "display",
+  "link": "builtin",
+  "autoload": true,
+  "priority": 20,
+  "permissions": ["DISPLAY"],
+  "state": "gop_ready",
+  "instance": "&gop",
+  "includes": ["drivers/gop.h"],
+  "externs": ["extern GOPDriver gop;"]
+}

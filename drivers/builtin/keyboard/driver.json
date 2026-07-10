@@ -1,0 +1,12 @@
+{
+  "name": "keyboard",
+  "kind": "input",
+  "link": "builtin",
+  "autoload": true,
+  "priority": 40,
+  "permissions": ["INPUT", "INTERRUPT"],
+  "state": "ready",
+  "instance": "&keyboard",
+  "includes": ["drivers/keyboard.h"],
+  "externs": ["extern KeyboardDriver keyboard;"]
+}

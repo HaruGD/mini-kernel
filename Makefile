@@ -37,6 +37,8 @@ USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk
 
 
 # External drivers
+BUILTIN_DRIVER_MANIFESTS = $(wildcard ./drivers/builtin/*/driver.json)
+GENERATED_BUILTIN_DRIVER_REGISTRY = ./build/generated/builtin_driver_registry.cpp
 DRIVER_PROJECT_MANIFESTS = $(wildcard ./drivers/external/*/driver.json)
 DRIVER_PROJECTS = $(patsubst ./drivers/external/%/driver.json,%,$(DRIVER_PROJECT_MANIFESTS))
 DRIVER_PROJECT_OBJECTS = $(patsubst %,./build/driver_ext_%.o,$(DRIVER_PROJECTS))
@@ -235,7 +237,11 @@ all32:
 ./build/driver_unload64.o: ./kernel/driver/driver_unload.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/drv_format.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/driver_builtin64.o: ./kernel/driver/driver_builtin.cpp ./include/kernel/driver/driver_manager.h ./include/drivers/gop.h
+$(GENERATED_BUILTIN_DRIVER_REGISTRY): $(BUILTIN_DRIVER_MANIFESTS) ./tools/gen_builtin_driver_registry.py
+	@mkdir -p ./build/generated
+	python3 ./tools/gen_builtin_driver_registry.py --output $@ $(BUILTIN_DRIVER_MANIFESTS)
+
+./build/driver_builtin64.o: $(GENERATED_BUILTIN_DRIVER_REGISTRY) ./include/kernel/driver/driver_manager.h ./include/kernel/driver/drv_format.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/driver_shell64.o: ./kernel/driver/driver_shell.cpp ./include/kernel/driver/driver_manager.h

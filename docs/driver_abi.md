@@ -104,6 +104,35 @@ Packages marked `NO_AUTOLOAD` are skipped by the boot autoload pass. This is
 used for demonstration or diagnostic drivers that should only run when loaded
 manually.
 
+## Driver Project Layout
+
+External drivers live under `drivers/external/<name>/` and are managed as small
+driver projects:
+
+- `driver.c` or `driver.cpp`
+- `driver.json`
+- `Makefile`
+
+The top-level build still performs the package build, signing, and FAT32 root
+image packaging, but each external driver directory can now delegate to that
+flow with its local Makefile.
+
+Built-in drivers live under `drivers/builtin/<name>/` and use the same project
+shape:
+
+- implementation source when the driver has one
+- `driver.json`
+- `Makefile`
+
+Built-in manifests use `"link": "builtin"` and describe the driver record that
+must be registered by the kernel: name, kind, permissions, state policy, and
+the in-kernel instance expression. During the kernel build,
+`tools/gen_builtin_driver_registry.py` reads these manifests and generates the
+source used for `driver_manager_register_builtin_devices()`.
+
+This keeps built-in drivers visible and configurable like external drivers
+without pretending they are unloadable `.drv` packages.
+
 Current dependency entry fields:
 
 - `name`

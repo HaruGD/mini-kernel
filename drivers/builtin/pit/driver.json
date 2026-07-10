@@ -1,0 +1,12 @@
+{
+  "name": "pit",
+  "kind": "timer",
+  "link": "builtin",
+  "autoload": true,
+  "priority": 50,
+  "permissions": ["TIMER", "INTERRUPT"],
+  "state": "ready",
+  "instance": "&pit",
+  "includes": ["drivers/pit.h"],
+  "externs": ["extern PIT pit;"]
+}

@@ -90,6 +90,8 @@ What works on the active 64-bit UEFI path:
 - ELF object based `.drv` builder for C and restricted freestanding C++ kernel drivers
 - C ABI driver boundary with optional C/C++ internal implementation
 - manifest-based external driver projects under `drivers/external/`
+- manifest-based built-in driver projects under `drivers/builtin/`
+- generated built-in driver registry from `drivers/builtin/*/driver.json`
 - separate unsigned builder and `.drv` signer
 - signature ABI v1 with `LOCAL_TEST`, `ROOT_KEY`, and `TPM_LOCAL` algorithm slots
 - local test signature validation for `.drv` packages

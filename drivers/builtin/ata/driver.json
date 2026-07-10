@@ -1,0 +1,12 @@
+{
+  "name": "ata0",
+  "kind": "block",
+  "link": "builtin",
+  "autoload": true,
+  "priority": 10,
+  "permissions": ["BLOCK"],
+  "state": "ready",
+  "instance": "&ata",
+  "includes": ["drivers/ata.h"],
+  "externs": ["extern ATADriver ata;"]
+}
