@@ -1,6 +1,6 @@
 #include <os64/os64.h>
 
-static void send_info_reply(uint32_t target_pid,
+static void send_info_reply(OsProcessIdentity target,
                             const OsServiceQueryRequest* request,
                             int result,
                             const OsGraphicsInfo* info) {
@@ -22,7 +22,7 @@ static void send_info_reply(uint32_t target_pid,
     os_msg_init(&message, OS_IPC_MESSAGE_REPLY);
     message.length = sizeof(reply);
     os_memcpy(message.payload, &reply, sizeof(reply));
-    os_msg_send(target_pid, &message);
+    os_msg_send_to_identity(target, &message);
 }
 
 static void handle_request(const OsIpcMessage* message) {
@@ -42,7 +42,7 @@ static void handle_request(const OsIpcMessage* message) {
         request.command == OS_SERVICE_QUERY_DISPLAY_INFO) {
         result = (int)os_gfx_get_info(&info);
     }
-    send_info_reply(message->sender_pid, &request, result, result == OS_SUCCESS ? &info : 0);
+    send_info_reply(os_msg_sender_identity(message), &request, result, result == OS_SUCCESS ? &info : 0);
 }
 
 int main(void) {

@@ -11,6 +11,7 @@
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
 #include "os64/input_types.h"
+#include "os64/process_types.h"
 #include "os64/service_types.h"
 
 struct UserGraphicsRect {
@@ -27,6 +28,7 @@ static_assert(sizeof(OsKeyEvent) == 16, "OsKeyEvent ABI changed");
 static_assert(sizeof(OsInputEvent) == 48, "OsInputEvent ABI changed");
 static_assert(sizeof(OsIpcMessage) == 88, "OsIpcMessage ABI changed");
 static_assert(sizeof(OsServiceInfo) == 36, "OsServiceInfo ABI changed");
+static_assert(sizeof(OsProcessIdentity) == 8, "OsProcessIdentity ABI changed");
 
 static uint64_t invalid_argument() {
     return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
@@ -54,6 +56,22 @@ static uint64_t dispatch_ipc_send(uint64_t target_pid, uint64_t user_message_add
 
     Process* sender = current_process();
     Process* target = find_process_by_pid((uint32_t)target_pid);
+    return (uint64_t)(int64_t)ipc_send_message(sender, target, &message);
+}
+
+static uint64_t dispatch_ipc_send_identity(uint64_t target_pid,
+                                           uint64_t target_generation,
+                                           uint64_t user_message_address) {
+    OsIpcMessage message;
+    if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_message_address,
+                          (uint8_t*)&message,
+                          sizeof(message))) {
+        return bad_buffer();
+    }
+
+    Process* sender = current_process();
+    Process* target = find_process_by_identity_compat((uint32_t)target_pid,
+                                                      (uint32_t)target_generation);
     return (uint64_t)(int64_t)ipc_send_message(sender, target, &message);
 }
 
@@ -133,6 +151,24 @@ static uint64_t dispatch_service_unregister(uint64_t user_name_address) {
         return invalid_argument();
     }
     return (uint64_t)(int64_t)service_unregister(current_process(), name);
+}
+
+static uint64_t dispatch_process_identity(uint64_t user_identity_address) {
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_identity_address,
+                              sizeof(OsProcessIdentity))) {
+        return bad_buffer();
+    }
+
+    Process* process = current_process();
+    OsProcessIdentity identity;
+    identity.pid = process != 0 ? process->pid : 0;
+    identity.generation = process != 0 ? process->generation : 0;
+    if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_identity_address,
+                                    (const uint8_t*)&identity,
+                                    sizeof(identity))) {
+        return bad_buffer();
+    }
+    return 0;
 }
 
 static uint64_t dispatch_graphics(uint64_t syscall_no,
@@ -378,6 +414,10 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
         *result = dispatch_ipc_send(arg1, arg2);
         return true;
     }
+    if (syscall_no == SYS_IPC_SEND_IDENTITY) {
+        *result = dispatch_ipc_send_identity(arg1, arg2, arg3);
+        return true;
+    }
     if (syscall_no == SYS_IPC_RECV) {
         *result = dispatch_ipc_receive(arg1, false, 0);
         return true;
@@ -396,6 +436,10 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_SERVICE_UNREGISTER) {
         *result = dispatch_service_unregister(arg1);
+        return true;
+    }
+    if (syscall_no == SYS_GET_PROCESS_IDENTITY) {
+        *result = dispatch_process_identity(arg1);
         return true;
     }
     return false;

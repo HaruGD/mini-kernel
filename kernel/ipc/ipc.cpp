@@ -51,7 +51,7 @@ int ipc_prepare_message(uint32_t sender_pid, const OsIpcMessage* source, OsIpcMe
     *prepared = *source;
     prepared->size = sizeof(OsIpcMessage);
     prepared->sender_pid = sender_pid;
-    prepared->reserved = 0;
+    prepared->sender_generation = 0;
     for (uint32_t i = prepared->length; i < OS_IPC_MESSAGE_PAYLOAD_SIZE; i++) {
         prepared->payload[i] = 0;
     }
@@ -74,6 +74,7 @@ int ipc_send_message(Process* sender, Process* target, const OsIpcMessage* messa
     if (result != IPC_OK) {
         return result;
     }
+    prepared.sender_generation = sender->generation;
     if (!process_ipc_mailbox_push(target, &prepared)) {
         return IPC_ERR_QUEUE_FULL;
     }

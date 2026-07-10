@@ -4,6 +4,7 @@
 
 struct ServiceEntry {
     uint32_t owner_pid;
+    uint32_t owner_generation;
     uint32_t state;
     uint32_t flags;
     uint32_t generation;
@@ -23,8 +24,8 @@ static int is_name_char(char ch) {
     return ch == '_' || ch == '-';
 }
 
-static int service_process_alive(uint32_t pid) {
-    Process* process = find_process_by_pid(pid);
+static int service_process_alive(uint32_t pid, uint32_t generation) {
+    Process* process = find_process_by_identity_compat(pid, generation);
     if (process == 0 || process->pid == 0 || !process->active) {
         return 0;
     }
@@ -67,6 +68,7 @@ static void service_clear_entry(ServiceEntry* entry) {
         return;
     }
     entry->owner_pid = 0;
+    entry->owner_generation = 0;
     entry->state = OS_SERVICE_STATE_EMPTY;
     entry->flags = OS_SERVICE_FLAG_NONE;
     entry->name[0] = '\0';
@@ -85,7 +87,7 @@ static void service_prune_stale() {
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
         ServiceEntry* entry = &service_table[i];
         if (entry->state == OS_SERVICE_STATE_REGISTERED &&
-            !service_process_alive(entry->owner_pid)) {
+            !service_process_alive(entry->owner_pid, entry->owner_generation)) {
             service_clear_entry(entry);
         }
     }
@@ -164,6 +166,7 @@ int service_register(Process* owner, const char* name, uint32_t flags) {
     }
 
     empty->owner_pid = owner->pid;
+    empty->owner_generation = owner->generation;
     empty->state = OS_SERVICE_STATE_REGISTERED;
     empty->flags = flags;
     empty->generation = service_next_generation();
@@ -206,7 +209,8 @@ int service_unregister(Process* owner, const char* name) {
             !service_name_equal(entry->name, name)) {
             continue;
         }
-        if (entry->owner_pid != owner->pid) {
+        if (entry->owner_pid != owner->pid ||
+            entry->owner_generation != owner->generation) {
             return SERVICE_ERR_PERMISSION_DENIED;
         }
         service_clear_entry(entry);

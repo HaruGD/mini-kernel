@@ -1,6 +1,8 @@
 #include <os64/os64.h>
 
-static void send_status_reply(uint32_t target_pid, const OsServiceQueryRequest* request, int result) {
+static void send_status_reply(OsProcessIdentity target,
+                              const OsServiceQueryRequest* request,
+                              int result) {
     OsInputServiceStatusReply reply;
     reply.size = sizeof(reply);
     reply.command = request != 0 ? request->command : OS_SERVICE_QUERY_STATUS;
@@ -15,7 +17,7 @@ static void send_status_reply(uint32_t target_pid, const OsServiceQueryRequest* 
     os_msg_init(&message, OS_IPC_MESSAGE_REPLY);
     message.length = sizeof(reply);
     os_memcpy(message.payload, &reply, sizeof(reply));
-    os_msg_send(target_pid, &message);
+    os_msg_send_to_identity(target, &message);
 }
 
 static void handle_request(const OsIpcMessage* message) {
@@ -30,7 +32,7 @@ static void handle_request(const OsIpcMessage* message) {
     }
 
     int result = request.command == OS_SERVICE_QUERY_STATUS ? OS_SUCCESS : OS_ERR_UNSUPPORTED;
-    send_status_reply(message->sender_pid, &request, result);
+    send_status_reply(os_msg_sender_identity(message), &request, result);
 }
 
 int main(void) {

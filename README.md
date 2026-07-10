@@ -41,6 +41,7 @@ What works on the active 64-bit UEFI path:
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
 - process table and scheduler prototype
+- process identities with pid generation checks for lifecycle-sensitive paths
 - bounded child-result history (`PROCESS_CHILD_RESULT_HISTORY_LIMIT=3`)
 - cooperative `yield`
 - timer-based preemption
@@ -63,7 +64,7 @@ What works on the active 64-bit UEFI path:
 - monotonic 64-bit PIT time exposed to user programs
 - syscall-mediated GOP drawing without exposing the physical framebuffer
 - blocking and nonblocking PS/2 keyboard event delivery with modifier state
-- IPC message ABI, per-process mailboxes, send/receive/wait/timeout syscalls, and SDK wrappers
+- IPC message ABI, per-process mailboxes, send/receive/wait/timeout syscalls, identity send, and SDK wrappers
 - `uping_c.elf` / `upong_c.elf` IPC round-trip sample
 - service identity ABI, kernel service registry, register/find/unregister syscalls, and SDK wrappers
 - `services` kernel shell diagnostics plus `usvc_c.elf` service-registry sample
@@ -147,6 +148,7 @@ Run IPC and service-registry regression groups:
 
 ```sh
 make test-ipc
+make test-process-lifecycle
 make test-services
 ```
 

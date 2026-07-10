@@ -10,6 +10,11 @@
 #define PROCESS_ARG_MAX 8
 #define PROCESS_CMDLINE_MAX 96
 
+typedef struct ProcessIdentity {
+    uint32_t pid;
+    uint32_t generation;
+} ProcessIdentity;
+
 enum ProcessState : uint32_t {
     PROCESS_STATE_EMPTY = 0,
     PROCESS_STATE_LOADED = 1,
@@ -73,7 +78,9 @@ enum ShellPromptKind : uint32_t {
 
 struct Process {
     uint32_t pid;
+    uint32_t generation;
     uint32_t parent_pid;
+    uint32_t parent_generation;
     char name[PROCESS_NAME_MAX];
     uint64_t code_base;
     uint64_t elf_link_base;

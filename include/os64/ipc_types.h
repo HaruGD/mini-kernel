@@ -22,7 +22,7 @@ typedef struct OsIpcMessage {
     uint32_t type;
     uint32_t flags;
     uint32_t length;
-    uint32_t reserved;
+    uint32_t sender_generation;
     uint8_t payload[OS_IPC_MESSAGE_PAYLOAD_SIZE];
 } OsIpcMessage;
 
@@ -38,7 +38,7 @@ OS64_IPC_STATIC_ASSERT(offsetof(OsIpcMessage, sender_pid) == 4, "OsIpcMessage.se
 OS64_IPC_STATIC_ASSERT(offsetof(OsIpcMessage, type) == 8, "OsIpcMessage.type offset changed");
 OS64_IPC_STATIC_ASSERT(offsetof(OsIpcMessage, flags) == 12, "OsIpcMessage.flags offset changed");
 OS64_IPC_STATIC_ASSERT(offsetof(OsIpcMessage, length) == 16, "OsIpcMessage.length offset changed");
-OS64_IPC_STATIC_ASSERT(offsetof(OsIpcMessage, reserved) == 20, "OsIpcMessage.reserved offset changed");
+OS64_IPC_STATIC_ASSERT(offsetof(OsIpcMessage, sender_generation) == 20, "OsIpcMessage.sender_generation offset changed");
 OS64_IPC_STATIC_ASSERT(offsetof(OsIpcMessage, payload) == 24, "OsIpcMessage.payload offset changed");
 
 #undef OS64_IPC_STATIC_ASSERT

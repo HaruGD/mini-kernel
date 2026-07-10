@@ -90,28 +90,43 @@ Phase 3.5B contracts:
 
 ## 3.5C. Process Lifecycle Hardening
 
-- [ ] **P01: Centralize process termination**
+- [x] **P01: Centralize process termination**
   Route normal return, user fault, forced stop, and launch failure through one
   cleanup sequence.
   Completion: each path releases the same owned resources exactly once.
 
-- [ ] **P02: Strengthen process identity**
+- [x] **P02: Strengthen process identity**
   Pair each reusable process slot with a generation value.
   Completion: stale process identities cannot target a replacement process.
 
-- [ ] **P03: Replace raw PID IPC targets with process identities**
+- [x] **P03: Replace raw PID IPC targets with process identities**
   Preserve a compatibility wrapper for existing SDK programs while the new
   ABI is introduced.
   Completion: queued requests cannot cross a PID-generation boundary.
 
-- [ ] **P04: Stabilize parent, child, wait, and reap policy**
+- [x] **P04: Stabilize parent, child, wait, and reap policy**
   Define orphan handling, bounded result retention, and forced child cleanup.
   Completion: repeated nested launches do not fill the process table.
 
-- [ ] **P05: Add process lifecycle stress coverage**
+- [x] **P05: Add process lifecycle stress coverage**
   Exercise normal exits, faults, background children, waits, and forced stops
   for at least 1,000 cycles.
   Completion: active slots and owned-resource counts return to baseline.
+
+Phase 3.5C contracts:
+
+- Each runtime process identity is now `(pid, generation)`.
+- `process_mark_returned` and `process_mark_failed` route through one shared
+  `process_finish` cleanup path.
+- Process diagnostics print generation and parent generation.
+- IPC receive records the sender generation in `OsIpcMessage.sender_generation`.
+- Existing `os_msg_send(pid, ...)` remains as the compatibility path; new code
+  can use `os_msg_send_to_identity`.
+- Service replies and the `upong` IPC sample reply to the exact sender identity.
+- Parent termination reaps terminal child results and orphans live children so
+  stale parent identities do not attach to a replacement process.
+- `make test-process-lifecycle` covers identity reuse, child wait wakeup,
+  bounded result retention, orphaning, and 1,000 process-slot reuse cycles.
 
 ## 3.5D. Address Space And User Fault Isolation
 

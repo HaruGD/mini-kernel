@@ -94,10 +94,14 @@ void print_process_summary(const Process* process, uint32_t tick_now) {
 
     print("pid=");
     print_hex32(process->pid);
+    print(" gen=");
+    print_hex32(process->generation);
     print(" name=");
     print(process->name);
     print(" parent=");
     print_hex32(process->parent_pid);
+    print(" parent_gen=");
+    print_hex32(process->parent_generation);
     print(" slot=");
     print_hex32(process->slot_index);
     print(" state=");
@@ -158,6 +162,8 @@ void print_job_compact(const char* label, const Process* process, uint32_t tick_
     print(label);
     print(": pid=");
     print_hex32(process->pid);
+    print(" gen=");
+    print_hex32(process->generation);
     print(" ");
     print(process_state_name(process->state));
     print(" ");
@@ -208,6 +214,8 @@ void print_child_result_compact(const char* label, const Process* process) {
     print(label);
     print(": pid=");
     print_hex32(process->pid);
+    print(" gen=");
+    print_hex32(process->generation);
     print(" ");
     print(process_state_name(process->state));
 
@@ -278,6 +286,8 @@ void print_ipc_info() {
         print_hex32(i);
         print("] pid=");
         print_hex32(process->pid);
+        print(" gen=");
+        print_hex32(process->generation);
         print(" name=");
         print(process->name);
         print(" state=");

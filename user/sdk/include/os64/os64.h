@@ -9,6 +9,7 @@
 #include "os64/input.h"
 #include "os64/ipc.h"
 #include "os64/ipc_types.h"
+#include "os64/process_types.h"
 #include "os64/result.h"
 #include "os64/service.h"
 #include "os64/service_manager_types.h"
@@ -99,6 +100,7 @@ int os_resolve_path(const char* input, char* output, uint32_t capacity);
 void os_exit(int code) __attribute__((noreturn));
 long os_getpid(void);
 long os_getppid(void);
+long os_get_process_identity(OsProcessIdentity* identity);
 long os_run(const char* command_line);
 long os_wait(void);
 long os_yield(void);

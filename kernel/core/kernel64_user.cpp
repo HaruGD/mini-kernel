@@ -54,8 +54,7 @@ int run_user_program(const char* command_line) {
         print("\nProcess table is full. Finish or reap child programs first.");
         return 0;
     }
-    process->pid = next_pid++;
-    process->parent_pid = parent != 0 ? parent->pid : 0;
+    process_assign_identity(process, next_pid++, parent);
     process->slot_index = slot_index;
     process_copy_cwd(process, parent != 0 ? process_get_cwd(parent) : "/");
     copy_string64(process->command_line, sizeof(process->command_line), command_line);

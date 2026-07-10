@@ -136,6 +136,10 @@ messages, delivered messages, dropped messages, and wait state per process
 without consuming pending messages.
 `os_msg_wait_timeout` exposes the same finite wait behavior for IPC receive;
 timeouts return `OS_ERR_TIMEOUT` and invalidated waits use `OS_ERR_CANCELLED`.
+Received IPC messages include the sender process generation in
+`OsIpcMessage.sender_generation`. New request/reply code can use
+`os_msg_sender_identity` and `os_msg_send_to_identity` to avoid replying to a
+reused pid.
 
 `usvc_c.elf` demonstrates the service registry path. It registers the `demo`
 service, verifies duplicate and invalid names are rejected, finds its own

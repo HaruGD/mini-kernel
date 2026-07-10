@@ -5,6 +5,7 @@
 
 uint32_t user_program_depth = 0;
 uint32_t next_pid = 1;
+uint32_t next_process_generation = 1;
 Process process_table[PROCESS_TABLE_SIZE];
 Process* process_stack[USER_PROGRAM_SLOT_COUNT];
 Process* sched_queue[SCHED_QUEUE_SIZE];
@@ -122,6 +123,38 @@ Process* current_process() {
         return 0;
     }
     return process_stack[user_program_depth - 1];
+}
+
+static uint32_t process_next_generation() {
+    uint32_t generation = next_process_generation++;
+    if (next_process_generation == 0) {
+        next_process_generation = 1;
+    }
+    return generation == 0 ? process_next_generation() : generation;
+}
+
+ProcessIdentity process_identity(const Process* process) {
+    ProcessIdentity identity;
+    identity.pid = process != 0 ? process->pid : 0;
+    identity.generation = process != 0 ? process->generation : 0;
+    return identity;
+}
+
+int process_identity_matches(const Process* process, ProcessIdentity identity) {
+    if (process == 0 || identity.pid == 0 || process->pid != identity.pid) {
+        return 0;
+    }
+    return identity.generation == 0 || process->generation == identity.generation;
+}
+
+void process_assign_identity(Process* process, uint32_t pid, const Process* parent) {
+    if (process == 0) {
+        return;
+    }
+    process->pid = pid;
+    process->generation = process_next_generation();
+    process->parent_pid = parent != 0 ? parent->pid : 0;
+    process->parent_generation = parent != 0 ? parent->generation : 0;
 }
 
 void process_event_queue_reset(Process* process) {
@@ -289,7 +322,9 @@ void process_clear(Process* process) {
     service_unregister_owner(process->pid);
     process_clear_focus(process->pid);
     process->pid = 0;
+    process->generation = 0;
     process->parent_pid = 0;
+    process->parent_generation = 0;
     process->name[0] = '\0';
     process->code_base = 0;
     process->elf_link_base = 0;
@@ -363,6 +398,20 @@ void process_copy_cwd(Process* process, const char* cwd) {
     }
 }
 
+static int process_child_matches_parent(const Process* process,
+                                        uint32_t parent_pid,
+                                        uint32_t parent_generation) {
+    if (process == 0 || process->parent_pid != parent_pid) {
+        return 0;
+    }
+    return parent_generation == 0 || process->parent_generation == parent_generation;
+}
+
+static uint32_t current_generation_for_pid(uint32_t pid) {
+    Process* parent = find_process_by_pid(pid);
+    return parent != 0 ? parent->generation : 0;
+}
+
 static int process_is_waitable_result(const Process* process) {
     if (process == 0 || process->pid == 0 || process->active || process->reaped) {
         return 0;
@@ -370,14 +419,17 @@ static int process_is_waitable_result(const Process* process) {
     return process->state == PROCESS_STATE_RETURNED || process->state == PROCESS_STATE_FAILED;
 }
 
-static uint32_t reap_old_child_results(uint32_t parent_pid, uint32_t keep_count) {
+static uint32_t reap_old_child_results(uint32_t parent_pid,
+                                       uint32_t parent_generation,
+                                       uint32_t keep_count) {
     uint32_t reaped_count = 0;
     for (;;) {
         uint32_t result_count = 0;
         Process* oldest = 0;
         for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
             Process* process = &process_table[i];
-            if (process->parent_pid != parent_pid || !process_is_waitable_result(process)) {
+            if (!process_child_matches_parent(process, parent_pid, parent_generation) ||
+                !process_is_waitable_result(process)) {
                 continue;
             }
             result_count++;
@@ -395,14 +447,44 @@ static uint32_t reap_old_child_results(uint32_t parent_pid, uint32_t keep_count)
     }
 }
 
-void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code) {
+static void process_cleanup_owned_children(uint32_t parent_pid, uint32_t parent_generation) {
+    if (parent_pid == 0) {
+        return;
+    }
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        Process* child = &process_table[i];
+        if (child->pid == 0 ||
+            !process_child_matches_parent(child, parent_pid, parent_generation)) {
+            continue;
+        }
+        if (child->active) {
+            child->parent_pid = 0;
+            child->parent_generation = 0;
+            continue;
+        }
+        if (process_is_waitable_result(child)) {
+            child->reaped = 1;
+        }
+    }
+}
+
+static void process_finish(Process* process,
+                           uint32_t final_state,
+                           uint32_t reason,
+                           uint32_t status_code) {
     if (process == 0) {
         return;
     }
 
+    uint32_t parent_pid = process->parent_pid;
+    uint32_t parent_generation = process->parent_generation;
+    uint32_t own_pid = process->pid;
+    uint32_t own_generation = process->generation;
+
+    scheduler_remove(process);
     vfs_close_all_for_owner(process->pid);
     service_unregister_owner(process->pid);
-    process->state = PROCESS_STATE_FAILED;
+    process->state = final_state;
     process->termination_reason = reason;
     process->status_code = status_code;
     process->scheduler_state = SCHED_STATE_FINISHED;
@@ -414,29 +496,24 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     process_clear_focus(process->pid);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);
-    reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
+    process_cleanup_owned_children(own_pid, own_generation);
+    reap_old_child_results(parent_pid,
+                           parent_generation,
+                           PROCESS_CHILD_RESULT_HISTORY_LIMIT);
+
+    ProcessIdentity parent_identity;
+    parent_identity.pid = parent_pid;
+    parent_identity.generation = parent_generation;
+    Process* parent = find_process_by_identity(parent_identity);
+    process_wait_signal(parent, PROCESS_WAIT_CHILD, PROCESS_WAIT_OK);
+}
+
+void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code) {
+    process_finish(process, PROCESS_STATE_FAILED, reason, status_code);
 }
 
 void process_mark_returned(Process* process, uint32_t reason, uint32_t status_code) {
-    if (process == 0) {
-        return;
-    }
-
-    vfs_close_all_for_owner(process->pid);
-    service_unregister_owner(process->pid);
-    process->state = PROCESS_STATE_RETURNED;
-    process->termination_reason = reason;
-    process->status_code = status_code;
-    process->scheduler_state = SCHED_STATE_FINISHED;
-    process->pause_reason = PROCESS_PAUSE_NONE;
-    process->resumable = 0;
-    process->active = 0;
-    process->reaped = 0;
-    process_wait_reset(process);
-    process_clear_focus(process->pid);
-    process_event_queue_reset(process);
-    process_ipc_mailbox_reset(process);
-    reap_old_child_results(process->parent_pid, PROCESS_CHILD_RESULT_HISTORY_LIMIT);
+    process_finish(process, PROCESS_STATE_RETURNED, reason, status_code);
 }
 
 static int scheduler_queue_contains(const Process* process) {
@@ -684,9 +761,11 @@ Process* allocate_process_record() {
 
 const Process* find_last_child_process(uint32_t parent_pid) {
     const Process* latest = 0;
+    uint32_t parent_generation = current_generation_for_pid(parent_pid);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         const Process* process = &process_table[i];
-        if (process->pid == 0 || process->parent_pid != parent_pid) {
+        if (process->pid == 0 ||
+            !process_child_matches_parent(process, parent_pid, parent_generation)) {
             continue;
         }
         if (latest == 0 || process->pid > latest->pid) {
@@ -698,9 +777,11 @@ const Process* find_last_child_process(uint32_t parent_pid) {
 
 Process* find_waitable_child_process(uint32_t parent_pid) {
     Process* latest = 0;
+    uint32_t parent_generation = current_generation_for_pid(parent_pid);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         Process* process = &process_table[i];
-        if (process->pid == 0 || process->parent_pid != parent_pid) {
+        if (process->pid == 0 ||
+            !process_child_matches_parent(process, parent_pid, parent_generation)) {
             continue;
         }
         if (process->active || process->reaped) {
@@ -718,9 +799,11 @@ Process* find_waitable_child_process(uint32_t parent_pid) {
 
 uint32_t reap_all_child_processes(uint32_t parent_pid) {
     uint32_t count = 0;
+    uint32_t parent_generation = current_generation_for_pid(parent_pid);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         Process* process = &process_table[i];
-        if (process->pid == 0 || process->parent_pid != parent_pid) {
+        if (process->pid == 0 ||
+            !process_child_matches_parent(process, parent_pid, parent_generation)) {
             continue;
         }
         if (process->active || process->reaped) {
@@ -737,9 +820,11 @@ uint32_t reap_all_child_processes(uint32_t parent_pid) {
 
 uint32_t count_unfinished_child_processes(uint32_t parent_pid) {
     uint32_t count = 0;
+    uint32_t parent_generation = current_generation_for_pid(parent_pid);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         const Process* process = &process_table[i];
-        if (process->pid == 0 || process->parent_pid != parent_pid) {
+        if (process->pid == 0 ||
+            !process_child_matches_parent(process, parent_pid, parent_generation)) {
             continue;
         }
         if (process->state == PROCESS_STATE_RETURNED || process->state == PROCESS_STATE_FAILED) {
@@ -752,9 +837,11 @@ uint32_t count_unfinished_child_processes(uint32_t parent_pid) {
 
 Process* find_last_paused_child_process(uint32_t parent_pid) {
     Process* latest = 0;
+    uint32_t parent_generation = current_generation_for_pid(parent_pid);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         Process* process = &process_table[i];
-        if (process->pid == 0 || process->parent_pid != parent_pid) {
+        if (process->pid == 0 ||
+            !process_child_matches_parent(process, parent_pid, parent_generation)) {
             continue;
         }
         if (!process->active || !process->resumable) {
@@ -780,4 +867,23 @@ Process* find_process_by_pid(uint32_t pid) {
         }
     }
     return 0;
+}
+
+Process* find_process_by_identity(ProcessIdentity identity) {
+    if (identity.pid == 0 || identity.generation == 0) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        if (process_identity_matches(&process_table[i], identity)) {
+            return &process_table[i];
+        }
+    }
+    return 0;
+}
+
+Process* find_process_by_identity_compat(uint32_t pid, uint32_t generation) {
+    ProcessIdentity identity;
+    identity.pid = pid;
+    identity.generation = generation;
+    return generation == 0 ? find_process_by_pid(pid) : find_process_by_identity(identity);
 }

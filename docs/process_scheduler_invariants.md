@@ -86,6 +86,8 @@ route all terminal paths through one cleanup operation.
 For an active process:
 
 - pid is nonzero and unique in the current process table.
+- `generation` is nonzero and changes whenever a reusable process slot receives
+  a new process identity.
 - `slot_index` identifies its current user mapping slot.
 - VFS handles, service registrations, input queue, and IPC mailbox are owned by
   that pid.

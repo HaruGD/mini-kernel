@@ -9,7 +9,7 @@ static void clear_message(OsIpcMessage* message) {
     message->type = OS_IPC_MESSAGE_NONE;
     message->flags = OS_IPC_FLAG_NONE;
     message->length = 0;
-    message->reserved = 0;
+    message->sender_generation = 0;
     for (uint32_t i = 0; i < OS_IPC_MESSAGE_PAYLOAD_SIZE; i++) {
         message->payload[i] = 0;
     }

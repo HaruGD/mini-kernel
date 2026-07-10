@@ -28,7 +28,7 @@ static OsIpcMessage make_message(uint32_t sequence) {
     message.type = OS_IPC_MESSAGE_REQUEST;
     message.flags = (sequence & 1u) ? OS_IPC_FLAG_REQUEST_REPLY : OS_IPC_FLAG_NONE;
     message.length = 4;
-    message.reserved = 0;
+    message.sender_generation = 0;
     for (uint32_t i = 0; i < OS_IPC_MESSAGE_PAYLOAD_SIZE; i++) {
         message.payload[i] = (uint8_t)(sequence + i);
     }
@@ -41,7 +41,7 @@ static void expect_message(const OsIpcMessage* message, uint32_t sequence) {
     check(message->type == OS_IPC_MESSAGE_REQUEST);
     check(message->flags == ((sequence & 1u) ? OS_IPC_FLAG_REQUEST_REPLY : OS_IPC_FLAG_NONE));
     check(message->length == 4);
-    check(message->reserved == 0);
+    check(message->sender_generation == 0);
     for (uint32_t i = 0; i < OS_IPC_MESSAGE_PAYLOAD_SIZE; i++) {
         check(message->payload[i] == (uint8_t)(sequence + i));
     }

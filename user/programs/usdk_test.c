@@ -68,6 +68,15 @@ static void test_syscall_pointer_validation(void) {
     check(result == OS_ERR_INVALID_ARGUMENT, "legacy write rejects kernel pointer");
 }
 
+static void test_process_identity(void) {
+    OsProcessIdentity identity;
+    long result = os_get_process_identity(&identity);
+    check(result == OS_SUCCESS &&
+          identity.pid == (uint32_t)os_getpid() &&
+          identity.generation != 0,
+          "process identity");
+}
+
 static void test_allocator(void) {
     void* initial_break = os_brk(0);
     uint8_t* first = (uint8_t*)os_malloc(48);
@@ -363,6 +372,7 @@ int main(void) {
 
     test_global_data();
     test_syscall_pointer_validation();
+    test_process_identity();
     test_allocator();
     test_paths();
     test_text_file();

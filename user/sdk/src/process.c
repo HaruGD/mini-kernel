@@ -15,6 +15,10 @@ long os_getppid(void) {
     return os_syscall0(OS_SYS_GETPPID);
 }
 
+long os_get_process_identity(OsProcessIdentity* identity) {
+    return os_syscall1(OS_SYS_GET_PROCESS_IDENTITY, (long)identity);
+}
+
 long os_run(const char* command) {
     return os_syscall1(OS_SYS_RUN, (long)command);
 }

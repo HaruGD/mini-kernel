@@ -15,6 +15,7 @@
 
 extern uint32_t user_program_depth;
 extern uint32_t next_pid;
+extern uint32_t next_process_generation;
 extern Process process_table[PROCESS_TABLE_SIZE];
 extern Process* process_stack[USER_PROGRAM_SLOT_COUNT];
 extern Process* sched_queue[SCHED_QUEUE_SIZE];
@@ -28,6 +29,11 @@ extern uint32_t input_focus_pid;
 Process* current_process();
 
 void process_clear(Process* process);
+ProcessIdentity process_identity(const Process* process);
+int process_identity_matches(const Process* process, ProcessIdentity identity);
+void process_assign_identity(Process* process, uint32_t pid, const Process* parent);
+Process* find_process_by_identity(ProcessIdentity identity);
+Process* find_process_by_identity_compat(uint32_t pid, uint32_t generation);
 void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code);
 void process_mark_returned(Process* process, uint32_t reason, uint32_t status_code);
 void process_event_queue_reset(Process* process);

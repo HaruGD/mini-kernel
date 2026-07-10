@@ -56,7 +56,7 @@ int main(void) {
     reply.length = (uint32_t)os_strlen(text);
     os_memcpy(reply.payload, text, reply.length);
 
-    result = os_msg_send(request.sender_pid, &reply);
+    result = os_msg_send_to_identity(os_msg_sender_identity(&request), &reply);
     if (result < 0) {
         os_printf("[upong] reply failed %ld\n", result);
         return 1;

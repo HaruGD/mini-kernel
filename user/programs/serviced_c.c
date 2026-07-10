@@ -159,10 +159,12 @@ static void send_reply(const OsIpcMessage* request_message,
     os_msg_init(&message, OS_IPC_MESSAGE_REPLY);
     message.length = sizeof(reply);
     os_memcpy(message.payload, &reply, sizeof(reply));
-    long send_result = os_msg_send(request_message->sender_pid, &message);
+    OsProcessIdentity target = os_msg_sender_identity(request_message);
+    long send_result = os_msg_send_to_identity(target, &message);
     if (send_result < 0) {
-        os_printf("[serviced] reply failed pid=%u result=%ld\n",
-                  request_message->sender_pid,
+        os_printf("[serviced] reply failed pid=%u gen=%u result=%ld\n",
+                  target.pid,
+                  target.generation,
                   send_result);
     }
 }
