@@ -104,11 +104,31 @@ Planned work:
 
 - [ ] Common wait and wakeup core
 - [ ] Hardened process identity and lifecycle cleanup
-- [ ] Independent user address spaces and recoverable user faults
+- [x] Independent user address spaces and recoverable user faults
 - [ ] Typed per-process handles and shared-memory objects
 - [ ] IPC v2 with correlation, timeout, and handle transfer
 - [ ] Service supervision, permissions, and bounded restart policy
 - [ ] Concurrency rules, fault injection, and long-running soak coverage
+
+## Phase 3.6: Driver Packaging And Layout
+
+Detailed tasks and Phase 4 entry criteria:
+
+- `docs/phase3_6_driver_packaging.md`
+
+Planned work:
+
+- [ ] Treat every driver as a package by default
+- [ ] Replace permanent `builtin`/`external` directory categories with
+  domain-based driver folders
+- [ ] Add central `config/drivers.json` policy for artifact, load stage, and
+  autoload behavior
+- [ ] Move filesystem drivers under `drivers/fs` while keeping VFS as kernel
+  infrastructure
+- [ ] Generate linked-driver registration and runtime autoload lists from
+  central policy
+- [ ] Preserve current `.drv` build, autoload, unload/reload, and FAT32 root
+  behavior through the migration
 
 ## Phase 4: Compositor And Window Server
 

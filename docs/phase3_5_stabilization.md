@@ -130,32 +130,53 @@ Phase 3.5C contracts:
 
 ## 3.5D. Address Space And User Fault Isolation
 
-- [ ] **M01: Introduce an address-space object**
+- [x] **M01: Introduce an address-space object**
   Move user mappings, heap break, code, stack, and ownership metadata behind
   one process-owned object.
   Completion: user-pointer checks query the address-space interface.
 
-- [ ] **M02: Give each process an independent page-table root**
+- [x] **M02: Give each process an independent page-table root**
   Retain required kernel mappings while separating user mappings.
   Completion: one process cannot resolve another process's user pages.
 
-- [ ] **M03: Switch address spaces during scheduling**
+- [x] **M03: Switch address spaces during scheduling**
   Update the architecture backend and preserve TLB correctness.
   Completion: yield, sleep, preemption, and nested process launch remain stable.
 
-- [ ] **M04: Add guarded user stacks**
+- [x] **M04: Add guarded user stacks**
   Leave at least one unmapped guard page adjacent to each user stack.
   Completion: stack overflow terminates only the offending process.
 
-- [ ] **M05: Enforce W^X and mapping ownership**
+- [x] **M05: Enforce W^X and mapping ownership**
   Prevent writable and executable user mappings and reject foreign mappings in
   every syscall copy path.
   Completion: code, data, heap, and stack permissions are regression tested.
 
-- [ ] **M06: Make user faults recoverable**
+- [x] **M06: Make user faults recoverable**
   Convert user page fault and GP fault into process failure and scheduler
   continuation.
   Completion: the shell and unrelated services survive repeated user faults.
+
+Phase 3.5D contracts:
+
+- Each process owns an `AddressSpace` record with its page-table root, code,
+  ELF link alias, guarded stack, heap, and bounded region metadata.
+- x86_64 VM now supports creating, switching, and editing explicit page-table
+  roots while retaining the kernel root as the fallback address space.
+- User code, stack, and heap pages are mapped into the process root instead of
+  directly into the kernel root.
+- User execution switches CR3 to the process root and restores the parent or
+  kernel root when returning from user mode.
+- User stacks reserve one unmapped guard page below the usable stack range.
+- ELF writable pages are NX; executable pages are not writable. Flat user
+  programs are mapped read/execute after load.
+- Syscall copy helpers validate buffers through the current process address
+  space and page flags before dereferencing user pointers.
+- User page faults and user general-protection faults mark only the current
+  process failed and return control to the scheduler path.
+- `make test-phase1` covers recoverable user page/GP faults, and
+  `make test-user-sdk` covers heap, syscall pointer validation, yield, sleep,
+  IPC wait, graphics, and input through the per-process address-space path.
 
 ## 3.5E. Kernel Objects And Handles
 

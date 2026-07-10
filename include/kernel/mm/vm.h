@@ -36,6 +36,19 @@ uint64_t vm_get_phys(uint64_t virt);
 uint64_t vm_get_flags(uint64_t virt);
 void vm_flush_page(uint64_t virt);
 uint64_t vm_get_root_phys();
+uint64_t vm_create_root();
+void vm_switch_root(uint64_t root_phys);
+int vm_map_page_in_root(uint64_t root_phys, uint64_t virt, uint64_t phys, uint64_t flags);
+int vm_unmap_page_in_root(uint64_t root_phys, uint64_t virt);
+int vm_protect_range_in_root(uint64_t root_phys, uint64_t virt, uint64_t size, uint64_t flags);
+int vm_alloc_map_range_in_root(uint64_t root_phys,
+                               uint64_t virt,
+                               uint64_t size,
+                               uint64_t flags,
+                               uint32_t* out_page_count);
+uint32_t vm_unmap_free_range_in_root(uint64_t root_phys, uint64_t virt, uint32_t page_count);
+uint64_t vm_get_phys_in_root(uint64_t root_phys, uint64_t virt);
+uint64_t vm_get_flags_in_root(uint64_t root_phys, uint64_t virt);
 
 #ifdef __cplusplus
 }

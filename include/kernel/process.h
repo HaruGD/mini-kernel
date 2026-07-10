@@ -5,6 +5,7 @@
 
 #include "kernel/ipc/ipc_mailbox.h"
 #include "kernel/input/input_event_queue.h"
+#include "kernel/mm/address_space.h"
 
 #define PROCESS_NAME_MAX 32
 #define PROCESS_ARG_MAX 8
@@ -84,6 +85,7 @@ struct Process {
     char name[PROCESS_NAME_MAX];
     uint64_t code_base;
     uint64_t elf_link_base;
+    uint64_t stack_guard_base;
     uint64_t stack_base;
     uint64_t heap_base;
     uint64_t heap_break;
@@ -93,6 +95,7 @@ struct Process {
     uint32_t image_size;
     uint32_t code_page_count;
     uint32_t elf_alias_page_count;
+    uint32_t stack_guard_page_count;
     uint32_t stack_page_count;
     uint32_t heap_page_count;
     uint32_t state;
@@ -137,6 +140,7 @@ struct Process {
     uint64_t saved_rip;
     uint64_t saved_rsp;
     uint64_t saved_rflags;
+    AddressSpace address_space;
     KernelInputEventQueue event_queue;
     KernelIpcMailbox ipc_mailbox;
 };

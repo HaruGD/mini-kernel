@@ -78,7 +78,7 @@
         ]
     },
     "files.associations": {
-        "*.asm": "x86asm",
+        "*.asm": "asm-intel-x86-generic",
         "*.easm": "x86asm",
         "*.inc": "x86asm",
         "*.ld": "c",

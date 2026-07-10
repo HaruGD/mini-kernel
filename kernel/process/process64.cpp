@@ -133,6 +133,37 @@ static uint32_t process_next_generation() {
     return generation == 0 ? process_next_generation() : generation;
 }
 
+static void process_reset_address_space_record(Process* process) {
+    if (process == 0) {
+        return;
+    }
+
+    uint64_t root_phys = process->address_space.root_phys;
+    process->address_space.root_phys = root_phys;
+    process->address_space.code_base = 0;
+    process->address_space.elf_link_base = 0;
+    process->address_space.stack_guard_base = 0;
+    process->address_space.stack_base = 0;
+    process->address_space.heap_base = 0;
+    process->address_space.heap_break = 0;
+    process->address_space.heap_mapped_end = 0;
+    process->address_space.heap_limit = 0;
+    process->address_space.code_page_count = 0;
+    process->address_space.elf_alias_page_count = 0;
+    process->address_space.stack_guard_page_count = 0;
+    process->address_space.stack_page_count = 0;
+    process->address_space.heap_page_count = 0;
+    process->address_space.region_count = 0;
+    for (uint32_t i = 0; i < ADDRESS_SPACE_MAX_REGIONS; i++) {
+        process->address_space.regions[i].active = 0;
+        process->address_space.regions[i].reserved0 = 0;
+        process->address_space.regions[i].reserved1 = 0;
+        process->address_space.regions[i].rights = 0;
+        process->address_space.regions[i].start = 0;
+        process->address_space.regions[i].end = 0;
+    }
+}
+
 ProcessIdentity process_identity(const Process* process) {
     ProcessIdentity identity;
     identity.pid = process != 0 ? process->pid : 0;
@@ -328,6 +359,7 @@ void process_clear(Process* process) {
     process->name[0] = '\0';
     process->code_base = 0;
     process->elf_link_base = 0;
+    process->stack_guard_base = 0;
     process->stack_base = 0;
     process->heap_base = 0;
     process->heap_break = 0;
@@ -337,6 +369,7 @@ void process_clear(Process* process) {
     process->image_size = 0;
     process->code_page_count = 0;
     process->elf_alias_page_count = 0;
+    process->stack_guard_page_count = 0;
     process->stack_page_count = 0;
     process->heap_page_count = 0;
     process->state = PROCESS_STATE_EMPTY;
@@ -375,6 +408,7 @@ void process_clear(Process* process) {
     process->saved_rip = 0;
     process->saved_rsp = 0;
     process->saved_rflags = 0;
+    process_reset_address_space_record(process);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);
 }

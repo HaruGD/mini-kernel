@@ -102,6 +102,7 @@ KERNEL64_OBJECTS = \
 	./build/user64_asm.o \
 	./build/pmm.o \
 	./build/vm.o \
+	./build/address_space.o \
 	./build/paging_x86_64.o \
 	./build/heap.o
 
@@ -323,6 +324,9 @@ $(GENERATED_BUILTIN_DRIVER_REGISTRY): $(BUILTIN_DRIVER_MANIFESTS) ./tools/gen_bu
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/vm.o: ./kernel/mm/vm.cpp ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h ./include/kernel/mm/arch_vm.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/address_space.o: ./kernel/mm/address_space.cpp ./include/kernel/mm/address_space.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/paging_x86_64.o: ./arch/x86_64/mm/paging.cpp ./include/kernel/mm/arch_vm.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h

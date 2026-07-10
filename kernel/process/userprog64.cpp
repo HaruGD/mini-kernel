@@ -243,60 +243,62 @@ uint64_t elf64_segment_page_flags(uint32_t segment_flags) {
     return flags;
 }
 
-static uint32_t current_alias_owner_pid = 0;
-static uint64_t current_alias_base = 0;
-static uint32_t current_alias_page_count = 0;
-
-static void unmap_current_alias() {
-    if (current_alias_base == 0 || current_alias_page_count == 0) {
-        current_alias_owner_pid = 0;
-        current_alias_base = 0;
-        current_alias_page_count = 0;
-        return;
+static uint32_t user_region_rights_from_flags(uint64_t flags) {
+    uint32_t rights = ADDRESS_SPACE_REGION_READ;
+    if (flags & VM_FLAG_WRITABLE) {
+        rights |= ADDRESS_SPACE_REGION_WRITE;
     }
-
-    for (uint32_t i = 0; i < current_alias_page_count; i++) {
-        vm_unmap_page(current_alias_base + ((uint64_t)i * VM_PAGE_SIZE));
+    if (!(flags & VM_FLAG_NO_EXECUTE)) {
+        rights |= ADDRESS_SPACE_REGION_EXECUTE;
     }
-    current_alias_owner_pid = 0;
-    current_alias_base = 0;
-    current_alias_page_count = 0;
+    return rights;
+}
+
+int write_user_byte_phys(Process* process, uint64_t virt, uint8_t value) {
+    if (process == 0) {
+        return 0;
+    }
+    uint64_t phys = address_space_get_phys(&process->address_space, virt);
+    if (phys == 0) {
+        return 0;
+    }
+    *((volatile uint8_t*)(uintptr_t)phys) = value;
+    return 1;
 }
 
 int map_user_elf_alias(Process* process) {
     if (process == 0 || process->pid == 0 ||
         process->elf_link_base == 0 ||
         process->elf_alias_page_count == 0) {
-        unmap_current_alias();
         return 1;
     }
 
-    if (current_alias_owner_pid == process->pid &&
-        current_alias_base == process->elf_link_base &&
-        current_alias_page_count == process->elf_alias_page_count) {
-        return 1;
-    }
-
-    unmap_current_alias();
+    address_space_remove_region(&process->address_space,
+                                process->elf_link_base,
+                                (uint64_t)process->elf_alias_page_count * VM_PAGE_SIZE);
     for (uint32_t i = 0; i < process->elf_alias_page_count; i++) {
         uint64_t slot_virt = process->code_base + ((uint64_t)i * VM_PAGE_SIZE);
         uint64_t alias_virt = process->elf_link_base + ((uint64_t)i * VM_PAGE_SIZE);
-        uint64_t phys = vm_get_phys(slot_virt);
-        uint64_t flags = vm_get_flags(slot_virt);
+        address_space_unmap_page(&process->address_space, alias_virt);
+        uint64_t phys = address_space_get_phys(&process->address_space, slot_virt);
+        uint64_t flags = address_space_get_flags(&process->address_space, slot_virt);
         if (phys == 0 || (flags & VM_FLAG_PRESENT) == 0) {
-            unmap_current_alias();
             return 0;
         }
-        if (!vm_map_page(alias_virt, phys & 0x000FFFFFFFFFF000ULL,
-                               flags & (0xFFFULL | VM_FLAG_NO_EXECUTE))) {
-            unmap_current_alias();
+        if (!address_space_map_page(&process->address_space,
+                                    alias_virt,
+                                    phys & 0x000FFFFFFFFFF000ULL,
+                                    flags & (0xFFFULL | VM_FLAG_NO_EXECUTE))) {
+            return 0;
+        }
+        if (!address_space_add_region(&process->address_space,
+                                      alias_virt,
+                                      VM_PAGE_SIZE,
+                                      user_region_rights_from_flags(flags))) {
             return 0;
         }
     }
 
-    current_alias_owner_pid = process->pid;
-    current_alias_base = process->elf_link_base;
-    current_alias_page_count = process->elf_alias_page_count;
     return 1;
 }
 
@@ -304,8 +306,14 @@ void unmap_user_elf_alias(Process* process) {
     if (process == 0 || process->pid == 0) {
         return;
     }
-    if (current_alias_owner_pid == process->pid) {
-        unmap_current_alias();
+    if (process->elf_link_base != 0 && process->elf_alias_page_count != 0) {
+        for (uint32_t i = 0; i < process->elf_alias_page_count; i++) {
+            address_space_unmap_page(&process->address_space,
+                                     process->elf_link_base + ((uint64_t)i * VM_PAGE_SIZE));
+        }
+        address_space_remove_region(&process->address_space,
+                                    process->elf_link_base,
+                                    (uint64_t)process->elf_alias_page_count * VM_PAGE_SIZE);
     }
 }
 
@@ -344,12 +352,13 @@ void cleanup_user_process_mapping(Process* process) {
     }
 
     unmap_user_elf_alias(process);
-    vm_unmap_free_range(process->code_base, process->code_page_count);
-    vm_unmap_free_range(process->stack_base, process->stack_page_count);
-    vm_unmap_free_range(process->heap_base, process->heap_page_count);
+    address_space_unmap_free_range(&process->address_space, process->code_base, process->code_page_count);
+    address_space_unmap_free_range(&process->address_space, process->stack_base, process->stack_page_count);
+    address_space_unmap_free_range(&process->address_space, process->heap_base, process->heap_page_count);
     process->heap_page_count = 0;
     process->heap_break = process->heap_base;
     process->heap_mapped_end = process->heap_base;
+    address_space_reset_user(&process->address_space);
 }
 
 static uint64_t align_up_user_page(uint64_t value) {
@@ -371,27 +380,35 @@ uint64_t resize_user_process_heap(Process* process, uint64_t requested_break) {
     if (requested_mapped_end > process->heap_mapped_end) {
         uint64_t grow_size = requested_mapped_end - process->heap_mapped_end;
         uint32_t added_pages = 0;
-        if (!vm_alloc_map_range(process->heap_mapped_end,
-                                      grow_size,
-                                      VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXECUTE,
-                                      &added_pages)) {
+        if (!address_space_alloc_map_range(&process->address_space,
+                                           process->heap_mapped_end,
+                                           grow_size,
+                                           VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXECUTE,
+                                           &added_pages)) {
             return 0;
         }
 
         for (uint64_t addr = process->heap_mapped_end; addr < requested_mapped_end; addr++) {
-            *((volatile uint8_t*)(uintptr_t)addr) = 0;
+            if (!write_user_byte_phys(process, addr, 0)) {
+                return 0;
+            }
         }
         process->heap_page_count += added_pages;
         process->heap_mapped_end = requested_mapped_end;
     } else if (requested_mapped_end < process->heap_mapped_end) {
         uint32_t remove_pages = (uint32_t)((process->heap_mapped_end - requested_mapped_end) /
                                            VM_PAGE_SIZE);
-        vm_unmap_free_range(requested_mapped_end, remove_pages);
+        address_space_unmap_free_range(&process->address_space, requested_mapped_end, remove_pages);
         process->heap_page_count -= remove_pages;
         process->heap_mapped_end = requested_mapped_end;
     }
 
     process->heap_break = requested_break;
+    process->address_space.heap_base = process->heap_base;
+    process->address_space.heap_break = process->heap_break;
+    process->address_space.heap_mapped_end = process->heap_mapped_end;
+    process->address_space.heap_limit = process->heap_limit;
+    process->address_space.heap_page_count = process->heap_page_count;
     return process->heap_break;
 }
 
@@ -400,25 +417,7 @@ static int user_address_owned(const Process* process, uint64_t address) {
         return 0;
     }
 
-    uint64_t code_end = process->code_base +
-        ((uint64_t)process->code_page_count * VM_PAGE_SIZE);
-    uint64_t stack_end = process->stack_base +
-        ((uint64_t)process->stack_page_count * VM_PAGE_SIZE);
-    uint64_t alias_end = process->elf_link_base +
-        ((uint64_t)process->elf_alias_page_count * VM_PAGE_SIZE);
-    if (address >= process->code_base && address < code_end) {
-        return 1;
-    }
-    if (process->elf_link_base != 0 &&
-        current_alias_owner_pid == process->pid &&
-        address >= process->elf_link_base &&
-        address < alias_end) {
-        return 1;
-    }
-    if (address >= process->stack_base && address < stack_end) {
-        return 1;
-    }
-    return address >= process->heap_base && address < process->heap_break;
+    return address_space_owns_address(&process->address_space, address);
 }
 
 static int user_buffer_accessible(const void* user_ptr, uint32_t size, int writable) {
@@ -436,23 +435,9 @@ static int user_buffer_accessible(const void* user_ptr, uint32_t size, int writa
     }
 
     Process* process = current_process();
-    uint64_t address = start;
-    while (1) {
-        if (!user_address_owned(process, address)) {
-            return 0;
-        }
-        uint64_t flags = vm_get_flags(address);
-        if (!(flags & VM_FLAG_USER) ||
-            (writable && !(flags & VM_FLAG_WRITABLE))) {
-            return 0;
-        }
-        if ((address & ~(VM_PAGE_SIZE - 1ULL)) ==
-            (end & ~(VM_PAGE_SIZE - 1ULL))) {
-            break;
-        }
-        address = (address & ~(VM_PAGE_SIZE - 1ULL)) + VM_PAGE_SIZE;
-    }
-    return user_address_owned(process, end);
+    return process != 0 &&
+           address_space_buffer_accessible(&process->address_space, start, size, writable) &&
+           user_address_owned(process, end);
 }
 
 int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
@@ -469,7 +454,7 @@ int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) 
             return 0;
         }
         if (page != checked_page) {
-            uint64_t flags = vm_get_flags(addr);
+            uint64_t flags = address_space_get_flags(&process->address_space, addr);
             if (!(flags & VM_FLAG_USER)) {
                 return 0;
             }

@@ -55,6 +55,11 @@ What works on the active 64-bit UEFI path:
 - User SDK v2 with console, string, path, file, directory, process, time, graphics, keyboard-event, IPC, timeout, and service-registry APIs
 - SDK 2D helpers for user-space line drawing, bitmap blit, color-key blit, and bitmap-font text
 - User syscall buffers constrained to process-owned mappings and page permissions
+- process-owned address-space records with per-process page-table roots
+- CR3 switching for user execution, yield, sleep, wait, and resume paths
+- guarded user stacks with one unmapped guard page
+- user W^X policy for ELF and flat program mappings
+- recoverable user page faults and user general-protection faults
 - static `libos64.a` linked into C user programs
 - per-process-slot user heap backed by syscall `brk` page mapping
 - SDK `malloc`, `calloc`, `realloc`, `free`, `strdup`, and dynamic file-read helpers
@@ -120,6 +125,7 @@ What works on the active 64-bit UEFI path:
 - Phase 3 task breakdown: [docs/phase3_task_breakdown.md](docs/phase3_task_breakdown.md)
 - Phase 3 regression matrix: [docs/phase3_regression_matrix.md](docs/phase3_regression_matrix.md)
 - Phase 3.5 stabilization plan: [docs/phase3_5_stabilization.md](docs/phase3_5_stabilization.md)
+- Phase 3.6 driver packaging/layout plan: [docs/phase3_6_driver_packaging.md](docs/phase3_6_driver_packaging.md)
 - Phase 3.5 starting baseline: [docs/phase3_5_baseline.md](docs/phase3_5_baseline.md)
 - Process/scheduler invariants: [docs/process_scheduler_invariants.md](docs/process_scheduler_invariants.md)
 - Kernel context rules: [docs/kernel_context_rules.md](docs/kernel_context_rules.md)

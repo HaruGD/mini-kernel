@@ -23,6 +23,17 @@ static int resume_saved_parent(Process* parent) {
     return resume_user_program_internal(grandparent, parent, 1);
 }
 
+static uint32_t user_region_rights_from_vm_flags(uint64_t flags) {
+    uint32_t rights = ADDRESS_SPACE_REGION_READ;
+    if (flags & VM_FLAG_WRITABLE) {
+        rights |= ADDRESS_SPACE_REGION_WRITE;
+    }
+    if (!(flags & VM_FLAG_NO_EXECUTE)) {
+        rights |= ADDRESS_SPACE_REGION_EXECUTE;
+    }
+    return rights;
+}
+
 int run_user_program(const char* command_line) {
     if (command_line == 0 || command_line[0] == '\0') {
         print("\nUser program filename is empty.");
@@ -41,8 +52,10 @@ int run_user_program(const char* command_line) {
     }
     uint32_t stack_index = user_program_depth;
     uint64_t user_code_base = 0;
-    uint64_t user_stack_base = 0;
-    get_execution_slot_bases(slot_index, &user_code_base, &user_stack_base);
+    uint64_t user_stack_guard_base = 0;
+    get_execution_slot_bases(slot_index, &user_code_base, &user_stack_guard_base);
+    uint64_t user_stack_base = user_stack_guard_base +
+        ((uint64_t)USER_STACK_GUARD_PAGE_COUNT * VM_PAGE_SIZE);
     uint64_t user_stack_top = user_stack_base + ((uint64_t)USER_STACK_PAGE_COUNT * VM_PAGE_SIZE);
     Process* parent = current_process();
     Process* process = allocate_process_record();
@@ -68,15 +81,32 @@ int run_user_program(const char* command_line) {
     const char* filename = launch.argv[0];
     copy_process_name(process->name, filename);
     process->shell_prompt_kind = infer_shell_prompt_kind(filename);
+    if (!address_space_ensure_root(&process->address_space)) {
+        process_mark_failed(process, PROCESS_TERM_MEMORY_ERROR, 4);
+        scheduler_mark_finished(process);
+        print("\nFailed to create user address space.");
+        return 0;
+    }
     process->code_base = user_code_base;
     process->elf_link_base = 0;
+    process->stack_guard_base = user_stack_guard_base;
     process->stack_base = user_stack_base;
     process->heap_base = user_code_base + USER_HEAP_OFFSET;
     process->heap_break = process->heap_base;
     process->heap_mapped_end = process->heap_base;
     process->heap_limit = user_code_base + USER_SLOT_SPAN;
     process->heap_page_count = 0;
+    process->stack_guard_page_count = USER_STACK_GUARD_PAGE_COUNT;
     process->stack_page_count = 0;
+    process->address_space.code_base = process->code_base;
+    process->address_space.elf_link_base = process->elf_link_base;
+    process->address_space.stack_guard_base = process->stack_guard_base;
+    process->address_space.stack_base = process->stack_base;
+    process->address_space.heap_base = process->heap_base;
+    process->address_space.heap_break = process->heap_break;
+    process->address_space.heap_mapped_end = process->heap_mapped_end;
+    process->address_space.heap_limit = process->heap_limit;
+    process->address_space.stack_guard_page_count = process->stack_guard_page_count;
     process->entry_point = user_code_base;
     process->state = PROCESS_STATE_LOADED;
     process->termination_reason = PROCESS_TERM_NONE;
@@ -94,7 +124,7 @@ int run_user_program(const char* command_line) {
         return 0;
     }
 
-    uint32_t max_user_image_size = (uint32_t)(user_stack_base - user_code_base);
+    uint32_t max_user_image_size = (uint32_t)(user_stack_guard_base - user_code_base);
     if (file_info.size == 0 || file_info.size > max_user_image_size) {
         process->image_size = file_info.size;
         process_mark_failed(process, PROCESS_TERM_LOAD_ERROR, 2);
@@ -244,6 +274,9 @@ int run_user_program(const char* command_line) {
             uint64_t final_flags = elf64_segment_page_flags(phdr->p_flags);
             for (uint32_t page = first_page; page <= last_page; page++) {
                 elf_page_flags[page] |= (final_flags & VM_FLAG_WRITABLE);
+                if (final_flags & VM_FLAG_WRITABLE) {
+                    elf_page_flags[page] |= VM_FLAG_NO_EXECUTE;
+                }
             }
         }
     }
@@ -265,7 +298,10 @@ int run_user_program(const char* command_line) {
         }
 
         uint64_t virt = user_code_base + ((uint64_t)page * VM_PAGE_SIZE);
-        if (!vm_map_page(virt, code_phys, VM_FLAG_WRITABLE | VM_FLAG_USER)) {
+        if (!address_space_map_page(&process->address_space,
+                                    virt,
+                                    code_phys,
+                                    VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXECUTE)) {
             pmm_free_block((void*)(uintptr_t)code_phys);
             process->code_page_count = mapped_code_pages;
             cleanup_user_process_mapping(process);
@@ -280,11 +316,12 @@ int run_user_program(const char* command_line) {
         }
 
         for (uint64_t i = 0; i < VM_PAGE_SIZE; i++) {
-            *((volatile uint8_t*)(uintptr_t)(virt + i)) = 0;
+            *((volatile uint8_t*)(uintptr_t)(code_phys + i)) = 0;
         }
         mapped_code_pages++;
     }
     process->code_page_count = code_page_count;
+    process->address_space.code_page_count = process->code_page_count;
 
     for (uint32_t page = 0; page < USER_STACK_PAGE_COUNT; page++) {
         uint64_t stack_phys = (uint64_t)(uintptr_t)pmm_alloc_block();
@@ -303,9 +340,10 @@ int run_user_program(const char* command_line) {
         }
 
         uint64_t virt = user_stack_base + ((uint64_t)page * VM_PAGE_SIZE);
-        if (!vm_map_page(virt,
-                               stack_phys,
-                               VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXECUTE)) {
+        if (!address_space_map_page(&process->address_space,
+                                    virt,
+                                    stack_phys,
+                                    VM_FLAG_WRITABLE | VM_FLAG_USER | VM_FLAG_NO_EXECUTE)) {
             pmm_free_block((void*)(uintptr_t)stack_phys);
             cleanup_user_process_mapping(process);
             process->code_page_count = 0;
@@ -321,9 +359,26 @@ int run_user_program(const char* command_line) {
         }
 
         for (uint64_t i = 0; i < VM_PAGE_SIZE; i++) {
-            *((volatile uint8_t*)(uintptr_t)(virt + i)) = 0;
+            *((volatile uint8_t*)(uintptr_t)(stack_phys + i)) = 0;
         }
         process->stack_page_count = page + 1;
+    }
+    process->address_space.stack_page_count = process->stack_page_count;
+    if (!address_space_add_region(&process->address_space,
+                                  process->stack_base,
+                                  (uint64_t)process->stack_page_count * VM_PAGE_SIZE,
+                                  ADDRESS_SPACE_REGION_READ | ADDRESS_SPACE_REGION_WRITE)) {
+        cleanup_user_process_mapping(process);
+        process->code_page_count = 0;
+        process->stack_page_count = 0;
+        kfree(program_buffer);
+        if (elf_page_flags != 0) {
+            kfree(elf_page_flags);
+        }
+        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 8);
+        scheduler_mark_finished(process);
+        print("\nFailed to record user stack region.");
+        return 0;
     }
 
     if (is_elf_image) {
@@ -339,17 +394,39 @@ int run_user_program(const char* command_line) {
 
             uint64_t dest = user_code_base + (phdr->p_vaddr - elf_first_vaddr);
             for (uint64_t j = 0; j < phdr->p_filesz; j++) {
-                *((volatile uint8_t*)(uintptr_t)(dest + j)) = program_buffer[phdr->p_offset + j];
+                if (!write_user_byte_phys(process, dest + j, program_buffer[phdr->p_offset + j])) {
+                    cleanup_user_process_mapping(process);
+                    process->code_page_count = 0;
+                    kfree(program_buffer);
+                    kfree(elf_page_flags);
+                    process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 4);
+                    scheduler_mark_finished(process);
+                    print("\nFailed to fill ELF user segment.");
+                    return 0;
+                }
             }
             for (uint64_t j = phdr->p_filesz; j < phdr->p_memsz; j++) {
-                *((volatile uint8_t*)(uintptr_t)(dest + j)) = 0;
+                if (!write_user_byte_phys(process, dest + j, 0)) {
+                    cleanup_user_process_mapping(process);
+                    process->code_page_count = 0;
+                    kfree(program_buffer);
+                    kfree(elf_page_flags);
+                    process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 5);
+                    scheduler_mark_finished(process);
+                    print("\nFailed to clear ELF user segment.");
+                    return 0;
+                }
             }
         }
 
         for (uint32_t page = 0; page < code_page_count; page++) {
             uint64_t virt = user_code_base + ((uint64_t)page * VM_PAGE_SIZE);
-            uint64_t phys = vm_get_phys(virt);
-            if (phys == 0 || !vm_map_page(virt, phys & 0x000FFFFFFFFFF000ULL, elf_page_flags[page])) {
+            uint64_t phys = address_space_get_phys(&process->address_space, virt);
+            if (phys == 0 ||
+                !address_space_map_page(&process->address_space,
+                                        virt,
+                                        phys & 0x000FFFFFFFFFF000ULL,
+                                        elf_page_flags[page])) {
                 cleanup_user_process_mapping(process);
                 process->code_page_count = 0;
                 kfree(program_buffer);
@@ -359,11 +436,56 @@ int run_user_program(const char* command_line) {
                 print("\nFailed to apply ELF page permissions.");
                 return 0;
             }
+            if (!address_space_add_region(&process->address_space,
+                                          virt,
+                                          VM_PAGE_SIZE,
+                                          user_region_rights_from_vm_flags(elf_page_flags[page]))) {
+                cleanup_user_process_mapping(process);
+                process->code_page_count = 0;
+                kfree(program_buffer);
+                kfree(elf_page_flags);
+                process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 6);
+                scheduler_mark_finished(process);
+                print("\nFailed to record ELF user region.");
+                return 0;
+            }
         }
         kfree(elf_page_flags);
     } else {
         for (uint32_t i = 0; i < file_info.size; i++) {
-            *((volatile uint8_t*)(uintptr_t)(user_code_base + i)) = program_buffer[i];
+            if (!write_user_byte_phys(process, user_code_base + i, program_buffer[i])) {
+                cleanup_user_process_mapping(process);
+                process->code_page_count = 0;
+                kfree(program_buffer);
+                process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 7);
+                scheduler_mark_finished(process);
+                print("\nFailed to fill flat user program.");
+                return 0;
+            }
+        }
+        if (!address_space_protect_range(&process->address_space,
+                                         user_code_base,
+                                         VM_PAGE_SIZE,
+                                         VM_FLAG_USER)) {
+            cleanup_user_process_mapping(process);
+            process->code_page_count = 0;
+            kfree(program_buffer);
+            process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 3);
+            scheduler_mark_finished(process);
+            print("\nFailed to apply flat user page permissions.");
+            return 0;
+        }
+        if (!address_space_add_region(&process->address_space,
+                                      user_code_base,
+                                      VM_PAGE_SIZE,
+                                      ADDRESS_SPACE_REGION_READ | ADDRESS_SPACE_REGION_EXECUTE)) {
+            cleanup_user_process_mapping(process);
+            process->code_page_count = 0;
+            kfree(program_buffer);
+            process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 6);
+            scheduler_mark_finished(process);
+            print("\nFailed to record flat user region.");
+            return 0;
         }
     }
     kfree(program_buffer);
@@ -408,10 +530,17 @@ int run_user_program(const char* command_line) {
     focus_foreground_process(process);
     process_stack[stack_index] = process;
     user_program_depth++;
+    address_space_activate(&process->address_space);
     uint64_t initial_user_rsp = prepare_user_stack_with_argv(process, user_stack_top, &launch);
     enter_user_mode(process->entry_point, initial_user_rsp);
     user_program_depth--;
     process_stack[stack_index] = 0;
+    Process* active_after_return = current_process();
+    if (active_after_return != 0) {
+        address_space_activate(&active_after_return->address_space);
+    } else {
+        address_space_activate_kernel();
+    }
 
     interrupt_controller_set_mask(1, saved_keyboard_mask);
     user_input_mode = saved_user_input_mode;
@@ -568,6 +697,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     }
     process_stack[stack_index] = process;
     user_program_depth++;
+    address_space_activate(&process->address_space);
     complete_waiting_syscall64(process);
     kernel_user_resume_rax = process->saved_rax;
     if (parent != 0 && parent->active) {
@@ -580,6 +710,12 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     resume_user_mode();
     user_program_depth--;
     process_stack[stack_index] = 0;
+    Process* active_after_return = current_process();
+    if (active_after_return != 0) {
+        address_space_activate(&active_after_return->address_space);
+    } else {
+        address_space_activate_kernel();
+    }
 
     interrupt_controller_set_mask(1, saved_keyboard_mask);
     user_input_mode = saved_user_input_mode;
