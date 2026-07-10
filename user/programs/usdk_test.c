@@ -237,6 +237,20 @@ static void test_time(void) {
           "time conversion consistency");
 }
 
+static void test_wait_timeout(void) {
+    OsIpcMessage message;
+    uint64_t before = os_time_ticks();
+    long result = os_msg_wait_timeout(&message, 2);
+    uint64_t after = os_time_ticks();
+
+    check(result == OS_ERR_TIMEOUT, "IPC wait timeout result");
+    check(after >= before + 2u, "IPC wait timeout deadline");
+    check(os_streq(os_result_string(OS_ERR_TIMEOUT), "timeout"),
+          "timeout result string");
+    check(os_streq(os_result_string(OS_ERR_CANCELLED), "cancelled"),
+          "cancelled result string");
+}
+
 static void test_graphics(void) {
     OsGraphicsInfo info;
     long result = os_gfx_get_info(&info);
@@ -357,6 +371,7 @@ int main(void) {
     test_scheduler();
     test_results();
     test_time();
+    test_wait_timeout();
     test_graphics();
     test_keyboard();
 

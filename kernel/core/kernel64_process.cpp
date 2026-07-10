@@ -57,7 +57,20 @@ extern "C" void save_sleep_context64(uint64_t* frame, uint32_t sleep_ticks) {
     }
 
     save_paused_context64(frame, process, PROCESS_PAUSE_SLEEP, 0);
-    scheduler_mark_sleeping(process, pit.get_tick() + sleep_ticks);
+    process_wait_begin(process,
+                       PROCESS_WAIT_TIMER,
+                       0,
+                       sleep_ticks,
+                       pit.get_tick());
+}
+
+extern "C" void save_wait_context64(uint64_t* frame) {
+    Process* process = current_process();
+    if (process == 0 || frame == 0 || !process_wait_is_pending(process)) {
+        return;
+    }
+
+    save_paused_context64(frame, process, PROCESS_PAUSE_WAIT, 0);
 }
 
 static const char* pause_action_name(const Process* process) {
@@ -66,6 +79,9 @@ static const char* pause_action_name(const Process* process) {
     }
     if (process != 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
         return "Sleeping";
+    }
+    if (process != 0 && process->pause_reason == PROCESS_PAUSE_WAIT) {
+        return "Waiting";
     }
     return "Yielded";
 }
@@ -154,7 +170,11 @@ static int parent_should_resume_immediately(const Process* parent) {
     if (parent == 0 || !parent->active) {
         return 0;
     }
-    if (parent->pause_reason == PROCESS_PAUSE_SLEEP &&
+    if (parent->wait_pending && parent->wait_reason != PROCESS_WAIT_CHILD) {
+        return 0;
+    }
+    if ((parent->pause_reason == PROCESS_PAUSE_SLEEP ||
+         parent->pause_reason == PROCESS_PAUSE_WAIT) &&
         parent->scheduler_state == SCHED_STATE_WAITING) {
         return 0;
     }

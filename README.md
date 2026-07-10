@@ -44,25 +44,26 @@ What works on the active 64-bit UEFI path:
 - bounded child-result history (`PROCESS_CHILD_RESULT_HISTORY_LIMIT=3`)
 - cooperative `yield`
 - timer-based preemption
+- common wait/wakeup core for sleep, child wait, IPC, input, key, and character waits
 - PIT tick based sleep / wakeup (`PIT_DEFAULT_HZ=100`, about 10ms per tick)
 - foreground / background job control
 - child-result reaping with `wait` / `reapall` plus automatic cleanup when process slots are exhausted
 - ELF user program loading
 - ELF link-address alias mapping for C globals, string pointers, and BSS data
 - C user programs with `main(void)` and `main(argc, argv)` support
-- User SDK v2 with console, string, path, file, directory, process, time, graphics, keyboard-event, IPC, and service-registry APIs
+- User SDK v2 with console, string, path, file, directory, process, time, graphics, keyboard-event, IPC, timeout, and service-registry APIs
 - SDK 2D helpers for user-space line drawing, bitmap blit, color-key blit, and bitmap-font text
 - User syscall buffers constrained to process-owned mappings and page permissions
 - static `libos64.a` linked into C user programs
 - per-process-slot user heap backed by syscall `brk` page mapping
 - SDK `malloc`, `calloc`, `realloc`, `free`, `strdup`, and dynamic file-read helpers
-- automated `usdk_test.elf` integration test covering heap, files, paths, directories, sleep, and yield
+- automated `usdk_test.elf` integration test covering heap, files, paths, directories, sleep, yield, IPC timeout, graphics, and input
 - `ugfxdemo_c.elf` user-space 2D graphics demo
 - stable SDK result codes with readable error names
 - monotonic 64-bit PIT time exposed to user programs
 - syscall-mediated GOP drawing without exposing the physical framebuffer
 - blocking and nonblocking PS/2 keyboard event delivery with modifier state
-- IPC message ABI, per-process mailboxes, send/receive/wait syscalls, and SDK wrappers
+- IPC message ABI, per-process mailboxes, send/receive/wait/timeout syscalls, and SDK wrappers
 - `uping_c.elf` / `upong_c.elf` IPC round-trip sample
 - service identity ABI, kernel service registry, register/find/unregister syscalls, and SDK wrappers
 - `services` kernel shell diagnostics plus `usvc_c.elf` service-registry sample

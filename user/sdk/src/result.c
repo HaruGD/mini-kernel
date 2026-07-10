@@ -23,6 +23,8 @@ const char* os_result_string(long result) {
         case OS_ERR_MESSAGE_TOO_LARGE: return "message too large";
         case OS_ERR_PERMISSION_DENIED: return "permission denied";
         case OS_ERR_BAD_BUFFER: return "bad buffer";
+        case OS_ERR_TIMEOUT: return "timeout";
+        case OS_ERR_CANCELLED: return "cancelled";
         default: return "unknown error";
     }
 }

@@ -5,6 +5,7 @@
 %define SYSCALL_YIELD_TO_KERNEL  0xFFFFFFFF80005302
 %define TIMER_PREEMPT_TO_KERNEL  0xFFFFFFFF80005303
 %define SYSCALL_SLEEP_TO_KERNEL  0xFFFFFFFF80005304
+%define SYSCALL_WAIT_TO_KERNEL   0xFFFFFFFF80005305
 %define FAULT_RETURN_TO_KERNEL 1
 
 global idt64_load
@@ -42,6 +43,7 @@ extern syscall_dispatch64
 extern save_yield_context64
 extern save_preempt_context64
 extern save_sleep_context64
+extern save_wait_context64
 
 %macro PUSH_GPRS 0
     push rax
@@ -232,6 +234,8 @@ syscall_asm:
     je .syscall_yield
     cmp rax, SYSCALL_SLEEP_TO_KERNEL
     je .syscall_sleep
+    cmp rax, SYSCALL_WAIT_TO_KERNEL
+    je .syscall_wait
     mov [rsp + 120], rax
     add rsp, 8
     POP_GPRS
@@ -265,6 +269,19 @@ syscall_asm:
     mov rsi, [rsp + 72]
     lea rdi, [rsp + 8]
     call save_sleep_context64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+.syscall_wait:
+    lea rdi, [rsp + 8]
+    call save_wait_context64
     add rsp, 8
     mov rbx, [kernel_user_saved_rbx]
     mov rbp, [kernel_user_saved_rbp]

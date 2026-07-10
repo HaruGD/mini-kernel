@@ -5,19 +5,26 @@ _Static_assert(sizeof(OsKeyEvent) == 16, "OsKeyEvent ABI changed");
 _Static_assert(sizeof(OsPointerEvent) == 32, "OsPointerEvent ABI changed");
 _Static_assert(sizeof(OsInputEvent) == 48, "OsInputEvent ABI changed");
 
-static long read_key_event(OsKeyEvent* event, long blocking) {
+static long read_key_event(OsKeyEvent* event, long blocking, uint32_t timeout_ticks) {
     if (event == 0) {
         return OS_ERR_INVALID_ARGUMENT;
     }
-    return os_syscall2(OS_SYS_KEYBOARD_EVENT, (long)event, blocking);
+    return os_syscall3(OS_SYS_KEYBOARD_EVENT,
+                       (long)event,
+                       blocking,
+                       (long)timeout_ticks);
 }
 
 long os_key_poll(OsKeyEvent* event) {
-    return read_key_event(event, 0);
+    return read_key_event(event, 0, 0);
 }
 
 long os_key_wait(OsKeyEvent* event) {
-    return read_key_event(event, 1);
+    return os_key_wait_timeout(event, 0);
+}
+
+long os_key_wait_timeout(OsKeyEvent* event, uint32_t timeout_ticks) {
+    return read_key_event(event, 1, timeout_ticks);
 }
 
 long os_input_poll(OsInputEvent* event) {
@@ -28,8 +35,12 @@ long os_input_poll(OsInputEvent* event) {
 }
 
 long os_input_wait(OsInputEvent* event) {
+    return os_input_wait_timeout(event, 0);
+}
+
+long os_input_wait_timeout(OsInputEvent* event, uint32_t timeout_ticks) {
     if (event == 0) {
         return OS_ERR_INVALID_ARGUMENT;
     }
-    return os_syscall1(OS_SYS_INPUT_EVENT_WAIT, (long)event);
+    return os_syscall2(OS_SYS_INPUT_EVENT_WAIT, (long)event, (long)timeout_ticks);
 }

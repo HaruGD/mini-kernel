@@ -23,5 +23,9 @@ long os_msg_recv(OsIpcMessage* message) {
 }
 
 long os_msg_wait(OsIpcMessage* message) {
-    return os_syscall1(OS_SYS_IPC_WAIT, (long)message);
+    return os_msg_wait_timeout(message, 0);
+}
+
+long os_msg_wait_timeout(OsIpcMessage* message, uint32_t timeout_ticks) {
+    return os_syscall2(OS_SYS_IPC_WAIT, (long)message, (long)timeout_ticks);
 }

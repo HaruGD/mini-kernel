@@ -15,6 +15,108 @@ uint32_t sched_switch_count = 0;
 uint32_t sched_yield_count = 0;
 uint32_t input_focus_pid = 0;
 
+const char* process_wait_reason_name(uint32_t reason) {
+    if (reason == PROCESS_WAIT_TIMER) {
+        return "timer";
+    }
+    if (reason == PROCESS_WAIT_CHILD) {
+        return "child";
+    }
+    if (reason == PROCESS_WAIT_IPC) {
+        return "ipc";
+    }
+    if (reason == PROCESS_WAIT_INPUT) {
+        return "input";
+    }
+    if (reason == PROCESS_WAIT_KEY) {
+        return "key";
+    }
+    if (reason == PROCESS_WAIT_CHAR) {
+        return "char";
+    }
+    return "none";
+}
+
+void process_wait_reset(Process* process) {
+    if (process == 0) {
+        return;
+    }
+    process->wait_pending = 0;
+    process->wait_has_deadline = 0;
+    process->wait_reserved[0] = 0;
+    process->wait_reserved[1] = 0;
+    process->wait_reserved[2] = 0;
+    process->wait_reason = PROCESS_WAIT_NONE;
+    process->wait_result = PROCESS_WAIT_OK;
+    process->wait_deadline = 0;
+    process->wait_user_address = 0;
+    process->wake_tick = 0;
+}
+
+int process_wait_begin(Process* process,
+                       uint32_t reason,
+                       uint64_t user_address,
+                       uint32_t timeout_ticks,
+                       uint32_t tick_now) {
+    if (process == 0 || reason == PROCESS_WAIT_NONE || process->wait_pending) {
+        return 0;
+    }
+
+    scheduler_remove(process);
+    process->wait_pending = 1;
+    process->wait_reason = reason;
+    process->wait_result = PROCESS_WAIT_OK;
+    process->wait_user_address = user_address;
+    process->wait_has_deadline = timeout_ticks != 0 ? 1 : 0;
+    process->wait_deadline = timeout_ticks != 0 ? tick_now + timeout_ticks : 0;
+    process->wake_tick = process->wait_deadline;
+    process->scheduler_state = SCHED_STATE_WAITING;
+    return 1;
+}
+
+int process_wait_signal(Process* process, uint32_t reason, int32_t result) {
+    if (process == 0 || !process->wait_pending || process->wait_reason != reason) {
+        return 0;
+    }
+
+    process->wait_pending = 0;
+    process->wait_has_deadline = 0;
+    process->wait_result = result;
+    process->wait_deadline = 0;
+    process->wake_tick = 0;
+    if (process->active && process->state == PROCESS_STATE_PAUSED && process->resumable) {
+        process->scheduler_state = SCHED_STATE_READY;
+        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+        scheduler_enqueue(process);
+    }
+    return 1;
+}
+
+int process_wait_cancel(Process* process, uint32_t reason, int32_t result) {
+    return process_wait_signal(process, reason, result);
+}
+
+void process_wait_tick(uint32_t tick_now) {
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        Process* process = &process_table[i];
+        if (!process->active || !process->wait_pending || !process->wait_has_deadline) {
+            continue;
+        }
+        if ((int32_t)(tick_now - process->wait_deadline) < 0) {
+            continue;
+        }
+
+        int32_t result = process->wait_reason == PROCESS_WAIT_TIMER
+            ? PROCESS_WAIT_OK
+            : PROCESS_WAIT_TIMEOUT;
+        process_wait_signal(process, process->wait_reason, result);
+    }
+}
+
+int process_wait_is_pending(const Process* process) {
+    return process != 0 && process->wait_pending != 0;
+}
+
 Process* current_process() {
     if (user_program_depth == 0) {
         return 0;
@@ -89,35 +191,40 @@ uint32_t process_ipc_mailbox_dropped_count(const Process* process) {
 }
 
 void process_ipc_wait_begin(Process* process) {
-    if (process != 0) {
-        process->ipc_waiting = 1;
-    }
+    process_wait_begin(process, PROCESS_WAIT_IPC, 0, 0, 0);
 }
 
 void process_ipc_wait_end(Process* process) {
-    if (process != 0) {
-        process->ipc_waiting = 0;
+    if (process != 0 && process->wait_reason == PROCESS_WAIT_IPC) {
+        process_wait_reset(process);
     }
 }
 
 int process_ipc_waiting(const Process* process) {
-    return process != 0 && process->ipc_waiting != 0;
+    return process != 0 &&
+           process->wait_pending &&
+           process->wait_reason == PROCESS_WAIT_IPC;
 }
 
 void process_input_wait_begin(Process* process) {
-    if (process != 0) {
-        process->input_waiting = 1;
-    }
+    process_wait_begin(process, PROCESS_WAIT_INPUT, 0, 0, 0);
 }
 
 void process_input_wait_end(Process* process) {
-    if (process != 0) {
-        process->input_waiting = 0;
+    if (process != 0 &&
+        (process->wait_reason == PROCESS_WAIT_INPUT ||
+         process->wait_reason == PROCESS_WAIT_KEY ||
+         process->wait_reason == PROCESS_WAIT_CHAR)) {
+        process_wait_reset(process);
     }
 }
 
 int process_input_waiting(const Process* process) {
-    return process != 0 && process->input_waiting != 0;
+    return process != 0 &&
+           process->wait_pending &&
+           (process->wait_reason == PROCESS_WAIT_INPUT ||
+            process->wait_reason == PROCESS_WAIT_KEY ||
+            process->wait_reason == PROCESS_WAIT_CHAR);
 }
 
 static int process_can_receive_focus(const Process* process) {
@@ -134,7 +241,9 @@ static int process_can_receive_focus(const Process* process) {
 uint32_t process_focused_pid() {
     Process* process = find_process_by_pid(input_focus_pid);
     if (!process_can_receive_focus(process)) {
-        process_input_wait_end(process);
+        process_wait_cancel(process, PROCESS_WAIT_INPUT, PROCESS_WAIT_CANCELLED);
+        process_wait_cancel(process, PROCESS_WAIT_KEY, PROCESS_WAIT_CANCELLED);
+        process_wait_cancel(process, PROCESS_WAIT_CHAR, PROCESS_WAIT_CANCELLED);
         input_focus_pid = 0;
     }
     return input_focus_pid;
@@ -152,7 +261,9 @@ int process_set_focus(uint32_t pid) {
     }
     Process* old_focus = process_focused();
     if (old_focus != 0 && old_focus->pid != pid) {
-        process_input_wait_end(old_focus);
+        process_wait_cancel(old_focus, PROCESS_WAIT_INPUT, PROCESS_WAIT_CANCELLED);
+        process_wait_cancel(old_focus, PROCESS_WAIT_KEY, PROCESS_WAIT_CANCELLED);
+        process_wait_cancel(old_focus, PROCESS_WAIT_CHAR, PROCESS_WAIT_CANCELLED);
     }
     input_focus_pid = pid;
     return 1;
@@ -164,7 +275,9 @@ void process_clear_focus(uint32_t pid) {
         input_focus_pid = 0;
     }
     if (old_focus != 0 && (pid == 0 || old_focus->pid == pid)) {
-        process_input_wait_end(old_focus);
+        process_wait_cancel(old_focus, PROCESS_WAIT_INPUT, PROCESS_WAIT_CANCELLED);
+        process_wait_cancel(old_focus, PROCESS_WAIT_KEY, PROCESS_WAIT_CANCELLED);
+        process_wait_cancel(old_focus, PROCESS_WAIT_CHAR, PROCESS_WAIT_CANCELLED);
     }
 }
 
@@ -205,9 +318,7 @@ void process_clear(Process* process) {
     process->resumable = 0;
     process->background = 0;
     process->pause_reason = PROCESS_PAUSE_NONE;
-    process->input_waiting = 0;
-    process->ipc_waiting = 0;
-    process->wake_tick = 0;
+    process_wait_reset(process);
     process->cwd[0] = '/';
     process->cwd[1] = '\0';
     process->command_line[0] = '\0';
@@ -296,12 +407,10 @@ void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code
     process->status_code = status_code;
     process->scheduler_state = SCHED_STATE_FINISHED;
     process->pause_reason = PROCESS_PAUSE_NONE;
-    process->wake_tick = 0;
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
-    process_input_wait_end(process);
-    process_ipc_wait_end(process);
+    process_wait_reset(process);
     process_clear_focus(process->pid);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);
@@ -320,12 +429,10 @@ void process_mark_returned(Process* process, uint32_t reason, uint32_t status_co
     process->status_code = status_code;
     process->scheduler_state = SCHED_STATE_FINISHED;
     process->pause_reason = PROCESS_PAUSE_NONE;
-    process->wake_tick = 0;
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
-    process_input_wait_end(process);
-    process_ipc_wait_end(process);
+    process_wait_reset(process);
     process_clear_focus(process->pid);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);
@@ -343,7 +450,15 @@ static int scheduler_queue_contains(const Process* process) {
 }
 
 void scheduler_enqueue(Process* process) {
-    if (process == 0 || scheduler_queue_contains(process) || sched_queue_count >= SCHED_QUEUE_SIZE) {
+    if (process == 0) {
+        return;
+    }
+    if (scheduler_queue_contains(process)) {
+        process->scheduler_state = SCHED_STATE_READY;
+        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+        return;
+    }
+    if (sched_queue_count >= SCHED_QUEUE_SIZE) {
         return;
     }
 
@@ -383,6 +498,9 @@ void scheduler_mark_running(Process* process) {
         return;
     }
 
+    if (process->wait_reason == PROCESS_WAIT_CHILD) {
+        process_wait_reset(process);
+    }
     process->scheduler_state = SCHED_STATE_RUNNING;
     process->pause_reason = PROCESS_PAUSE_NONE;
     process->wake_tick = 0;
@@ -445,28 +563,7 @@ void scheduler_on_tick() {
 }
 
 void scheduler_wake_sleeping_processes(uint32_t tick_now) {
-    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
-        Process* process = &process_table[i];
-        if (process->pid == 0 || !process->active) {
-            continue;
-        }
-        if (process->pause_reason != PROCESS_PAUSE_SLEEP) {
-            continue;
-        }
-        if (process->scheduler_state != SCHED_STATE_WAITING) {
-            continue;
-        }
-        if (tick_now < process->wake_tick) {
-            continue;
-        }
-
-        process->wake_tick = 0;
-        process->scheduler_state = SCHED_STATE_READY;
-        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
-        if (!scheduler_queue_contains(process)) {
-            scheduler_enqueue(process);
-        }
-    }
+    process_wait_tick(tick_now);
 }
 
 Process* find_next_ready_process(uint32_t exclude_pid) {

@@ -15,10 +15,9 @@ long-term synchronization design.
 | User fault | disabled on entry | no | no | no | no |
 | Kernel fault/panic | disabled permanently | no | no | no | no |
 
-The current IPC and input wait loops manipulate IF directly to avoid a lost
-wakeup between checking a queue and halting. Phase 3.5B must encapsulate this
-inside the common wait core; subsystem code must not grow new `cli/sti/hlt`
-loops.
+Subsystem wait paths must enter the common scheduler wait core instead of
+spinning or adding local `cli/sti/hlt` loops. The only idle halt loop lives in
+the scheduler-facing idle path after all ready processes have been checked.
 
 ## Hard IRQ Rules
 
@@ -61,7 +60,7 @@ There are no general spinlocks yet. Current safety relies on:
 
 - one logical CPU
 - interrupt-gate entry clearing IF
-- short explicit interrupt-disabled check/sleep sections
+- centralized scheduler wait and idle paths
 - bounded ring operations
 - no concurrent kernel threads
 

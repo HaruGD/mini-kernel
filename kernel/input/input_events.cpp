@@ -12,6 +12,14 @@ int input_events_push(const OsInputEvent* event) {
     Process* focused = process_focused();
     if (focused != 0) {
         process_event_queue_push(focused, event);
+        process_wait_signal(focused, PROCESS_WAIT_INPUT, PROCESS_WAIT_OK);
+        if (event != 0 && event->type == OS_INPUT_EVENT_KEY) {
+            process_wait_signal(focused, PROCESS_WAIT_KEY, PROCESS_WAIT_OK);
+            if (event->data.key.type == OS_KEY_EVENT_DOWN &&
+                event->data.key.character != 0) {
+                process_wait_signal(focused, PROCESS_WAIT_CHAR, PROCESS_WAIT_OK);
+            }
+        }
     }
     return result;
 }

@@ -13,13 +13,15 @@ QEMU_LOG = ROOT / "logs" / "qemu_service_manager_smoke.log"
 MONITOR_OUTPUT = Path("/tmp/os64_service_manager_smoke_monitor.txt")
 
 
-def wait_for_serial(pattern: str, timeout_seconds: float) -> None:
+def wait_for_serial(pattern: str, timeout_seconds: float, start_offset: int = 0) -> int:
     deadline = time.time() + timeout_seconds
     needle = pattern.encode("ascii")
     while time.time() < deadline:
         try:
-            if needle in SERIAL.read_bytes():
-                return
+            data = SERIAL.read_bytes()
+            index = data.find(needle, start_offset)
+            if index >= 0:
+                return index + len(needle)
         except FileNotFoundError:
             pass
         time.sleep(0.1)
@@ -89,27 +91,33 @@ def run() -> int:
         wait_for_serial("OS64>", 20)
         send_command(process, "service ping")
         wait_for_serial("[serviced] ready pid=", 20)
-        wait_for_serial("[usvcctl] ping service OK", 20)
+        marker = wait_for_serial("[usvcctl] ping service OK", 20)
+        wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "service start demo")
         wait_for_serial("[serviced] started base", 20)
         wait_for_serial("[serviced] started demo", 20)
-        wait_for_serial("[usvcctl] start demo OK", 20)
+        marker = wait_for_serial("[usvcctl] start demo OK", 20)
+        wait_for_serial("OS64>", 10, marker)
         send_command(process, "services")
         wait_for_serial("name=service", 10)
         wait_for_serial("name=base", 10)
-        wait_for_serial("name=demo", 10)
+        marker = wait_for_serial("name=demo", 10)
+        wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "service restart demo")
         wait_for_serial("[serviced] stopped demo", 20)
-        wait_for_serial("[usvcctl] restart demo OK", 20)
+        marker = wait_for_serial("[usvcctl] restart demo OK", 20)
+        wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "service stop demo")
-        wait_for_serial("[usvcctl] stop demo OK", 20)
+        marker = wait_for_serial("[usvcctl] stop demo OK", 20)
+        wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "service exit")
         wait_for_serial("[serviced] exit", 20)
-        wait_for_serial("[usvcctl] exit service OK", 20)
+        marker = wait_for_serial("[usvcctl] exit service OK", 20)
+        wait_for_serial("OS64>", 10, marker)
         send_command(process, "services")
         wait_for_serial("count=0x00000000", 10)
     finally:

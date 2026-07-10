@@ -45,6 +45,24 @@ enum ProcessPauseReason : uint32_t {
     PROCESS_PAUSE_YIELD = 1,
     PROCESS_PAUSE_PREEMPT = 2,
     PROCESS_PAUSE_SLEEP = 3,
+    PROCESS_PAUSE_WAIT = 4,
+};
+
+enum ProcessWaitReason : uint32_t {
+    PROCESS_WAIT_NONE = 0,
+    PROCESS_WAIT_TIMER = 1,
+    PROCESS_WAIT_CHILD = 2,
+    PROCESS_WAIT_IPC = 3,
+    PROCESS_WAIT_INPUT = 4,
+    PROCESS_WAIT_KEY = 5,
+    PROCESS_WAIT_CHAR = 6,
+};
+
+enum ProcessWaitResult : int32_t {
+    PROCESS_WAIT_OK = 0,
+    PROCESS_WAIT_NOT_READY = -1,
+    PROCESS_WAIT_TIMEOUT = -17,
+    PROCESS_WAIT_CANCELLED = -18,
 };
 
 enum ShellPromptKind : uint32_t {
@@ -84,8 +102,13 @@ struct Process {
     uint8_t resumable;
     uint8_t background;
     uint8_t pause_reason;
-    uint8_t input_waiting;
-    uint8_t ipc_waiting;
+    uint8_t wait_pending;
+    uint8_t wait_has_deadline;
+    uint8_t wait_reserved[3];
+    uint32_t wait_reason;
+    int32_t wait_result;
+    uint32_t wait_deadline;
+    uint64_t wait_user_address;
     uint32_t wake_tick;
     char cwd[PROCESS_CMDLINE_MAX];
     char command_line[PROCESS_CMDLINE_MAX];

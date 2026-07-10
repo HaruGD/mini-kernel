@@ -36,45 +36,12 @@ static uint64_t bad_buffer() {
     return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
 }
 
-static void input_wait_begin_check() {
-    __asm__ volatile("cli" ::: "memory");
-}
-
-static void input_wait_end_check() {
-    __asm__ volatile("sti" ::: "memory");
-}
-
-static void input_wait_halt_once() {
-    __asm__ volatile("sti; hlt; cli" ::: "memory");
-}
-
 static int pop_current_input_event(OsInputEvent* event) {
     Process* process = current_process();
     if (process != 0) {
         return process_event_queue_pop(process, event);
     }
     return input_events_pop(event);
-}
-
-static int input_wait_target_ready(Process* process) {
-    return process == 0 || process_focused_pid() == process->pid;
-}
-
-static uint64_t finish_input_wait(Process* process, int64_t result) {
-    process_input_wait_end(process);
-    return (uint64_t)result;
-}
-
-static void ipc_wait_begin_check() {
-    __asm__ volatile("cli" ::: "memory");
-}
-
-static void ipc_wait_end_check() {
-    __asm__ volatile("sti" ::: "memory");
-}
-
-static void ipc_wait_halt_once() {
-    __asm__ volatile("sti; hlt; cli" ::: "memory");
 }
 
 static uint64_t dispatch_ipc_send(uint64_t target_pid, uint64_t user_message_address) {
@@ -103,71 +70,31 @@ static uint64_t copy_ipc_message_to_user(uint64_t user_message_address,
         : bad_buffer();
 }
 
-static uint64_t dispatch_ipc_receive(uint64_t user_message_address, bool wait) {
+static uint64_t dispatch_ipc_receive(uint64_t user_message_address,
+                                     bool wait,
+                                     uint32_t timeout_ticks) {
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
                               sizeof(OsIpcMessage))) {
         return bad_buffer();
     }
 
     Process* receiver = current_process();
-    if (!wait) {
-        OsIpcMessage message;
-        int result = ipc_receive_message(receiver, &message);
-        if (result != IPC_OK) {
-            return (uint64_t)(int64_t)result;
-        }
+    OsIpcMessage message;
+    int result = ipc_receive_message(receiver, &message);
+    if (result == IPC_OK) {
         return copy_ipc_message_to_user(user_message_address, &message);
     }
-
-    process_ipc_wait_begin(receiver);
-    while (1) {
-        OsIpcMessage message;
-        ipc_wait_begin_check();
-        int result = ipc_receive_message(receiver, &message);
-        if (result == IPC_OK) {
-            ipc_wait_end_check();
-            process_ipc_wait_end(receiver);
-            return copy_ipc_message_to_user(user_message_address, &message);
-        }
-        if (result != IPC_ERR_WOULD_BLOCK) {
-            ipc_wait_end_check();
-            process_ipc_wait_end(receiver);
-            return (uint64_t)(int64_t)result;
-        }
-        if (!ipc_process_can_receive(receiver)) {
-            ipc_wait_end_check();
-            process_ipc_wait_end(receiver);
-            return (uint64_t)(int64_t)IPC_ERR_NOT_READY;
-        }
-        ipc_wait_end_check();
-
-        if (continue_ready_processes(receiver != 0 ? receiver->pid : 0)) {
-            redraw_user_shell_prompt_if_needed();
-            continue;
-        }
-        if (continue_woken_processes(receiver != 0 ? receiver->pid : 0)) {
-            redraw_user_shell_prompt_if_needed();
-            continue;
-        }
-        if (continue_background_processes(receiver != 0 ? receiver->pid : 0)) {
-            redraw_user_shell_prompt_if_needed();
-            continue;
-        }
-
-        ipc_wait_begin_check();
-        result = ipc_receive_message(receiver, &message);
-        if (result == IPC_OK) {
-            ipc_wait_end_check();
-            process_ipc_wait_end(receiver);
-            return copy_ipc_message_to_user(user_message_address, &message);
-        }
-        if (result != IPC_ERR_WOULD_BLOCK || !ipc_process_can_receive(receiver)) {
-            ipc_wait_end_check();
-            process_ipc_wait_end(receiver);
-            return (uint64_t)(int64_t)(result == IPC_ERR_WOULD_BLOCK ? IPC_ERR_NOT_READY : result);
-        }
-        ipc_wait_halt_once();
+    if (!wait || result != IPC_ERR_WOULD_BLOCK) {
+        return (uint64_t)(int64_t)result;
     }
+    if (!process_wait_begin(receiver,
+                            PROCESS_WAIT_IPC,
+                            user_message_address,
+                            timeout_ticks,
+                            pit.get_tick())) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    return SYSCALL_WAIT_TO_KERNEL;
 }
 
 static uint64_t dispatch_service_register(uint64_t user_name_address, uint64_t flags) {
@@ -272,132 +199,147 @@ static uint64_t dispatch_graphics(uint64_t syscall_no,
     return 0;
 }
 
-static uint64_t dispatch_keyboard(uint64_t user_event_address, bool wait) {
+static int pop_process_key_event(Process* process, OsKeyEvent* event) {
+    if (process == 0 || event == 0) {
+        return 0;
+    }
+
+    OsInputEvent input_event;
+    while (process_event_queue_pop(process, &input_event)) {
+        if (input_event.type == OS_INPUT_EVENT_KEY) {
+            *event = input_event.data.key;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pop_process_character(Process* process, uint32_t* character) {
+    if (process == 0 || character == 0) {
+        return 0;
+    }
+
+    OsInputEvent event;
+    while (process_event_queue_pop(process, &event)) {
+        if (event.type == OS_INPUT_EVENT_KEY &&
+            event.data.key.type == OS_KEY_EVENT_DOWN &&
+            event.data.key.character != 0) {
+            *character = event.data.key.character;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static uint64_t dispatch_keyboard(uint64_t user_event_address,
+                                  bool wait,
+                                  uint32_t timeout_ticks) {
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_event_address,
                               sizeof(OsKeyEvent))) {
         return invalid_argument();
     }
 
-    Process* wait_process = wait ? current_process() : 0;
-    if (wait) {
-        process_input_wait_begin(wait_process);
+    Process* process = current_process();
+    OsKeyEvent event;
+    if (pop_process_key_event(process, &event)) {
+        return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
+                                          (const uint8_t*)&event,
+                                          sizeof(event))
+            ? 0
+            : invalid_argument();
     }
-
-    while (1) {
-        OsInputEvent input_event;
-        if (wait) {
-            input_wait_begin_check();
-        }
-        if (pop_current_input_event(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
-            OsKeyEvent event = input_event.data.key;
-            if (wait) {
-                input_wait_end_check();
-            }
-            process_input_wait_end(wait_process);
-            if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
-                                            (const uint8_t*)&event,
-                                            sizeof(event))) {
-                return invalid_argument();
-            }
-            return 0;
-        }
-        if (!wait) {
-            return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
-        }
-        if (!input_wait_target_ready(wait_process)) {
-            input_wait_end_check();
-            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
-        }
-        input_wait_end_check();
-        if (continue_woken_processes(0)) {
-            redraw_user_shell_prompt_if_needed();
-            continue;
-        }
-        if (continue_background_processes(0)) {
-            redraw_user_shell_prompt_if_needed();
-            continue;
-        }
-        input_wait_begin_check();
-        if (pop_current_input_event(&input_event) && input_event.type == OS_INPUT_EVENT_KEY) {
-            OsKeyEvent event = input_event.data.key;
-            input_wait_end_check();
-            process_input_wait_end(wait_process);
-            if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
-                                            (const uint8_t*)&event,
-                                            sizeof(event))) {
-                return invalid_argument();
-            }
-            return 0;
-        }
-        if (!input_wait_target_ready(wait_process)) {
-            input_wait_end_check();
-            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
-        }
-        input_wait_halt_once();
+    if (!wait) {
+        return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
     }
+    if (process == 0 || process_focused_pid() != process->pid) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    if (!process_wait_begin(process,
+                            PROCESS_WAIT_KEY,
+                            user_event_address,
+                            timeout_ticks,
+                            pit.get_tick())) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    return SYSCALL_WAIT_TO_KERNEL;
 }
 
-static uint64_t dispatch_input_event(uint64_t user_event_address, bool wait) {
+static uint64_t dispatch_input_event(uint64_t user_event_address,
+                                     bool wait,
+                                     uint32_t timeout_ticks) {
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_event_address,
                               sizeof(OsInputEvent))) {
         return invalid_argument();
     }
 
-    Process* wait_process = wait ? current_process() : 0;
-    if (wait) {
-        process_input_wait_begin(wait_process);
+    Process* process = current_process();
+    OsInputEvent event;
+    if (pop_current_input_event(&event)) {
+        return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
+                                          (const uint8_t*)&event,
+                                          sizeof(event))
+            ? 0
+            : invalid_argument();
+    }
+    if (!wait) {
+        return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
+    }
+    if (process == 0 || process_focused_pid() != process->pid) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    if (!process_wait_begin(process,
+                            PROCESS_WAIT_INPUT,
+                            user_event_address,
+                            timeout_ticks,
+                            pit.get_tick())) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    return SYSCALL_WAIT_TO_KERNEL;
+}
+
+void complete_waiting_syscall64(Process* process) {
+    if (process == 0 || process->wait_pending || process->wait_reason == PROCESS_WAIT_NONE) {
+        return;
     }
 
-    while (1) {
+    int32_t result = process->wait_result;
+    if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_IPC) {
+        OsIpcMessage message;
+        result = ipc_receive_message(process, &message);
+        if (result == IPC_OK) {
+            result = (int32_t)(int64_t)copy_ipc_message_to_user(process->wait_user_address, &message);
+        }
+    } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_INPUT) {
         OsInputEvent event;
-        if (wait) {
-            input_wait_begin_check();
+        if (!process_event_queue_pop(process, &event)) {
+            result = SYS_ERR_NOT_READY;
+        } else if (!copy_kernel_to_user_buffer(
+                       (uint8_t*)(uintptr_t)process->wait_user_address,
+                       (const uint8_t*)&event,
+                       sizeof(event))) {
+            result = SYS_ERR_BAD_BUFFER;
         }
-        if (pop_current_input_event(&event)) {
-            if (wait) {
-                input_wait_end_check();
-            }
-            process_input_wait_end(wait_process);
-            if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
-                                            (const uint8_t*)&event,
-                                            sizeof(event))) {
-                return invalid_argument();
-            }
-            return 0;
+    } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_KEY) {
+        OsKeyEvent event;
+        if (!pop_process_key_event(process, &event)) {
+            result = SYS_ERR_NOT_READY;
+        } else if (!copy_kernel_to_user_buffer(
+                       (uint8_t*)(uintptr_t)process->wait_user_address,
+                       (const uint8_t*)&event,
+                       sizeof(event))) {
+            result = SYS_ERR_BAD_BUFFER;
         }
-        if (!wait) {
-            return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
+    } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_CHAR) {
+        uint32_t character = 0;
+        if (!pop_process_character(process, &character)) {
+            result = SYS_ERR_NOT_READY;
+        } else {
+            result = (int32_t)character;
         }
-        if (!input_wait_target_ready(wait_process)) {
-            input_wait_end_check();
-            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
-        }
-        input_wait_end_check();
-        if (continue_woken_processes(0)) {
-            redraw_user_shell_prompt_if_needed();
-            continue;
-        }
-        if (continue_background_processes(0)) {
-            redraw_user_shell_prompt_if_needed();
-            continue;
-        }
-        input_wait_begin_check();
-        if (pop_current_input_event(&event)) {
-            input_wait_end_check();
-            process_input_wait_end(wait_process);
-            if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_event_address,
-                                            (const uint8_t*)&event,
-                                            sizeof(event))) {
-                return invalid_argument();
-            }
-            return 0;
-        }
-        if (!input_wait_target_ready(wait_process)) {
-            input_wait_end_check();
-            return finish_input_wait(wait_process, SYS_ERR_NOT_READY);
-        }
-        input_wait_halt_once();
     }
+
+    process->saved_rax = (uint64_t)(int64_t)result;
+    process_wait_reset(process);
 }
 
 bool dispatch_sdk_syscall64(uint64_t syscall_no,
@@ -421,15 +363,15 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
         return true;
     }
     if (syscall_no == SYS_KEYBOARD_EVENT) {
-        *result = dispatch_keyboard(arg1, arg2 != 0);
+        *result = dispatch_keyboard(arg1, arg2 != 0, (uint32_t)arg3);
         return true;
     }
     if (syscall_no == SYS_INPUT_EVENT_POLL) {
-        *result = dispatch_input_event(arg1, false);
+        *result = dispatch_input_event(arg1, false, 0);
         return true;
     }
     if (syscall_no == SYS_INPUT_EVENT_WAIT) {
-        *result = dispatch_input_event(arg1, true);
+        *result = dispatch_input_event(arg1, true, (uint32_t)arg2);
         return true;
     }
     if (syscall_no == SYS_IPC_SEND) {
@@ -437,11 +379,11 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
         return true;
     }
     if (syscall_no == SYS_IPC_RECV) {
-        *result = dispatch_ipc_receive(arg1, false);
+        *result = dispatch_ipc_receive(arg1, false, 0);
         return true;
     }
     if (syscall_no == SYS_IPC_WAIT) {
-        *result = dispatch_ipc_receive(arg1, true);
+        *result = dispatch_ipc_receive(arg1, true, (uint32_t)arg2);
         return true;
     }
     if (syscall_no == SYS_SERVICE_REGISTER) {

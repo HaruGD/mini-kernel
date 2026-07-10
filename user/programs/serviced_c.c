@@ -1,7 +1,5 @@
 #include <os64/os64.h>
 
-#define SERVICE_IDLE_TICKS 100000u
-
 typedef struct ManagedService {
     const char* name;
     const char* program;
@@ -229,7 +227,6 @@ int main(void) {
 
     os_printf("[serviced] ready pid=%u\n", (uint32_t)os_getpid());
     while (1) {
-        os_sleep(SERVICE_IDLE_TICKS);
         OsIpcMessage message;
         result = os_msg_wait(&message);
         if (result < 0) {

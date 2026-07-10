@@ -48,6 +48,17 @@ int process_ipc_waiting(const Process* process);
 void process_input_wait_begin(Process* process);
 void process_input_wait_end(Process* process);
 int process_input_waiting(const Process* process);
+void process_wait_reset(Process* process);
+int process_wait_begin(Process* process,
+                       uint32_t reason,
+                       uint64_t user_address,
+                       uint32_t timeout_ticks,
+                       uint32_t tick_now);
+int process_wait_signal(Process* process, uint32_t reason, int32_t result);
+int process_wait_cancel(Process* process, uint32_t reason, int32_t result);
+void process_wait_tick(uint32_t tick_now);
+int process_wait_is_pending(const Process* process);
+const char* process_wait_reason_name(uint32_t reason);
 uint32_t process_focused_pid();
 Process* process_focused();
 int process_set_focus(uint32_t pid);

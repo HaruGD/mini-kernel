@@ -31,6 +31,7 @@ extern "C" {
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/syscall64.h"
+#include "kernel/syscall/sdk_syscalls.h"
 #include "kernel/userprog64.h"
 
 #define USER_SLOT0_CODE_BASE  0x0000000009000000ULL

@@ -13,13 +13,15 @@ QEMU_LOG = ROOT / "logs" / "qemu_first_services_smoke.log"
 MONITOR_OUTPUT = Path("/tmp/os64_first_services_smoke_monitor.txt")
 
 
-def wait_for_serial(pattern: str, timeout_seconds: float) -> None:
+def wait_for_serial(pattern: str, timeout_seconds: float, start_offset: int = 0) -> int:
     deadline = time.time() + timeout_seconds
     needle = pattern.encode("ascii")
     while time.time() < deadline:
         try:
-            if needle in SERIAL.read_bytes():
-                return
+            data = SERIAL.read_bytes()
+            index = data.find(needle, start_offset)
+            if index >= 0:
+                return index + len(needle)
         except FileNotFoundError:
             pass
         time.sleep(0.1)
@@ -90,25 +92,29 @@ def run() -> int:
         send_command(process, "service start input")
         wait_for_serial("[inputd] ready pid=", 20)
         wait_for_serial("[serviced] started input", 20)
-        wait_for_serial("[usvcctl] start input OK", 20)
+        marker = wait_for_serial("[usvcctl] start input OK", 20)
+        wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "service start display")
         wait_for_serial("[displayd] ready pid=", 20)
         wait_for_serial("[serviced] started display", 20)
-        wait_for_serial("[usvcctl] start display OK", 20)
+        marker = wait_for_serial("[usvcctl] start display OK", 20)
+        wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "run usvcprobe_c.elf")
         wait_for_serial("=== OS64 service probe ===", 20)
         wait_for_serial("[usvcprobe] input OK", 20)
         wait_for_serial("[usvcprobe] display OK", 20)
         wait_for_serial("[usvcprobe] service probe OK", 20)
-        wait_for_serial("state=returned term=exit code=0x00000000", 20)
+        marker = wait_for_serial("state=returned term=exit code=0x00000000", 20)
+        wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "service exit")
         wait_for_serial("[serviced] stopped display", 20)
         wait_for_serial("[serviced] stopped input", 20)
         wait_for_serial("[serviced] exit", 20)
-        wait_for_serial("[usvcctl] exit service OK", 20)
+        marker = wait_for_serial("[usvcctl] exit service OK", 20)
+        wait_for_serial("OS64>", 10, marker)
     finally:
         if process.poll() is None:
             process.terminate()

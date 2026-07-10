@@ -4,6 +4,25 @@ static void focus_foreground_process(Process* process) {
     }
 }
 
+static int parent_has_ready_context(const Process* parent) {
+    return parent != 0 &&
+           parent->active &&
+           parent->state == PROCESS_STATE_PAUSED &&
+           parent->resumable &&
+           !parent->wait_pending &&
+           parent->wait_reason != PROCESS_WAIT_NONE;
+}
+
+static int resume_saved_parent(Process* parent) {
+    if (!parent_has_ready_context(parent)) {
+        return 0;
+    }
+    Process* grandparent = parent->parent_pid != 0
+        ? find_process_by_pid(parent->parent_pid)
+        : 0;
+    return resume_user_program_internal(grandparent, parent, 1);
+}
+
 int run_user_program(const char* command_line) {
     if (command_line == 0 || command_line[0] == '\0') {
         print("\nUser program filename is empty.");
@@ -384,7 +403,7 @@ int run_user_program(const char* command_line) {
     }
     process->state = PROCESS_STATE_RUNNING;
     if (parent != 0) {
-        scheduler_mark_waiting(parent);
+        process_wait_begin(parent, PROCESS_WAIT_CHILD, 0, 0, 0);
     }
     scheduler_mark_running(process);
     focus_foreground_process(process);
@@ -415,19 +434,29 @@ int run_user_program(const char* command_line) {
         print("].\n");
 
         if (parent != 0 && parent->active) {
-            if (!map_user_elf_alias(parent)) {
-                process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
-                scheduler_mark_finished(parent);
-                return 0;
+            if (parent_has_ready_context(parent)) {
+                return resume_saved_parent(parent);
             }
-            scheduler_mark_running(parent);
-            focus_foreground_process(parent);
+            if (parent->state != PROCESS_STATE_PAUSED || !parent->resumable) {
+                if (!map_user_elf_alias(parent)) {
+                    process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
+                    scheduler_mark_finished(parent);
+                    return 0;
+                }
+                scheduler_mark_running(parent);
+                focus_foreground_process(parent);
+                return 1;
+            }
+        }
+        if (continue_ready_processes(process->pid)) {
             return 1;
         }
         if (parent == 0 && process->pause_reason == PROCESS_PAUSE_YIELD) {
             return continue_ready_processes(0) ? 1 : 1;
         }
-        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+        if (parent == 0 &&
+            (process->pause_reason == PROCESS_PAUSE_SLEEP ||
+             process->pause_reason == PROCESS_PAUSE_WAIT)) {
             return idle_until_ready_process();
         }
         return 1;
@@ -442,6 +471,9 @@ int run_user_program(const char* command_line) {
     process->resumable = 0;
     scheduler_mark_finished(process);
     if (parent != 0 && parent->active) {
+        if (parent_has_ready_context(parent)) {
+            return resume_saved_parent(parent);
+        }
         if (!map_user_elf_alias(parent)) {
             process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
             scheduler_mark_finished(parent);
@@ -464,11 +496,14 @@ int run_user_program(const char* command_line) {
         return 1;
     }
 
-    if (parent == 0) {
+    if (parent == 0 || !parent->active) {
         return 1;
     }
 
     if (parent_should_resume_immediately(parent)) {
+        if (parent_has_ready_context(parent)) {
+            return resume_saved_parent(parent);
+        }
         if (!map_user_elf_alias(parent)) {
             process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
             scheduler_mark_finished(parent);
@@ -504,7 +539,6 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         print("].\n");
     }
 
-    kernel_user_resume_rax = process->saved_rax;
     kernel_user_resume_rbx = process->saved_rbx;
     kernel_user_resume_rcx = process->saved_rcx;
     kernel_user_resume_rdx = process->saved_rdx;
@@ -533,15 +567,17 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         print("\nFailed to map user ELF link-address alias.");
         return 0;
     }
+    process_stack[stack_index] = process;
+    user_program_depth++;
+    complete_waiting_syscall64(process);
+    kernel_user_resume_rax = process->saved_rax;
     if (parent != 0 && parent->active) {
-        scheduler_mark_waiting(parent);
+        process_wait_begin(parent, PROCESS_WAIT_CHILD, 0, 0, 0);
     }
     scheduler_mark_running(process);
     focus_foreground_process(process);
     process->state = PROCESS_STATE_RUNNING;
     process->resumable = 0;
-    process_stack[stack_index] = process;
-    user_program_depth++;
     resume_user_mode();
     user_program_depth--;
     process_stack[stack_index] = 0;
@@ -566,19 +602,29 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         print("].\n");
 
         if (parent != 0 && parent->active) {
-            if (!map_user_elf_alias(parent)) {
-                process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
-                scheduler_mark_finished(parent);
-                return 0;
+            if (parent_has_ready_context(parent)) {
+                return resume_saved_parent(parent);
             }
-            scheduler_mark_running(parent);
-            focus_foreground_process(parent);
+            if (parent->state != PROCESS_STATE_PAUSED || !parent->resumable) {
+                if (!map_user_elf_alias(parent)) {
+                    process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
+                    scheduler_mark_finished(parent);
+                    return 0;
+                }
+                scheduler_mark_running(parent);
+                focus_foreground_process(parent);
+                return 1;
+            }
+        }
+        if (continue_ready_processes(process->pid)) {
             return 1;
         }
         if (parent == 0 && process->pause_reason == PROCESS_PAUSE_YIELD) {
             return continue_ready_processes(0) ? 1 : 1;
         }
-        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
+        if (parent == 0 &&
+            (process->pause_reason == PROCESS_PAUSE_SLEEP ||
+             process->pause_reason == PROCESS_PAUSE_WAIT)) {
             return idle_until_ready_process();
         }
         return 1;
@@ -592,6 +638,9 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     process->resumable = 0;
     scheduler_mark_finished(process);
     if (parent_should_resume_immediately(parent)) {
+        if (parent_has_ready_context(parent)) {
+            return resume_saved_parent(parent);
+        }
         if (!map_user_elf_alias(parent)) {
             process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
             scheduler_mark_finished(parent);
@@ -614,11 +663,14 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         return 1;
     }
 
-    if (parent == 0) {
+    if (parent == 0 || !parent->active) {
         return 1;
     }
 
     if (parent_should_resume_immediately(parent)) {
+        if (parent_has_ready_context(parent)) {
+            return resume_saved_parent(parent);
+        }
         scheduler_mark_running(parent);
         focus_foreground_process(parent);
         return 1;
@@ -645,8 +697,8 @@ int resume_user_program(uint32_t pid) {
         print("\nProcess is not a child of the current process.\n");
         return 0;
     }
-    if (process->scheduler_state == SCHED_STATE_WAITING && process->pause_reason == PROCESS_PAUSE_SLEEP) {
-        print("\nProcess is sleeping.\n");
+    if (process_wait_is_pending(process)) {
+        print("\nProcess is waiting.\n");
         return 0;
     }
     if (!process->resumable || process->state != PROCESS_STATE_PAUSED) {

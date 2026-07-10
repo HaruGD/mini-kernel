@@ -80,6 +80,9 @@ const char* pause_reason_name(uint32_t reason) {
     if (reason == PROCESS_PAUSE_SLEEP) {
         return "sleep";
     }
+    if (reason == PROCESS_PAUSE_WAIT) {
+        return "wait";
+    }
     return "none";
 }
 
@@ -107,6 +110,8 @@ void print_process_summary(const Process* process, uint32_t tick_now) {
     print(scheduler_state_name(process->scheduler_state));
     print(" pause=");
     print(pause_reason_name(process->pause_reason));
+    print(" wait=");
+    print(process_wait_reason_name(process->wait_reason));
     print(" mode=");
     print(process->background ? "bg" : "fg");
     print(" ticks=");
@@ -118,6 +123,13 @@ void print_process_summary(const Process* process, uint32_t tick_now) {
         print(" wake=");
         print_hex32(process->wake_tick);
         print(" remain=");
+        print_hex32(remaining);
+    }
+    if (process->wait_has_deadline && process->wait_reason != PROCESS_WAIT_TIMER) {
+        uint32_t remaining = (int32_t)(process->wait_deadline - tick_now) > 0
+            ? process->wait_deadline - tick_now
+            : 0;
+        print(" timeout=");
         print_hex32(remaining);
     }
     print(" reaped=");

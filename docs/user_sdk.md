@@ -105,7 +105,7 @@ if (os_input_poll(&input) == OS_SUCCESS && input.type == OS_INPUT_EVENT_KEY) {
 os_input_wait(&input);
 ```
 
-Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The stable input ABI lives in `os64/input_types.h`: `OsKeyEvent` is the legacy keyboard-specific payload, while `OsInputEvent` is the common event envelope used by the input queue. `os_input_poll` returns `OS_ERR_WOULD_BLOCK` when no event is ready; `os_input_wait` blocks without busy-spinning until an event arrives, or returns `OS_ERR_NOT_READY` if the process loses input focus while waiting. The kernel shell `input` command reports queue capacity, queued events, delivered events, and dropped events without consuming pending input.
+Keyboard keycodes use the PS/2 set-1 code in the low byte and set bit `0x100` for extended keys. `OsKeyEvent.character` is populated for printable key-down events. The stable input ABI lives in `os64/input_types.h`: `OsKeyEvent` is the legacy keyboard-specific payload, while `OsInputEvent` is the common event envelope used by the input queue. `os_input_poll` returns `OS_ERR_WOULD_BLOCK` when no event is ready; `os_input_wait` blocks without busy-spinning until an event arrives, or returns `OS_ERR_NOT_READY` if the process cannot wait. `os_key_wait_timeout` and `os_input_wait_timeout` add finite waits and return `OS_ERR_TIMEOUT` when the deadline expires. The kernel shell `input` command reports queue capacity, queued events, delivered events, and dropped events without consuming pending input.
 
 The compatibility `user_getchar()` path used by older `userlib.h` programs now
 reads from the focused process event queue as well. This keeps `ushell_c.elf`
@@ -134,6 +134,8 @@ kernel exposes batched 2D drawing syscalls.
 payload. The kernel shell `ipc` command reports mailbox capacity, queued
 messages, delivered messages, dropped messages, and wait state per process
 without consuming pending messages.
+`os_msg_wait_timeout` exposes the same finite wait behavior for IPC receive;
+timeouts return `OS_ERR_TIMEOUT` and invalidated waits use `OS_ERR_CANCELLED`.
 
 `usvc_c.elf` demonstrates the service registry path. It registers the `demo`
 service, verifies duplicate and invalid names are rejected, finds its own

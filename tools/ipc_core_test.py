@@ -140,6 +140,47 @@ int main() {
     check(ipc_receive_message(target, &received) == IPC_ERR_NOT_READY);
 
     clear_process_table();
+    target = &process_table[1];
+    init_process(target, 30);
+    target->state = PROCESS_STATE_PAUSED;
+    target->resumable = 1;
+
+    check(process_wait_begin(target, PROCESS_WAIT_IPC, 0x12340000u, 5, 100) == 1);
+    check(process_wait_is_pending(target) == 1);
+    check(target->wait_reason == PROCESS_WAIT_IPC);
+    check(target->wait_user_address == 0x12340000u);
+    check(target->wait_deadline == 105);
+    check(target->scheduler_state == SCHED_STATE_WAITING);
+    check(process_wait_begin(target, PROCESS_WAIT_INPUT, 0, 0, 0) == 0);
+    check(process_wait_signal(target, PROCESS_WAIT_INPUT, PROCESS_WAIT_OK) == 0);
+    process_wait_tick(104);
+    check(process_wait_is_pending(target) == 1);
+    process_wait_tick(105);
+    check(process_wait_is_pending(target) == 0);
+    check(target->wait_result == PROCESS_WAIT_TIMEOUT);
+    check(target->scheduler_state == SCHED_STATE_READY);
+    check(process_wait_signal(target, PROCESS_WAIT_IPC, PROCESS_WAIT_OK) == 0);
+
+    check(process_wait_begin(target, PROCESS_WAIT_INPUT, 0x56780000u, 0, 0) == 1);
+    check(target->wait_has_deadline == 0);
+    check(process_wait_cancel(target, PROCESS_WAIT_INPUT, PROCESS_WAIT_CANCELLED) == 1);
+    check(process_wait_is_pending(target) == 0);
+    check(target->wait_result == PROCESS_WAIT_CANCELLED);
+    check(target->scheduler_state == SCHED_STATE_READY);
+
+    check(process_wait_begin(target, PROCESS_WAIT_TIMER, 0, 3, 0xFFFFFFFEu) == 1);
+    check(target->wait_deadline == 1);
+    process_wait_tick(0);
+    check(process_wait_is_pending(target) == 1);
+    process_wait_tick(1);
+    check(process_wait_is_pending(target) == 0);
+    check(target->wait_result == PROCESS_WAIT_OK);
+    check(target->scheduler_state == SCHED_STATE_READY);
+    process_wait_reset(target);
+    check(target->wait_reason == PROCESS_WAIT_NONE);
+    check(target->wait_user_address == 0);
+
+    clear_process_table();
     return failures == 0 ? 0 : 1;
 }
 """

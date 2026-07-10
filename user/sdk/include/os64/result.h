@@ -19,6 +19,8 @@ typedef enum OsResult {
     OS_ERR_MESSAGE_TOO_LARGE = -14,
     OS_ERR_PERMISSION_DENIED = -15,
     OS_ERR_BAD_BUFFER = -16,
+    OS_ERR_TIMEOUT = -17,
+    OS_ERR_CANCELLED = -18,
 } OsResult;
 
 int os_result_failed(long result);

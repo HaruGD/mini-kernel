@@ -53,28 +53,40 @@ Phase 3.5A contracts:
 
 ## 3.5B. Common Wait And Wakeup Core
 
-- [ ] **W01: Add a kernel wait-reason contract**
+- [x] **W01: Add a kernel wait-reason contract**
   Represent sleep, child wait, IPC receive, and input wait with explicit wait
   reasons instead of unrelated flags.
   Completion: diagnostics report one unambiguous reason per blocked process.
 
-- [ ] **W02: Add common block and wake operations**
+- [x] **W02: Add common block and wake operations**
   Centralize transition to waiting and restoration to ready state.
   Completion: callers cannot directly assemble partial waiting state.
 
-- [ ] **W03: Convert timer sleep to the common wait core**
+- [x] **W03: Convert timer sleep to the common wait core**
   Keep deadline ordering and wake each expired process exactly once.
   Completion: existing sleep and scheduler tests pass without special cases.
 
-- [ ] **W04: Convert IPC and input waits**
+- [x] **W04: Convert IPC and input waits**
   Remove duplicated cooperative polling loops and route both through common
   blocking primitives.
   Completion: service programs no longer need a pacing sleep before blocking.
 
-- [ ] **W05: Add timeout and cancellation results**
+- [x] **W05: Add timeout and cancellation results**
   Support finite waits and deterministic cancellation during process exit or
   focus loss.
   Completion: timeout, wake, and cancel races each have automated coverage.
+
+Phase 3.5B contracts:
+
+- `ProcessWaitReason` now covers timer, child, IPC, input, key, and character waits.
+- `process_wait_begin`, `process_wait_signal`, `process_wait_cancel`, and
+  `process_wait_tick` are the only common wait-state transition helpers.
+- Timer sleep, IPC receive, input-event wait, keyboard-event wait, and legacy
+  `getchar` all pause user context and resume through the scheduler.
+- SDK IPC/input timeout wrappers return stable `OS_ERR_TIMEOUT`; cancellation
+  reports `OS_ERR_CANCELLED` where the wait owner is invalidated.
+- `serviced_c.elf`, `inputd_c.elf`, and `displayd_c.elf` block directly on IPC
+  and no longer need artificial pacing sleeps.
 
 ## 3.5C. Process Lifecycle Hardening
 

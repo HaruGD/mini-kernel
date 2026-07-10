@@ -120,24 +120,18 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_GETCHAR) {
-        while (1) {
-            char ascii = 0;
-            if (pop_keyboard_character_from_events(&ascii)) {
-                return (uint64_t)(unsigned char)ascii;
-            }
-
-            if (continue_woken_processes(0)) {
-                redraw_user_shell_prompt_if_needed();
-                continue;
-            }
-
-            if (continue_background_processes(0)) {
-                redraw_user_shell_prompt_if_needed();
-                continue;
-            }
-
-            __asm__ volatile("sti; hlt; cli");
+        char ascii = 0;
+        if (pop_keyboard_character_from_events(&ascii)) {
+            return (uint64_t)(unsigned char)ascii;
         }
+        Process* process = current_process();
+        if (process == 0 || process_focused_pid() != process->pid) {
+            return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+        }
+        if (!process_wait_begin(process, PROCESS_WAIT_CHAR, 0, 0, pit.get_tick())) {
+            return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+        }
+        return SYSCALL_WAIT_TO_KERNEL;
     }
 
     if (syscall_no == SYS_LIST_FILES) {

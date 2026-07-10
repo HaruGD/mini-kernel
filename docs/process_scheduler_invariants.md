@@ -37,9 +37,9 @@ result. `process_clear` performs final record reset when the slot is reused.
 | State | Meaning | Entered by | Valid exits |
 | --- | --- | --- | --- |
 | `NONE` | Record is not owned by the scheduler | `process_clear` | `READY`, `FINISHED` on launch failure |
-| `READY` | Resumable context is eligible for selection | enqueue, yield, preemption, timer wake | `RUNNING`, `WAITING`, `FINISHED` |
+| `READY` | Resumable context is eligible for selection | enqueue, yield, preemption, wait wake | `RUNNING`, `WAITING`, `FINISHED` |
 | `RUNNING` | Context is the current scheduled user execution | launch/resume | `READY`, `WAITING`, `FINISHED` |
-| `WAITING` | Context is not eligible until an external condition changes | parent wait, timer sleep | `READY`, `RUNNING`, `FINISHED` |
+| `WAITING` | Context is not eligible until an external condition changes | parent wait, timer sleep, IPC wait, input wait | `READY`, `RUNNING`, `FINISHED` |
 | `FINISHED` | Context must never be scheduled again | normal return, failure, forced stop | `NONE` after record reuse |
 
 The scheduler queue may contain only active records. A selectable record must
@@ -60,7 +60,7 @@ satisfy all of the following:
 | `RUNNING` | `RUNNING` | active user execution |
 | `RUNNING` | `WAITING` | parent blocked while a child runs |
 | `PAUSED` | `READY` | yielded or preempted context |
-| `PAUSED` | `WAITING` | timer sleep |
+| `PAUSED` | `WAITING` | timer, child, IPC, input, key, or character wait |
 | `RETURNED` | `FINISHED` | normal waitable result |
 | `FAILED` | `FINISHED` | failed waitable result |
 
@@ -98,20 +98,36 @@ For a terminal process:
 - `resumable == 0`
 - scheduler state is `FINISHED`
 - VFS handles and service registrations are closed
-- input and IPC wait flags are clear
+- common wait state is clear
 - event queue and mailbox are reset
 - result fields remain available until reaped and reused
 
 ## Current Wait Behavior
 
-Timer sleep is represented as:
+Blocking waits are represented with one common wait contract:
 
 ```text
 ProcessState=PAUSED
 SchedulerState=WAITING
-pause_reason=SLEEP
-wake_tick=<deadline>
+pause_reason=SLEEP or WAIT
+wait_pending=1
+wait_reason=TIMER, CHILD, IPC, INPUT, KEY, or CHAR
+wait_deadline=<optional deadline>
+wait_user_address=<optional validated user destination>
 ```
+
+The wait core owns all transitions into and out of this state:
+
+- `process_wait_begin` removes the process from the ready queue and records the
+  reason, deadline, and user destination.
+- `process_wait_signal` completes a matching wait and requeues the process at
+  most once.
+- `process_wait_cancel` reports deterministic cancellation for invalidated wait
+  owners such as lost input focus.
+- `process_wait_tick` completes expired timer waits and finite IPC/input waits.
+
+Diagnostics report the active wait reason, and a process may have only one
+pending wait at a time.
 
 Yield and preemption are represented as:
 
@@ -121,13 +137,11 @@ SchedulerState=READY
 pause_reason=YIELD or PREEMPT
 ```
 
-IPC and input blocking currently differ. Their syscall handlers retain control
-in kernel mode, use separate `ipc_waiting` or `input_waiting` flags, run other
-ready processes cooperatively, and use an interrupt-safe `sti; hlt; cli`
-check-and-sleep loop. They are not first-class scheduler waits yet.
-
-This difference is a known Phase 3.5A baseline limitation. Phase 3.5B must
-replace it with one wait-reason and block/wake contract.
+IPC receive, input-event wait, keyboard-event wait, legacy `getchar`, and
+timer sleep now all pause user context and resume through the same scheduler
+path. Subsystem syscall handlers perform a final nonblocking check before
+entering the wait core, then complete the syscall result when the saved user
+context is resumed.
 
 ## Required Assertions For Later Tasks
 
