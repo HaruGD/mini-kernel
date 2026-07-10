@@ -48,7 +48,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-first-services test-services clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-first-services test-services clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -58,9 +58,11 @@ KERNEL64_OBJECTS = \
 	./build/ipc_mailbox64.o \
 	./build/ipc64.o \
 	./build/service_registry64.o \
+	./build/kernel_handle64.o \
 	./build/process64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
+	./build/vfs_syscalls64.o \
 	./build/sdk_syscalls64.o \
 	./build/klog64.o \
 	./build/panic64.o \
@@ -144,6 +146,9 @@ test-ipc-smoke: uefi
 	python3 ./tools/ipc_smoke.py
 test-ipc: test-ipc-contracts test-ipc-smoke
 
+test-kernel-handles:
+	python3 ./tools/kernel_handle_test.py
+
 test-process-lifecycle:
 	python3 ./tools/process_lifecycle_test.py
 
@@ -190,13 +195,19 @@ all32:
 ./build/service_registry64.o: ./kernel/service/service_registry.cpp ./include/kernel/service/service_registry.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/service_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
+./build/kernel_handle64.o: ./kernel/handle/kernel_handle.cpp ./include/kernel/handle/kernel_handle.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/handle/kernel_handle.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process64.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
+./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./kernel/syscall/vfs_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process64.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/vfs_syscalls64.o: ./kernel/syscall/vfs_syscalls.cpp ./kernel/syscall/vfs_syscalls.h ./include/fs/vfs.h ./include/kernel/handle/kernel_handle.h ./include/kernel/process64.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/ipc/ipc.h ./include/kernel/service/service_registry.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/service_types.h

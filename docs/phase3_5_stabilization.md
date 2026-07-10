@@ -180,26 +180,47 @@ Phase 3.5D contracts:
 
 ## 3.5E. Kernel Objects And Handles
 
-- [ ] **H01: Define a typed kernel-handle ABI**
+- [x] **H01: Define a typed kernel-handle ABI**
   Include object type, slot, generation, and rights without exposing pointers.
   Completion: malformed, stale, and wrong-type handles are rejected.
 
-- [ ] **H02: Add per-process handle tables**
+- [x] **H02: Add per-process handle tables**
   Track ownership and close all handles during centralized process cleanup.
   Completion: process exit leaves no live owned handles.
 
-- [ ] **H03: Move VFS handles behind the common handle layer**
+- [x] **H03: Move VFS handles behind the common handle layer**
   Preserve SDK file behavior while eliminating subsystem-specific ownership
   rules.
   Completion: file close, duplicate close, and exit cleanup are tested.
 
-- [ ] **H04: Add transferable shared-memory objects**
+- [~] **H04: Add transferable shared-memory objects**
   Support bounded page-backed regions and explicit mapping rights.
   Completion: two processes can share data without sharing arbitrary memory.
+  Current: handle type and rights are reserved; mapping and transfer syscalls
+  are intentionally deferred to IPC v2.
 
-- [ ] **H05: Add graphics-surface handles**
+- [~] **H05: Add graphics-surface handles**
   Define ownership, dimensions, format, stride, mapping, and destruction.
   Completion: a future compositor can receive a surface handle over IPC.
+  Current: handle type and rights are reserved; compositor-facing allocation
+  and IPC transfer come after IPC v2.
+
+Phase 3.5E contracts:
+
+- `KernelHandleTable` is embedded in each process and uses generation-checked
+  opaque tokens.
+- Handle tokens expose no kernel pointers and are valid only inside the owning
+  process handle table.
+- Current active object types are VFS file and VFS directory handles.
+- `SYS_VFS_OPEN` and `SYS_VFS_OPENDIR` return typed handles, not raw VFS table
+  indexes.
+- VFS read, write, seek, tell, close, readdir, and closedir resolve type and
+  rights before touching the VFS table.
+- Process termination closes VFS-owned resources and invalidates all remaining
+  process handles through the centralized cleanup path.
+- `tools/kernel_handle_test.py` covers malformed, stale, wrong-type,
+  insufficient-rights, duplicate-close, and table-full behavior.
+- Detailed contract: `docs/kernel_handles.md`
 
 ## 3.5F. IPC v2
 

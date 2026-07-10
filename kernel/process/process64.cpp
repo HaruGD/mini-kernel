@@ -1,4 +1,5 @@
 #include "fs/vfs.h"
+#include "kernel/handle/kernel_handle.h"
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
@@ -409,6 +410,7 @@ void process_clear(Process* process) {
     process->saved_rsp = 0;
     process->saved_rflags = 0;
     process_reset_address_space_record(process);
+    kernel_handle_table_init(&process->handle_table);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);
 }
@@ -517,6 +519,7 @@ static void process_finish(Process* process,
 
     scheduler_remove(process);
     vfs_close_all_for_owner(process->pid);
+    kernel_handle_table_init(&process->handle_table);
     service_unregister_owner(process->pid);
     process->state = final_state;
     process->termination_reason = reason;

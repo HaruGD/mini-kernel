@@ -16,6 +16,7 @@ extern "C" {
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
+#include "kernel/syscall/vfs_syscalls.h"
 
 #define USER_PATH_MAX PROCESS_CMDLINE_MAX
 #define USER_WRITE_MAX 4096u
@@ -157,93 +158,8 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return 0;
     }
 
-    if (syscall_no == SYS_VFS_OPEN) {
-        char file_name[USER_PATH_MAX];
-        if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
-            print("\nInvalid user filename pointer.");
-            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
-        }
-
-        Process* owner = current_process();
-        return (uint64_t)vfs_open_for_owner(file_name, (uint32_t)arg2, owner != 0 ? owner->pid : 0);
-    }
-
-    if (syscall_no == SYS_VFS_READ) {
-        uint32_t requested = (uint32_t)arg3;
-        if (requested == 0) {
-            return 0;
-        }
-        if (requested > 4096) {
-            requested = 4096;
-        }
-
-        uint8_t* temp = (uint8_t*)kmalloc(requested);
-        if (temp == 0) {
-            return (uint64_t)(int64_t)SYS_ERR_OUT_OF_MEMORY;
-        }
-
-        uint32_t bytes_read = 0;
-        int result = vfs_read((int)arg1, temp, requested, &bytes_read);
-        if (result != VFS_OK) {
-            kfree(temp);
-            return (uint64_t)(int64_t)result;
-        }
-        if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg2, temp, bytes_read)) {
-            kfree(temp);
-            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
-        }
-
-        kfree(temp);
-        return bytes_read;
-    }
-
-    if (syscall_no == SYS_VFS_WRITE) {
-        uint32_t requested = (uint32_t)arg3;
-        if (requested == 0) {
-            return 0;
-        }
-        if (requested > 4096) {
-            requested = 4096;
-        }
-
-        uint8_t* temp = (uint8_t*)kmalloc(requested);
-        if (temp == 0) {
-            return (uint64_t)(int64_t)SYS_ERR_OUT_OF_MEMORY;
-        }
-        if (!copy_user_buffer((const uint8_t*)(uintptr_t)arg2, temp, requested)) {
-            kfree(temp);
-            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
-        }
-
-        uint32_t bytes_written = 0;
-        int result = vfs_write((int)arg1, temp, requested, &bytes_written);
-        kfree(temp);
-        if (result != VFS_OK) {
-            return (uint64_t)(int64_t)result;
-        }
-        return bytes_written;
-    }
-
-    if (syscall_no == SYS_VFS_CLOSE) {
-        return (uint64_t)(int64_t)vfs_close((int)arg1);
-    }
-
-    if (syscall_no == SYS_VFS_SEEK) {
-        uint32_t position = 0;
-        int result = vfs_seek((int)arg1, (int32_t)arg2, (uint32_t)arg3, &position);
-        if (result != VFS_OK) {
-            return (uint64_t)(int64_t)result;
-        }
-        return position;
-    }
-
-    if (syscall_no == SYS_VFS_TELL) {
-        uint32_t position = 0;
-        int result = vfs_tell((int)arg1, &position);
-        if (result != VFS_OK) {
-            return (uint64_t)(int64_t)result;
-        }
-        return position;
+    if (dispatch_vfs_handle_syscall64(syscall_no, arg1, arg2, arg3, &sdk_result)) {
+        return sdk_result;
     }
 
     if (syscall_no == SYS_MKDIR || syscall_no == SYS_RMDIR ||
@@ -355,36 +271,6 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         }
         process_copy_cwd(process, dir_path);
         return 0;
-    }
-
-    if (syscall_no == SYS_VFS_OPENDIR) {
-        char dir_path[USER_PATH_MAX];
-        if (!copy_user_cstring((const char*)(uintptr_t)arg1, dir_path, sizeof(dir_path))) {
-            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
-        }
-
-        Process* owner = current_process();
-        return (uint64_t)vfs_opendir_for_owner(dir_path, owner != 0 ? owner->pid : 0);
-    }
-
-    if (syscall_no == SYS_VFS_READDIR) {
-        VFSDirEntry entry;
-        int result = vfs_readdir((int)arg1, &entry);
-        if (result <= 0) {
-            return (uint64_t)result;
-        }
-        if (arg2 == 0) {
-            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
-        }
-        return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg2,
-                                          (const uint8_t*)&entry,
-                                          sizeof(entry))
-            ? 1
-            : (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
-    }
-
-    if (syscall_no == SYS_VFS_CLOSEDIR) {
-        return (uint64_t)(int64_t)vfs_closedir((int)arg1);
     }
 
     if (syscall_no == SYS_CAT_FILE) {

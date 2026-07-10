@@ -224,6 +224,7 @@ def main() -> int:
             "-Werror",
             "-I",
             str(REPO_ROOT / "include"),
+            str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/ipc/ipc.cpp"),
             str(REPO_ROOT / "kernel/ipc/ipc_mailbox.cpp"),
             str(REPO_ROOT / "kernel/input/input_event_queue.cpp"),

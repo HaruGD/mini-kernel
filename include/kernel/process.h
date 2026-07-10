@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "kernel/handle/kernel_handle.h"
 #include "kernel/ipc/ipc_mailbox.h"
 #include "kernel/input/input_event_queue.h"
 #include "kernel/mm/address_space.h"
@@ -141,6 +142,7 @@ struct Process {
     uint64_t saved_rsp;
     uint64_t saved_rflags;
     AddressSpace address_space;
+    KernelHandleTable handle_table;
     KernelInputEventQueue event_queue;
     KernelIpcMailbox ipc_mailbox;
 };
