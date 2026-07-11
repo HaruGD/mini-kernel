@@ -4,6 +4,7 @@
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
+#include "kernel/spinlock.h"
 
 uint32_t user_program_depth = 0;
 uint32_t next_pid = 1;
@@ -17,6 +18,73 @@ uint32_t sched_last_pid = 0;
 uint32_t sched_switch_count = 0;
 uint32_t sched_yield_count = 0;
 uint32_t input_focus_pid = 0;
+static KernelSpinlock process_lock =
+    KERNEL_SPINLOCK_INITIALIZER(KERNEL_LOCK_CLASS_PROCESS, "process_scheduler");
+
+static void scheduler_enqueue_unlocked(Process* process);
+static void scheduler_remove_unlocked(Process* process);
+
+static void snapshot_copy_name(char* destination, const char* source) {
+    uint32_t i = 0;
+    while (i + 1 < PROCESS_NAME_MAX && source[i] != '\0') {
+        destination[i] = source[i];
+        i++;
+    }
+    destination[i] = '\0';
+}
+
+void process_get_diagnostic_snapshot(SchedulerDiagnosticSnapshot* snapshot) {
+    if (snapshot == 0) {
+        return;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        snapshot->process_count = 0;
+        snapshot->queue_count = 0;
+        return;
+    }
+    snapshot->process_count = PROCESS_TABLE_SIZE;
+    snapshot->queue_count = sched_queue_count;
+    snapshot->queue_head = sched_queue_head;
+    snapshot->last_pid = sched_last_pid;
+    snapshot->switch_count = sched_switch_count;
+    snapshot->yield_count = sched_yield_count;
+    snapshot->focused_pid = input_focus_pid;
+    for (uint32_t i = 0; i < SCHED_QUEUE_SIZE; i++) {
+        snapshot->queue_pids[i] = sched_queue[i] != 0 ? sched_queue[i]->pid : 0;
+    }
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        const Process* process = &process_table[i];
+        ProcessDiagnosticSnapshot* out = &snapshot->processes[i];
+        out->pid = process->pid;
+        out->generation = process->generation;
+        out->parent_pid = process->parent_pid;
+        out->parent_generation = process->parent_generation;
+        snapshot_copy_name(out->name, process->name);
+        out->slot_index = process->slot_index;
+        out->state = process->state;
+        out->termination_reason = process->termination_reason;
+        out->status_code = process->status_code;
+        out->scheduler_state = process->scheduler_state;
+        out->pause_reason = process->pause_reason;
+        out->wait_reason = process->wait_reason;
+        out->permissions = process->permissions;
+        out->runtime_ticks = process->runtime_ticks;
+        out->timeslice_ticks = process->timeslice_ticks;
+        out->wake_tick = process->wake_tick;
+        out->wait_deadline = process->wait_deadline;
+        out->active = process->active;
+        out->reaped = process->reaped;
+        out->resumable = process->resumable;
+        out->background = process->background;
+        out->wait_pending = process->wait_pending;
+        out->wait_has_deadline = process->wait_has_deadline;
+        out->handle_count = kernel_handle_count_type(&process->handle_table,
+                                                     KERNEL_HANDLE_TYPE_NONE);
+        ipc_mailbox_get_stats(&process->ipc_mailbox, &out->mailbox);
+    }
+    kernel_spinlock_release(&process_lock, &token);
+}
 
 const char* process_wait_reason_name(uint32_t reason) {
     if (reason == PROCESS_WAIT_TIMER) {
@@ -40,7 +108,7 @@ const char* process_wait_reason_name(uint32_t reason) {
     return "none";
 }
 
-void process_wait_reset(Process* process) {
+static void process_wait_reset_unlocked(Process* process) {
     if (process == 0) {
         return;
     }
@@ -56,16 +124,30 @@ void process_wait_reset(Process* process) {
     process->wake_tick = 0;
 }
 
+void process_wait_reset(Process* process) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    process_wait_reset_unlocked(process);
+    kernel_spinlock_release(&process_lock, &token);
+}
+
 int process_wait_begin(Process* process,
                        uint32_t reason,
                        uint64_t user_address,
                        uint32_t timeout_ticks,
                        uint32_t tick_now) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
     if (process == 0 || reason == PROCESS_WAIT_NONE || process->wait_pending) {
+        kernel_spinlock_release(&process_lock, &token);
         return 0;
     }
 
-    scheduler_remove(process);
+    scheduler_remove_unlocked(process);
     process->wait_pending = 1;
     process->wait_reason = reason;
     process->wait_result = PROCESS_WAIT_OK;
@@ -74,10 +156,11 @@ int process_wait_begin(Process* process,
     process->wait_deadline = timeout_ticks != 0 ? tick_now + timeout_ticks : 0;
     process->wake_tick = process->wait_deadline;
     process->scheduler_state = SCHED_STATE_WAITING;
+    kernel_spinlock_release(&process_lock, &token);
     return 1;
 }
 
-int process_wait_signal(Process* process, uint32_t reason, int32_t result) {
+static int process_wait_signal_unlocked(Process* process, uint32_t reason, int32_t result) {
     if (process == 0 || !process->wait_pending || process->wait_reason != reason) {
         return 0;
     }
@@ -90,9 +173,19 @@ int process_wait_signal(Process* process, uint32_t reason, int32_t result) {
     if (process->active && process->state == PROCESS_STATE_PAUSED && process->resumable) {
         process->scheduler_state = SCHED_STATE_READY;
         process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
-        scheduler_enqueue(process);
+        scheduler_enqueue_unlocked(process);
     }
     return 1;
+}
+
+int process_wait_signal(Process* process, uint32_t reason, int32_t result) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    int result_value = process_wait_signal_unlocked(process, reason, result);
+    kernel_spinlock_release(&process_lock, &token);
+    return result_value;
 }
 
 int process_wait_cancel(Process* process, uint32_t reason, int32_t result) {
@@ -100,6 +193,10 @@ int process_wait_cancel(Process* process, uint32_t reason, int32_t result) {
 }
 
 void process_wait_tick(uint32_t tick_now) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         Process* process = &process_table[i];
         if (!process->active || !process->wait_pending || !process->wait_has_deadline) {
@@ -112,8 +209,9 @@ void process_wait_tick(uint32_t tick_now) {
         int32_t result = process->wait_reason == PROCESS_WAIT_TIMER
             ? PROCESS_WAIT_OK
             : PROCESS_WAIT_TIMEOUT;
-        process_wait_signal(process, process->wait_reason, result);
+        process_wait_signal_unlocked(process, process->wait_reason, result);
     }
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 int process_wait_is_pending(const Process* process) {
@@ -184,11 +282,16 @@ void process_assign_identity(Process* process, uint32_t pid, const Process* pare
     if (process == 0) {
         return;
     }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     process->pid = pid;
     process->generation = process_next_generation();
     process->parent_pid = parent != 0 ? parent->pid : 0;
     process->parent_generation = parent != 0 ? parent->generation : 0;
     process->permissions = OS_PROCESS_PERMISSION_ALL;
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 int process_has_permissions(const Process* process, uint32_t permissions) {
@@ -378,7 +481,13 @@ void process_clear(Process* process) {
     if (process->pid != 0) {
         vfs_close_all_for_owner(process->pid);
     }
-    kernel_object_release_table(&process->handle_table);
+    if (process->handle_table.lock.lock_class == KERNEL_LOCK_CLASS_HANDLE) {
+        kernel_object_release_table(&process->handle_table);
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     process->pid = 0;
     process->generation = 0;
     process->parent_pid = 0;
@@ -414,7 +523,7 @@ void process_clear(Process* process) {
     process->resumable = 0;
     process->background = 0;
     process->pause_reason = PROCESS_PAUSE_NONE;
-    process_wait_reset(process);
+    process_wait_reset_unlocked(process);
     process->cwd[0] = '/';
     process->cwd[1] = '\0';
     process->command_line[0] = '\0';
@@ -440,6 +549,7 @@ void process_clear(Process* process) {
     kernel_handle_table_init(&process->handle_table);
     process_event_queue_reset(process);
     process_ipc_mailbox_reset(process);
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 const char* process_get_cwd(const Process* process) {
@@ -539,16 +649,16 @@ static void process_finish(Process* process,
         return;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     uint32_t parent_pid = process->parent_pid;
     uint32_t parent_generation = process->parent_generation;
     uint32_t own_pid = process->pid;
     uint32_t own_generation = process->generation;
 
-    scheduler_remove(process);
-    vfs_close_all_for_owner(process->pid);
-    kernel_object_release_table(&process->handle_table);
-    kernel_handle_table_init(&process->handle_table);
-    service_unregister_owner(process->pid);
+    scheduler_remove_unlocked(process);
     process->state = final_state;
     process->termination_reason = reason;
     process->status_code = status_code;
@@ -557,14 +667,22 @@ static void process_finish(Process* process,
     process->resumable = 0;
     process->active = 0;
     process->reaped = 0;
-    process_wait_reset(process);
-    process_clear_focus(process->pid);
-    process_event_queue_reset(process);
-    process_ipc_mailbox_reset(process);
+    process_wait_reset_unlocked(process);
+    if (input_focus_pid == process->pid) {
+        input_focus_pid = 0;
+    }
     process_cleanup_owned_children(own_pid, own_generation);
     reap_old_child_results(parent_pid,
                            parent_generation,
                            PROCESS_CHILD_RESULT_HISTORY_LIMIT);
+    kernel_spinlock_release(&process_lock, &token);
+
+    vfs_close_all_for_owner(own_pid);
+    kernel_object_release_table(&process->handle_table);
+    kernel_handle_table_init(&process->handle_table);
+    service_unregister_owner(own_pid);
+    process_event_queue_reset(process);
+    process_ipc_mailbox_reset(process);
 
     ProcessIdentity parent_identity;
     parent_identity.pid = parent_pid;
@@ -591,7 +709,7 @@ static int scheduler_queue_contains(const Process* process) {
     return 0;
 }
 
-void scheduler_enqueue(Process* process) {
+static void scheduler_enqueue_unlocked(Process* process) {
     if (process == 0) {
         return;
     }
@@ -611,7 +729,16 @@ void scheduler_enqueue(Process* process) {
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
 }
 
-void scheduler_remove(Process* process) {
+void scheduler_enqueue(Process* process) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    scheduler_enqueue_unlocked(process);
+    kernel_spinlock_release(&process_lock, &token);
+}
+
+static void scheduler_remove_unlocked(Process* process) {
     if (process == 0 || sched_queue_count == 0) {
         return;
     }
@@ -635,13 +762,26 @@ void scheduler_remove(Process* process) {
     sched_queue_count = kept;
 }
 
+void scheduler_remove(Process* process) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    scheduler_remove_unlocked(process);
+    kernel_spinlock_release(&process_lock, &token);
+}
+
 void scheduler_mark_running(Process* process) {
     if (process == 0) {
         return;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     if (process->wait_reason == PROCESS_WAIT_CHILD) {
-        process_wait_reset(process);
+        process_wait_reset_unlocked(process);
     }
     process->scheduler_state = SCHED_STATE_RUNNING;
     process->pause_reason = PROCESS_PAUSE_NONE;
@@ -649,6 +789,7 @@ void scheduler_mark_running(Process* process) {
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
     sched_last_pid = process->pid;
     sched_switch_count++;
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 void scheduler_mark_waiting(Process* process) {
@@ -656,7 +797,12 @@ void scheduler_mark_waiting(Process* process) {
         return;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     process->scheduler_state = SCHED_STATE_WAITING;
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 void scheduler_mark_sleeping(Process* process, uint32_t wake_tick) {
@@ -664,9 +810,14 @@ void scheduler_mark_sleeping(Process* process, uint32_t wake_tick) {
         return;
     }
 
-    scheduler_remove(process);
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    scheduler_remove_unlocked(process);
     process->scheduler_state = SCHED_STATE_WAITING;
     process->wake_tick = wake_tick;
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 void scheduler_mark_finished(Process* process) {
@@ -674,9 +825,14 @@ void scheduler_mark_finished(Process* process) {
         return;
     }
 
-    scheduler_remove(process);
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    scheduler_remove_unlocked(process);
     process->scheduler_state = SCHED_STATE_FINISHED;
     process->timeslice_ticks = 0;
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 void scheduler_yield_current() {
@@ -685,11 +841,16 @@ void scheduler_yield_current() {
         return;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     sched_yield_count++;
     process->scheduler_state = SCHED_STATE_READY;
     process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
-    scheduler_remove(process);
-    scheduler_enqueue(process);
+    scheduler_remove_unlocked(process);
+    scheduler_enqueue_unlocked(process);
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 void scheduler_on_tick() {
@@ -698,17 +859,22 @@ void scheduler_on_tick() {
         return;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
     process->runtime_ticks++;
     if (process->timeslice_ticks > 0) {
         process->timeslice_ticks--;
     }
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 void scheduler_wake_sleeping_processes(uint32_t tick_now) {
     process_wait_tick(tick_now);
 }
 
-Process* find_next_ready_process(uint32_t exclude_pid) {
+static Process* find_next_ready_process_unlocked(uint32_t exclude_pid) {
     for (uint32_t i = 0; i < sched_queue_count; i++) {
         uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
         Process* process = sched_queue[index];
@@ -729,7 +895,21 @@ Process* find_next_ready_process(uint32_t exclude_pid) {
     return 0;
 }
 
+Process* find_next_ready_process(uint32_t exclude_pid) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    Process* result = find_next_ready_process_unlocked(exclude_pid);
+    kernel_spinlock_release(&process_lock, &token);
+    return result;
+}
+
 Process* find_next_background_ready_process(uint32_t exclude_pid) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
     for (uint32_t i = 0; i < sched_queue_count; i++) {
         uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
         Process* process = sched_queue[index];
@@ -745,12 +925,18 @@ Process* find_next_background_ready_process(uint32_t exclude_pid) {
         if (process->scheduler_state != SCHED_STATE_READY) {
             continue;
         }
+        kernel_spinlock_release(&process_lock, &token);
         return process;
     }
+    kernel_spinlock_release(&process_lock, &token);
     return 0;
 }
 
 Process* find_next_woken_process(uint32_t exclude_pid) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
     for (uint32_t i = 0; i < sched_queue_count; i++) {
         uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
         Process* process = sched_queue[index];
@@ -769,8 +955,10 @@ Process* find_next_woken_process(uint32_t exclude_pid) {
         if (process->pause_reason != PROCESS_PAUSE_SLEEP) {
             continue;
         }
+        kernel_spinlock_release(&process_lock, &token);
         return process;
     }
+    kernel_spinlock_release(&process_lock, &token);
     return 0;
 }
 
@@ -779,16 +967,25 @@ int scheduler_should_preempt_current() {
     if (process == 0) {
         return 0;
     }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
     if (process->parent_pid == 0) {
+        kernel_spinlock_release(&process_lock, &token);
         return 0;
     }
     if (process->scheduler_state != SCHED_STATE_RUNNING) {
+        kernel_spinlock_release(&process_lock, &token);
         return 0;
     }
     if (process->timeslice_ticks != 0) {
+        kernel_spinlock_release(&process_lock, &token);
         return 0;
     }
-    return find_next_ready_process(process->pid) != 0;
+    int result = find_next_ready_process_unlocked(process->pid) != 0;
+    kernel_spinlock_release(&process_lock, &token);
+    return result;
 }
 
 int process_record_is_active(const Process* process) {
@@ -926,11 +1123,18 @@ Process* find_process_by_pid(uint32_t pid) {
     if (pid == 0) {
         return 0;
     }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         if (process_table[i].pid == pid) {
-            return &process_table[i];
+            Process* result = &process_table[i];
+            kernel_spinlock_release(&process_lock, &token);
+            return result;
         }
     }
+    kernel_spinlock_release(&process_lock, &token);
     return 0;
 }
 
@@ -938,11 +1142,18 @@ Process* find_process_by_identity(ProcessIdentity identity) {
     if (identity.pid == 0 || identity.generation == 0) {
         return 0;
     }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         if (process_identity_matches(&process_table[i], identity)) {
-            return &process_table[i];
+            Process* result = &process_table[i];
+            kernel_spinlock_release(&process_lock, &token);
+            return result;
         }
     }
+    kernel_spinlock_release(&process_lock, &token);
     return 0;
 }
 

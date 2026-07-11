@@ -17,6 +17,12 @@
 #define SERVICE_ERR_PERMISSION_DENIED (-15)
 #define SERVICE_ERR_BAD_BUFFER (-16)
 
+struct ServiceRegistrySnapshot {
+    uint32_t capacity;
+    uint32_t count;
+    OsServiceInfo entries[SERVICE_REGISTRY_CAPACITY];
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,6 +36,7 @@ int service_find(const char* name, OsServiceInfo* info);
 int service_unregister(Process* owner, const char* name);
 void service_unregister_owner(uint32_t owner_pid);
 int service_registry_get_info(uint32_t index, OsServiceInfo* info);
+void service_registry_get_snapshot(ServiceRegistrySnapshot* snapshot);
 const char* service_state_name(uint32_t state);
 
 #ifdef __cplusplus

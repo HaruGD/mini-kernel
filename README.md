@@ -46,6 +46,8 @@ What works on the active 64-bit UEFI path:
 - cooperative `yield`
 - timer-based preemption
 - common wait/wakeup core for sleep, child wait, IPC, input, key, and character waits
+- interrupt-safe spinlocks with lock-order diagnostics and coherent
+  process/IPC/service snapshots
 - PIT tick based sleep / wakeup (`PIT_DEFAULT_HZ=100`, about 10ms per tick)
 - foreground / background job control
 - child-result reaping with `wait` / `reapall` plus automatic cleanup when process slots are exhausted
@@ -134,6 +136,7 @@ What works on the active 64-bit UEFI path:
 - Process/scheduler invariants: [docs/process_scheduler_invariants.md](docs/process_scheduler_invariants.md)
 - Kernel context rules: [docs/kernel_context_rules.md](docs/kernel_context_rules.md)
 - Service supervision and permissions: [docs/service_supervision.md](docs/service_supervision.md)
+- Concurrency readiness: [docs/concurrency_readiness.md](docs/concurrency_readiness.md)
 
 ## Build
 

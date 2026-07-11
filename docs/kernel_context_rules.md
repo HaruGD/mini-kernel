@@ -56,16 +56,11 @@ exceptions. They must not become normal IRQ data paths.
 
 ## Current Shared-State Model
 
-There are no general spinlocks yet. Current safety relies on:
-
-- one logical CPU
-- interrupt-gate entry clearing IF
-- centralized scheduler wait and idle paths
-- bounded ring operations
-- no concurrent kernel threads
-
-This is sufficient only for the current baseline. It is not SMP-safe and does
-not permit arbitrary subsystem mutation from IRQ context.
+The kernel remains single CPU, but shared scheduler, handle, IPC, input, and
+service state now uses interrupt-safe spinlocks. Locks save and restore the
+caller's IF state and record order, recursion, and release violations. This is
+concurrency-ready for the current IRQ/process model, but it is not yet an SMP
+scheduler or a complete multi-CPU memory-ordering design.
 
 Shared structures with both IRQ and process-context access include:
 
@@ -76,7 +71,7 @@ Shared structures with both IRQ and process-context access include:
 IPC mailboxes and the service registry currently run from syscall/process
 context, but future multi-threading will require explicit protection.
 
-## Lock Contract For Future Work
+## Lock Contract
 
 Every introduced lock must declare:
 
@@ -86,9 +81,8 @@ Every introduced lock must declare:
 - its position in the lock order
 - whether diagnostic reads require the lock
 
-Until a complete hierarchy is implemented, nested subsystem locks are
-prohibited. If an operation needs two protected subsystems, it must split the
-operation or define and test a strict order before merging.
+Nested subsystem locks follow the hierarchy below. Equal or decreasing class
+acquisition is rejected and recorded by the diagnostic counters.
 
 The initial lock classes are:
 

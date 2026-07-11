@@ -108,7 +108,8 @@ Planned work:
 - [x] Typed per-process handles, shared-memory objects, and surface handles
 - [x] IPC v2 with correlation, timeout, and handle transfer
 - [x] Service supervision, permissions, and bounded restart policy
-- [ ] Concurrency rules, fault injection, and long-running soak coverage
+- [~] Concurrency rules and protected snapshots complete; fault injection and
+  long-running soak coverage remain
 
 ## Phase 3.6: Driver Packaging And Layout
 

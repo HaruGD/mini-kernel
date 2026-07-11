@@ -1,6 +1,7 @@
 #include "kernel/service/service_registry.h"
 
 #include "kernel/process64.h"
+#include "kernel/spinlock.h"
 
 struct ServiceEntry {
     uint32_t owner_pid;
@@ -13,6 +14,8 @@ struct ServiceEntry {
 
 static ServiceEntry service_table[SERVICE_REGISTRY_CAPACITY];
 static uint32_t service_generation_next = 1;
+static KernelSpinlock service_lock =
+    KERNEL_SPINLOCK_INITIALIZER(KERNEL_LOCK_CLASS_IPC_SERVICE, "service_registry");
 
 static int is_name_char(char ch) {
     if (ch >= 'a' && ch <= 'z') {
@@ -85,15 +88,40 @@ static void service_fill_info(const ServiceEntry* entry, OsServiceInfo* info) {
 
 static void service_prune_stale() {
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
+        uint32_t owner_pid = 0;
+        uint32_t owner_generation = 0;
+        uint32_t entry_generation = 0;
+        KernelSpinlockToken read_token;
+        if (!kernel_spinlock_acquire(&service_lock, &read_token)) {
+            return;
+        }
         ServiceEntry* entry = &service_table[i];
+        if (entry->state == OS_SERVICE_STATE_REGISTERED) {
+            owner_pid = entry->owner_pid;
+            owner_generation = entry->owner_generation;
+            entry_generation = entry->generation;
+        }
+        kernel_spinlock_release(&service_lock, &read_token);
+        if (owner_pid == 0 || service_process_alive(owner_pid, owner_generation)) {
+            continue;
+        }
+        KernelSpinlockToken write_token;
+        if (!kernel_spinlock_acquire(&service_lock, &write_token)) {
+            return;
+        }
+        entry = &service_table[i];
         if (entry->state == OS_SERVICE_STATE_REGISTERED &&
-            !service_process_alive(entry->owner_pid, entry->owner_generation)) {
+            entry->generation == entry_generation &&
+            entry->owner_pid == owner_pid &&
+            entry->owner_generation == owner_generation) {
             service_clear_entry(entry);
         }
+        kernel_spinlock_release(&service_lock, &write_token);
     }
 }
 
 void service_registry_init() {
+    kernel_spinlock_init(&service_lock, KERNEL_LOCK_CLASS_IPC_SERVICE, "service_registry");
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
         service_table[i].generation = 0;
         service_clear_entry(&service_table[i]);
@@ -107,12 +135,17 @@ uint32_t service_registry_capacity() {
 
 uint32_t service_registry_count() {
     service_prune_stale();
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
+        return 0;
+    }
     uint32_t count = 0;
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
         if (service_table[i].state == OS_SERVICE_STATE_REGISTERED) {
             count++;
         }
     }
+    kernel_spinlock_release(&service_lock, &token);
     return count;
 }
 
@@ -148,11 +181,17 @@ int service_register(Process* owner, const char* name, uint32_t flags) {
         return SERVICE_ERR_INVALID_ARGUMENT;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
+        return SERVICE_ERR_NOT_READY;
+    }
+
     ServiceEntry* empty = 0;
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
         ServiceEntry* entry = &service_table[i];
         if (entry->state == OS_SERVICE_STATE_REGISTERED) {
             if (service_name_equal(entry->name, name)) {
+                kernel_spinlock_release(&service_lock, &token);
                 return SERVICE_ERR_ALREADY_EXISTS;
             }
             continue;
@@ -162,6 +201,7 @@ int service_register(Process* owner, const char* name, uint32_t flags) {
         }
     }
     if (empty == 0) {
+        kernel_spinlock_release(&service_lock, &token);
         return SERVICE_ERR_NO_RESOURCES;
     }
 
@@ -171,6 +211,7 @@ int service_register(Process* owner, const char* name, uint32_t flags) {
     empty->flags = flags;
     empty->generation = service_next_generation();
     service_copy_name(empty->name, name);
+    kernel_spinlock_release(&service_lock, &token);
     return SERVICE_OK;
 }
 
@@ -183,14 +224,21 @@ int service_find(const char* name, OsServiceInfo* info) {
         return SERVICE_ERR_INVALID_ARGUMENT;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
+        return SERVICE_ERR_NOT_READY;
+    }
+
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
         ServiceEntry* entry = &service_table[i];
         if (entry->state == OS_SERVICE_STATE_REGISTERED &&
             service_name_equal(entry->name, name)) {
             service_fill_info(entry, info);
+            kernel_spinlock_release(&service_lock, &token);
             return SERVICE_OK;
         }
     }
+    kernel_spinlock_release(&service_lock, &token);
     return SERVICE_ERR_NOT_FOUND;
 }
 
@@ -203,6 +251,11 @@ int service_unregister(Process* owner, const char* name) {
         return SERVICE_ERR_INVALID_ARGUMENT;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
+        return SERVICE_ERR_NOT_READY;
+    }
+
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
         ServiceEntry* entry = &service_table[i];
         if (entry->state != OS_SERVICE_STATE_REGISTERED ||
@@ -211,16 +264,23 @@ int service_unregister(Process* owner, const char* name) {
         }
         if (entry->owner_pid != owner->pid ||
             entry->owner_generation != owner->generation) {
+            kernel_spinlock_release(&service_lock, &token);
             return SERVICE_ERR_PERMISSION_DENIED;
         }
         service_clear_entry(entry);
+        kernel_spinlock_release(&service_lock, &token);
         return SERVICE_OK;
     }
+    kernel_spinlock_release(&service_lock, &token);
     return SERVICE_ERR_NOT_FOUND;
 }
 
 void service_unregister_owner(uint32_t owner_pid) {
     if (owner_pid == 0) {
+        return;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
         return;
     }
     for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
@@ -230,6 +290,7 @@ void service_unregister_owner(uint32_t owner_pid) {
             service_clear_entry(entry);
         }
     }
+    kernel_spinlock_release(&service_lock, &token);
 }
 
 int service_registry_get_info(uint32_t index, OsServiceInfo* info) {
@@ -240,11 +301,37 @@ int service_registry_get_info(uint32_t index, OsServiceInfo* info) {
     if (index >= SERVICE_REGISTRY_CAPACITY) {
         return SERVICE_ERR_INVALID_ARGUMENT;
     }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
+        return SERVICE_ERR_NOT_READY;
+    }
     if (service_table[index].state != OS_SERVICE_STATE_REGISTERED) {
+        kernel_spinlock_release(&service_lock, &token);
         return SERVICE_ERR_NOT_FOUND;
     }
     service_fill_info(&service_table[index], info);
+    kernel_spinlock_release(&service_lock, &token);
     return SERVICE_OK;
+}
+
+void service_registry_get_snapshot(ServiceRegistrySnapshot* snapshot) {
+    if (snapshot == 0) {
+        return;
+    }
+    service_prune_stale();
+    snapshot->capacity = SERVICE_REGISTRY_CAPACITY;
+    snapshot->count = 0;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
+        return;
+    }
+    for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
+        if (service_table[i].state != OS_SERVICE_STATE_REGISTERED) {
+            continue;
+        }
+        service_fill_info(&service_table[i], &snapshot->entries[snapshot->count++]);
+    }
+    kernel_spinlock_release(&service_lock, &token);
 }
 
 const char* service_state_name(uint32_t state) {

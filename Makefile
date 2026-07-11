@@ -48,11 +48,12 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
 	./build/kernel64.o \
+	./build/spinlock64.o \
 	./build/kutil64.o \
 	./build/kernel_diag64.o \
 	./build/ipc_mailbox64.o \
@@ -153,6 +154,11 @@ test-kernel-handles:
 test-process-lifecycle:
 	python3 ./tools/process_lifecycle_test.py
 
+test-spinlocks:
+	python3 ./tools/spinlock_test.py
+
+test-concurrency: test-spinlocks test-kernel-handles test-process-lifecycle test-service-registry test-ipc-contracts
+
 test-service-registry:
 	python3 ./tools/service_registry_test.py
 test-service-smoke: uefi
@@ -181,6 +187,9 @@ all32:
 ./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/handle/kernel_objects.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/syscall64.h
 	@mkdir -p ./build
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/core/kernel64.cpp -o $@
+
+./build/spinlock64.o: ./kernel/sync/spinlock.cpp ./include/kernel/spinlock.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/kutil64.o: ./kernel/util/kutil64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@

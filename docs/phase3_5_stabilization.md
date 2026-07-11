@@ -323,21 +323,34 @@ Phase 3.5G contracts:
 
 ## 3.5H. Concurrency Readiness
 
-- [ ] **C01: Add interrupt-safe spinlock primitives**
+- [x] **C01: Add interrupt-safe spinlock primitives**
   Define lock ordering and save/restore interrupt-state behavior.
   Completion: nested misuse is detectable in diagnostic builds.
 
-- [ ] **C02: Protect process, IPC, service, and handle tables**
+- [x] **C02: Protect process, IPC, service, and handle tables**
   Add the smallest lock boundaries that preserve each invariant.
   Completion: no code blocks, sleeps, or performs user copies while holding an
   inappropriate spinlock.
 
-- [ ] **C03: Add counter and snapshot consistency**
+- [x] **C03: Add counter and snapshot consistency**
   Make shell diagnostics observe coherent state without consuming queues.
   Completion: stress tests cannot produce impossible counts or partial records.
 
 SMP remains out of scope. These tasks only prevent the current single-CPU
 interrupt and scheduler paths from depending on accidental atomicity.
+
+Phase 3.5H contracts:
+
+- interrupt-safe spinlocks restore the caller's IF state and enforce the
+  documented five-class lock order;
+- scheduler/wait state, handle tables, IPC mailboxes, input queues, and service
+  registry entries have explicit lock ownership;
+- cleanup detaches protected records before slow destruction;
+- scheduler, IPC, and service diagnostics consume coherent snapshots;
+- `locks` exposes contention and misuse counters, while
+  `make test-concurrency` covers ordering, restoration, contention, and table
+  invariants;
+- detailed contract: `docs/concurrency_readiness.md`.
 
 ## 3.5I. Fault Injection And Soak Testing
 

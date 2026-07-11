@@ -413,20 +413,12 @@ uint32_t kernel_object_release_table(KernelHandleTable* table) {
         return 0;
     }
 
-    uint32_t released = 0;
-    for (uint32_t i = 0; i < KERNEL_HANDLE_TABLE_SIZE; i++) {
-        KernelHandle* entry = &table->entries[i];
-        if (!entry->active) {
-            continue;
-        }
-        kernel_object_release_handle_object(entry);
-        entry->active = 0;
-        entry->type = KERNEL_HANDLE_TYPE_NONE;
-        entry->rights = 0;
-        entry->object = 0;
-        entry->extra = 0;
-        released++;
+    KernelHandle detached[KERNEL_HANDLE_TABLE_SIZE];
+    uint32_t released = kernel_handle_detach_all(table,
+                                                 detached,
+                                                 KERNEL_HANDLE_TABLE_SIZE);
+    for (uint32_t i = 0; i < released; i++) {
+        kernel_object_release_handle_object(&detached[i]);
     }
-    table->active_count = 0;
     return released;
 }

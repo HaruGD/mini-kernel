@@ -32,11 +32,34 @@ static uint32_t next_generation(KernelHandleTable* table) {
     return generation == 0 ? next_generation(table) : generation;
 }
 
+static KernelHandle* resolve_unlocked(KernelHandleTable* table,
+                                      uint64_t handle,
+                                      uint32_t expected_type,
+                                      uint32_t required_rights) {
+    uint32_t slot = 0;
+    uint32_t generation = 0;
+    if (table == 0 || !decode_handle_token(handle, &slot, &generation)) {
+        return 0;
+    }
+    KernelHandle* entry = &table->entries[slot];
+    if (!entry->active || entry->generation != generation) {
+        return 0;
+    }
+    if (expected_type != KERNEL_HANDLE_TYPE_NONE && entry->type != expected_type) {
+        return 0;
+    }
+    if ((entry->rights & required_rights) != required_rights) {
+        return 0;
+    }
+    return entry;
+}
+
 void kernel_handle_table_init(KernelHandleTable* table) {
     if (table == 0) {
         return;
     }
 
+    kernel_spinlock_init(&table->lock, KERNEL_LOCK_CLASS_HANDLE, "handle_table");
     table->next_generation = 1;
     table->active_count = 0;
     for (uint32_t i = 0; i < KERNEL_HANDLE_TABLE_SIZE; i++) {
@@ -60,6 +83,11 @@ uint64_t kernel_handle_alloc(KernelHandleTable* table,
         return 0;
     }
 
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&table->lock, &token)) {
+        return 0;
+    }
+
     for (uint32_t i = 0; i < KERNEL_HANDLE_TABLE_SIZE; i++) {
         KernelHandle* entry = &table->entries[i];
         if (entry->active) {
@@ -76,9 +104,12 @@ uint64_t kernel_handle_alloc(KernelHandleTable* table,
         entry->object = object;
         entry->extra = extra;
         table->active_count++;
-        return encode_handle_token(i, generation);
+        uint64_t result = encode_handle_token(i, generation);
+        kernel_spinlock_release(&table->lock, &token);
+        return result;
     }
 
+    kernel_spinlock_release(&table->lock, &token);
     return 0;
 }
 
@@ -90,22 +121,12 @@ KernelHandle* kernel_handle_resolve(KernelHandleTable* table,
         return 0;
     }
 
-    uint32_t slot = 0;
-    uint32_t generation = 0;
-    if (!decode_handle_token(handle, &slot, &generation)) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&table->lock, &token)) {
         return 0;
     }
-
-    KernelHandle* entry = &table->entries[slot];
-    if (!entry->active || entry->generation != generation) {
-        return 0;
-    }
-    if (expected_type != KERNEL_HANDLE_TYPE_NONE && entry->type != expected_type) {
-        return 0;
-    }
-    if ((entry->rights & required_rights) != required_rights) {
-        return 0;
-    }
+    KernelHandle* entry = resolve_unlocked(table, handle, expected_type, required_rights);
+    kernel_spinlock_release(&table->lock, &token);
     return entry;
 }
 
@@ -116,9 +137,38 @@ const KernelHandle* kernel_handle_resolve_const(const KernelHandleTable* table,
     return kernel_handle_resolve((KernelHandleTable*)table, handle, expected_type, required_rights);
 }
 
+int kernel_handle_resolve_copy(const KernelHandleTable* table,
+                               uint64_t handle,
+                               uint32_t expected_type,
+                               uint32_t required_rights,
+                               KernelHandle* resolved_out) {
+    if (table == 0 || resolved_out == 0) {
+        return 0;
+    }
+    KernelHandleTable* mutable_table = (KernelHandleTable*)table;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mutable_table->lock, &token)) {
+        return 0;
+    }
+    KernelHandle* entry = resolve_unlocked(mutable_table, handle, expected_type, required_rights);
+    if (entry != 0) {
+        *resolved_out = *entry;
+    }
+    kernel_spinlock_release(&mutable_table->lock, &token);
+    return entry != 0;
+}
+
 int kernel_handle_close(KernelHandleTable* table, uint64_t handle, KernelHandle* closed_out) {
-    KernelHandle* entry = kernel_handle_resolve(table, handle, KERNEL_HANDLE_TYPE_NONE, 0);
+    if (table == 0) {
+        return 0;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&table->lock, &token)) {
+        return 0;
+    }
+    KernelHandle* entry = resolve_unlocked(table, handle, KERNEL_HANDLE_TYPE_NONE, 0);
     if (entry == 0) {
+        kernel_spinlock_release(&table->lock, &token);
         return 0;
     }
 
@@ -134,11 +184,45 @@ int kernel_handle_close(KernelHandleTable* table, uint64_t handle, KernelHandle*
     if (table->active_count != 0) {
         table->active_count--;
     }
+    kernel_spinlock_release(&table->lock, &token);
     return 1;
+}
+
+uint32_t kernel_handle_detach_all(KernelHandleTable* table,
+                                  KernelHandle* detached,
+                                  uint32_t capacity) {
+    if (table == 0 || detached == 0 || capacity < KERNEL_HANDLE_TABLE_SIZE) {
+        return 0;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&table->lock, &token)) {
+        return 0;
+    }
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < KERNEL_HANDLE_TABLE_SIZE; i++) {
+        KernelHandle* entry = &table->entries[i];
+        if (!entry->active) {
+            continue;
+        }
+        detached[count++] = *entry;
+        entry->active = 0;
+        entry->type = KERNEL_HANDLE_TYPE_NONE;
+        entry->rights = 0;
+        entry->object = 0;
+        entry->extra = 0;
+    }
+    table->active_count = 0;
+    kernel_spinlock_release(&table->lock, &token);
+    return count;
 }
 
 uint32_t kernel_handle_close_all_type(KernelHandleTable* table, uint32_t type) {
     if (table == 0) {
+        return 0;
+    }
+
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&table->lock, &token)) {
         return 0;
     }
 
@@ -158,11 +242,18 @@ uint32_t kernel_handle_close_all_type(KernelHandleTable* table, uint32_t type) {
     }
 
     table->active_count = table->active_count > closed ? table->active_count - closed : 0;
+    kernel_spinlock_release(&table->lock, &token);
     return closed;
 }
 
 uint32_t kernel_handle_count_type(const KernelHandleTable* table, uint32_t type) {
     if (table == 0) {
+        return 0;
+    }
+
+    KernelHandleTable* mutable_table = (KernelHandleTable*)table;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mutable_table->lock, &token)) {
         return 0;
     }
 
@@ -173,6 +264,7 @@ uint32_t kernel_handle_count_type(const KernelHandleTable* table, uint32_t type)
             count++;
         }
     }
+    kernel_spinlock_release(&mutable_table->lock, &token);
     return count;
 }
 

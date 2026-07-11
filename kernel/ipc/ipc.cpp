@@ -121,16 +121,17 @@ static int transfer_handles(Process* sender, Process* target, OsIpcMessageV2* pr
     }
 
     for (uint32_t i = 0; i < prepared->handle_count; i++) {
-        KernelHandle* source = kernel_handle_resolve(&sender->handle_table,
-                                                     prepared->handles[i],
-                                                     KERNEL_HANDLE_TYPE_NONE,
-                                                     KERNEL_HANDLE_RIGHT_TRANSFER);
-        if (source == 0) {
+        KernelHandle source;
+        if (!kernel_handle_resolve_copy(&sender->handle_table,
+                                        prepared->handles[i],
+                                        KERNEL_HANDLE_TYPE_NONE,
+                                        KERNEL_HANDLE_RIGHT_TRANSFER,
+                                        &source)) {
             rollback_transferred_handles(target, new_handles, i);
             return IPC_ERR_PERMISSION_DENIED;
         }
 
-        uint64_t cloned = kernel_object_clone_handle(&target->handle_table, source);
+        uint64_t cloned = kernel_object_clone_handle(&target->handle_table, &source);
         if (cloned == 0) {
             rollback_transferred_handles(target, new_handles, i);
             return IPC_ERR_QUEUE_FULL;

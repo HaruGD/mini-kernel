@@ -13,6 +13,47 @@
 #define USER_SLOT_SPAN 0x00200000ULL
 #define USER_HEAP_OFFSET 0x00110000ULL
 
+struct ProcessDiagnosticSnapshot {
+    uint32_t pid;
+    uint32_t generation;
+    uint32_t parent_pid;
+    uint32_t parent_generation;
+    char name[PROCESS_NAME_MAX];
+    uint32_t slot_index;
+    uint32_t state;
+    uint32_t termination_reason;
+    uint32_t status_code;
+    uint32_t scheduler_state;
+    uint32_t pause_reason;
+    uint32_t wait_reason;
+    uint32_t permissions;
+    uint32_t runtime_ticks;
+    uint32_t timeslice_ticks;
+    uint32_t wake_tick;
+    uint32_t wait_deadline;
+    uint32_t handle_count;
+    KernelIpcMailboxStats mailbox;
+    uint8_t active;
+    uint8_t reaped;
+    uint8_t resumable;
+    uint8_t background;
+    uint8_t wait_pending;
+    uint8_t wait_has_deadline;
+    uint8_t reserved[2];
+};
+
+struct SchedulerDiagnosticSnapshot {
+    uint32_t process_count;
+    uint32_t queue_count;
+    uint32_t queue_head;
+    uint32_t last_pid;
+    uint32_t switch_count;
+    uint32_t yield_count;
+    uint32_t focused_pid;
+    uint32_t queue_pids[SCHED_QUEUE_SIZE];
+    ProcessDiagnosticSnapshot processes[PROCESS_TABLE_SIZE];
+};
+
 extern uint32_t user_program_depth;
 extern uint32_t next_pid;
 extern uint32_t next_process_generation;
@@ -27,6 +68,7 @@ extern uint32_t sched_yield_count;
 extern uint32_t input_focus_pid;
 
 Process* current_process();
+void process_get_diagnostic_snapshot(SchedulerDiagnosticSnapshot* snapshot);
 
 void process_clear(Process* process);
 ProcessIdentity process_identity(const Process* process);

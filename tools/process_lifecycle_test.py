@@ -137,6 +137,20 @@ int main() {
     }
     check(reusable >= PROCESS_TABLE_SIZE - 1);
 
+    SchedulerDiagnosticSnapshot snapshot;
+    process_get_diagnostic_snapshot(&snapshot);
+    check(snapshot.process_count == PROCESS_TABLE_SIZE);
+    check(snapshot.queue_count <= SCHED_QUEUE_SIZE);
+    for (uint32_t i = 0; i < snapshot.process_count; i++) {
+        const ProcessDiagnosticSnapshot* item = &snapshot.processes[i];
+        check(item->mailbox.count <= item->mailbox.capacity);
+        check(item->handle_count <= KERNEL_HANDLE_TABLE_SIZE);
+        if (item->state == PROCESS_STATE_RETURNED || item->state == PROCESS_STATE_FAILED) {
+            check(item->active == 0);
+            check(item->scheduler_state == SCHED_STATE_FINISHED);
+        }
+    }
+
     clear_all();
     return failures == 0 ? 0 : 1;
 }
@@ -189,8 +203,10 @@ def main() -> int:
             "-Wall",
             "-Wextra",
             "-Werror",
+            "-DOS64_HOST_TEST",
             "-I",
             str(REPO_ROOT / "include"),
+            str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),

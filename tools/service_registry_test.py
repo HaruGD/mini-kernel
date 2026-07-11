@@ -141,6 +141,11 @@ int main() {
         check(process_ipc_mailbox_count(owner) == 0);
         check(owner->handle_table.active_count == 0);
     }
+    ServiceRegistrySnapshot snapshot;
+    service_registry_get_snapshot(&snapshot);
+    check(snapshot.capacity == SERVICE_REGISTRY_CAPACITY);
+    check(snapshot.count == 0);
+    check(snapshot.count <= snapshot.capacity);
     clear_all();
     return failures == 0 ? 0 : 1;
 }
@@ -193,8 +198,10 @@ def main() -> int:
             "-Wall",
             "-Wextra",
             "-Werror",
+            "-DOS64_HOST_TEST",
             "-I",
             str(REPO_ROOT / "include"),
+            str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),

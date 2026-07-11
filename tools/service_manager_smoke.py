@@ -154,7 +154,14 @@ def run() -> int:
         marker = wait_for_serial("[usvcctl] exit service OK", 20)
         wait_for_serial("OS64>", 10, marker)
         send_command(process, "services")
-        wait_for_serial("count=0x00000000", 10)
+        marker = wait_for_serial("count=0x00000000", 10)
+        wait_for_serial("OS64>", 10, marker)
+        send_command(process, "locks")
+        wait_for_serial("=== CONCURRENCY ===", 10)
+        wait_for_serial(
+            "order_violations=0x0000000000000000 recursion_violations=0x0000000000000000 release_violations=0x0000000000000000",
+            10,
+        )
     finally:
         if process.poll() is None:
             process.terminate()
@@ -187,6 +194,7 @@ def run() -> int:
         "[usvcctl] status crash OK",
         "[serviced] exit",
         "count=0x00000000",
+        "=== CONCURRENCY ===",
     ]
     missing = [item for item in required if item not in serial_text]
     if missing:

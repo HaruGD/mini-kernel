@@ -96,6 +96,7 @@ void ipc_mailbox_init(KernelIpcMailbox* mailbox) {
     if (mailbox == 0) {
         return;
     }
+    kernel_spinlock_init(&mailbox->lock, KERNEL_LOCK_CLASS_IPC_SERVICE, "ipc_mailbox");
     mailbox->head = 0;
     mailbox->tail = 0;
     mailbox->count = 0;
@@ -111,42 +112,84 @@ uint32_t ipc_mailbox_capacity(const KernelIpcMailbox* mailbox) {
 }
 
 uint32_t ipc_mailbox_count(const KernelIpcMailbox* mailbox) {
-    return mailbox == 0 ? 0 : mailbox->count;
+    KernelIpcMailboxStats stats;
+    ipc_mailbox_get_stats(mailbox, &stats);
+    return stats.count;
 }
 
 uint32_t ipc_mailbox_delivered_count(const KernelIpcMailbox* mailbox) {
-    return mailbox == 0 ? 0 : mailbox->delivered_count;
+    KernelIpcMailboxStats stats;
+    ipc_mailbox_get_stats(mailbox, &stats);
+    return stats.delivered_count;
 }
 
 uint32_t ipc_mailbox_dropped_count(const KernelIpcMailbox* mailbox) {
-    return mailbox == 0 ? 0 : mailbox->dropped_count;
+    KernelIpcMailboxStats stats;
+    ipc_mailbox_get_stats(mailbox, &stats);
+    return stats.dropped_count;
+}
+
+void ipc_mailbox_get_stats(const KernelIpcMailbox* mailbox, KernelIpcMailboxStats* stats) {
+    if (stats == 0) {
+        return;
+    }
+    stats->capacity = IPC_MAILBOX_CAPACITY;
+    stats->count = 0;
+    stats->delivered_count = 0;
+    stats->dropped_count = 0;
+    if (mailbox == 0) {
+        return;
+    }
+    KernelSpinlockToken token;
+    KernelIpcMailbox* mutable_mailbox = (KernelIpcMailbox*)mailbox;
+    if (!kernel_spinlock_acquire(&mutable_mailbox->lock, &token)) {
+        return;
+    }
+    stats->count = mailbox->count;
+    stats->delivered_count = mailbox->delivered_count;
+    stats->dropped_count = mailbox->dropped_count;
+    kernel_spinlock_release(&mutable_mailbox->lock, &token);
 }
 
 int ipc_mailbox_is_empty(const KernelIpcMailbox* mailbox) {
-    return mailbox == 0 || mailbox->count == 0;
+    return ipc_mailbox_count(mailbox) == 0;
 }
 
 int ipc_mailbox_is_full(const KernelIpcMailbox* mailbox) {
-    return mailbox != 0 && mailbox->count == IPC_MAILBOX_CAPACITY;
+    return ipc_mailbox_count(mailbox) == IPC_MAILBOX_CAPACITY;
 }
 
 int ipc_mailbox_push_v2(KernelIpcMailbox* mailbox, const OsIpcMessageV2* message) {
     if (mailbox == 0 || !message_shape_valid_v2(message)) {
         return 0;
     }
-    if (ipc_mailbox_is_full(mailbox)) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mailbox->lock, &token)) {
+        return 0;
+    }
+    if (mailbox->count == IPC_MAILBOX_CAPACITY) {
         mailbox->dropped_count++;
+        kernel_spinlock_release(&mailbox->lock, &token);
         return 0;
     }
 
     mailbox->messages[mailbox->tail] = *message;
     mailbox->tail = (mailbox->tail + 1u) % IPC_MAILBOX_CAPACITY;
     mailbox->count++;
+    kernel_spinlock_release(&mailbox->lock, &token);
     return 1;
 }
 
 int ipc_mailbox_pop_v2(KernelIpcMailbox* mailbox, OsIpcMessageV2* message) {
-    if (mailbox == 0 || message == 0 || ipc_mailbox_is_empty(mailbox)) {
+    if (mailbox == 0 || message == 0) {
+        return 0;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mailbox->lock, &token)) {
+        return 0;
+    }
+    if (mailbox->count == 0) {
+        kernel_spinlock_release(&mailbox->lock, &token);
         return 0;
     }
 
@@ -155,13 +198,22 @@ int ipc_mailbox_pop_v2(KernelIpcMailbox* mailbox, OsIpcMessageV2* message) {
     mailbox->head = (mailbox->head + 1u) % IPC_MAILBOX_CAPACITY;
     mailbox->count--;
     mailbox->delivered_count++;
+    kernel_spinlock_release(&mailbox->lock, &token);
     return 1;
 }
 
 int ipc_mailbox_pop_v2_match(KernelIpcMailbox* mailbox,
                              const OsIpcReceiveFilter* filter,
                              OsIpcMessageV2* message) {
-    if (mailbox == 0 || message == 0 || ipc_mailbox_is_empty(mailbox)) {
+    if (mailbox == 0 || message == 0) {
+        return 0;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mailbox->lock, &token)) {
+        return 0;
+    }
+    if (mailbox->count == 0) {
+        kernel_spinlock_release(&mailbox->lock, &token);
         return 0;
     }
 
@@ -174,18 +226,24 @@ int ipc_mailbox_pop_v2_match(KernelIpcMailbox* mailbox,
         }
     }
     if (found_offset == IPC_MAILBOX_CAPACITY) {
+        kernel_spinlock_release(&mailbox->lock, &token);
         return 0;
     }
 
     for (uint32_t i = 0; i < found_offset; i++) {
-        OsIpcMessageV2 rotated;
-        if (!ipc_mailbox_pop_v2(mailbox, &rotated) ||
-            !ipc_mailbox_push_v2(mailbox, &rotated)) {
-            return 0;
-        }
-        mailbox->delivered_count--;
+        OsIpcMessageV2 rotated = mailbox->messages[mailbox->head];
+        clear_message_v2(&mailbox->messages[mailbox->head]);
+        mailbox->head = (mailbox->head + 1u) % IPC_MAILBOX_CAPACITY;
+        mailbox->messages[mailbox->tail] = rotated;
+        mailbox->tail = (mailbox->tail + 1u) % IPC_MAILBOX_CAPACITY;
     }
-    return ipc_mailbox_pop_v2(mailbox, message);
+    *message = mailbox->messages[mailbox->head];
+    clear_message_v2(&mailbox->messages[mailbox->head]);
+    mailbox->head = (mailbox->head + 1u) % IPC_MAILBOX_CAPACITY;
+    mailbox->count--;
+    mailbox->delivered_count++;
+    kernel_spinlock_release(&mailbox->lock, &token);
+    return 1;
 }
 
 int ipc_mailbox_push(KernelIpcMailbox* mailbox, const OsIpcMessage* message) {
@@ -212,6 +270,10 @@ void ipc_mailbox_drop_all(KernelIpcMailbox* mailbox) {
     if (mailbox == 0) {
         return;
     }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mailbox->lock, &token)) {
+        return;
+    }
     mailbox->dropped_count += mailbox->count;
     for (uint32_t i = 0; i < IPC_MAILBOX_CAPACITY; i++) {
         clear_message_v2(&mailbox->messages[i]);
@@ -219,4 +281,5 @@ void ipc_mailbox_drop_all(KernelIpcMailbox* mailbox) {
     mailbox->head = 0;
     mailbox->tail = 0;
     mailbox->count = 0;
+    kernel_spinlock_release(&mailbox->lock, &token);
 }

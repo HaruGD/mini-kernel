@@ -28,20 +28,22 @@ static uint32_t vfs_mode_to_handle_rights(uint32_t mode) {
     return rights;
 }
 
-static KernelHandle* resolve_current_handle(uint64_t handle, uint32_t type, uint32_t rights) {
+static int resolve_current_handle(uint64_t handle,
+                                  uint32_t type,
+                                  uint32_t rights,
+                                  KernelHandle* resolved) {
     Process* process = current_process();
-    if (process == 0) {
-        return 0;
-    }
-    return kernel_handle_resolve(&process->handle_table, handle, type, rights);
+    return process != 0 &&
+           kernel_handle_resolve_copy(&process->handle_table, handle, type, rights, resolved);
 }
 
 static int resolve_vfs_fd(uint64_t handle, uint32_t type, uint32_t rights, int* fd_out) {
-    KernelHandle* entry = resolve_current_handle(handle, type, rights);
-    if (entry == 0 || fd_out == 0 || entry->object > 0x7FFFFFFFULL) {
+    KernelHandle entry;
+    if (!resolve_current_handle(handle, type, rights, &entry) ||
+        fd_out == 0 || entry.object > 0x7FFFFFFFULL) {
         return 0;
     }
-    *fd_out = (int)entry->object;
+    *fd_out = (int)entry.object;
     return 1;
 }
 
@@ -149,8 +151,9 @@ static uint64_t dispatch_write(uint64_t handle, uint64_t buffer_address, uint64_
 static uint64_t dispatch_close_typed(uint64_t handle, uint32_t type) {
     Process* process = current_process();
     KernelHandle closed;
+    KernelHandle resolved;
     if (process == 0 ||
-        kernel_handle_resolve(&process->handle_table, handle, type, 0) == 0 ||
+        !kernel_handle_resolve_copy(&process->handle_table, handle, type, 0, &resolved) ||
         !kernel_handle_close(&process->handle_table, handle, &closed) ||
         closed.object > 0x7FFFFFFFULL) {
         return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;

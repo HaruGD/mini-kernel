@@ -3,6 +3,7 @@
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
+#include "kernel/spinlock.h"
 
 const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_LOADED) {
@@ -86,7 +87,8 @@ const char* pause_reason_name(uint32_t reason) {
     return "none";
 }
 
-void print_process_summary(const Process* process, uint32_t tick_now) {
+template <typename ProcessView>
+static void print_process_summary_view(const ProcessView* process, uint32_t tick_now) {
     if (process == 0 || process->pid == 0) {
         print("none");
         return;
@@ -142,12 +144,18 @@ void print_process_summary(const Process* process, uint32_t tick_now) {
     print(process->reaped ? "yes" : "no");
 }
 
+void print_process_summary(const Process* process, uint32_t tick_now) {
+    print_process_summary_view(process, tick_now);
+}
+
 void print_process_table(uint32_t tick_now) {
+    SchedulerDiagnosticSnapshot snapshot;
+    process_get_diagnostic_snapshot(&snapshot);
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         print("\n[");
         print_hex32(i);
         print("] ");
-        print_process_summary(&process_table[i], tick_now);
+        print_process_summary_view(&snapshot.processes[i], tick_now);
     }
     print("\n");
 }
@@ -273,13 +281,15 @@ void print_jobs_for_process(const Process* parent, uint32_t tick_now) {
 }
 
 void print_ipc_info() {
+    SchedulerDiagnosticSnapshot snapshot;
+    process_get_diagnostic_snapshot(&snapshot);
     print("\n=== IPC ===");
     print("\nmailbox_capacity=");
     print_hex32(IPC_MAILBOX_CAPACITY);
 
     uint32_t active_count = 0;
-    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
-        const Process* process = &process_table[i];
+    for (uint32_t i = 0; i < snapshot.process_count; i++) {
+        const ProcessDiagnosticSnapshot* process = &snapshot.processes[i];
         if (process->pid == 0) {
             continue;
         }
@@ -295,13 +305,15 @@ void print_ipc_info() {
         print(" state=");
         print(process_state_name(process->state));
         print(" wait=");
-        print_hex32(process_ipc_waiting(process) ? 1 : 0);
+        print_hex32(process->wait_pending && process->wait_reason == PROCESS_WAIT_IPC ? 1 : 0);
         print(" queued=");
-        print_hex32(process_ipc_mailbox_count(process));
+        print_hex32(process->mailbox.count);
         print(" delivered=");
-        print_hex32(process_ipc_mailbox_delivered_count(process));
+        print_hex32(process->mailbox.delivered_count);
         print(" dropped=");
-        print_hex32(process_ipc_mailbox_dropped_count(process));
+        print_hex32(process->mailbox.dropped_count);
+        print(" handles=");
+        print_hex32(process->handle_count);
     }
 
     if (active_count == 0) {
@@ -311,38 +323,65 @@ void print_ipc_info() {
 }
 
 void print_service_registry() {
+    ServiceRegistrySnapshot snapshot;
+    service_registry_get_snapshot(&snapshot);
     print("\n=== SERVICES ===");
     print("\ncapacity=");
-    print_hex32(service_registry_capacity());
+    print_hex32(snapshot.capacity);
     print(" count=");
-    print_hex32(service_registry_count());
+    print_hex32(snapshot.count);
 
-    uint32_t printed = 0;
-    for (uint32_t i = 0; i < service_registry_capacity(); i++) {
-        OsServiceInfo info;
-        if (service_registry_get_info(i, &info) != SERVICE_OK) {
-            continue;
-        }
-
-        printed++;
+    for (uint32_t i = 0; i < snapshot.count; i++) {
+        const OsServiceInfo* info = &snapshot.entries[i];
         print("\n[");
         print_hex32(i);
         print("] name=");
-        print(info.name);
+        print(info->name);
         print(" pid=");
-        print_hex32(info.owner_pid);
+        print_hex32(info->owner_pid);
         print(" state=");
-        print(service_state_name(info.state));
+        print(service_state_name(info->state));
         print(" flags=");
-        print_hex32(info.flags);
+        print_hex32(info->flags);
         print(" generation=");
-        print_hex32(info.generation);
+        print_hex32(info->generation);
     }
 
-    if (printed == 0) {
+    if (snapshot.count == 0) {
         print("\n(no services)");
     }
     print("\n================");
+}
+
+void print_concurrency_info() {
+    KernelSpinlockStats stats;
+    kernel_spinlock_get_stats(&stats);
+    print("\n=== CONCURRENCY ===");
+    print("\nacquisitions=");
+    print_hex64(stats.acquisitions);
+    print(" contentions=");
+    print_hex64(stats.contentions);
+    print("\norder_violations=");
+    print_hex64(stats.order_violations);
+    print(" recursion_violations=");
+    print_hex64(stats.recursion_violations);
+    print(" release_violations=");
+    print_hex64(stats.release_violations);
+    print("\ndepth=");
+    print_hex32(stats.current_depth);
+    print(" max_depth=");
+    print_hex32(stats.maximum_depth);
+    print(" class=");
+    print_hex32(stats.current_class);
+    print(" interrupts=");
+    print(stats.interrupts_enabled ? "enabled" : "disabled");
+    print("\nlast_violation=");
+    print_hex32(stats.last_violation_type);
+    print(" held_class=");
+    print_hex32(stats.last_held_class);
+    print(" requested_class=");
+    print_hex32(stats.last_requested_class);
+    print("\n===================");
 }
 
 void print_scheduler_info(Process* const* sched_queue,
@@ -354,26 +393,52 @@ void print_scheduler_info(Process* const* sched_queue,
                           uint32_t sched_yield_count,
                           uint32_t focused_pid,
                           uint32_t tick_now) {
+    (void)sched_queue;
+    (void)sched_queue_count;
+    (void)sched_queue_head;
+    (void)sched_queue_capacity;
+    (void)sched_last_pid;
+    (void)sched_switch_count;
+    (void)sched_yield_count;
+    (void)focused_pid;
+    (void)tick_now;
+    SchedulerDiagnosticSnapshot snapshot;
+    process_get_diagnostic_snapshot(&snapshot);
     print("\n=== SCHEDULER ===");
     print("\nQueue count: ");
-    print_hex32(sched_queue_count);
+    print_hex32(snapshot.queue_count);
     print("\nHead: ");
-    print_hex32(sched_queue_head);
+    print_hex32(snapshot.queue_head);
     print("\nLast PID: ");
-    print_hex32(sched_last_pid);
+    print_hex32(snapshot.last_pid);
     print("\nSwitches: ");
-    print_hex32(sched_switch_count);
+    print_hex32(snapshot.switch_count);
     print("\nYields: ");
-    print_hex32(sched_yield_count);
+    print_hex32(snapshot.yield_count);
     print("\nInput focus PID: ");
-    print_hex32(focused_pid);
+    print_hex32(snapshot.focused_pid);
 
-    for (uint32_t i = 0; i < sched_queue_count; i++) {
-        uint32_t index = (sched_queue_head + i) % sched_queue_capacity;
+    for (uint32_t i = 0; i < snapshot.queue_count; i++) {
+        uint32_t index = (snapshot.queue_head + i) % SCHED_QUEUE_SIZE;
+        uint32_t pid = snapshot.queue_pids[index];
         print("\nQ[");
         print_hex32(i);
-        print("] ");
-        print_process_summary(sched_queue[index], tick_now);
+        print("] pid=");
+        print_hex32(pid);
+        for (uint32_t p = 0; p < snapshot.process_count; p++) {
+            if (snapshot.processes[p].pid != pid) {
+                continue;
+            }
+            print(" name=");
+            print(snapshot.processes[p].name);
+            print(" state=");
+            print(process_state_name(snapshot.processes[p].state));
+            print(" sched=");
+            print(scheduler_state_name(snapshot.processes[p].scheduler_state));
+            print(" ticks=");
+            print_hex32(snapshot.processes[p].runtime_ticks);
+            break;
+        }
     }
     print("\n=================\n");
 }

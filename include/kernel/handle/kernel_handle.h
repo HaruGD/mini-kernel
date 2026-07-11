@@ -2,6 +2,7 @@
 #define KERNEL_HANDLE_KERNEL_HANDLE_H
 
 #include <stdint.h>
+#include "kernel/spinlock.h"
 
 #define KERNEL_HANDLE_TABLE_SIZE 32u
 
@@ -30,6 +31,7 @@ struct KernelHandle {
 };
 
 struct KernelHandleTable {
+    KernelSpinlock lock;
     uint32_t next_generation;
     uint32_t active_count;
     KernelHandle entries[KERNEL_HANDLE_TABLE_SIZE];
@@ -49,7 +51,15 @@ const KernelHandle* kernel_handle_resolve_const(const KernelHandleTable* table,
                                                 uint64_t handle,
                                                 uint32_t expected_type,
                                                 uint32_t required_rights);
+int kernel_handle_resolve_copy(const KernelHandleTable* table,
+                               uint64_t handle,
+                               uint32_t expected_type,
+                               uint32_t required_rights,
+                               KernelHandle* resolved_out);
 int kernel_handle_close(KernelHandleTable* table, uint64_t handle, KernelHandle* closed_out);
+uint32_t kernel_handle_detach_all(KernelHandleTable* table,
+                                  KernelHandle* detached,
+                                  uint32_t capacity);
 uint32_t kernel_handle_close_all_type(KernelHandleTable* table, uint32_t type);
 uint32_t kernel_handle_count_type(const KernelHandleTable* table, uint32_t type);
 int kernel_handle_is_valid_token(uint64_t handle);

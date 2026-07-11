@@ -125,6 +125,13 @@ int main() {
     check(ipc_mailbox_count(&mailbox) == 0);
     check(ipc_mailbox_dropped_count(&mailbox) == 4);
     check(ipc_mailbox_delivered_count(&mailbox) == 21);
+    KernelIpcMailboxStats mailbox_stats;
+    ipc_mailbox_get_stats(&mailbox, &mailbox_stats);
+    check(mailbox_stats.capacity == IPC_MAILBOX_CAPACITY);
+    check(mailbox_stats.count <= mailbox_stats.capacity);
+    check(mailbox_stats.count == 0);
+    check(mailbox_stats.delivered_count == 21);
+    check(mailbox_stats.dropped_count == 4);
 
     Process process;
     process_clear(&process);
@@ -227,8 +234,10 @@ def main() -> int:
             "-Wall",
             "-Wextra",
             "-Werror",
+            "-DOS64_HOST_TEST",
             "-I",
             str(REPO_ROOT / "include"),
+            str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),
