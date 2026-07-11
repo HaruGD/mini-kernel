@@ -145,9 +145,19 @@ int main() {
 
 STUB_SOURCE = r"""
 #include <stdint.h>
+#include <stddef.h>
+#include <stdlib.h>
 
 uint32_t vfs_close_all_for_owner(uint32_t) {
     return 0;
+}
+
+extern "C" void* kmalloc(size_t size) {
+    return malloc(size);
+}
+
+extern "C" void kfree(void* pointer) {
+    free(pointer);
 }
 
 void copy_string64(char* dest, uint32_t capacity, const char* src) {
@@ -182,6 +192,8 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
+            str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
+            str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),
             str(REPO_ROOT / "kernel/ipc/ipc_mailbox.cpp"),
             str(REPO_ROOT / "kernel/input/input_event_queue.cpp"),
             str(REPO_ROOT / "kernel/process/process64.cpp"),

@@ -1,5 +1,6 @@
 #include "kernel/ipc/ipc.h"
 #include "kernel/handle/kernel_handle.h"
+#include "kernel/handle/kernel_objects.h"
 #include "kernel/process64.h"
 
 int ipc_process_can_receive(const Process* process) {
@@ -100,7 +101,7 @@ static void rollback_transferred_handles(Process* target, uint64_t* handles, uin
     }
     for (uint32_t i = 0; i < count; i++) {
         if (handles[i] != 0) {
-            kernel_handle_close(&target->handle_table, handles[i], 0);
+            kernel_object_close_handle(&target->handle_table, handles[i], 0);
             handles[i] = 0;
         }
     }
@@ -129,11 +130,7 @@ static int transfer_handles(Process* sender, Process* target, OsIpcMessageV2* pr
             return IPC_ERR_PERMISSION_DENIED;
         }
 
-        uint64_t cloned = kernel_handle_alloc(&target->handle_table,
-                                              source->type,
-                                              source->rights,
-                                              source->object,
-                                              source->extra);
+        uint64_t cloned = kernel_object_clone_handle(&target->handle_table, source);
         if (cloned == 0) {
             rollback_transferred_handles(target, new_handles, i);
             return IPC_ERR_QUEUE_FULL;

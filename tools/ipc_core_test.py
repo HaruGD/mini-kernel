@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TEST_SOURCE = r"""
 #include <stdint.h>
 #include "kernel/handle/kernel_handle.h"
+#include "kernel/handle/kernel_objects.h"
 #include "kernel/ipc/ipc.h"
 #include "kernel/process64.h"
 
@@ -73,6 +74,7 @@ static void clear_process_table() {
 
 int main() {
     clear_process_table();
+    kernel_objects_init();
     Process* sender = &process_table[0];
     Process* target = &process_table[1];
     init_process(sender, 10);
@@ -177,11 +179,13 @@ int main() {
     check(ipc_send_message_v2(sender, target, &message_v2) == IPC_ERR_PERMISSION_DENIED);
     check(kernel_handle_count_type(&target->handle_table, KERNEL_HANDLE_TYPE_VFS_FILE) == 0);
 
-    message_v2.handles[0] = kernel_handle_alloc(&sender->handle_table,
-                                                KERNEL_HANDLE_TYPE_SHARED_MEMORY,
-                                                KERNEL_HANDLE_RIGHT_MAP | KERNEL_HANDLE_RIGHT_TRANSFER,
-                                                0xABCDEFu,
-                                                4096);
+    message_v2.handles[0] = kernel_shared_memory_create(&sender->handle_table,
+                                                        sender->pid,
+                                                        4096,
+                                                        KERNEL_HANDLE_RIGHT_READ |
+                                                        KERNEL_HANDLE_RIGHT_WRITE |
+                                                        KERNEL_HANDLE_RIGHT_MAP |
+                                                        KERNEL_HANDLE_RIGHT_TRANSFER);
     check(message_v2.handles[0] != 0);
     check(ipc_send_message_v2(sender, target, &message_v2) == IPC_OK);
     check(ipc_receive_message_v2(target, &received_v2) == IPC_OK);
@@ -277,9 +281,19 @@ int main() {
 
 STUB_SOURCE = r"""
 #include <stdint.h>
+#include <stddef.h>
+#include <stdlib.h>
 
 uint32_t vfs_close_all_for_owner(uint32_t) {
     return 0;
+}
+
+extern "C" void* kmalloc(size_t size) {
+    return malloc(size);
+}
+
+extern "C" void kfree(void* pointer) {
+    free(pointer);
 }
 
 void copy_string64(char* dest, uint32_t capacity, const char* src) {
@@ -314,6 +328,8 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
+            str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
+            str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),
             str(REPO_ROOT / "kernel/ipc/ipc.cpp"),
             str(REPO_ROOT / "kernel/ipc/ipc_mailbox.cpp"),
             str(REPO_ROOT / "kernel/input/input_event_queue.cpp"),

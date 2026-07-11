@@ -105,7 +105,7 @@ Planned work:
 - [x] Common wait and wakeup core
 - [x] Hardened process identity and lifecycle cleanup
 - [x] Independent user address spaces and recoverable user faults
-- [~] Typed per-process handles and shared-memory object foundation
+- [x] Typed per-process handles, shared-memory objects, and surface handles
 - [x] IPC v2 with correlation, timeout, and handle transfer
 - [ ] Service supervision, permissions, and bounded restart policy
 - [ ] Concurrency rules, fault injection, and long-running soak coverage

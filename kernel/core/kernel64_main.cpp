@@ -1,4 +1,5 @@
 #include "drivers/gop.h"
+#include "kernel/handle/kernel_objects.h"
 #include "kernel/input/input_events.h"
 
 extern "C" uint8_t __kernel_text_start[];
@@ -145,6 +146,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
         early_framebuffer_marker(g_boot_info, 0, 0x000000FF);
     }
     heap_init();
+    kernel_objects_init();
     int gop_back_buffer_ready = gop.init_back_buffer();
     driver_manager_init();
     service_registry_init();

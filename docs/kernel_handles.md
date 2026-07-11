@@ -1,8 +1,8 @@
 # Kernel Objects And Handles
 
-Phase 3.5E introduces a typed per-process handle layer. User space receives
-opaque integer tokens instead of subsystem pointers or raw kernel object
-indexes.
+Phase 3.5E introduces a typed per-process handle and object layer. User space
+receives opaque integer tokens instead of subsystem pointers or raw kernel
+object indexes.
 
 ## Handle Token
 
@@ -23,8 +23,9 @@ checks reject stale handles after close and slot reuse.
 - `SHARED_MEMORY`
 - `GRAPHICS_SURFACE`
 
-The VFS file and directory types are active in the syscall path. Shared-memory
-and graphics-surface types are reserved for IPC v2 and compositor work.
+VFS file and directory handles wrap existing VFS table indexes. Shared-memory
+and graphics-surface handles own refcounted kernel objects managed by
+`kernel/handle/kernel_objects.cpp`.
 
 ## Rights
 
@@ -42,12 +43,41 @@ rights handles fail before reaching the subsystem.
 ## Process Ownership
 
 Each `Process` owns a `KernelHandleTable`. The centralized process termination
-path invalidates the table after closing VFS-owned resources. This means:
+path invalidates the table after closing VFS-owned resources and releasing
+refcounted objects. This means:
 
 - duplicate close fails;
 - stale handles fail after close;
 - a process cannot use another process's handle token;
-- process exit leaves no live VFS handle reachable from user space.
+- process exit leaves no live owned handle reachable from user space;
+- shared-memory and graphics-surface objects are destroyed after their final
+  handle reference is closed.
+
+## Refcounted Objects
+
+`kernel_shared_memory_create()` allocates a bounded page-backed byte region and
+returns a handle with caller-selected rights. The object records owner PID,
+requested size, allocated page count, rights, generation, and refcount.
+
+`kernel_graphics_surface_create()` allocates a bounded 32-bit pixel surface and
+returns a handle that can be passed to future compositor or graphics service
+code. The object records owner PID, dimensions, stride, pixel format, byte
+size, generation, and refcount.
+
+Both object families use generation-checked object IDs internally, so stale
+handle entries cannot resurrect destroyed object slots.
+
+## Handle Transfer
+
+IPC v2 transfers handles by resolving a sender handle with the `TRANSFER`
+right, retaining the underlying object, and allocating a receiver-owned handle
+token. If any transfer in a send fails, already cloned receiver handles are
+rolled back and their object references are released.
+
+Only refcounted kernel object handles are cloneable through
+`kernel_object_clone_handle()`. VFS file and directory handles are intentionally
+not cloneable through IPC, even if a future bug accidentally gives them
+`TRANSFER` rights.
 
 ## VFS Compatibility
 

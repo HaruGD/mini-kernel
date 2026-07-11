@@ -47,9 +47,10 @@ IPC v2 can carry up to two handle tokens. The kernel validates each source
 handle against `KERNEL_HANDLE_RIGHT_TRANSFER`, creates receiver-owned handle
 entries atomically, and rolls back partial transfers on failure.
 
-Current VFS file and directory handles are not transferable because they are not
-created with `TRANSFER` rights. Shared-memory and graphics-surface handles are
-the intended first transferable object families.
+Current VFS file and directory handles are not transferable. The kernel object
+clone path accepts only refcounted shared-memory and graphics-surface handles,
+so VFS handles stay process-local even if they are accidentally created with
+`TRANSFER` rights.
 
 ## Backpressure
 

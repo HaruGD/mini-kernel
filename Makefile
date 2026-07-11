@@ -59,6 +59,7 @@ KERNEL64_OBJECTS = \
 	./build/ipc64.o \
 	./build/service_registry64.o \
 	./build/kernel_handle64.o \
+	./build/kernel_objects64.o \
 	./build/process64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
@@ -176,7 +177,7 @@ all32:
 	@mkdir -p ./build
 	$(AS) -f elf64 -g $< -o $@
 
-./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/syscall64.h
+./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/handle/kernel_objects.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/syscall64.h
 	@mkdir -p ./build
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/core/kernel64.cpp -o $@
 
@@ -189,7 +190,7 @@ all32:
 ./build/ipc_mailbox64.o: ./kernel/ipc/ipc_mailbox.cpp ./include/kernel/ipc/ipc_mailbox.h ./include/os64/ipc_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/ipc64.o: ./kernel/ipc/ipc.cpp ./include/kernel/ipc/ipc.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/ipc_types.h
+./build/ipc64.o: ./kernel/ipc/ipc.cpp ./include/kernel/handle/kernel_objects.h ./include/kernel/ipc/ipc.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/ipc_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/service_registry64.o: ./kernel/service/service_registry.cpp ./include/kernel/service/service_registry.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/service_types.h
@@ -198,7 +199,10 @@ all32:
 ./build/kernel_handle64.o: ./kernel/handle/kernel_handle.cpp ./include/kernel/handle/kernel_handle.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/handle/kernel_handle.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
+./build/kernel_objects64.o: ./kernel/handle/kernel_objects.cpp ./include/kernel/handle/kernel_objects.h ./include/kernel/handle/kernel_handle.h ./include/kernel/graphics/graphics2d.h ./include/kernel/mm/vm.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/handle/kernel_handle.h ./include/kernel/handle/kernel_objects.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp

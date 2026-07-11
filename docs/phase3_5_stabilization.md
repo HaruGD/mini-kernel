@@ -193,17 +193,19 @@ Phase 3.5D contracts:
   rules.
   Completion: file close, duplicate close, and exit cleanup are tested.
 
-- [~] **H04: Add transferable shared-memory objects**
+- [x] **H04: Add transferable shared-memory objects**
   Support bounded page-backed regions and explicit mapping rights.
   Completion: two processes can share data without sharing arbitrary memory.
-  Current: handle type and rights are reserved; mapping and transfer syscalls
-  are intentionally deferred to IPC v2.
+  Current: the kernel object manager allocates bounded shared-memory objects,
+  tracks generation/refcount state, supports read/write probes, and IPC v2 can
+  clone transferable handles into a receiver table.
 
-- [~] **H05: Add graphics-surface handles**
+- [x] **H05: Add graphics-surface handles**
   Define ownership, dimensions, format, stride, mapping, and destruction.
   Completion: a future compositor can receive a surface handle over IPC.
-  Current: handle type and rights are reserved; compositor-facing allocation
-  and IPC transfer come after IPC v2.
+  Current: the kernel object manager allocates bounded graphics surfaces,
+  exposes metadata and `GraphicsSurface` access for kernel graphics code, and
+  releases pixels when the final handle reference closes.
 
 Phase 3.5E contracts:
 
@@ -211,15 +213,20 @@ Phase 3.5E contracts:
   opaque tokens.
 - Handle tokens expose no kernel pointers and are valid only inside the owning
   process handle table.
-- Current active object types are VFS file and VFS directory handles.
+- Current active object types are VFS file handles, VFS directory handles,
+  shared-memory objects, and graphics-surface objects.
 - `SYS_VFS_OPEN` and `SYS_VFS_OPENDIR` return typed handles, not raw VFS table
   indexes.
 - VFS read, write, seek, tell, close, readdir, and closedir resolve type and
   rights before touching the VFS table.
-- Process termination closes VFS-owned resources and invalidates all remaining
-  process handles through the centralized cleanup path.
+- Process termination closes VFS-owned resources, releases refcounted objects,
+  and invalidates all remaining process handles through the centralized cleanup
+  path.
+- IPC v2 handle transfer can clone only refcounted shared-memory and
+  graphics-surface handles. VFS handles are not transferable.
 - `tools/kernel_handle_test.py` covers malformed, stale, wrong-type,
-  insufficient-rights, duplicate-close, and table-full behavior.
+  insufficient-rights, duplicate-close, table-full behavior, object refcount
+  close/release, and non-refcounted clone rejection.
 - Detailed contract: `docs/kernel_handles.md`
 
 ## 3.5F. IPC v2
