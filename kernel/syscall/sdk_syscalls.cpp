@@ -27,6 +27,8 @@ static_assert(sizeof(UserGraphicsRect) == 20, "UserGraphicsRect ABI changed");
 static_assert(sizeof(OsKeyEvent) == 16, "OsKeyEvent ABI changed");
 static_assert(sizeof(OsInputEvent) == 48, "OsInputEvent ABI changed");
 static_assert(sizeof(OsIpcMessage) == 88, "OsIpcMessage ABI changed");
+static_assert(sizeof(OsIpcMessageV2) == 152, "OsIpcMessageV2 ABI changed");
+static_assert(sizeof(OsIpcReceiveFilter) == 24, "OsIpcReceiveFilter ABI changed");
 static_assert(sizeof(OsServiceInfo) == 36, "OsServiceInfo ABI changed");
 static_assert(sizeof(OsProcessIdentity) == 8, "OsProcessIdentity ABI changed");
 
@@ -75,6 +77,42 @@ static uint64_t dispatch_ipc_send_identity(uint64_t target_pid,
     return (uint64_t)(int64_t)ipc_send_message(sender, target, &message);
 }
 
+static uint64_t dispatch_ipc_query(uint64_t user_version_address, uint64_t user_features_address) {
+    uint32_t version = OS64_IPC_ABI_VERSION_V2;
+    uint32_t features = OS_IPC_FEATURE_V2 |
+                        OS_IPC_FEATURE_CORRELATION |
+                        OS_IPC_FEATURE_HANDLE_TRANSFER;
+    if (user_version_address != 0 &&
+        !copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_version_address,
+                                    (const uint8_t*)&version,
+                                    sizeof(version))) {
+        return bad_buffer();
+    }
+    if (user_features_address != 0 &&
+        !copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_features_address,
+                                    (const uint8_t*)&features,
+                                    sizeof(features))) {
+        return bad_buffer();
+    }
+    return 0;
+}
+
+static uint64_t dispatch_ipc_v2_send_identity(uint64_t target_pid,
+                                              uint64_t target_generation,
+                                              uint64_t user_message_address) {
+    OsIpcMessageV2 message;
+    if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_message_address,
+                          (uint8_t*)&message,
+                          sizeof(message))) {
+        return bad_buffer();
+    }
+
+    Process* sender = current_process();
+    Process* target = find_process_by_identity_compat((uint32_t)target_pid,
+                                                      (uint32_t)target_generation);
+    return (uint64_t)(int64_t)ipc_send_message_v2(sender, target, &message);
+}
+
 static uint64_t copy_ipc_message_to_user(uint64_t user_message_address,
                                          const OsIpcMessage* message) {
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
@@ -86,6 +124,54 @@ static uint64_t copy_ipc_message_to_user(uint64_t user_message_address,
                                       sizeof(OsIpcMessage))
         ? 0
         : bad_buffer();
+}
+
+static uint64_t copy_ipc_message_v2_to_user(uint64_t user_message_address,
+                                            const OsIpcMessageV2* message) {
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
+                              sizeof(OsIpcMessageV2))) {
+        return bad_buffer();
+    }
+    return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_message_address,
+                                      (const uint8_t*)message,
+                                      sizeof(OsIpcMessageV2))
+        ? 0
+        : bad_buffer();
+}
+
+static uint64_t dispatch_ipc_v2_receive(uint64_t user_message_address) {
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
+                              sizeof(OsIpcMessageV2))) {
+        return bad_buffer();
+    }
+
+    OsIpcMessageV2 message;
+    int result = ipc_receive_message_v2(current_process(), &message);
+    if (result != IPC_OK) {
+        return (uint64_t)(int64_t)result;
+    }
+    return copy_ipc_message_v2_to_user(user_message_address, &message);
+}
+
+static uint64_t dispatch_ipc_v2_receive_match(uint64_t user_filter_address,
+                                              uint64_t user_message_address) {
+    OsIpcReceiveFilter filter;
+    if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_filter_address,
+                          (uint8_t*)&filter,
+                          sizeof(filter))) {
+        return bad_buffer();
+    }
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
+                              sizeof(OsIpcMessageV2))) {
+        return bad_buffer();
+    }
+
+    OsIpcMessageV2 message;
+    int result = ipc_receive_message_v2_match(current_process(), &filter, &message);
+    if (result != IPC_OK) {
+        return (uint64_t)(int64_t)result;
+    }
+    return copy_ipc_message_v2_to_user(user_message_address, &message);
 }
 
 static uint64_t dispatch_ipc_receive(uint64_t user_message_address,
@@ -416,6 +502,22 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_IPC_SEND_IDENTITY) {
         *result = dispatch_ipc_send_identity(arg1, arg2, arg3);
+        return true;
+    }
+    if (syscall_no == SYS_IPC_QUERY) {
+        *result = dispatch_ipc_query(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_IPC_V2_SEND_IDENTITY) {
+        *result = dispatch_ipc_v2_send_identity(arg1, arg2, arg3);
+        return true;
+    }
+    if (syscall_no == SYS_IPC_V2_RECV) {
+        *result = dispatch_ipc_v2_receive(arg1);
+        return true;
+    }
+    if (syscall_no == SYS_IPC_V2_RECV_MATCH) {
+        *result = dispatch_ipc_v2_receive_match(arg1, arg2);
         return true;
     }
     if (syscall_no == SYS_IPC_RECV) {

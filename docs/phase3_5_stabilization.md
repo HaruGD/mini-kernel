@@ -224,28 +224,48 @@ Phase 3.5E contracts:
 
 ## 3.5F. IPC v2
 
-- [ ] **I01: Version the IPC ABI**
+- [x] **I01: Version the IPC ABI**
   Keep the Phase 3 fixed message format as v1 and define explicit v2 feature
   negotiation.
   Completion: v1 programs continue to run or fail with a clear version error.
 
-- [ ] **I02: Add correlated request helpers**
+- [x] **I02: Add correlated request helpers**
   Standardize request ids, expected sender identity, timeout, and cancellation.
   Completion: unrelated messages cannot satisfy a pending request.
 
-- [ ] **I03: Transfer handles through IPC**
+- [x] **I03: Transfer handles through IPC**
   Validate sender rights and create receiver-owned handle entries atomically.
   Completion: failed delivery does not leak or partially transfer a handle.
 
-- [ ] **I04: Define mailbox backpressure**
+- [x] **I04: Define mailbox backpressure**
   Document nonblocking failure, bounded blocking send, timeout, and process-exit
   behavior.
   Completion: queue saturation cannot deadlock the system.
 
-- [ ] **I05: Add IPC stress and fault injection**
+- [x] **I05: Add IPC stress and fault injection**
   Cover wraparound, saturation, receiver exit, stale identity, timeout, and
   concurrent request/reply traffic.
   Completion: at least 100,000 local messages complete without leaks or hangs.
+
+Phase 3.5F contracts:
+
+- `OsIpcMessage` remains the v1 88-byte ABI.
+- `OsIpcMessageV2` adds ABI versioning, request correlation, two handle slots,
+  and a 96-byte payload.
+- `os_ipc_features()` reports v2, correlation, and handle-transfer support.
+- Kernel mailboxes store v2 envelopes internally while v1 syscall paths convert
+  at the boundary.
+- `OsIpcReceiveFilter` can match sender identity, type, and `reply_to` without
+  consuming unrelated mailbox messages.
+- IPC v2 handle transfer requires `KERNEL_HANDLE_RIGHT_TRANSFER`, creates
+  receiver-owned handles, and rolls back partial transfers on send failure.
+- Mailbox backpressure remains bounded and nonblocking: full queues return
+  `IPC_ERR_QUEUE_FULL` and increment drop counters.
+- `tools/ipc_core_test.py` covers v1 compatibility, v2 payloads, recv-match
+  correlation, permission-denied handle transfer, successful transferable
+  handle cloning, queue saturation, receiver exit cleanup, timeout/cancel wait
+  behavior, and 100,000 v2 local messages.
+- Detailed contract: `docs/ipc_v2.md`
 
 ## 3.5G. Service Supervision And Permissions
 

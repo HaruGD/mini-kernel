@@ -17,6 +17,7 @@ extern ATADriver ata;
 extern "C" void driver_klog(const char* text) {
     print("\n[drv] ");
     print(text != 0 ? text : "(null)");
+    print("\n");
 }
 
 extern "C" void* driver_kmalloc(uint64_t size) {

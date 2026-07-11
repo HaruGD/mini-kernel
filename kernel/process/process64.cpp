@@ -243,6 +243,20 @@ int process_ipc_mailbox_pop(Process* process, OsIpcMessage* message) {
     return ipc_mailbox_pop(&process->ipc_mailbox, message);
 }
 
+int process_ipc_mailbox_push_v2(Process* process, const OsIpcMessageV2* message) {
+    if (process == 0) {
+        return 0;
+    }
+    return ipc_mailbox_push_v2(&process->ipc_mailbox, message);
+}
+
+int process_ipc_mailbox_pop_v2(Process* process, OsIpcMessageV2* message) {
+    if (process == 0) {
+        return 0;
+    }
+    return ipc_mailbox_pop_v2(&process->ipc_mailbox, message);
+}
+
 uint32_t process_ipc_mailbox_count(const Process* process) {
     return process == 0 ? 0 : ipc_mailbox_count(&process->ipc_mailbox);
 }

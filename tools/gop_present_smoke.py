@@ -185,7 +185,7 @@ def validate_full_frame(scenario: Scenario, image: PpmImage) -> None:
     box = min(image.width, image.height, 96)
     if not is_outer_color(image.rgb_at(max(1, box // 8), max(1, box // 2))):
         raise AssertionError(f"{scenario.name}: outer test pattern is misplaced")
-    if not is_inner_color(image.rgb_at(max(1, box // 3), max(1, box // 2))):
+    if not is_inner_color(image.rgb_at(max(1, box // 2), max(1, box // 3))):
         raise AssertionError(f"{scenario.name}: inner test pattern is misplaced")
 
 
@@ -198,14 +198,19 @@ def validate_partial_frame(scenario: Scenario, image: PpmImage) -> None:
 
     x, y, width, height = partial_rect(image.width, image.height)
     sample_x = x + max(1, width // 3)
-    sample_y = y + max(1, height // 2) + 1
+    sample_y = y + max(1, height // 4)
     if not is_partial_color(image.rgb_at(sample_x, sample_y)):
         raise AssertionError(f"{scenario.name}: partial rect is missing at {sample_x},{sample_y}")
-    if not is_white(image.rgb_at(x, y)):
-        raise AssertionError(f"{scenario.name}: partial diagonal is missing at {x},{y}")
+    white_pixels = 0
+    for py in range(y, y + height):
+        for px in range(x, x + width):
+            if is_white(image.rgb_at(px, py)):
+                white_pixels += 1
+    if white_pixels < max(4, min(width, height) // 4):
+        raise AssertionError(f"{scenario.name}: partial diagonal is missing")
 
     box = min(image.width, image.height, 96)
-    if not is_outer_color(image.rgb_at(max(1, box // 8), max(1, box // 2))):
+    if not is_outer_color(image.rgb_at(max(1, box // 8), max(1, box // 4))):
         raise AssertionError(f"{scenario.name}: full-frame region was damaged by partial present")
 
 

@@ -22,9 +22,19 @@ extern "C" {
 
 int ipc_process_can_receive(const Process* process);
 int ipc_validate_user_message(const OsIpcMessage* message);
+int ipc_validate_user_message_v2(const OsIpcMessageV2* message);
 int ipc_prepare_message(uint32_t sender_pid, const OsIpcMessage* source, OsIpcMessage* prepared);
+int ipc_prepare_message_v2(Process* sender,
+                           Process* target,
+                           const OsIpcMessageV2* source,
+                           OsIpcMessageV2* prepared);
 int ipc_send_message(Process* sender, Process* target, const OsIpcMessage* message);
+int ipc_send_message_v2(Process* sender, Process* target, const OsIpcMessageV2* message);
 int ipc_receive_message(Process* receiver, OsIpcMessage* message);
+int ipc_receive_message_v2(Process* receiver, OsIpcMessageV2* message);
+int ipc_receive_message_v2_match(Process* receiver,
+                                 const OsIpcReceiveFilter* filter,
+                                 OsIpcMessageV2* message);
 
 #ifdef __cplusplus
 }

@@ -1,31 +1,95 @@
 #include "kernel/ipc/ipc_mailbox.h"
 
-static void clear_message(OsIpcMessage* message) {
+static void clear_message_v2(OsIpcMessageV2* message) {
     if (message == 0) {
         return;
     }
-    message->size = sizeof(OsIpcMessage);
+    message->size = sizeof(OsIpcMessageV2);
+    message->abi_version = OS64_IPC_ABI_VERSION_V2;
     message->sender_pid = 0;
+    message->sender_generation = 0;
     message->type = OS_IPC_MESSAGE_NONE;
     message->flags = OS_IPC_FLAG_NONE;
     message->length = 0;
-    message->sender_generation = 0;
-    for (uint32_t i = 0; i < OS_IPC_MESSAGE_PAYLOAD_SIZE; i++) {
+    message->request_id = 0;
+    message->reply_to = 0;
+    message->handle_count = 0;
+    for (uint32_t i = 0; i < OS_IPC_V2_MAX_HANDLES; i++) {
+        message->handles[i] = 0;
+    }
+    for (uint32_t i = 0; i < OS_IPC_V2_MESSAGE_PAYLOAD_SIZE; i++) {
         message->payload[i] = 0;
     }
 }
 
-static int message_shape_valid(const OsIpcMessage* message) {
+static int message_shape_valid_v2(const OsIpcMessageV2* message) {
     if (message == 0) {
         return 0;
     }
-    if (message->size != sizeof(OsIpcMessage)) {
+    if (message->size != sizeof(OsIpcMessageV2) ||
+        message->abi_version != OS64_IPC_ABI_VERSION_V2) {
         return 0;
     }
-    if (message->length > OS_IPC_MESSAGE_PAYLOAD_SIZE) {
+    if (message->length > OS_IPC_V2_MESSAGE_PAYLOAD_SIZE ||
+        message->handle_count > OS_IPC_V2_MAX_HANDLES) {
         return 0;
     }
     return 1;
+}
+
+static void message_v1_to_v2(const OsIpcMessage* source, OsIpcMessageV2* target) {
+    clear_message_v2(target);
+    if (source == 0 || target == 0) {
+        return;
+    }
+    target->sender_pid = source->sender_pid;
+    target->sender_generation = source->sender_generation;
+    target->type = source->type;
+    target->flags = source->flags & OS_IPC_FLAG_REQUEST_REPLY;
+    target->length = source->length;
+    for (uint32_t i = 0; i < OS_IPC_MESSAGE_PAYLOAD_SIZE; i++) {
+        target->payload[i] = source->payload[i];
+    }
+}
+
+static void message_v2_to_v1(const OsIpcMessageV2* source, OsIpcMessage* target) {
+    if (target == 0) {
+        return;
+    }
+    target->size = sizeof(OsIpcMessage);
+    target->sender_pid = source != 0 ? source->sender_pid : 0;
+    target->type = source != 0 ? source->type : OS_IPC_MESSAGE_NONE;
+    target->flags = source != 0 ? (source->flags & OS_IPC_FLAG_REQUEST_REPLY) : OS_IPC_FLAG_NONE;
+    target->length = source != 0 && source->length < OS_IPC_MESSAGE_PAYLOAD_SIZE
+        ? source->length
+        : OS_IPC_MESSAGE_PAYLOAD_SIZE;
+    target->sender_generation = source != 0 ? source->sender_generation : 0;
+    for (uint32_t i = 0; i < OS_IPC_MESSAGE_PAYLOAD_SIZE; i++) {
+        target->payload[i] = source != 0 ? source->payload[i] : 0;
+    }
+}
+
+static int filter_matches(const OsIpcReceiveFilter* filter, const OsIpcMessageV2* message) {
+    if (filter == 0 || filter->flags == 0) {
+        return 1;
+    }
+    if (filter->size != sizeof(OsIpcReceiveFilter)) {
+        return 0;
+    }
+    if ((filter->flags & OS_IPC_FILTER_SENDER) != 0 &&
+        (message->sender_pid != filter->sender_pid ||
+         message->sender_generation != filter->sender_generation)) {
+        return 0;
+    }
+    if ((filter->flags & OS_IPC_FILTER_TYPE) != 0 &&
+        message->type != filter->type) {
+        return 0;
+    }
+    if ((filter->flags & OS_IPC_FILTER_REPLY_TO) != 0 &&
+        message->reply_to != filter->reply_to) {
+        return 0;
+    }
+    return (filter->flags & ~(OS_IPC_FILTER_SENDER | OS_IPC_FILTER_TYPE | OS_IPC_FILTER_REPLY_TO)) == 0;
 }
 
 void ipc_mailbox_init(KernelIpcMailbox* mailbox) {
@@ -38,7 +102,7 @@ void ipc_mailbox_init(KernelIpcMailbox* mailbox) {
     mailbox->delivered_count = 0;
     mailbox->dropped_count = 0;
     for (uint32_t i = 0; i < IPC_MAILBOX_CAPACITY; i++) {
-        clear_message(&mailbox->messages[i]);
+        clear_message_v2(&mailbox->messages[i]);
     }
 }
 
@@ -66,8 +130,8 @@ int ipc_mailbox_is_full(const KernelIpcMailbox* mailbox) {
     return mailbox != 0 && mailbox->count == IPC_MAILBOX_CAPACITY;
 }
 
-int ipc_mailbox_push(KernelIpcMailbox* mailbox, const OsIpcMessage* message) {
-    if (mailbox == 0 || !message_shape_valid(message)) {
+int ipc_mailbox_push_v2(KernelIpcMailbox* mailbox, const OsIpcMessageV2* message) {
+    if (mailbox == 0 || !message_shape_valid_v2(message)) {
         return 0;
     }
     if (ipc_mailbox_is_full(mailbox)) {
@@ -81,16 +145,66 @@ int ipc_mailbox_push(KernelIpcMailbox* mailbox, const OsIpcMessage* message) {
     return 1;
 }
 
-int ipc_mailbox_pop(KernelIpcMailbox* mailbox, OsIpcMessage* message) {
+int ipc_mailbox_pop_v2(KernelIpcMailbox* mailbox, OsIpcMessageV2* message) {
     if (mailbox == 0 || message == 0 || ipc_mailbox_is_empty(mailbox)) {
         return 0;
     }
 
     *message = mailbox->messages[mailbox->head];
-    clear_message(&mailbox->messages[mailbox->head]);
+    clear_message_v2(&mailbox->messages[mailbox->head]);
     mailbox->head = (mailbox->head + 1u) % IPC_MAILBOX_CAPACITY;
     mailbox->count--;
     mailbox->delivered_count++;
+    return 1;
+}
+
+int ipc_mailbox_pop_v2_match(KernelIpcMailbox* mailbox,
+                             const OsIpcReceiveFilter* filter,
+                             OsIpcMessageV2* message) {
+    if (mailbox == 0 || message == 0 || ipc_mailbox_is_empty(mailbox)) {
+        return 0;
+    }
+
+    uint32_t found_offset = IPC_MAILBOX_CAPACITY;
+    for (uint32_t i = 0; i < mailbox->count; i++) {
+        uint32_t index = (mailbox->head + i) % IPC_MAILBOX_CAPACITY;
+        if (filter_matches(filter, &mailbox->messages[index])) {
+            found_offset = i;
+            break;
+        }
+    }
+    if (found_offset == IPC_MAILBOX_CAPACITY) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < found_offset; i++) {
+        OsIpcMessageV2 rotated;
+        if (!ipc_mailbox_pop_v2(mailbox, &rotated) ||
+            !ipc_mailbox_push_v2(mailbox, &rotated)) {
+            return 0;
+        }
+        mailbox->delivered_count--;
+    }
+    return ipc_mailbox_pop_v2(mailbox, message);
+}
+
+int ipc_mailbox_push(KernelIpcMailbox* mailbox, const OsIpcMessage* message) {
+    if (message == 0 || message->size != sizeof(OsIpcMessage) ||
+        message->length > OS_IPC_MESSAGE_PAYLOAD_SIZE) {
+        return 0;
+    }
+
+    OsIpcMessageV2 converted;
+    message_v1_to_v2(message, &converted);
+    return ipc_mailbox_push_v2(mailbox, &converted);
+}
+
+int ipc_mailbox_pop(KernelIpcMailbox* mailbox, OsIpcMessage* message) {
+    OsIpcMessageV2 converted;
+    if (!ipc_mailbox_pop_v2(mailbox, &converted)) {
+        return 0;
+    }
+    message_v2_to_v1(&converted, message);
     return 1;
 }
 
@@ -100,7 +214,7 @@ void ipc_mailbox_drop_all(KernelIpcMailbox* mailbox) {
     }
     mailbox->dropped_count += mailbox->count;
     for (uint32_t i = 0; i < IPC_MAILBOX_CAPACITY; i++) {
-        clear_message(&mailbox->messages[i]);
+        clear_message_v2(&mailbox->messages[i]);
     }
     mailbox->head = 0;
     mailbox->tail = 0;

@@ -45,6 +45,8 @@ uint32_t process_event_queue_dropped_count(const Process* process);
 void process_ipc_mailbox_reset(Process* process);
 int process_ipc_mailbox_push(Process* process, const OsIpcMessage* message);
 int process_ipc_mailbox_pop(Process* process, OsIpcMessage* message);
+int process_ipc_mailbox_push_v2(Process* process, const OsIpcMessageV2* message);
+int process_ipc_mailbox_pop_v2(Process* process, OsIpcMessageV2* message);
 uint32_t process_ipc_mailbox_count(const Process* process);
 uint32_t process_ipc_mailbox_delivered_count(const Process* process);
 uint32_t process_ipc_mailbox_dropped_count(const Process* process);

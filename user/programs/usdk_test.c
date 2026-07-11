@@ -260,6 +260,39 @@ static void test_wait_timeout(void) {
           "cancelled result string");
 }
 
+static void test_ipc_v2(void) {
+    uint32_t version = 0;
+    uint32_t features = 0;
+    check(os_ipc_features(&version, &features) == OS_SUCCESS &&
+          version == OS64_IPC_ABI_VERSION_V2 &&
+          (features & OS_IPC_FEATURE_V2) != 0 &&
+          (features & OS_IPC_FEATURE_CORRELATION) != 0 &&
+          (features & OS_IPC_FEATURE_HANDLE_TRANSFER) != 0,
+          "IPC v2 feature query");
+
+    OsIpcMessageV2 message;
+    os_msg_v2_init(&message, OS_IPC_MESSAGE_REQUEST);
+    check(message.size == sizeof(OsIpcMessageV2) &&
+          message.abi_version == OS64_IPC_ABI_VERSION_V2 &&
+          message.type == OS_IPC_MESSAGE_REQUEST &&
+          message.length == 0 &&
+          message.handle_count == 0,
+          "IPC v2 message init");
+
+    OsIpcReceiveFilter filter;
+    os_ipc_filter_init(&filter);
+    filter.flags = OS_IPC_FILTER_TYPE | OS_IPC_FILTER_REPLY_TO;
+    filter.type = OS_IPC_MESSAGE_REPLY;
+    filter.reply_to = os_msg_next_request_id();
+    check(filter.size == sizeof(OsIpcReceiveFilter) &&
+          filter.type == OS_IPC_MESSAGE_REPLY &&
+          filter.reply_to != 0,
+          "IPC v2 receive filter init");
+
+    check(os_msg_v2_recv_match(&filter, &message) == OS_ERR_WOULD_BLOCK,
+          "IPC v2 receive match empty queue");
+}
+
 static void test_graphics(void) {
     OsGraphicsInfo info;
     long result = os_gfx_get_info(&info);
@@ -382,6 +415,7 @@ int main(void) {
     test_results();
     test_time();
     test_wait_timeout();
+    test_ipc_v2();
     test_graphics();
     test_keyboard();
 
