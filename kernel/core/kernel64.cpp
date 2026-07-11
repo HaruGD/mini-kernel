@@ -57,8 +57,6 @@ FAT32Driver* root_fat32 = &fat32;
 static const BootInfo* g_boot_info = 0;
 static uint64_t boot_tsc = 0;
 static uint32_t user_test_count = 0;
-static volatile int user_input_mode = 0;
-
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 extern "C" void resume_user_mode();
 extern "C" uint64_t kernel_user_return_rsp;

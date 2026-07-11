@@ -127,8 +127,6 @@ def main() -> int:
         "Root source: ramdisk",
         "Running user program: ushell_c.elf",
         "=== ushell_c.elf ===",
-        "csh> pwd",
-        "csh> version",
         "PIT hz:",
         "Approx ms:",
         "Showing VFS mounts from C userland.",
@@ -146,6 +144,20 @@ def main() -> int:
     if missing:
         print("UEFI userland smoke missing:")
         for item in missing:
+            print(item)
+        return 1
+
+    shell_start = log_text.find("=== ushell_c.elf ===")
+    shell_end = log_text.find("Leaving C user shell...", shell_start)
+    shell_session = log_text[shell_start:shell_end] if shell_start >= 0 and shell_end >= 0 else ""
+    forbidden = [
+        "Unknown command:",
+        "Notebook is empty. Use write first.",
+    ]
+    leaked = [item for item in forbidden if item in shell_session]
+    if leaked:
+        print("UEFI userland input leaked into kernel shell:")
+        for item in leaked:
             print(item)
         return 1
 

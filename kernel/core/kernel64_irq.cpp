@@ -5,11 +5,11 @@ extern "C" void keyboard_handler64() {
 }
 
 extern "C" int user_input_active64() {
-    return user_input_mode;
+    return process_focused() != 0;
 }
 
 extern "C" void keyboard_deliver_char64(char ascii) {
-    if (user_input_mode) {
+    if (process_focused() != 0) {
         return;
     }
 

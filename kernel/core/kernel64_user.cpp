@@ -494,7 +494,6 @@ int run_user_program(const char* command_line) {
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     int saved_keyboard_mask = interrupt_controller_irq_masked(1);
-    int saved_user_input_mode = user_input_mode;
     uint64_t saved_return_rsp = kernel_user_return_rsp;
     uint64_t saved_rbx = kernel_user_saved_rbx;
     uint64_t saved_rbp = kernel_user_saved_rbp;
@@ -511,7 +510,6 @@ int run_user_program(const char* command_line) {
     print("]");
     print("\n");
     user_input_reset();
-    user_input_mode = 1;
     interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
     if (!map_user_elf_alias(process)) {
@@ -543,7 +541,6 @@ int run_user_program(const char* command_line) {
     }
 
     interrupt_controller_set_mask(1, saved_keyboard_mask);
-    user_input_mode = saved_user_input_mode;
     user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);
     kernel_user_return_rsp = saved_return_rsp;
@@ -652,7 +649,6 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     int saved_keyboard_mask = interrupt_controller_irq_masked(1);
-    int saved_user_input_mode = user_input_mode;
     uint64_t saved_return_rsp = kernel_user_return_rsp;
     uint64_t saved_rbx = kernel_user_saved_rbx;
     uint64_t saved_rbp = kernel_user_saved_rbp;
@@ -686,7 +682,6 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     kernel_user_resume_rflags = process->saved_rflags;
 
     user_input_reset();
-    user_input_mode = 1;
     interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
     if (!map_user_elf_alias(process)) {
@@ -718,7 +713,6 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     }
 
     interrupt_controller_set_mask(1, saved_keyboard_mask);
-    user_input_mode = saved_user_input_mode;
     user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);
     kernel_user_return_rsp = saved_return_rsp;
@@ -904,6 +898,11 @@ int set_user_program_background(uint32_t pid, uint32_t enabled) {
     }
 
     process->background = enabled ? 1 : 0;
+    if (process->background) {
+        process_clear_focus(process->pid);
+    } else {
+        process_set_focus(process->pid);
+    }
     print("\nSet user program [pid=");
     print_hex32(process->pid);
     print("] mode=");
