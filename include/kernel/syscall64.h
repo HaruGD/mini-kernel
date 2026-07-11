@@ -86,6 +86,7 @@
 #define SYS_IPC_V2_SEND_IDENTITY 72
 #define SYS_IPC_V2_RECV 73
 #define SYS_IPC_V2_RECV_MATCH 74
+#define SYS_RUN_USER_WITH_PERMISSIONS 75
 
 #define SYS_ERR_NOT_READY (-1)
 #define SYS_ERR_INVALID_ARGUMENT (-2)
@@ -114,6 +115,7 @@ int continue_ready_processes(uint32_t exclude_pid);
 int continue_woken_processes(uint32_t exclude_pid);
 int continue_background_processes(uint32_t exclude_pid);
 int run_user_program(const char* command_line);
+int run_user_program_with_permissions(const char* command_line, uint32_t permissions);
 void print_boot_info();
 void command_version();
 void command_memstat();

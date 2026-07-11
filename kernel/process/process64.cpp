@@ -188,6 +188,13 @@ void process_assign_identity(Process* process, uint32_t pid, const Process* pare
     process->generation = process_next_generation();
     process->parent_pid = parent != 0 ? parent->pid : 0;
     process->parent_generation = parent != 0 ? parent->generation : 0;
+    process->permissions = OS_PROCESS_PERMISSION_ALL;
+}
+
+int process_has_permissions(const Process* process, uint32_t permissions) {
+    return process != 0 &&
+           (permissions & ~OS_PROCESS_PERMISSION_VALID_MASK) == 0 &&
+           (process->permissions & permissions) == permissions;
 }
 
 void process_event_queue_reset(Process* process) {
@@ -401,6 +408,7 @@ void process_clear(Process* process) {
     process->slot_index = 0;
     process->shell_prompt_kind = SHELL_PROMPT_NONE;
     process->argc = 0;
+    process->permissions = 0;
     process->active = 0;
     process->reaped = 0;
     process->resumable = 0;

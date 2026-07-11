@@ -74,6 +74,10 @@ What works on the active 64-bit UEFI path:
 - service identity ABI, kernel service registry, register/find/unregister syscalls, and SDK wrappers
 - `services` kernel shell diagnostics plus `usvc_c.elf` service-registry sample
 - `serviced_c.elf` user-space service manager with IPC ping/start/stop/restart/status/exit control
+- Service Manager ABI v2 with lifecycle states, bounded start/stop and health
+  timeouts, dependency validation, failure diagnostics, and bounded restart
+- kernel-enforced process permission masks for service discovery/registration,
+  IPC, input, display, shared surfaces, and child management
 - `service [cmd] [name]` shell frontend routed through `usvcctl_c.elf`
 - `inputd_c.elf` and `displayd_c.elf` placeholder user-space services with IPC query replies
 - `usvcprobe_c.elf` client sample for input/display service discovery and request/reply checks
@@ -129,6 +133,7 @@ What works on the active 64-bit UEFI path:
 - Phase 3.5 starting baseline: [docs/phase3_5_baseline.md](docs/phase3_5_baseline.md)
 - Process/scheduler invariants: [docs/process_scheduler_invariants.md](docs/process_scheduler_invariants.md)
 - Kernel context rules: [docs/kernel_context_rules.md](docs/kernel_context_rules.md)
+- Service supervision and permissions: [docs/service_supervision.md](docs/service_supervision.md)
 
 ## Build
 
@@ -160,7 +165,8 @@ make test-process-lifecycle
 make test-services
 ```
 
-Phase 3 is closed with bounded IPC, service discovery, Service Manager v1,
+Phase 3 is closed with bounded IPC and service discovery. Service Manager v2
+now adds supervised lifecycle and permissions above that Phase 3 foundation,
 and the first input/display user-space services. The next phase introduces a
 compositor and window-server protocol above these service foundations.
 

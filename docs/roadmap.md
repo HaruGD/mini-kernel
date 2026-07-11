@@ -107,7 +107,7 @@ Planned work:
 - [x] Independent user address spaces and recoverable user faults
 - [x] Typed per-process handles, shared-memory objects, and surface handles
 - [x] IPC v2 with correlation, timeout, and handle transfer
-- [ ] Service supervision, permissions, and bounded restart policy
+- [x] Service supervision, permissions, and bounded restart policy
 - [ ] Concurrency rules, fault injection, and long-running soak coverage
 
 ## Phase 3.6: Driver Packaging And Layout

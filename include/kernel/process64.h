@@ -32,6 +32,7 @@ void process_clear(Process* process);
 ProcessIdentity process_identity(const Process* process);
 int process_identity_matches(const Process* process, ProcessIdentity identity);
 void process_assign_identity(Process* process, uint32_t pid, const Process* parent);
+int process_has_permissions(const Process* process, uint32_t permissions);
 Process* find_process_by_identity(ProcessIdentity identity);
 Process* find_process_by_identity_compat(uint32_t pid, uint32_t generation);
 void process_mark_failed(Process* process, uint32_t reason, uint32_t status_code);

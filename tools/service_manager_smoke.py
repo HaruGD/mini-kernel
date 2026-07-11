@@ -105,6 +105,15 @@ def run() -> int:
         marker = wait_for_serial("name=demo", 10)
         wait_for_serial("OS64>", 10, marker)
 
+        send_command(process, "service health demo")
+        marker = wait_for_serial("[usvcctl] health demo OK", 20)
+        wait_for_serial("health=1 failure=0", 10, marker)
+        wait_for_serial("OS64>", 10, marker)
+
+        send_command(process, "service stop base")
+        marker = wait_for_serial("[usvcctl] stop base failed", 20)
+        wait_for_serial("OS64>", 10, marker)
+
         send_command(process, "service restart demo")
         wait_for_serial("[serviced] stopped demo", 20)
         marker = wait_for_serial("[usvcctl] restart demo OK", 20)
@@ -112,6 +121,32 @@ def run() -> int:
 
         send_command(process, "service stop demo")
         marker = wait_for_serial("[usvcctl] stop demo OK", 20)
+        wait_for_serial("OS64>", 10, marker)
+
+        send_command(process, "service start restricted")
+        wait_for_serial("[svc_perm] denied display, discovery, and child launch as expected", 20)
+        marker = wait_for_serial("[usvcctl] start restricted OK", 20)
+        wait_for_serial("OS64>", 10, marker)
+        send_command(process, "service health restricted")
+        marker = wait_for_serial("[usvcctl] health restricted OK", 20)
+        wait_for_serial("OS64>", 10, marker)
+        send_command(process, "service stop restricted")
+        marker = wait_for_serial("[usvcctl] stop restricted OK", 20)
+        wait_for_serial("OS64>", 10, marker)
+
+        send_command(process, "service start crash")
+        marker = 0
+        for attempt in range(1, 4):
+            attempt_marker = wait_for_serial(
+                f"[serviced] auto-restart crash attempt={attempt}", 30, marker
+            )
+            marker = attempt_marker
+        marker = wait_for_serial("[usvcctl] start crash failed", 30, marker)
+        wait_for_serial("OS64>", 10, marker)
+        send_command(process, "service status crash")
+        marker = wait_for_serial("[usvcctl] status crash OK", 20, marker)
+        wait_for_serial("state=4", 10, marker)
+        wait_for_serial("failure=7", 10, marker)
         wait_for_serial("OS64>", 10, marker)
 
         send_command(process, "service exit")
@@ -142,8 +177,14 @@ def run() -> int:
         "name=service",
         "name=base",
         "name=demo",
+        "[usvcctl] health demo OK",
+        "[usvcctl] stop base failed",
         "[usvcctl] restart demo OK",
         "[usvcctl] stop demo OK",
+        "[svc_perm] denied display, discovery, and child launch as expected",
+        "[usvcctl] health restricted OK",
+        "[serviced] auto-restart crash attempt=3",
+        "[usvcctl] status crash OK",
         "[serviced] exit",
         "count=0x00000000",
     ]

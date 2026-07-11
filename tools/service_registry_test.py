@@ -118,6 +118,29 @@ int main() {
 
     service_unregister_owner(owner->pid);
     check(service_registry_count() == 0);
+
+    clear_all();
+    uint32_t previous_generation = 0;
+    for (uint32_t cycle = 0; cycle < 1000; cycle++) {
+        process_clear(owner);
+        process_assign_identity(owner, 400, 0);
+        owner->active = 1;
+        owner->state = PROCESS_STATE_RUNNING;
+        check(service_register(owner, "stress", OS_SERVICE_FLAG_NONE) == SERVICE_OK);
+        check(service_find("stress", &info) == SERVICE_OK);
+        check(info.owner_pid == owner->pid);
+        check(info.generation != 0 && info.generation != previous_generation);
+        previous_generation = info.generation;
+        if ((cycle & 1u) == 0) {
+            check(service_unregister(owner, "stress") == SERVICE_OK);
+            process_mark_returned(owner, PROCESS_TERM_EXIT, 0);
+        } else {
+            process_mark_failed(owner, PROCESS_TERM_KILLED, 1);
+        }
+        check(service_registry_count() == 0);
+        check(process_ipc_mailbox_count(owner) == 0);
+        check(owner->handle_table.active_count == 0);
+    }
     clear_all();
     return failures == 0 ? 0 : 1;
 }

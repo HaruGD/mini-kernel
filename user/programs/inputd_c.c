@@ -31,6 +31,23 @@ static void handle_request(const OsIpcMessage* message) {
         return;
     }
 
+    if (request.command == OS_SERVICE_QUERY_HEALTH) {
+        OsServiceHealthReply reply;
+        reply.size = sizeof(reply);
+        reply.command = request.command;
+        reply.result = OS_SUCCESS;
+        reply.request_id = request.request_id;
+        reply.abi_version = OS64_SERVICE_PROTOCOL_ABI_VERSION;
+        reply.ready = 1;
+        reply.health = OS_SERVICE_HEALTH_HEALTHY;
+        reply.reserved = 0;
+        OsIpcMessage response;
+        os_msg_init(&response, OS_IPC_MESSAGE_REPLY);
+        response.length = sizeof(reply);
+        os_memcpy(response.payload, &reply, sizeof(reply));
+        os_msg_send_to_identity(os_msg_sender_identity(message), &response);
+        return;
+    }
     int result = request.command == OS_SERVICE_QUERY_STATUS ? OS_SUCCESS : OS_ERR_UNSUPPORTED;
     send_status_reply(os_msg_sender_identity(message), &request, result);
 }

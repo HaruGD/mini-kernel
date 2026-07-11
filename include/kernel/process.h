@@ -7,6 +7,7 @@
 #include "kernel/ipc/ipc_mailbox.h"
 #include "kernel/input/input_event_queue.h"
 #include "kernel/mm/address_space.h"
+#include "os64/process_types.h"
 
 #define PROCESS_NAME_MAX 32
 #define PROCESS_ARG_MAX 8
@@ -108,6 +109,7 @@ struct Process {
     uint32_t slot_index;
     uint32_t shell_prompt_kind;
     uint32_t argc;
+    uint32_t permissions;
     uint8_t active;
     uint8_t reaped;
     uint8_t resumable;

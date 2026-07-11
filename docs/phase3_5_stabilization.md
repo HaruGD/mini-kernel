@@ -276,36 +276,50 @@ Phase 3.5F contracts:
 
 ## 3.5G. Service Supervision And Permissions
 
-- [ ] **S01: Formalize service states**
+- [x] **S01: Formalize service states**
   Use stopped, starting, running, stopping, and failed transitions with a
   monotonic generation.
   Completion: registry and manager diagnostics agree on each state.
 
-- [ ] **S02: Add start and stop timeouts**
+- [x] **S02: Add start and stop timeouts**
   Detect services that never register or never exit.
   Completion: the manager remains responsive and reports a stable timeout.
 
-- [ ] **S03: Add health checks and failure reporting**
+- [x] **S03: Add health checks and failure reporting**
   Define a bounded ping/status protocol and retain the last failure reason.
   Completion: diagnostics distinguish stopped, failed, and unresponsive.
 
-- [ ] **S04: Add restart policy**
+- [x] **S04: Add restart policy**
   Support disabled, on-failure, and bounded retry modes with backoff.
   Completion: a crash loop cannot consume all process slots or CPU time.
 
-- [ ] **S05: Validate the dependency graph before launch**
+- [x] **S05: Validate the dependency graph before launch**
   Reject missing dependencies and cycles without recursive runtime failure.
   Completion: dependency errors identify the involved services.
 
-- [ ] **S06: Add service permission metadata v1**
+- [x] **S06: Add service permission metadata v1**
   Start with static permissions for service discovery, IPC targets, input,
   display, and shared surfaces.
   Completion: a service without a permission receives a stable denial.
 
-- [ ] **S07: Add service lifecycle stress coverage**
+- [x] **S07: Add service lifecycle stress coverage**
   Start, query, stop, crash, and restart services for at least 1,000 cycles.
   Completion: process, registry, mailbox, handle, and memory counts return to
   baseline.
+
+Phase 3.5G contracts:
+
+- Service Manager ABI v2 reports five lifecycle states, monotonic state
+  generations, health, last failure, restart policy/count, and permissions.
+- Start, stop, and active health checks have bounded PIT deadlines.
+- On-failure restart uses bounded retries and backoff; dependency graphs are
+  validated before the manager becomes available.
+- Managed children receive permissions before user-mode entry through
+  `os_run_with_permissions`; kernel IPC, service, input, and display syscall
+  paths return `OS_ERR_PERMISSION_DENIED` when the required bit is absent.
+- `make test-service-supervision` includes QEMU policy/permission coverage and
+  1,000 host-side lifecycle cleanup cycles.
+- Detailed contract: `docs/service_supervision.md`
 
 ## 3.5H. Concurrency Readiness
 

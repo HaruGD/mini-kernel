@@ -16,6 +16,9 @@ static uint32_t command_from_text(const char* text) {
     if (os_streq(text, "status")) {
         return OS_SERVICE_MANAGER_CMD_STATUS;
     }
+    if (os_streq(text, "health")) {
+        return OS_SERVICE_MANAGER_CMD_HEALTH;
+    }
     if (os_streq(text, "exit")) {
         return OS_SERVICE_MANAGER_CMD_EXIT;
     }
@@ -34,6 +37,9 @@ static const char* command_name(uint32_t command) {
     }
     if (command == OS_SERVICE_MANAGER_CMD_STATUS) {
         return "status";
+    }
+    if (command == OS_SERVICE_MANAGER_CMD_HEALTH) {
+        return "health";
     }
     if (command == OS_SERVICE_MANAGER_CMD_EXIT) {
         return "exit";
@@ -58,7 +64,13 @@ static long ensure_service_manager(OsServiceInfo* info) {
     if (os_run("serviced_c.elf") < 0) {
         return OS_ERR_NOT_READY;
     }
-    return os_service_find(OS_SERVICE_MANAGER_NAME, info);
+    result = os_service_find(OS_SERVICE_MANAGER_NAME, info);
+    if (result == OS_SUCCESS) {
+        if (os_set_background(info->owner_pid, 1) < 0) {
+            return OS_ERR_NOT_READY;
+        }
+    }
+    return result;
 }
 
 static int parse_reply(const OsIpcMessage* message,
@@ -82,7 +94,7 @@ int main(int argc, char** argv) {
     uint32_t command = command_from_text(argc > 1 ? argv[1] : "ping");
     const char* target = argc > 2 ? argv[2] : "demo";
     if (command == OS_SERVICE_MANAGER_CMD_NONE) {
-        os_puts("[usvcctl] usage: usvcctl_c.elf [ping|start|stop|restart|status|exit] [name]");
+        os_puts("[usvcctl] usage: usvcctl_c.elf [ping|start|stop|restart|status|health|exit] [name]");
         return 1;
     }
     if (command == OS_SERVICE_MANAGER_CMD_PING || command == OS_SERVICE_MANAGER_CMD_EXIT) {
@@ -135,12 +147,16 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    os_printf("[usvcctl] %s %s OK pid=%u state=%u gen=%u\n",
+    os_printf("[usvcctl] %s %s OK pid=%u state=%u gen=%u health=%u failure=%u restarts=%u perms=0x%x\n",
               command_name(command),
               reply.name,
               reply.pid,
               reply.state,
-              reply.generation);
+              reply.generation,
+              reply.health,
+              reply.last_failure,
+              reply.restart_count,
+              reply.permissions);
     os_reap_children();
     return 0;
 }

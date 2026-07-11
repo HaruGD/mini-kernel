@@ -13,6 +13,11 @@ int main(void) {
 
 The build compiles `user/sdk/src/` into `build/libos64.a` and links it into every C user program. Syscall numbers and the `int 0x80` calling sequence remain private to the SDK.
 
+Service managers can use `os_run_with_permissions(command, permissions)` to
+assign a validated `OS_PROCESS_PERMISSION_*` mask before a child first enters
+user mode. Ordinary `os_run()` remains compatible and grants the full current
+permission mask.
+
 ## API groups
 
 - Console: `os_printf`, `os_puts`, `os_read_line`, `os_clear`
@@ -28,7 +33,8 @@ The build compiles `user/sdk/src/` into `build/libos64.a` and links it into ever
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
-- Service manager protocol: fixed request/reply structs for `serviced_c.elf`
+- Service manager protocol v2: lifecycle, health, failure, restart, and
+  permission metadata for `serviced_c.elf`
 
 The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
 
@@ -72,7 +78,8 @@ make test-ipc
 ```
 
 Service tests cover the fixed service identity ABI, automatic owner cleanup,
-SDK wrappers, Service Manager v1, and the input/display placeholder services:
+SDK wrappers, Service Manager v2 supervision, permissions, and the
+input/display placeholder services:
 
 ```sh
 make test-services
@@ -148,13 +155,15 @@ path can prove stale pids are not returned. Service names are fixed-size
 lowercase identifiers up to `OS_SERVICE_NAME_MAX - 1` bytes and services remain
 ordinary ELF user programs.
 
-`serviced_c.elf` is the first user-space service manager. It registers as
+`serviced_c.elf` is the user-space service manager. It registers as
 `service`, receives `OsServiceManagerRequest` messages over IPC, starts known
 service ELF binaries, stops/restarts owned children, and replies with
 `OsServiceManagerReply`. Replies echo the request id so clients can reject
 stale or unrelated IPC messages. The kernel shell `service ...` command is a
 thin frontend that runs `usvcctl_c.elf`, so service policy remains in user
-space. The first static dependency table starts `base` before `demo`.
+space. ABI v2 adds formal lifecycle states, health/failure reporting, bounded
+restart, dependency validation, and static process permissions. The dependency
+table starts `base` before `demo`.
 
 `inputd_c.elf` and `displayd_c.elf` are the first placeholder user-space
 services. They register as `input` and `display`, then answer small IPC query

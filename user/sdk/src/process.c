@@ -23,6 +23,10 @@ long os_run(const char* command) {
     return os_syscall1(OS_SYS_RUN, (long)command);
 }
 
+long os_run_with_permissions(const char* command, uint32_t permissions) {
+    return os_syscall2(OS_SYS_RUN_WITH_PERMISSIONS, (long)command, permissions);
+}
+
 long os_wait(void) {
     return os_syscall0(OS_SYS_WAIT);
 }

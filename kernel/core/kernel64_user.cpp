@@ -34,7 +34,7 @@ static uint32_t user_region_rights_from_vm_flags(uint64_t flags) {
     return rights;
 }
 
-int run_user_program(const char* command_line) {
+static int run_user_program_internal(const char* command_line, uint32_t permissions) {
     if (command_line == 0 || command_line[0] == '\0') {
         print("\nUser program filename is empty.");
         return 0;
@@ -68,6 +68,7 @@ int run_user_program(const char* command_line) {
         return 0;
     }
     process_assign_identity(process, next_pid++, parent);
+    process->permissions = permissions;
     process->slot_index = slot_index;
     process_copy_cwd(process, parent != 0 ? process_get_cwd(parent) : "/");
     copy_string64(process->command_line, sizeof(process->command_line), command_line);
@@ -639,6 +640,17 @@ int run_user_program(const char* command_line) {
         return 1;
     }
     return idle_until_ready_process();
+}
+
+int run_user_program(const char* command_line) {
+    return run_user_program_internal(command_line, OS_PROCESS_PERMISSION_ALL);
+}
+
+int run_user_program_with_permissions(const char* command_line, uint32_t permissions) {
+    if ((permissions & ~OS_PROCESS_PERMISSION_VALID_MASK) != 0) {
+        return 0;
+    }
+    return run_user_program_internal(command_line, permissions);
 }
 
 static int resume_user_program_internal(Process* parent, Process* process, int print_banner) {

@@ -55,7 +55,8 @@ enum {
     OS_SYS_IPC_QUERY = 71,
     OS_SYS_IPC_V2_SEND_IDENTITY = 72,
     OS_SYS_IPC_V2_RECV = 73,
-    OS_SYS_IPC_V2_RECV_MATCH = 74
+    OS_SYS_IPC_V2_RECV_MATCH = 74,
+    OS_SYS_RUN_WITH_PERMISSIONS = 75
 };
 
 long os_syscall0(long number);

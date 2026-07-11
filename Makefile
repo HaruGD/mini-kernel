@@ -33,7 +33,7 @@ USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
 USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
 USER_SDK_LIB = ./build/libos64.a
-USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/process_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h
 
 
 # External drivers
@@ -48,7 +48,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-first-services test-services clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -159,9 +159,10 @@ test-service-smoke: uefi
 	python3 ./tools/service_registry_smoke.py
 test-service-manager-smoke: uefi
 	python3 ./tools/service_manager_smoke.py
+test-service-supervision: test-service-registry test-service-manager-smoke
 test-first-services: uefi
 	python3 ./tools/first_services_smoke.py
-test-services: test-service-registry test-service-smoke test-service-manager-smoke test-first-services
+test-services: test-service-registry test-service-smoke test-service-supervision test-first-services
 
 all32:
 	@echo "legacy BIOS build is archived under archive/legacy-bios and is not part of the active build."

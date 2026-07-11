@@ -40,6 +40,14 @@ static uint64_t bad_buffer() {
     return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
 }
 
+static int current_process_has(uint32_t permissions) {
+    return process_has_permissions(current_process(), permissions);
+}
+
+static uint64_t permission_denied() {
+    return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+}
+
 static int pop_current_input_event(OsInputEvent* event) {
     Process* process = current_process();
     if (process != 0) {
@@ -49,6 +57,9 @@ static int pop_current_input_event(OsInputEvent* event) {
 }
 
 static uint64_t dispatch_ipc_send(uint64_t target_pid, uint64_t user_message_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
     OsIpcMessage message;
     if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_message_address,
                           (uint8_t*)&message,
@@ -64,6 +75,9 @@ static uint64_t dispatch_ipc_send(uint64_t target_pid, uint64_t user_message_add
 static uint64_t dispatch_ipc_send_identity(uint64_t target_pid,
                                            uint64_t target_generation,
                                            uint64_t user_message_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
     OsIpcMessage message;
     if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_message_address,
                           (uint8_t*)&message,
@@ -78,6 +92,9 @@ static uint64_t dispatch_ipc_send_identity(uint64_t target_pid,
 }
 
 static uint64_t dispatch_ipc_query(uint64_t user_version_address, uint64_t user_features_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
     uint32_t version = OS64_IPC_ABI_VERSION_V2;
     uint32_t features = OS_IPC_FEATURE_V2 |
                         OS_IPC_FEATURE_CORRELATION |
@@ -100,6 +117,9 @@ static uint64_t dispatch_ipc_query(uint64_t user_version_address, uint64_t user_
 static uint64_t dispatch_ipc_v2_send_identity(uint64_t target_pid,
                                               uint64_t target_generation,
                                               uint64_t user_message_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
     OsIpcMessageV2 message;
     if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_message_address,
                           (uint8_t*)&message,
@@ -140,6 +160,9 @@ static uint64_t copy_ipc_message_v2_to_user(uint64_t user_message_address,
 }
 
 static uint64_t dispatch_ipc_v2_receive(uint64_t user_message_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
                               sizeof(OsIpcMessageV2))) {
         return bad_buffer();
@@ -155,6 +178,9 @@ static uint64_t dispatch_ipc_v2_receive(uint64_t user_message_address) {
 
 static uint64_t dispatch_ipc_v2_receive_match(uint64_t user_filter_address,
                                               uint64_t user_message_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
     OsIpcReceiveFilter filter;
     if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_filter_address,
                           (uint8_t*)&filter,
@@ -177,6 +203,9 @@ static uint64_t dispatch_ipc_v2_receive_match(uint64_t user_filter_address,
 static uint64_t dispatch_ipc_receive(uint64_t user_message_address,
                                      bool wait,
                                      uint32_t timeout_ticks) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
                               sizeof(OsIpcMessage))) {
         return bad_buffer();
@@ -202,6 +231,9 @@ static uint64_t dispatch_ipc_receive(uint64_t user_message_address,
 }
 
 static uint64_t dispatch_service_register(uint64_t user_name_address, uint64_t flags) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_SERVICE_REGISTER)) {
+        return permission_denied();
+    }
     char name[OS_SERVICE_NAME_MAX];
     if (!copy_user_cstring((const char*)(uintptr_t)user_name_address, name, sizeof(name))) {
         return invalid_argument();
@@ -210,6 +242,9 @@ static uint64_t dispatch_service_register(uint64_t user_name_address, uint64_t f
 }
 
 static uint64_t dispatch_service_find(uint64_t user_name_address, uint64_t user_info_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_SERVICE_DISCOVER)) {
+        return permission_denied();
+    }
     char name[OS_SERVICE_NAME_MAX];
     if (!copy_user_cstring((const char*)(uintptr_t)user_name_address, name, sizeof(name))) {
         return invalid_argument();
@@ -232,6 +267,9 @@ static uint64_t dispatch_service_find(uint64_t user_name_address, uint64_t user_
 }
 
 static uint64_t dispatch_service_unregister(uint64_t user_name_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_SERVICE_REGISTER)) {
+        return permission_denied();
+    }
     char name[OS_SERVICE_NAME_MAX];
     if (!copy_user_cstring((const char*)(uintptr_t)user_name_address, name, sizeof(name))) {
         return invalid_argument();
@@ -261,6 +299,9 @@ static uint64_t dispatch_graphics(uint64_t syscall_no,
                                   uint64_t arg1,
                                   uint64_t arg2,
                                   uint64_t arg3) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_DISPLAY)) {
+        return permission_denied();
+    }
     if (syscall_no == SYS_GFX_GET_INFO) {
         const GOPInfo* info = gop.info();
         if (info == 0) {
@@ -356,6 +397,9 @@ static int pop_process_character(Process* process, uint32_t* character) {
 static uint64_t dispatch_keyboard(uint64_t user_event_address,
                                   bool wait,
                                   uint32_t timeout_ticks) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_INPUT)) {
+        return permission_denied();
+    }
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_event_address,
                               sizeof(OsKeyEvent))) {
         return invalid_argument();
@@ -389,6 +433,9 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address,
 static uint64_t dispatch_input_event(uint64_t user_event_address,
                                      bool wait,
                                      uint32_t timeout_ticks) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_INPUT)) {
+        return permission_denied();
+    }
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_event_address,
                               sizeof(OsInputEvent))) {
         return invalid_argument();

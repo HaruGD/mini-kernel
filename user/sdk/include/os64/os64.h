@@ -102,6 +102,7 @@ long os_getpid(void);
 long os_getppid(void);
 long os_get_process_identity(OsProcessIdentity* identity);
 long os_run(const char* command_line);
+long os_run_with_permissions(const char* command_line, uint32_t permissions);
 long os_wait(void);
 long os_yield(void);
 long os_sleep(uint32_t ticks);

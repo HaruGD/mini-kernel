@@ -121,6 +121,9 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_GETCHAR) {
+        if (!process_has_permissions(current_process(), OS_PROCESS_PERMISSION_INPUT)) {
+            return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+        }
         char ascii = 0;
         if (pop_keyboard_character_from_events(&ascii)) {
             return (uint64_t)(unsigned char)ascii;
@@ -324,6 +327,9 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_RUN_USER) {
+        if (!process_has_permissions(current_process(), OS_PROCESS_PERMISSION_MANAGE_CHILD)) {
+            return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+        }
         char command_line[PROCESS_CMDLINE_MAX];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, command_line, sizeof(command_line))) {
             print("\nInvalid user program pointer.");
@@ -334,6 +340,24 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return (uint64_t)-1;
         }
         return 0;
+    }
+
+    if (syscall_no == SYS_RUN_USER_WITH_PERMISSIONS) {
+        Process* parent = current_process();
+        uint32_t permissions = (uint32_t)arg2;
+        if (!process_has_permissions(parent, OS_PROCESS_PERMISSION_MANAGE_CHILD)) {
+            return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+        }
+        if ((permissions & ~OS_PROCESS_PERMISSION_VALID_MASK) != 0) {
+            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        }
+        char command_line[PROCESS_CMDLINE_MAX];
+        if (!copy_user_cstring((const char*)(uintptr_t)arg1, command_line, sizeof(command_line))) {
+            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        }
+        return run_user_program_with_permissions(command_line, permissions)
+            ? 0
+            : (uint64_t)(int64_t)SYS_ERR_NOT_READY;
     }
 
     if (syscall_no == SYS_VERSION) {
@@ -523,6 +547,9 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_RESUME_USER) {
+        if (!process_has_permissions(current_process(), OS_PROCESS_PERMISSION_MANAGE_CHILD)) {
+            return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+        }
         uint32_t pid = (uint32_t)arg1;
         if (!resume_user_program(pid)) {
             return (uint64_t)-1;
@@ -531,6 +558,9 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_KILL_USER) {
+        if (!process_has_permissions(current_process(), OS_PROCESS_PERMISSION_MANAGE_CHILD)) {
+            return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+        }
         uint32_t pid = (uint32_t)arg1;
         if (!kill_user_program(pid)) {
             return (uint64_t)-1;
@@ -567,6 +597,9 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_SET_BACKGROUND) {
+        if (!process_has_permissions(current_process(), OS_PROCESS_PERMISSION_MANAGE_CHILD)) {
+            return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+        }
         uint32_t pid = (uint32_t)arg1;
         uint32_t enabled = (uint32_t)arg2;
         if (!set_user_program_background(pid, enabled)) {

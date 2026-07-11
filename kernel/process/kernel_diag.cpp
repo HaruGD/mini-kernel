@@ -118,6 +118,8 @@ void print_process_summary(const Process* process, uint32_t tick_now) {
     print(process_wait_reason_name(process->wait_reason));
     print(" mode=");
     print(process->background ? "bg" : "fg");
+    print(" perms=");
+    print_hex32(process->permissions);
     print(" ticks=");
     print_hex32(process->runtime_ticks);
     print(" slice=");
