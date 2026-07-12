@@ -122,12 +122,15 @@ Planned work:
 - [ ] Treat every driver as a package by default
 - [ ] Replace permanent `builtin`/`external` directory categories with
   domain-based driver folders
-- [ ] Add central `config/drivers.json` policy for artifact, load stage, and
-  autoload behavior
+- [ ] Add central `config/drivers.json` policy for enabled state, artifact,
+  load stage, and automatic/manual activation
 - [ ] Move filesystem drivers under `drivers/fs` while keeping VFS as kernel
   infrastructure
-- [ ] Generate linked-driver registration and runtime autoload lists from
-  central policy
+- [ ] Generate linked and packaged activation sets for boot, kernel, and
+  runtime stages from central policy
+- [ ] Support verified boot-stage `.drv` handoff through UEFI and BootInfo
+- [ ] Implement all seven allowed artifact/stage/policy combinations and reject
+  every forbidden combination
 - [ ] Preserve current `.drv` build, autoload, unload/reload, and FAT32 root
   behavior through the migration
 
