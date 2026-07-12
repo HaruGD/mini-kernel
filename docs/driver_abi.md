@@ -91,18 +91,20 @@ Current rules:
 - `boot_modes` may only use `NORMAL`, `SAFE`, and `RECOVERY` bits.
 - `dependency_count` may be `0..8`.
 - `permissions` must only use known permission bits.
-- `flags` may use `NO_AUTOLOAD` (`0x00000001`) to opt out of boot-time
-  autoload while keeping manual `drvload` valid.
+- `flags` may use `NO_AUTOLOAD` (`0x00000001`). The policy-driven builder sets
+  it for runtime-manual packages so automatic paths reject them while explicit
+  `drvload` remains valid.
 
 When `dependency_count` is nonzero, dependency entries immediately follow
 `DrvManifest` inside the manifest block. Each dependency names another driver
-record that must already be present and at least `ready` by default. The
-autoload pass retries packages, so dependency order inside the FAT32 root does
-not need to be perfect.
+record that must already be present and at least `ready` by default. The host
+policy validator rejects cycles, later-stage dependencies, and automatic
+dependencies on manual packages. Generated activation lists preserve
+dependency order within each stage.
 
-Packages marked `NO_AUTOLOAD` are skipped by the boot autoload pass. This is
-used for demonstration or diagnostic drivers that should only run when loaded
-manually.
+Packages marked `NO_AUTOLOAD` are shipped in the FAT32 root but excluded from
+boot, kernel, and runtime automatic activation plans. They can only be started
+through explicit `drvload`.
 
 ## Driver Project Layout
 
@@ -229,6 +231,16 @@ Current behavior:
 
 ## Load Lifecycle
 
+Before this per-package loader sequence begins, generated policy plans choose
+the exact activation boundary:
+
+- boot-stage `.drv` packages are verified by UEFI, handed off through the
+  bounded `BootInfo` module list, and loaded after boot linked registration;
+- kernel-stage packages load after storage and VFS readiness but before normal
+  userland;
+- runtime-automatic packages load once after interrupt/runtime readiness;
+- runtime-manual packages remain inactive until `drvload`.
+
 The current sequence is:
 
 1. validate header and tables
@@ -301,7 +313,7 @@ Unload is supported through the kernel shell and loader API.
 
 Rules:
 
-- built-in drivers cannot be unloaded
+- kernel-linked driver packages cannot be unloaded
 - a module with ready dependents cannot be unloaded
 - `driver_exit()` is called first when it exists
 - exports are removed on unload

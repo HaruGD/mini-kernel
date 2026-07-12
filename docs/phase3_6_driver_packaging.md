@@ -369,33 +369,46 @@ Phase 3.6C contracts:
 
 ### 3.6D. Documentation And Regression
 
-- [ ] **D11: Update driver ABI and README references**
+- [x] **D11: Update driver ABI and README references**
   Document that all drivers are packages and that build/load behavior is
   policy-driven. Document the separate responsibilities of driver-local
   `settings.json`, driver-local `Makefile`, and central `config/drivers.json`.
   Completion: docs no longer describe `builtin` and `external` as long-term
   categories.
 
-- [ ] **D12: Add migration regression matrix**
+- [x] **D12: Add migration regression matrix**
   Record build, boot-module handoff, all staged activation sets, driver list,
   automatic/manual load, forbidden policy validation, and FAT32 root coverage.
   Completion: Phase 4 can begin with driver layout churn closed.
+
+Phase 3.6D contracts:
+
+- README, Driver ABI, and driver-policy documentation describe every driver as
+  a package project and separate local settings, local build interface, and
+  central product policy responsibilities;
+- `docs/phase3_6_regression_matrix.md` records R01-R12 coverage from policy
+  validation through FAT32 file I/O and documentation synchronization;
+- `make test-driver-regression` combines host policy/generation validation,
+  real UEFI driver lifecycle coverage, and User SDK filesystem coverage;
+- `tools/driver_regression_matrix_test.py` prevents stale mechanism-directory
+  terminology, broken documentation links, activation baseline drift, and
+  unchecked Phase 4 entry criteria.
 
 ## Phase 4 Entry Criteria
 
 Before compositor and window-server work begins:
 
-- [ ] `config/drivers.json` exists and validates.
-- [ ] Every enabled driver directory contains a valid `settings.json` and
+- [x] `config/drivers.json` exists and validates.
+- [x] Every enabled driver directory contains a valid `settings.json` and
   `Makefile`.
-- [ ] Existing sample `.drv` packages build from the new layout.
-- [ ] All seven allowed artifact/stage/policy combinations pass focused tests.
-- [ ] Every forbidden combination is rejected by the policy validator.
-- [ ] Linked driver registration and staged activation are generated from
+- [x] Existing sample `.drv` packages build from the new layout.
+- [x] All seven allowed artifact/stage/policy combinations pass focused tests.
+- [x] Every forbidden combination is rejected by the policy validator.
+- [x] Linked driver registration and staged activation are generated from
   policy.
-- [ ] Boot-stage `.drv` packages are verified and handed off through BootInfo.
-- [ ] FAT32 root still mounts and supports existing file operations.
-- [ ] `drivers` shell output remains behaviorally equivalent.
-- [ ] Runtime automatic loading still loads the same enabled `.drv` packages.
-- [ ] Manual `drvload`, `drvunload`, and `drvreload` still work.
-- [ ] README and Driver ABI docs describe the new model.
+- [x] Boot-stage `.drv` packages are verified and handed off through BootInfo.
+- [x] FAT32 root still mounts and supports existing file operations.
+- [x] `drivers` shell output remains behaviorally equivalent.
+- [x] Runtime automatic loading still loads the same enabled `.drv` packages.
+- [x] Manual `drvload`, `drvunload`, and `drvreload` still work.
+- [x] README and Driver ABI docs describe the new model.

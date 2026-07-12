@@ -18,7 +18,8 @@ What works on the active 64-bit UEFI path:
 
 - UEFI bootloader image generation
 - UEFI framebuffer handoff
-- `BootInfo` v2 handoff with memory map, reserved ranges, ACPI RSDP, and diagnostic flags
+- `BootInfo` v3 handoff with memory map, reserved ranges, ACPI RSDP,
+  diagnostic flags, and a bounded verified boot-module list
 - 64-bit long mode kernel entry
 - PMM, heap, and runtime paging helpers
 - PMM allocation statistics with next-fit single-page allocation hint
@@ -36,7 +37,8 @@ What works on the active 64-bit UEFI path:
 - IDT, GDT/TSS, double-fault IST, PIT, and keyboard IRQ handling
 - panic register dump, frame-pointer stack trace, and recent-log dump
 - 16 KiB kernel log ring with levels, subsystem tags, and shell inspection
-- diagnostic boot image with external driver autoload disabled and detailed boot reports
+- diagnostic boot image with packaged-driver automatic activation disabled and
+  detailed boot reports
 - diagnostic-only kernel GP and runtime ACPI corruption fault injection
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
@@ -104,7 +106,9 @@ What works on the active 64-bit UEFI path:
   `drivers/fs`, `drivers/input`, `drivers/timer`, and `drivers/demo`
 - driver-local `settings.json` and `Makefile` with central
   `config/drivers.json` product policy
-- generated linked-driver registry from domain-local manifests
+- policy-generated linked object lists, staged linked-driver registry, and
+  staged packaged-driver activation plans
+- UEFI verification and `BootInfo` handoff for boot-stage `.drv` packages
 - separate unsigned builder and `.drv` signer
 - signature ABI v1 with `LOCAL_TEST`, `ROOT_KEY`, and `TPM_LOCAL` algorithm slots
 - local test signature validation for `.drv` packages
@@ -120,7 +124,8 @@ What works on the active 64-bit UEFI path:
 - driver IRQ hook registry for controller-independent IRQ lines
 - page-separated `.drv` code/data/BSS loading with executable code pages and NX data pages
 - stricter `.drv` ABI validation for arch, table shape, permissions, boot modes, sections, symbols, imports, exports, relocations, and signatures
-- boot-time `.drv` autoload from the FAT32 root with manifest `NO_AUTOLOAD` support
+- dependency-ordered boot, kernel, and runtime `.drv` activation from central
+  policy, with `NO_AUTOLOAD` reserved for shipped runtime-manual packages
 - `hello.drv`, `hello_c.drv`, `hello_cpp.drv`, `provider_c.drv`, `consumer_c.drv`, `pci_probe_c.drv`, and `irq_timer_c.drv` entry execution
 - manual display demo loading through `gop_demo_c.drv`
 - Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
@@ -134,6 +139,7 @@ What works on the active 64-bit UEFI path:
 - Phase 3 regression matrix: [docs/phase3_regression_matrix.md](docs/phase3_regression_matrix.md)
 - Phase 3.5 stabilization plan: [docs/phase3_5_stabilization.md](docs/phase3_5_stabilization.md)
 - Phase 3.6 driver packaging/layout plan: [docs/phase3_6_driver_packaging.md](docs/phase3_6_driver_packaging.md)
+- Phase 3.6 regression matrix: [docs/phase3_6_regression_matrix.md](docs/phase3_6_regression_matrix.md)
 - Phase 3.5 starting baseline: [docs/phase3_5_baseline.md](docs/phase3_5_baseline.md)
 - Process/scheduler invariants: [docs/process_scheduler_invariants.md](docs/process_scheduler_invariants.md)
 - Kernel context rules: [docs/kernel_context_rules.md](docs/kernel_context_rules.md)
@@ -213,6 +219,33 @@ Convenience wrapper:
 Build artifacts are written under `bin/` and `build/`.
 Runtime logs and smoke-test captures are written under `logs/`.
 
+### Driver projects and policy
+
+Every driver is a domain-local package project, regardless of whether the
+current product links it into the kernel or emits a signed `.drv` file:
+
+```text
+drivers/<domain>/<name>/
+├── settings.json
+├── Makefile
+├── src/             # optional for small projects
+└── include/         # optional for small projects
+```
+
+- `settings.json` owns intrinsic package identity, version, permissions,
+  dependencies, exports/imports, and optional linked-integration facts.
+- The local `Makefile` exposes the common `info`, `artifact`, `linked`, and
+  `package` project interface. It does not enable the driver or select a mode.
+- `config/drivers.json` is the product policy and exclusively selects
+  `enabled`, `artifact`, `load_stage`, and `load_policy`.
+
+The root build validates that policy and generates linked objects and staged
+activation plans. Use `make drivers` to build all enabled policy artifacts,
+`make test-driver-policy` for schema/combination validation, and
+`make test-driver-regression` for the Phase 3.6 migration matrix. See the
+[driver policy](docs/driver_policy.md), [Driver ABI](docs/driver_abi.md), and
+[Phase 3.6 regression matrix](docs/phase3_6_regression_matrix.md).
+
 Important active artifacts:
 
 - `bin/kernel64.bin`
@@ -221,11 +254,13 @@ Important active artifacts:
 - `bin/uefi_esp.img`
   UEFI boot image containing `BOOTX64.EFI`, `kernel64.bin`, and `OS64.BIN`.
 - `bin/uefi_diag_esp.img`
-  Diagnostic UEFI image that disables external driver autoload and emits detailed reports.
+  Diagnostic UEFI image that disables packaged-driver automatic activation and
+  emits detailed reports.
 - `bin/hello.drv`
   Hand-built test driver package loaded from the FAT32 root filesystem.
 - `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`
-  C driver packages produced from `drivers/demo/*/driver.c`, `driver.json`, and the separate signer.
+  Policy-selected C driver packages built from each project’s source and
+  `settings.json`, then signed by the separate signer.
 - `bin/hello_cpp.drv`
   Minimal C++ driver package produced from `drivers/demo/hello_cpp/driver.cpp`.
 - `bin/gop_demo_c.drv`
@@ -269,10 +304,15 @@ The active UEFI path uses one boot image:
 uefi_esp.img
 ├── BOOTX64.EFI
 ├── KERNEL.BIN
-└── OS64.BIN
+├── OS64.BIN
+└── BOOTnnn.DRV    # zero or more policy-selected boot-stage packages
 ```
 
-`BOOTX64.EFI` loads `KERNEL.BIN` to the kernel load address, loads `OS64.BIN` into RAM, records it in `BootInfo`, exits UEFI boot services, and jumps to the 64-bit kernel. The kernel mounts that RAM-backed `OS64.BIN` FAT32 image as `/`.
+`BOOTX64.EFI` loads `KERNEL.BIN` and `OS64.BIN`, verifies any policy-selected
+boot-stage `.drv` packages, records the ramdisk and bounded module descriptors
+in `BootInfo`, exits UEFI boot services, and jumps to the 64-bit kernel. The
+kernel mounts the RAM-backed `OS64.BIN` FAT32 image as `/` and executes the
+generated boot, kernel, and runtime activation plans at their exact stages.
 
 This keeps QEMU, VirtualBox, and USB boot experiments simple: firmware only needs to boot the UEFI image, and the early kernel no longer needs a second disk controller just to find `/`.
 
@@ -566,7 +606,7 @@ Not implemented yet:
 
 - real asymmetric cryptographic signature verification
 - actual TPM hardware command path
-- explicit dependency metadata and dependency-sorted loading
+- dependency version constraints beyond the current identity/readiness checks
 - full stop lifecycle for real hardware devices
 - isolation from kernel address space
 
@@ -581,17 +621,18 @@ Not implemented yet:
 - `kernel/core/`
   Split kernel64 initialization, diagnostics, IRQ, process, and user-mode logic.
 - `kernel/driver/`
-  Driver manager, loader, exports, built-ins, and shell commands.
+  Driver manager, package loader, exports, linked registration, and shell commands.
 - `kernel/mm/`
   Architecture-neutral physical memory, virtual memory policy, and kernel heap.
 - `kernel/pci/`, `kernel/process/`, `kernel/syscall/`, `kernel/shell/`, `kernel/util/`
   Kernel subsystems split by responsibility.
 - `drivers/block/`, `drivers/display/`, `drivers/fs/`, `drivers/input/`, `drivers/timer/`
-  Domain-organized linked hardware and filesystem driver projects.
+  Domain-organized hardware and filesystem driver projects; artifact selection
+  comes from `config/drivers.json`, not the directory.
 - `drivers/demo/`
   Packaged C/C++ sample driver projects.
 - `drivers/common/`, `drivers/include/`
-  Shared driver Makefile fragments and the external driver SDK header.
+  Shared driver-project Make interface and packaged-driver SDK header.
 - `fs/`
   VFS and memfs infrastructure; FAT32 lives in `drivers/fs/fat32`.
 - `user/programs/`
