@@ -13,6 +13,7 @@
     "state": "ready",
     "instance": "0",
     "includes": [],
-    "externs": []
+    "externs": [],
+    "objects": ["./build/terminal64.o"]
   }
 }

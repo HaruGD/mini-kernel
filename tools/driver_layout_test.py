@@ -32,8 +32,9 @@ def main() -> int:
         path = Path(entry["path"])
         check(path.parts[0] in EXPECTED_DOMAINS, f"{entry['name']}: non-domain path", failures)
         directory = root / "drivers" / path
-        for filename in ("settings.json", "driver.json", "Makefile"):
+        for filename in ("settings.json", "Makefile"):
             check((directory / filename).is_file(), f"{entry['name']}: missing {filename}", failures)
+        check(not (directory / "driver.json").exists(), f"{entry['name']}: legacy driver.json remains", failures)
         result = subprocess.run(
             ["make", "-s", "-C", str(directory), "info"],
             cwd=root,
@@ -54,7 +55,7 @@ def main() -> int:
     fat32 = root / "drivers/fs/fat32"
     for relative in (
         "src/fat32.cpp", "src/fat32_vfs.cpp", "include/fat32.h",
-        "settings.json", "driver.json", "Makefile",
+        "settings.json", "Makefile",
     ):
         check((fat32 / relative).is_file(), f"FAT32 package missing {relative}", failures)
 

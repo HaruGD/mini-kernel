@@ -64,6 +64,8 @@ missing paths, missing local files, central/local name mismatch, duplicate or
 unlisted projects, unsupported artifact capabilities, forbidden combinations,
 and dependency violations.
 
-During 3.6A the existing `driver.json` files remain the active legacy build
-manifests. `settings.json` and `config/drivers.json` are validated in parallel.
-The build switches to the new sources of truth during 3.6B/3.6C migration.
+Since Phase 3.6C, `tools/gen_driver_build.py` turns the central policy into the
+Make build lists, linked activation registry, and packaged activation plans.
+Domain-local `driver.json` compatibility manifests are no longer build inputs.
+The local `settings.json` supplies package and linked-integration facts; it
+never selects the product artifact or activation stage.

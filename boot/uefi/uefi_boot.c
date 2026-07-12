@@ -2,6 +2,7 @@
 #include <stddef.h>
 
 #include "kernel/boot_info.h"
+#include "kernel/driver/drv_format.h"
 
 #define EFIAPI __attribute__((ms_abi))
 
@@ -51,6 +52,7 @@ typedef struct EFI_TABLE_HEADER {
 #define KERNEL_RUNTIME_RESERVE_PAGES (KERNEL_RUNTIME_RESERVE_SIZE / PAGE_SIZE)
 #define RAMDISK_MAX_SIZE (32ULL * 1024ULL * 1024ULL)
 #define RAMDISK_MAX_PAGES (RAMDISK_MAX_SIZE / PAGE_SIZE)
+#define BOOT_DRIVER_MAX_PAGES (BOOT_DRIVER_MAX_SIZE / PAGE_SIZE)
 #define KERNEL_STACK_PAGES 16
 #define PAGE_SIZE 4096ULL
 #define EFI_TEXT_BLACK 0x00
@@ -613,6 +615,66 @@ static UINTN read_file_limited(EFI_FILE_PROTOCOL* file, UINT8* dest, UINTN max_s
     return total;
 }
 
+static uint64_t checksum64(const UINT8* data, UINTN size) {
+    uint64_t sum = 0xcbf29ce484222325ULL;
+    for (UINTN i = 0; i < size; i++) {
+        sum ^= data[i];
+        sum *= 0x100000001b3ULL;
+    }
+    return sum;
+}
+
+static int range_inside64(uint64_t offset, uint64_t size, uint64_t total) {
+    return offset <= total && size <= total - offset;
+}
+
+static int verify_boot_driver(const UINT8* image, UINTN size) {
+    static const char local_key[] = "OS64 local test key";
+    if (image == 0 || size < sizeof(struct DrvHeader) || size > BOOT_DRIVER_MAX_SIZE) {
+        return 0;
+    }
+    const struct DrvHeader* header = (const struct DrvHeader*)image;
+    if (header->magic != DRV_MAGIC || header->format_version != DRV_FORMAT_VERSION ||
+        header->abi_version != DRV_ABI_VERSION || header->arch != DRV_ARCH_X86_64 ||
+        header->file_size != size ||
+        !range_inside64(header->manifest_offset, header->manifest_size, size) ||
+        header->manifest_size < sizeof(struct DrvManifest) ||
+        !range_inside64(header->signature_offset, header->signature_size, size) ||
+        !range_inside64(header->certificate_offset, header->certificate_size, size) ||
+        header->signature_size != sizeof(struct DrvSignatureBlock) ||
+        header->certificate_size != sizeof(struct DrvCertificateBlock)) {
+        return 0;
+    }
+    const struct DrvSignatureBlock* signature =
+        (const struct DrvSignatureBlock*)(image + header->signature_offset);
+    const struct DrvCertificateBlock* certificate =
+        (const struct DrvCertificateBlock*)(image + header->certificate_offset);
+    if (signature->magic != DRV_SIGNATURE_MAGIC || signature->version != DRV_SIGNATURE_VERSION ||
+        signature->algorithm != DRV_SIGNATURE_ALG_LOCAL_TEST ||
+        signature->hash_algorithm != DRV_SIGNATURE_HASH_CHECKSUM64 ||
+        signature->signed_size != header->signature_offset ||
+        certificate->magic != DRV_CERTIFICATE_MAGIC ||
+        certificate->version != DRV_SIGNATURE_VERSION ||
+        certificate->certificate_type != DRV_CERTIFICATE_TYPE_LOCAL_TEST) {
+        return 0;
+    }
+    for (UINTN i = 0; i < sizeof(local_key); i++) {
+        if (certificate->key_id[i] != local_key[i]) return 0;
+    }
+    uint64_t signed_hash = checksum64(image, signature->signed_size);
+    uint64_t certificate_hash = checksum64((const UINT8*)certificate, sizeof(*certificate));
+    return signed_hash == signature->signed_hash &&
+           signature->signature_value == (signed_hash ^ certificate_hash ^ size ^ signature->algorithm);
+}
+
+static EFI_FILE_PROTOCOL* open_boot_driver_file(EFI_HANDLE image_handle, uint32_t index) {
+    CHAR16 name[] = {'B','O','O','T','0','0','0','.','D','R','V',0};
+    name[4] = (CHAR16)('0' + ((index / 100) % 10));
+    name[5] = (CHAR16)('0' + ((index / 10) % 10));
+    name[6] = (CHAR16)('0' + (index % 10));
+    return open_root_file(image_handle, name, 0);
+}
+
 static uint32_t uefi_type_to_e820(uint32_t type) {
     if (type == EFI_CONVENTIONAL_MEMORY) {
         return 1;
@@ -801,6 +863,43 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         log_warn("ramdisk file missing");
     }
 
+    EFI_PHYSICAL_ADDRESS boot_module_phys[BOOT_MODULE_MAX];
+    UINTN boot_module_size[BOOT_MODULE_MAX];
+    char boot_module_name[BOOT_MODULE_MAX][32];
+    uint32_t boot_module_count = 0;
+    for (uint32_t i = 0; i < BOOT_MODULE_MAX; i++) {
+        boot_module_phys[i] = 0;
+        boot_module_size[i] = 0;
+        for (uint32_t j = 0; j < 32; j++) boot_module_name[i][j] = 0;
+    }
+    for (uint32_t index = 0; index < BOOT_MODULE_MAX; index++) {
+        EFI_FILE_PROTOCOL* module_file = open_boot_driver_file(image_handle, index);
+        if (module_file == 0) break;
+        EFI_PHYSICAL_ADDRESS module_phys = 0;
+        if (!allocate_any_below_4g(BOOT_DRIVER_MAX_PAGES, &module_phys)) {
+            module_file->close(module_file);
+            log_warn("boot driver allocation failed");
+            break;
+        }
+        UINTN module_size = read_file_limited(module_file, (UINT8*)(uintptr_t)module_phys,
+                                              BOOT_DRIVER_MAX_SIZE);
+        module_file->close(module_file);
+        if (!verify_boot_driver((const UINT8*)(uintptr_t)module_phys, module_size)) {
+            log_warn("boot driver verification rejected");
+            continue;
+        }
+        const struct DrvHeader* header = (const struct DrvHeader*)(uintptr_t)module_phys;
+        const struct DrvManifest* manifest = (const struct DrvManifest*)((const UINT8*)(uintptr_t)module_phys + header->manifest_offset);
+        uint32_t slot = boot_module_count++;
+        boot_module_phys[slot] = module_phys;
+        boot_module_size[slot] = module_size;
+        for (uint32_t j = 0; j < 31 && manifest->name[j] != 0; j++) {
+            boot_module_name[slot][j] = manifest->name[j];
+        }
+        log_value("boot driver addr", module_phys);
+        log_value("boot driver bytes", module_size);
+    }
+
     FramebufferInfo framebuffer_info;
     collect_framebuffer_info(&framebuffer_info);
     log_value("gop fb", framebuffer_info.base);
@@ -894,11 +993,22 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         boot_info->ramdisk_addr = ramdisk_phys;
         boot_info->ramdisk_size = ramdisk_size;
         boot_info->acpi_rsdp_addr = acpi_rsdp;
+        boot_info->boot_module_count = boot_module_count;
+        boot_info->boot_module_entry_size = sizeof(BootModule);
         for (uint32_t i = 0; i < BOOT_RESERVED_RANGE_MAX; i++) {
             boot_info->reserved_ranges[i].base = 0;
             boot_info->reserved_ranges[i].size = 0;
             boot_info->reserved_ranges[i].type = 0;
             boot_info->reserved_ranges[i].flags = 0;
+        }
+        for (uint32_t i = 0; i < BOOT_MODULE_MAX; i++) {
+            for (uint32_t j = 0; j < sizeof(boot_info->boot_modules[i].name); j++) {
+                boot_info->boot_modules[i].name[j] = boot_module_name[i][j];
+            }
+            boot_info->boot_modules[i].address = boot_module_phys[i];
+            boot_info->boot_modules[i].size = boot_module_size[i];
+            boot_info->boot_modules[i].type = i < boot_module_count ? BOOT_MODULE_DRIVER : 0;
+            boot_info->boot_modules[i].flags = 0;
         }
         add_reserved_range(boot_info, KERNEL_LOAD_ADDR, kernel_reserved_size, BOOT_RESERVED_RANGE_KERNEL);
         add_reserved_range(boot_info, boot_info_phys, PAGE_SIZE, BOOT_RESERVED_RANGE_BOOT_INFO);
@@ -911,6 +1021,13 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image_handle, EFI_SYSTEM_TABLE* system_tab
         if (ramdisk_phys != 0 && ramdisk_size != 0) {
             boot_info->flags |= BOOT_INFO_FLAG_RAMDISK;
             add_reserved_range(boot_info, ramdisk_phys, ramdisk_size, BOOT_RESERVED_RANGE_RAMDISK);
+        }
+        if (boot_module_count != 0) {
+            boot_info->flags |= BOOT_INFO_FLAG_BOOT_MODULES;
+            for (uint32_t i = 0; i < boot_module_count; i++) {
+                add_reserved_range(boot_info, boot_module_phys[i], boot_module_size[i],
+                                   BOOT_RESERVED_RANGE_MODULE);
+            }
         }
         if (acpi_rsdp != 0) {
             boot_info->flags |= BOOT_INFO_FLAG_ACPI;

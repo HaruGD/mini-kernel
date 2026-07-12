@@ -310,14 +310,14 @@ Phase 3.6B contracts:
 
 ### 3.6C. Build Integration
 
-- [ ] **D06: Generate driver build lists from central policy**
+- [x] **D06: Generate driver build lists from central policy**
   Stop discovering driver projects by `drivers/builtin` and
   `drivers/external`. Use enabled entries in `config/drivers.json`, then invoke
   the referenced driver-local Makefile interface.
   Completion: the same root image contents are produced from policy-driven
   build lists.
 
-- [ ] **D07: Generate linked-driver registry from central policy**
+- [x] **D07: Generate linked-driver registry from central policy**
   Replace built-in manifest globbing with policy entries where
   `enabled=true` and `artifact=linked`, combining central selection with the
   local settings `linked` integration data.
@@ -326,13 +326,13 @@ Phase 3.6B contracts:
   Completion: switching a driver between `drv` and `linked` or changing its
   stage changes build/activation behavior without moving its directory.
 
-- [ ] **D08: Generate packaged-driver activation sets from central policy**
+- [x] **D08: Generate packaged-driver activation sets from central policy**
   Generate automatic boot, kernel, and runtime `.drv` sets plus the shipped
   runtime-manual set from enabled policy entries.
   Completion: every allowed `.drv` combination enters exactly one generated
   set, while manual-only drivers remain available but never autoload.
 
-- [ ] **D09: Add boot `.drv` module handoff**
+- [x] **D09: Add boot `.drv` module handoff**
   Teach UEFI to load and verify boot-stage `.drv` packages, describe them in a
   bounded BootInfo module list, and let the early kernel driver loader resolve
   and activate them.
@@ -340,12 +340,32 @@ Phase 3.6B contracts:
   malformed, unsigned, oversized, or dependency-invalid modules are rejected
   without corrupting boot state.
 
-- [ ] **D10: Add staged kernel and runtime activation**
+- [x] **D10: Add staged kernel and runtime activation**
   Execute linked and packaged activation plans at their exact stages. Runtime
   automatic activation happens once after normal runtime begins; runtime
   manual packages remain inactive until `drvload`.
   Completion: all seven supported combinations have focused automated tests,
   and every forbidden combination is rejected by policy validation.
+
+Phase 3.6C contracts:
+
+- `tools/gen_driver_build.py` validates central policy and generates the root
+  Make include, linked activation registry, and packaged activation source;
+- linked object paths are intrinsic `settings.json` integration facts, while
+  central policy alone selects which objects enter `kernel64.bin`;
+- every enabled project exposes the same local `info`, `artifact`, `linked`,
+  and `package` Makefile interface through `drivers/common/driver_project.mk`;
+- packaged build manifests are derived from `settings.json`; runtime-manual
+  packages receive `NO_AUTOLOAD`, are shipped, and never enter an automatic
+  activation plan;
+- UEFI accepts at most eight policy-selected boot packages of at most 1 MiB,
+  verifies their format and signature, and passes bounded BootInfo modules;
+- linked and packaged plans activate separately at boot, kernel, and runtime,
+  preserving dependency order inside each plan;
+- legacy local `driver.json` inputs and directory-glob discovery are removed;
+- the fixed `hello/provider/consumer.drv` ABI fixtures remain root-image test
+  inputs, but are not discoverable driver projects or policy entries;
+- `make test-driver-build` exercises all seven supported combinations.
 
 ### 3.6D. Documentation And Regression
 

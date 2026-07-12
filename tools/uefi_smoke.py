@@ -148,6 +148,7 @@ def main() -> int:
         "Ramdisk:",
         "Ramdisk addr:",
         "Reserved range count:",
+        "Boot module count: 0x00000000",
         "Reserved[0x00000000] kernel",
         "ramdisk",
         "pmm=used",

@@ -13,6 +13,7 @@
     "state": "ready",
     "instance": "root_fat32 != 0 ? root_fat32 : &fat32",
     "includes": ["fat32.h"],
-    "externs": ["extern FAT32Driver fat32;", "extern FAT32Driver* root_fat32;"]
+    "externs": ["extern FAT32Driver fat32;", "extern FAT32Driver* root_fat32;"],
+    "objects": ["./build/fat32_64.o", "./build/fat32_vfs64.o"]
   }
 }

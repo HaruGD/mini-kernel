@@ -118,13 +118,12 @@ project owns:
 as `linked` or `drv`, activated at boot/kernel/runtime, and activated
 automatically or manually. See `docs/driver_policy.md`.
 
-During the Phase 3.6 build migration, domain-local `driver.json` files remain
-the active compatibility manifests consumed by the existing registry and
-`.drv` builder. Linked manifests use `"link": "builtin"` and describe the
-in-kernel record. `tools/gen_builtin_driver_registry.py` generates the source
-used for `driver_manager_register_builtin_devices()`. Packaged manifests feed
-the unsigned builder and signer. The compatibility files are removed only
-after policy-driven generation becomes the build source of truth.
+Phase 3.6C uses `config/drivers.json` as the product build and activation
+policy. Domain-local `settings.json` files provide package identity plus the
+optional linked integration block (`objects`, `instance`, includes, externs,
+priority, and state). `tools/gen_driver_build.py` generates linked boot,
+kernel, and runtime registries plus packaged activation plans. Legacy local
+`driver.json` files and hand-edited registration lists are no longer used.
 
 Current dependency entry fields:
 

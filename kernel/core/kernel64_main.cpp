@@ -152,6 +152,10 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     service_registry_init();
     process_system_init();
     driver_manager_register_kernel_exports();
+    driver_manager_activate_linked_boot();
+    uint32_t boot_packaged_drivers = diagnostic_mode
+        ? 0
+        : driver_manager_activate_packaged_boot(g_boot_info);
     pci_discover();
     gdt64_init();
     ata.init();
@@ -171,19 +175,25 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
         fat32.init();
         root_fat32 = &fat32;
     }
-    driver_manager_register_builtin_devices();
+    driver_manager_activate_linked_kernel();
     vfs_init();
     vfs_mount_fat32_root(root_fat32);
     vfs_mount_memfs("/mem");
-    uint32_t autoloaded_drivers = diagnostic_mode
+    uint32_t kernel_packaged_drivers = diagnostic_mode
         ? 0
-        : driver_manager_autoload_from("/");
+        : driver_manager_activate_packaged_kernel();
     idt64_init();
     int apic_ready = interrupt_controller_init(acpi_state());
     input_events_init();
     keyboard.init();
     pit.init();
     __asm__ volatile("sti");
+    driver_manager_activate_linked_runtime();
+    uint32_t runtime_packaged_drivers = diagnostic_mode
+        ? 0
+        : driver_manager_activate_packaged_runtime();
+    uint32_t autoloaded_drivers = boot_packaged_drivers +
+        kernel_packaged_drivers + runtime_packaged_drivers;
 
     print("Memory ready\n");
     print("Root source: ");

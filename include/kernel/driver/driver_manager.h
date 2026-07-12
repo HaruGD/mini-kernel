@@ -176,11 +176,17 @@ const DriverExportRecord* driver_export_get(uint32_t index);
 
 int driver_manager_validate_drv_image(const uint8_t* image, uint64_t size);
 int driver_manager_load_drv_image(const uint8_t* image, uint64_t size);
+int driver_manager_load_from_path(const char* path, int require_automatic);
 int driver_manager_unload(const char* name);
 int driver_manager_reload_drv_image(const uint8_t* image, uint64_t size);
 uint32_t driver_manager_autoload_from(const char* path);
 void driver_manager_register_kernel_exports();
-void driver_manager_register_builtin_devices();
+void driver_manager_activate_linked_boot();
+void driver_manager_activate_linked_kernel();
+void driver_manager_activate_linked_runtime();
+uint32_t driver_manager_activate_packaged_boot(const struct BootInfo* boot_info);
+uint32_t driver_manager_activate_packaged_kernel();
+uint32_t driver_manager_activate_packaged_runtime();
 
 int driver_manager_probe_loaded_driver(const char* name, DriverLoadedImage* loaded);
 int driver_manager_bind_pci(const char* driver_name, const PCIDeviceInfo* device, uint32_t flags);

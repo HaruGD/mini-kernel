@@ -7,12 +7,12 @@
     { "name": "keyboard", "path": "input/ps2_keyboard", "enabled": true, "artifact": "linked", "load_stage": "kernel", "load_policy": "automatic" },
     { "name": "pit", "path": "timer/pit", "enabled": true, "artifact": "linked", "load_stage": "kernel", "load_policy": "automatic" },
     { "name": "terminal", "path": "display/terminal", "enabled": true, "artifact": "linked", "load_stage": "boot", "load_policy": "automatic" },
-    { "name": "consumer_c", "path": "demo/consumer_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "manual" },
+    { "name": "consumer_c", "path": "demo/consumer_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "automatic" },
     { "name": "gop_demo_c", "path": "demo/gop_demo_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "manual" },
-    { "name": "hello_c", "path": "demo/hello_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "manual" },
-    { "name": "hello_cpp", "path": "demo/hello_cpp", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "manual" },
-    { "name": "irq_timer_c", "path": "demo/irq_timer_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "manual" },
-    { "name": "pci_probe_c", "path": "demo/pci_probe_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "manual" },
-    { "name": "provider_c", "path": "demo/provider_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "manual" }
+    { "name": "hello_c", "path": "demo/hello_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "automatic" },
+    { "name": "hello_cpp", "path": "demo/hello_cpp", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "automatic" },
+    { "name": "irq_timer_c", "path": "demo/irq_timer_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "automatic" },
+    { "name": "pci_probe_c", "path": "demo/pci_probe_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "automatic" },
+    { "name": "provider_c", "path": "demo/provider_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "automatic" }
   ]
 }

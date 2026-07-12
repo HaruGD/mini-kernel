@@ -437,7 +437,7 @@ void command_drvreload(const char* path) {
     kfree(image);
 }
 
-static int load_drv_file_quiet(const char* path) {
+int driver_manager_load_from_path(const char* path, int require_automatic) {
     uint32_t bytes_read = 0;
     uint8_t* image = read_drv_file(path, &bytes_read);
     if (image == 0) {
@@ -452,7 +452,7 @@ static int load_drv_file_quiet(const char* path) {
 
     const DrvHeader* header = (const DrvHeader*)image;
     const DrvManifest* manifest = (const DrvManifest*)(image + header->manifest_offset);
-    if (manifest->flags & DRV_MANIFEST_FLAG_NO_AUTOLOAD) {
+    if (require_automatic && (manifest->flags & DRV_MANIFEST_FLAG_NO_AUTOLOAD)) {
         kfree(image);
         return DRIVER_LOAD_POLICY_DENIED;
     }
@@ -503,7 +503,7 @@ uint32_t driver_manager_autoload_from(const char* path) {
             }
             char full_path[128];
             join_path(full_path, sizeof(full_path), dir, entry.name);
-            int load_result = load_drv_file_quiet(full_path);
+            int load_result = driver_manager_load_from_path(full_path, 1);
             if (load_result == DRIVER_LOAD_OK) {
                 loaded++;
                 progress = 1;

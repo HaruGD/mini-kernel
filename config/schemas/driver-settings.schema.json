@@ -57,7 +57,7 @@
     "linked": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["priority", "state", "instance", "includes", "externs"],
+      "required": ["priority", "state", "instance", "includes", "externs", "objects"],
       "properties": {
         "priority": { "type": "integer", "minimum": 0 },
         "state": { "type": "string", "minLength": 1 },
@@ -71,6 +71,12 @@
           "type": "array",
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "objects": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^\\./build/[A-Za-z0-9_.-]+\\.o$" }
         }
       }
     }

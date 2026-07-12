@@ -33,7 +33,7 @@ SETTINGS_REQUIRED = {
     "schema_version", "name", "display_name", "version", "description", "domain",
     "permissions", "dependencies", "exports",
 }
-LINKED_FIELDS = {"priority", "state", "instance", "includes", "externs"}
+LINKED_FIELDS = {"priority", "state", "instance", "includes", "externs", "objects"}
 
 
 class DuplicateKeyError(ValueError):
@@ -133,6 +133,9 @@ def validate_settings(settings, label: str, errors: list[str]) -> None:
                     errors.append(f"{label}.linked: {field} must be a non-empty string")
             check_string_list(linked.get("includes"), f"{label}.linked.includes", errors)
             check_string_list(linked.get("externs"), f"{label}.linked.externs", errors)
+            check_string_list(linked.get("objects"), f"{label}.linked.objects", errors)
+            if isinstance(linked.get("objects"), list) and not linked["objects"]:
+                errors.append(f"{label}.linked: objects must not be empty")
 
 
 def validate_policy(root: Path, config_path: Path | None = None) -> list[str]:

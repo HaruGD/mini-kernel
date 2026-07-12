@@ -53,6 +53,7 @@ def main() -> int:
     parser.add_argument("--efi", required=True)
     parser.add_argument("--kernel", required=True)
     parser.add_argument("--root")
+    parser.add_argument("--boot-driver", action="append", default=[])
     parser.add_argument("--diagnostic", action="store_true")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -65,11 +66,20 @@ def main() -> int:
     if args.root:
         with open(args.root, "rb") as f:
             root_image = f.read()
+    if len(args.boot_driver) > 8:
+        raise SystemExit("at most 8 boot drivers are supported")
+    boot_drivers = []
+    for path in args.boot_driver:
+        with open(path, "rb") as f:
+            data = f.read()
+        if not data or len(data) > 1024 * 1024:
+            raise SystemExit(f"{path}: boot driver must be 1..1048576 bytes")
+        boot_drivers.append(data)
     startup = b"FS0:\r\nBOOTX64.EFI\r\n"
 
     root_dir_sectors = (ROOT_ENTRY_COUNT * 32 + BYTES_PER_SECTOR - 1) // BYTES_PER_SECTOR
     diagnostic = b"diagnostic\r\n" if args.diagnostic else b""
-    payload_bytes = len(efi) + len(kernel) + len(startup) + len(root_image) + len(diagnostic)
+    payload_bytes = len(efi) + len(kernel) + len(startup) + len(root_image) + len(diagnostic) + sum(map(len, boot_drivers))
     payload_clusters = cluster_count(payload_bytes) + 8
     total_sectors = 32768
     while True:
@@ -137,6 +147,7 @@ def main() -> int:
     root_chain = alloc_chain(root_image) if root_image else []
     startup_chain = alloc_chain(startup)
     diagnostic_chain = alloc_chain(diagnostic) if diagnostic else []
+    boot_driver_chains = [alloc_chain(data) for data in boot_drivers]
 
     if next_cluster >= total_clusters:
         raise SystemExit("files do not fit in ESP image")
@@ -160,6 +171,8 @@ def main() -> int:
         root_entries.insert(3, make_entry("OS64.BIN", 0x20, root_chain[0], len(root_image)))
     if diagnostic_chain:
         root_entries.append(make_entry("DIAG.CFG", 0x20, diagnostic_chain[0], len(diagnostic)))
+    for index, (data, chain) in enumerate(zip(boot_drivers, boot_driver_chains)):
+        root_entries.append(make_entry(f"BOOT{index:03d}.DRV", 0x20, chain[0], len(data)))
     write_dir(image, root_offset, root_entries)
 
     efi_dir = [
@@ -190,6 +203,8 @@ def main() -> int:
     write_file(startup, startup_chain)
     if diagnostic_chain:
         write_file(diagnostic, diagnostic_chain)
+    for data, chain in zip(boot_drivers, boot_driver_chains):
+        write_file(data, chain)
 
     with open(args.output, "wb") as f:
         f.write(image)

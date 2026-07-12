@@ -13,6 +13,7 @@
     "state": "ready",
     "instance": "&pit",
     "includes": ["drivers/pit.h"],
-    "externs": ["extern PIT pit;"]
+    "externs": ["extern PIT pit;"],
+    "objects": ["./build/pit64.o"]
   }
 }

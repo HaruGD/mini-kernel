@@ -1,9 +1,0 @@
-{
-  "name": "consumer_c",
-  "version": "0.1.0",
-  "entry": "driver_entry",
-  "permissions": [],
-  "boot_modes": ["NORMAL"],
-  "dependencies": ["provider_c"],
-  "exports": []
-}

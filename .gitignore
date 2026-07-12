@@ -1,6 +1,8 @@
 build/
 bin/
 qemu.log
+__pycache__/
+*.pyc
 
 *.o
 *.bin

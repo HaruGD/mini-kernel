@@ -116,6 +116,22 @@ void print_boot_info() {
     }
     print("\nDiagnostic: ");
     print((g_boot_info->flags & BOOT_INFO_FLAG_DIAGNOSTIC) ? "yes" : "no");
+    if (g_boot_info->size >= sizeof(BootInfo)) {
+        uint32_t module_count = g_boot_info->boot_module_count;
+        if (module_count > BOOT_MODULE_MAX) module_count = BOOT_MODULE_MAX;
+        print("\nBoot module count: ");
+        print_hex32(module_count);
+        for (uint32_t i = 0; i < module_count; i++) {
+            print("\nBoot module[");
+            print_hex32(i);
+            print("] ");
+            print(g_boot_info->boot_modules[i].name);
+            print(" addr=");
+            print_hex64(g_boot_info->boot_modules[i].address);
+            print(" bytes=");
+            print_hex64(g_boot_info->boot_modules[i].size);
+        }
+    }
     if (boot_info_has_reserved_ranges(g_boot_info)) {
         uint32_t count = boot_reserved_range_count(g_boot_info);
         print("\nReserved range count: ");

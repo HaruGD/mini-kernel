@@ -13,6 +13,7 @@
     "state": "ready",
     "instance": "&keyboard",
     "includes": ["drivers/keyboard.h"],
-    "externs": ["extern KeyboardDriver keyboard;"]
+    "externs": ["extern KeyboardDriver keyboard;"],
+    "objects": ["./build/keyboard64.o"]
   }
 }

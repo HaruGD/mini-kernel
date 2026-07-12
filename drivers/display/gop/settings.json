@@ -13,6 +13,7 @@
     "state": "gop_ready",
     "instance": "&gop",
     "includes": ["drivers/gop.h"],
-    "externs": ["extern GOPDriver gop;"]
+    "externs": ["extern GOPDriver gop;"],
+    "objects": ["./build/gop64.o"]
   }
 }

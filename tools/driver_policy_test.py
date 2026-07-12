@@ -42,6 +42,7 @@ def make_fixture(root: Path):
                 "instance": "0",
                 "includes": [],
                 "externs": [],
+                "objects": [f"./build/{name}.o"],
             }
         settings_path = directory / "settings.json"
         write_json(settings_path, settings)

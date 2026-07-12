@@ -13,6 +13,7 @@
     "state": "ready",
     "instance": "&ata",
     "includes": ["drivers/ata.h"],
-    "externs": ["extern ATADriver ata;"]
+    "externs": ["extern ATADriver ata;"],
+    "objects": ["./build/ata64.o"]
   }
 }
