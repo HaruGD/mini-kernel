@@ -6,7 +6,7 @@ REPO_ROOT := ../../..
 all: kernel
 
 info:
-	@echo "builtin driver: $(DRIVER_NAME)"
+	@echo "linked driver: $(DRIVER_NAME)"
 	@echo "manifest: $(DRIVER_MANIFEST)"
 
 kernel:

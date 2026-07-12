@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "os64://schemas/drivers-policy.schema.json",
+  "title": "OS64 central driver product policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "drivers"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "drivers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path", "enabled", "artifact", "load_stage", "load_policy"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "path": { "type": "string", "pattern": "^[a-z0-9_]+(?:/[a-z0-9_]+)*$" },
+          "enabled": { "type": "boolean" },
+          "artifact": { "enum": ["linked", "drv"] },
+          "load_stage": { "enum": ["boot", "kernel", "runtime"] },
+          "load_policy": { "enum": ["automatic", "manual"] }
+        },
+        "oneOf": [
+          { "properties": { "artifact": { "const": "linked" }, "load_stage": { "const": "boot" }, "load_policy": { "const": "automatic" } } },
+          { "properties": { "artifact": { "const": "linked" }, "load_stage": { "const": "kernel" }, "load_policy": { "const": "automatic" } } },
+          { "properties": { "artifact": { "const": "linked" }, "load_stage": { "const": "runtime" }, "load_policy": { "const": "automatic" } } },
+          { "properties": { "artifact": { "const": "drv" }, "load_stage": { "const": "boot" }, "load_policy": { "const": "automatic" } } },
+          { "properties": { "artifact": { "const": "drv" }, "load_stage": { "const": "kernel" }, "load_policy": { "const": "automatic" } } },
+          { "properties": { "artifact": { "const": "drv" }, "load_stage": { "const": "runtime" }, "load_policy": { "const": "automatic" } } },
+          { "properties": { "artifact": { "const": "drv" }, "load_stage": { "const": "runtime" }, "load_policy": { "const": "manual" } } }
+        ]
+      }
+    }
+  }
+}

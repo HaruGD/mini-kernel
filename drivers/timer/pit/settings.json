@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "pit",
+  "display_name": "Programmable interval timer driver",
+  "version": "1.0.0",
+  "description": "PIT timer and scheduler tick source.",
+  "domain": "timer",
+  "permissions": ["TIMER", "INTERRUPT"],
+  "dependencies": [],
+  "exports": [],
+  "linked": {
+    "priority": 50,
+    "state": "ready",
+    "instance": "&pit",
+    "includes": ["drivers/pit.h"],
+    "externs": ["extern PIT pit;"]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "consumer_c",
+  "display_name": "Consumer C sample driver",
+  "version": "0.1.0",
+  "description": "Sample consumer that depends on the provider driver.",
+  "domain": "demo",
+  "entry": "driver_entry",
+  "permissions": [],
+  "boot_modes": ["NORMAL"],
+  "dependencies": ["provider_c"],
+  "exports": []
+}

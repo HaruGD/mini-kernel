@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "os64://schemas/driver-settings.schema.json",
+  "title": "OS64 driver-local settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "name",
+    "display_name",
+    "version",
+    "description",
+    "domain",
+    "permissions",
+    "dependencies",
+    "exports"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "display_name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "description": { "type": "string", "minLength": 1 },
+    "domain": {
+      "enum": ["block", "bus", "display", "fs", "input", "timer", "demo"]
+    },
+    "entry": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+    },
+    "boot_modes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["NORMAL", "DIAGNOSTIC", "RECOVERY"] }
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+    },
+    "exports": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+    },
+    "imports": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$" },
+      "additionalProperties": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+      }
+    },
+    "linked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priority", "state", "instance", "includes", "externs"],
+      "properties": {
+        "priority": { "type": "integer", "minimum": 0 },
+        "state": { "type": "string", "minLength": 1 },
+        "instance": { "type": "string", "minLength": 1 },
+        "includes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "externs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

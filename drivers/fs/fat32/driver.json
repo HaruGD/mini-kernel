@@ -7,6 +7,6 @@
   "permissions": ["BLOCK", "VFS"],
   "state": "ready",
   "instance": "root_fat32 != 0 ? root_fat32 : &fat32",
-  "includes": ["fs/fat32.h"],
+  "includes": ["fat32.h"],
   "externs": ["extern FAT32Driver fat32;", "extern FAT32Driver* root_fat32;"]
 }

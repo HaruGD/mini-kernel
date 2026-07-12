@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "keyboard",
+  "display_name": "PS/2 keyboard driver",
+  "version": "1.0.0",
+  "description": "Interrupt-driven PS/2 keyboard input driver.",
+  "domain": "input",
+  "permissions": ["INPUT", "INTERRUPT"],
+  "dependencies": [],
+  "exports": [],
+  "linked": {
+    "priority": 40,
+    "state": "ready",
+    "instance": "&keyboard",
+    "includes": ["drivers/keyboard.h"],
+    "externs": ["extern KeyboardDriver keyboard;"]
+  }
+}

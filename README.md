@@ -100,9 +100,11 @@ What works on the active 64-bit UEFI path:
 - `.drv` package validation and loading
 - ELF object based `.drv` builder for C and restricted freestanding C++ kernel drivers
 - C ABI driver boundary with optional C/C++ internal implementation
-- manifest-based external driver projects under `drivers/external/`
-- manifest-based built-in driver projects under `drivers/builtin/`
-- generated built-in driver registry from `drivers/builtin/*/driver.json`
+- domain-based driver projects under `drivers/block`, `drivers/display`,
+  `drivers/fs`, `drivers/input`, `drivers/timer`, and `drivers/demo`
+- driver-local `settings.json` and `Makefile` with central
+  `config/drivers.json` product policy
+- generated linked-driver registry from domain-local manifests
 - separate unsigned builder and `.drv` signer
 - signature ABI v1 with `LOCAL_TEST`, `ROOT_KEY`, and `TPM_LOCAL` algorithm slots
 - local test signature validation for `.drv` packages
@@ -140,6 +142,7 @@ What works on the active 64-bit UEFI path:
 - Fault injection and soak testing: [docs/fault_injection_and_soak.md](docs/fault_injection_and_soak.md)
 - Phase 3.5 ABI freeze: [docs/phase3_5_abi_freeze.md](docs/phase3_5_abi_freeze.md)
 - Phase 3.5 regression matrix: [docs/phase3_5_regression_matrix.md](docs/phase3_5_regression_matrix.md)
+- Driver settings and product policy: [docs/driver_policy.md](docs/driver_policy.md)
 
 ## Build
 
@@ -222,9 +225,9 @@ Important active artifacts:
 - `bin/hello.drv`
   Hand-built test driver package loaded from the FAT32 root filesystem.
 - `bin/hello_c.drv`, `bin/provider_c.drv`, `bin/consumer_c.drv`
-  C driver packages produced from `drivers/external/*/driver.c`, `driver.json`, and the separate signer.
+  C driver packages produced from `drivers/demo/*/driver.c`, `driver.json`, and the separate signer.
 - `bin/hello_cpp.drv`
-  Minimal C++ driver package produced from `drivers/external/hello_cpp/driver.cpp`.
+  Minimal C++ driver package produced from `drivers/demo/hello_cpp/driver.cpp`.
 - `bin/gop_demo_c.drv`
   Minimal display-permission driver that draws through the kernel GOP exports.
 - `bin/irq_timer_c.drv`
@@ -583,12 +586,14 @@ Not implemented yet:
   Architecture-neutral physical memory, virtual memory policy, and kernel heap.
 - `kernel/pci/`, `kernel/process/`, `kernel/syscall/`, `kernel/shell/`, `kernel/util/`
   Kernel subsystems split by responsibility.
-- `drivers/builtin/`
-  Terminal, GOP display, keyboard, PIT, and ATA built into the kernel.
-- `drivers/external/`
-  External C/C++ driver projects, SDK header, and per-driver manifests.
+- `drivers/block/`, `drivers/display/`, `drivers/fs/`, `drivers/input/`, `drivers/timer/`
+  Domain-organized linked hardware and filesystem driver projects.
+- `drivers/demo/`
+  Packaged C/C++ sample driver projects.
+- `drivers/common/`, `drivers/include/`
+  Shared driver Makefile fragments and the external driver SDK header.
 - `fs/`
-  VFS, FAT32, and memfs.
+  VFS and memfs infrastructure; FAT32 lives in `drivers/fs/fat32`.
 - `user/programs/`
   C and ELF user programs.
 - `user/programs/ushell/`

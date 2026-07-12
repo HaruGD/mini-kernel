@@ -106,32 +106,25 @@ manually.
 
 ## Driver Project Layout
 
-External drivers live under `drivers/external/<name>/` and are managed as small
-driver projects:
+All drivers live in domain folders such as `drivers/block/ata`,
+`drivers/display/gop`, `drivers/fs/fat32`, or `drivers/demo/hello_c`. Every
+project owns:
 
-- `driver.c` or `driver.cpp`
-- `driver.json`
-- `Makefile`
+- implementation source;
+- `settings.json` for stable package identity and capabilities;
+- `Makefile` for local build delegation.
 
-The top-level build still performs the package build, signing, and FAT32 root
-image packaging, but each external driver directory can now delegate to that
-flow with its local Makefile.
+`config/drivers.json` separately selects whether the project is enabled, built
+as `linked` or `drv`, activated at boot/kernel/runtime, and activated
+automatically or manually. See `docs/driver_policy.md`.
 
-Built-in drivers live under `drivers/builtin/<name>/` and use the same project
-shape:
-
-- implementation source when the driver has one
-- `driver.json`
-- `Makefile`
-
-Built-in manifests use `"link": "builtin"` and describe the driver record that
-must be registered by the kernel: name, kind, permissions, state policy, and
-the in-kernel instance expression. During the kernel build,
-`tools/gen_builtin_driver_registry.py` reads these manifests and generates the
-source used for `driver_manager_register_builtin_devices()`.
-
-This keeps built-in drivers visible and configurable like external drivers
-without pretending they are unloadable `.drv` packages.
+During the Phase 3.6 build migration, domain-local `driver.json` files remain
+the active compatibility manifests consumed by the existing registry and
+`.drv` builder. Linked manifests use `"link": "builtin"` and describe the
+in-kernel record. `tools/gen_builtin_driver_registry.py` generates the source
+used for `driver_manager_register_builtin_devices()`. Packaged manifests feed
+the unsigned builder and signer. The compatibility files are removed only
+after policy-driven generation becomes the build source of truth.
 
 Current dependency entry fields:
 

@@ -15,7 +15,7 @@ extern "C" {
 #include "drivers/ata.h"
 #include "drivers/keyboard.h"
 #include "drivers/pit.h"
-#include "fs/fat32.h"
+#include "fat32.h"
 #include "fs/vfs.h"
 #include "kernel/boot_info.h"
 #include "kernel/acpi.h"

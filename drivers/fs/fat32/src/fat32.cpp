@@ -1,0 +1,6 @@
+#include "fat32_common.cpp"
+#include "fat32_dir.cpp"
+#include "fat32_lfn.cpp"
+#include "fat32_cluster.cpp"
+#include "fat32_list.cpp"
+#include "fat32_api.cpp"

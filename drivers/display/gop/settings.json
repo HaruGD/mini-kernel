@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "gop",
+  "display_name": "UEFI GOP display driver",
+  "version": "1.0.0",
+  "description": "Framebuffer display driver backed by UEFI GOP handoff data.",
+  "domain": "display",
+  "permissions": ["DISPLAY"],
+  "dependencies": [],
+  "exports": [],
+  "linked": {
+    "priority": 20,
+    "state": "gop_ready",
+    "instance": "&gop",
+    "includes": ["drivers/gop.h"],
+    "externs": ["extern GOPDriver gop;"]
+  }
+}

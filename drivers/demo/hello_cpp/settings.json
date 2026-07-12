@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "hello_cpp",
+  "display_name": "Hello C++ sample driver",
+  "version": "0.1.0",
+  "description": "Minimal C++ driver package used by regression tests.",
+  "domain": "demo",
+  "entry": "driver_entry",
+  "permissions": [],
+  "boot_modes": ["NORMAL"],
+  "dependencies": [],
+  "exports": [],
+  "imports": { "kernel.klog": [] }
+}

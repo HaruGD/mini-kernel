@@ -1,4 +1,4 @@
-#include "fs/fat32.h"
+#include "fat32.h"
 
 #include "arch/x86_64/io.h"
 #include "drivers/terminal.h"

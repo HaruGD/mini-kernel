@@ -11,13 +11,13 @@ UEFI_OBJCOPY = objcopy
 OVMF_VARS_TEMPLATE = /usr/share/OVMF/OVMF_VARS_4M.fd
 
 # Common flags
-INCLUDES = -I./include -I.
+INCLUDES = -I./include -I./drivers/fs/fat32/include -I.
 HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables $(INCLUDES)
 UEFI_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fshort-wchar -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -fno-stack-protector -I./user/include -I./user/sdk/include
-DRIVER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/external/include
-DRIVER64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/external/include
+DRIVER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/include
+DRIVER64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/include
 
 # Userland
 USER_ASM_SOURCES = $(wildcard ./user/programs/*.asm)
@@ -37,10 +37,10 @@ USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk
 
 
 # External drivers
-BUILTIN_DRIVER_MANIFESTS = $(wildcard ./drivers/builtin/*/driver.json)
+BUILTIN_DRIVER_MANIFESTS = $(wildcard ./drivers/block/*/driver.json ./drivers/display/*/driver.json ./drivers/fs/*/driver.json ./drivers/input/*/driver.json ./drivers/timer/*/driver.json)
 GENERATED_BUILTIN_DRIVER_REGISTRY = ./build/generated/builtin_driver_registry.cpp
-DRIVER_PROJECT_MANIFESTS = $(wildcard ./drivers/external/*/driver.json)
-DRIVER_PROJECTS = $(patsubst ./drivers/external/%/driver.json,%,$(DRIVER_PROJECT_MANIFESTS))
+DRIVER_PROJECT_MANIFESTS = $(wildcard ./drivers/demo/*/driver.json)
+DRIVER_PROJECTS = $(patsubst ./drivers/demo/%/driver.json,%,$(DRIVER_PROJECT_MANIFESTS))
 DRIVER_PROJECT_OBJECTS = $(patsubst %,./build/driver_ext_%.o,$(DRIVER_PROJECTS))
 DRIVER_PROJECT_PACKAGES = $(patsubst %,./bin/%.drv,$(DRIVER_PROJECTS))
 DRIVER_PACKAGES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv $(DRIVER_PROJECT_PACKAGES)
@@ -48,7 +48,7 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -173,6 +173,13 @@ test-soak-hour: uefi
 test-abi-freeze:
 	python3 ./tools/abi_freeze_test.py
 
+test-driver-policy:
+	python3 ./tools/driver_policy.py
+	python3 ./tools/driver_policy_test.py
+
+test-driver-layout: test-driver-policy
+	python3 ./tools/driver_layout_test.py
+
 test-uefi-smoke: uefi
 	python3 ./tools/uefi_smoke.py
 
@@ -182,7 +189,7 @@ test-uefi-userland: uefi
 test-uefi-screen: uefi
 	python3 ./tools/uefi_screen_smoke.py
 
-test-closure: test-abi-freeze test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-fault-injection test-soak
+test-closure: test-abi-freeze test-driver-layout test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-fault-injection test-soak
 
 test-service-registry:
 	python3 ./tools/service_registry_test.py
@@ -334,25 +341,25 @@ $(GENERATED_BUILTIN_DRIVER_REGISTRY): $(BUILTIN_DRIVER_MANIFESTS) ./tools/gen_bu
 ./build/display_owner64.o: ./kernel/graphics/display_owner.cpp ./include/kernel/graphics/display_owner.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/terminal64.o: ./drivers/builtin/terminal/terminal.cpp ./include/kernel/graphics/graphics_font.h ./include/kernel/graphics/display_owner.h
+./build/terminal64.o: ./drivers/display/terminal/terminal.cpp ./include/kernel/graphics/graphics_font.h ./include/kernel/graphics/display_owner.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/gop64.o: ./drivers/builtin/gop/gop.cpp ./include/drivers/gop.h ./include/kernel/boot_info.h ./include/kernel/graphics/graphics2d.h ./include/kernel/graphics/display_owner.h ./include/os64/graphics_types.h
+./build/gop64.o: ./drivers/display/gop/gop.cpp ./include/drivers/gop.h ./include/kernel/boot_info.h ./include/kernel/graphics/graphics2d.h ./include/kernel/graphics/display_owner.h ./include/os64/graphics_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/ata64.o: ./drivers/builtin/ata/ata.cpp
+./build/ata64.o: ./drivers/block/ata/ata.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/keyboard64.o: ./drivers/builtin/keyboard/keyboard.cpp ./include/drivers/keyboard.h ./include/kernel/input/input_events.h ./include/os64/input_types.h
+./build/keyboard64.o: ./drivers/input/ps2_keyboard/keyboard.cpp ./include/drivers/keyboard.h ./include/kernel/input/input_events.h ./include/os64/input_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/pit64.o: ./drivers/builtin/pit/pit.cpp
+./build/pit64.o: ./drivers/timer/pit/pit.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/fat32_64.o: ./fs/fat32/fat32.cpp ./fs/fat32/fat32_common.cpp ./fs/fat32/fat32_dir.cpp ./fs/fat32/fat32_lfn.cpp ./fs/fat32/fat32_cluster.cpp ./fs/fat32/fat32_api.cpp ./include/fs/fat32.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./fs/fat32/fat32.cpp -o $@
+./build/fat32_64.o: ./drivers/fs/fat32/src/fat32.cpp ./drivers/fs/fat32/src/fat32_common.cpp ./drivers/fs/fat32/src/fat32_dir.cpp ./drivers/fs/fat32/src/fat32_lfn.cpp ./drivers/fs/fat32/src/fat32_cluster.cpp ./drivers/fs/fat32/src/fat32_api.cpp ./drivers/fs/fat32/include/fat32.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./drivers/fs/fat32/src/fat32.cpp -o $@
 
-./build/fat32_vfs64.o: ./fs/fat32/fat32_vfs.cpp ./include/fs/fat32.h ./include/fs/vfs.h
+./build/fat32_vfs64.o: ./drivers/fs/fat32/src/fat32_vfs.cpp ./drivers/fs/fat32/include/fat32.h ./include/fs/vfs.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/vfs64.o: ./fs/vfs/vfs.cpp ./fs/vfs/vfs_common.cpp ./fs/vfs/vfs_memfs.cpp ./fs/vfs/vfs_core.cpp ./fs/vfs/vfs_open.cpp ./include/fs/vfs.h
@@ -458,17 +465,17 @@ $(USER_C_ELFS): ./bin/%.elf: ./build/user_c_%.o ./build/user_crt0.o $(USER_SDK_L
 
 ./build/user_c_ushell_c.o: ./user/programs/ushell/ushell_helpers.inc ./user/programs/ushell/ushell_main.inc ./user/include/userlib.h ./user/include/userlib/userlib_syscalls.h ./user/include/userlib/userlib_text.h ./user/include/userlib/userlib_path_input.h
 
-./build/driver_ext_%.o: ./drivers/external/%/driver.c ./drivers/external/include/os64_driver.h
+./build/driver_ext_%.o: ./drivers/demo/%/driver.c ./drivers/include/os64_driver.h
 	@mkdir -p ./build
 	$(HOST64_CC) $(DRIVER64_CFLAGS) -c $< -o $@
 
-./build/driver_ext_%.o: ./drivers/external/%/driver.cpp ./drivers/external/include/os64_driver.h
+./build/driver_ext_%.o: ./drivers/demo/%/driver.cpp ./drivers/include/os64_driver.h
 	@mkdir -p ./build
 	$(HOST64_CXX) $(DRIVER64_CPPFLAGS) -c $< -o $@
 
-./build/driver_ext_%.unsigned.drv: ./build/driver_ext_%.o ./drivers/external/%/driver.json ./tools/driver_builder/build_drv.py
+./build/driver_ext_%.unsigned.drv: ./build/driver_ext_%.o ./drivers/demo/%/driver.json ./tools/driver_builder/build_drv.py
 	@mkdir -p ./build
-	python3 ./tools/driver_builder/build_drv.py --object $< --output $@ --manifest ./drivers/external/$*/driver.json
+	python3 ./tools/driver_builder/build_drv.py --object $< --output $@ --manifest ./drivers/demo/$*/driver.json
 
 ./bin/%.drv: ./build/driver_ext_%.unsigned.drv ./tools/driver_builder/sign_drv.py
 	@mkdir -p ./bin

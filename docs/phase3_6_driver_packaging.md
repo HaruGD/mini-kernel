@@ -249,7 +249,7 @@ These fields replace permanent `builtin` vs `external` directory categories.
 
 ### 3.6A. Policy Model
 
-- [ ] **D01: Define driver settings and central policy schemas**
+- [x] **D01: Define driver settings and central policy schemas**
   Add documented schemas for per-driver `settings.json` and central
   `config/drivers.json`. Central entries define `name`, `path`, `enabled`,
   `artifact`, `load_stage`, and `load_policy`.
@@ -257,32 +257,56 @@ These fields replace permanent `builtin` vs `external` directory categories.
   artifacts/stages/policies, forbidden combinations, and invalid dependency
   direction are rejected by a host-side validation tool.
 
-- [ ] **D02: Add driver policy validator**
+- [x] **D02: Add driver policy validator**
   Validate central policy, driver-local settings, and the required local
   `Makefile` without building the kernel.
   Completion: `make test-driver-policy` catches missing driver directories and
   malformed or contradictory settings/policy entries.
 
+Phase 3.6A contracts:
+
+- every current driver has a validated local `settings.json` and `Makefile`;
+- `config/drivers.json` lists every current driver exactly once;
+- schemas freeze the settings and central policy field vocabulary;
+- the validator accepts all seven allowed combinations and rejects every
+  forbidden combination and dependency violation;
+- legacy `driver.json` build behavior remains active until the directory/build
+  migration phases;
+- detailed contract: `docs/driver_policy.md`.
+
 ### 3.6B. Unified Driver Project Shape
 
-- [ ] **D03: Move external sample drivers into domain folders**
+- [x] **D03: Move external sample drivers into domain folders**
   Move samples from `drivers/external/*` to `drivers/demo/*` without changing
   produced `.drv` names, and rename each local `driver.json` to `settings.json`.
   Completion: all existing sample `.drv` packages still build and autoload
   behavior is unchanged.
 
-- [ ] **D04: Move built-in hardware drivers into domain folders**
+- [x] **D04: Move built-in hardware drivers into domain folders**
   Move ATA, GOP, keyboard, PIT, and terminal into domain paths such as
   `drivers/block/ata` and `drivers/display/gop`. Each project retains its own
   `Makefile` and migrates its manifest to `settings.json`.
   Completion: generated built-in registry still produces the same driver
   records.
 
-- [ ] **D05: Move filesystem drivers under `drivers/fs`**
+- [x] **D05: Move filesystem drivers under `drivers/fs`**
   Move FAT32 implementation from `fs/fat32` to `drivers/fs/fat32` and keep VFS
   infrastructure outside the driver tree. FAT32 also owns a local
   `settings.json` and `Makefile`.
   Completion: FAT32 root mount, file I/O, and directory tests keep passing.
+
+Phase 3.6B contracts:
+
+- sample packages live under `drivers/demo` and retain their existing `.drv`
+  artifact names;
+- linked drivers live under block/display/input/timer domain folders and
+  generate the same registry records;
+- FAT32 manifest, Makefile, implementation, and header live together under
+  `drivers/fs/fat32`, while VFS remains under `fs/vfs`;
+- shared driver build infrastructure remains under `drivers/common` and
+  `drivers/include`, not under a load-mechanism category;
+- the compatibility `driver.json` files remain alongside `settings.json` until
+  central-policy build generation replaces them in Phase 3.6C.
 
 ### 3.6C. Build Integration
 

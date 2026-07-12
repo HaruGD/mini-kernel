@@ -1,4 +1,4 @@
-#include "fs/fat32.h"
+#include "fat32.h"
 #include "fs/vfs.h"
 
 static int fat32_backend_list_files(void* backend_ctx, const char* relative_path) {

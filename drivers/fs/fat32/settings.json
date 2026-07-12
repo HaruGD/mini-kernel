@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "fat32",
+  "display_name": "FAT32 filesystem driver",
+  "version": "1.0.0",
+  "description": "FAT32 root and ramdisk filesystem implementation.",
+  "domain": "fs",
+  "permissions": ["BLOCK", "VFS"],
+  "dependencies": [],
+  "exports": [],
+  "linked": {
+    "priority": 30,
+    "state": "ready",
+    "instance": "root_fat32 != 0 ? root_fat32 : &fat32",
+    "includes": ["fat32.h"],
+    "externs": ["extern FAT32Driver fat32;", "extern FAT32Driver* root_fat32;"]
+  }
+}

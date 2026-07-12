@@ -6,7 +6,7 @@ REPO_ROOT := ../../..
 all: package
 
 info:
-	@echo "external driver: $(DRIVER_NAME)"
+	@echo "packaged driver: $(DRIVER_NAME)"
 	@echo "manifest: $(DRIVER_MANIFEST)"
 
 package:

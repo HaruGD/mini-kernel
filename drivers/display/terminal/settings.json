@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "terminal",
+  "display_name": "Kernel terminal driver",
+  "version": "1.0.0",
+  "description": "Kernel text terminal over the active display backend.",
+  "domain": "display",
+  "permissions": ["DISPLAY"],
+  "dependencies": ["gop"],
+  "exports": [],
+  "linked": {
+    "priority": 60,
+    "state": "ready",
+    "instance": "0",
+    "includes": [],
+    "externs": []
+  }
+}

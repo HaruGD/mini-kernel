@@ -107,7 +107,7 @@ def main() -> int:
             "-Werror",
             "-I",
             str(REPO_ROOT / "include"),
-            str(REPO_ROOT / "drivers/builtin/keyboard/keyboard.cpp"),
+            str(REPO_ROOT / "drivers/input/ps2_keyboard/keyboard.cpp"),
             str(source_path),
             "-o",
             str(binary_path),

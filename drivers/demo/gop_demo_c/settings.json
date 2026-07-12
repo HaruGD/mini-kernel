@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "gop_demo_c",
+  "display_name": "GOP demo C driver",
+  "version": "0.1.0",
+  "description": "Sample driver exercising exported GOP drawing services.",
+  "domain": "demo",
+  "entry": "driver_entry",
+  "permissions": ["DISPLAY"],
+  "boot_modes": ["NORMAL"],
+  "dependencies": [],
+  "exports": [],
+  "imports": {
+    "kernel.klog": [],
+    "kernel.gop_get_info": ["DISPLAY"],
+    "kernel.gop_fill_rect": ["DISPLAY"],
+    "kernel.gop_putpixel": ["DISPLAY"]
+  }
+}

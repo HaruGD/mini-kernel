@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "pci_probe_c",
+  "display_name": "PCI probe C sample driver",
+  "version": "0.1.0",
+  "description": "Sample driver exercising PCI discovery and binding exports.",
+  "domain": "demo",
+  "entry": "driver_entry",
+  "permissions": ["PCI"],
+  "boot_modes": ["NORMAL"],
+  "dependencies": [],
+  "exports": [],
+  "imports": {
+    "kernel.klog": [],
+    "kernel.pci_read_config32": ["PCI"],
+    "kernel.pci_bind_device": ["PCI"]
+  }
+}

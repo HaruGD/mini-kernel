@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "irq_timer_c",
+  "display_name": "IRQ timer C sample driver",
+  "version": "0.1.0",
+  "description": "Sample driver exercising IRQ hook registration.",
+  "domain": "demo",
+  "entry": "driver_entry",
+  "permissions": ["INTERRUPT"],
+  "boot_modes": ["NORMAL"],
+  "dependencies": [],
+  "exports": [],
+  "imports": {
+    "kernel.klog": [],
+    "kernel.irq_register": ["INTERRUPT"],
+    "kernel.irq_unregister": ["INTERRUPT"]
+  }
+}
