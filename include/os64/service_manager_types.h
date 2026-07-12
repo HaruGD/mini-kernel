@@ -78,8 +78,38 @@ OS64_SVCD_STATIC_ASSERT(sizeof(OsServiceManagerReply) == 64,
                         "OsServiceManagerReply ABI changed");
 OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerRequest, name) == 16,
                         "OsServiceManagerRequest.name offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerRequest, size) == 0,
+                        "OsServiceManagerRequest.size offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerRequest, command) == 4,
+                        "OsServiceManagerRequest.command offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerRequest, flags) == 8,
+                        "OsServiceManagerRequest.flags offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerRequest, request_id) == 12,
+                        "OsServiceManagerRequest.request_id offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, size) == 0,
+                        "OsServiceManagerReply.size offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, command) == 4,
+                        "OsServiceManagerReply.command offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, result) == 8,
+                        "OsServiceManagerReply.result offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, pid) == 12,
+                        "OsServiceManagerReply.pid offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, state) == 16,
+                        "OsServiceManagerReply.state offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, generation) == 20,
+                        "OsServiceManagerReply.generation offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, request_id) == 24,
+                        "OsServiceManagerReply.request_id offset changed");
 OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, name) == 28,
                         "OsServiceManagerReply.name offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, last_failure) == 44,
+                        "OsServiceManagerReply.last_failure offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, restart_policy) == 48,
+                        "OsServiceManagerReply.restart_policy offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, restart_count) == 52,
+                        "OsServiceManagerReply.restart_count offset changed");
+OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, health) == 56,
+                        "OsServiceManagerReply.health offset changed");
 OS64_SVCD_STATIC_ASSERT(offsetof(OsServiceManagerReply, permissions) == 60,
                         "OsServiceManagerReply.permissions offset changed");
 

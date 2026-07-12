@@ -17,25 +17,8 @@
 #define KERNEL_OBJECT_ERR_NO_MEMORY (-10)
 #define KERNEL_OBJECT_ERR_NOT_FOUND (-12)
 
-struct KernelSharedMemoryInfo {
-    uint32_t owner_pid;
-    uint32_t generation;
-    uint32_t size;
-    uint32_t page_count;
-    uint32_t rights;
-    uint32_t ref_count;
-};
-
-struct KernelGraphicsSurfaceInfo {
-    uint32_t owner_pid;
-    uint32_t generation;
-    uint32_t width;
-    uint32_t height;
-    uint32_t stride_pixels;
-    uint32_t pixel_format;
-    uint32_t byte_size;
-    uint32_t ref_count;
-};
+typedef OsSharedMemoryInfo KernelSharedMemoryInfo;
+typedef OsGraphicsSurfaceHandleInfo KernelGraphicsSurfaceInfo;
 
 struct KernelObjectStats {
     uint32_t active_shared_memory;

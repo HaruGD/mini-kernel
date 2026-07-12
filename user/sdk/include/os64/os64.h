@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "os64/graphics.h"
+#include "os64/handle_types.h"
 #include "os64/input.h"
 #include "os64/ipc.h"
 #include "os64/ipc_types.h"

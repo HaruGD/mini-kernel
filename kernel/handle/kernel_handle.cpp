@@ -2,20 +2,20 @@
 #include "kernel/fault_injection.h"
 
 static uint64_t encode_handle_token(uint32_t slot, uint32_t generation) {
-    return ((uint64_t)generation << 8) | (uint64_t)(slot + 1u);
+    return ((uint64_t)generation << OS_HANDLE_TOKEN_SLOT_BITS) | (uint64_t)(slot + 1u);
 }
 
 static int decode_handle_token(uint64_t handle, uint32_t* slot_out, uint32_t* generation_out) {
-    if ((handle & 0xFFu) == 0 || handle > 0xFFFFFFFFULL) {
+    if ((handle & OS_HANDLE_TOKEN_SLOT_MASK) == 0 || handle > 0xFFFFFFFFULL) {
         return 0;
     }
 
-    uint32_t slot = (uint32_t)(handle & 0xFFu) - 1u;
+    uint32_t slot = (uint32_t)(handle & OS_HANDLE_TOKEN_SLOT_MASK) - 1u;
     if (slot >= KERNEL_HANDLE_TABLE_SIZE) {
         return 0;
     }
 
-    uint32_t generation = (uint32_t)(handle >> 8);
+    uint32_t generation = (uint32_t)(handle >> OS_HANDLE_TOKEN_SLOT_BITS);
     if (generation == 0) {
         return 0;
     }
@@ -27,7 +27,7 @@ static int decode_handle_token(uint64_t handle, uint32_t* slot_out, uint32_t* ge
 
 static uint32_t next_generation(KernelHandleTable* table) {
     uint32_t generation = table->next_generation++;
-    if (table->next_generation == 0 || table->next_generation > 0x00FFFFFFu) {
+    if (table->next_generation == 0 || table->next_generation > OS_HANDLE_TOKEN_GENERATION_MAX) {
         table->next_generation = 1;
     }
     return generation == 0 ? next_generation(table) : generation;

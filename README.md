@@ -138,6 +138,8 @@ What works on the active 64-bit UEFI path:
 - Service supervision and permissions: [docs/service_supervision.md](docs/service_supervision.md)
 - Concurrency readiness: [docs/concurrency_readiness.md](docs/concurrency_readiness.md)
 - Fault injection and soak testing: [docs/fault_injection_and_soak.md](docs/fault_injection_and_soak.md)
+- Phase 3.5 ABI freeze: [docs/phase3_5_abi_freeze.md](docs/phase3_5_abi_freeze.md)
+- Phase 3.5 regression matrix: [docs/phase3_5_regression_matrix.md](docs/phase3_5_regression_matrix.md)
 
 ## Build
 

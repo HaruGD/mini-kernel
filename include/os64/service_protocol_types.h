@@ -74,10 +74,68 @@ OS64_SERVICE_PROTO_STATIC_ASSERT(sizeof(OsServiceHealthReply) == 32,
                                  "OsServiceHealthReply ABI changed");
 OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceQueryRequest, command) == 4,
                                  "OsServiceQueryRequest.command offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceQueryRequest, size) == 0,
+                                 "OsServiceQueryRequest.size offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceQueryRequest, flags) == 8,
+                                 "OsServiceQueryRequest.flags offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceQueryRequest, request_id) == 12,
+                                 "OsServiceQueryRequest.request_id offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, size) == 0,
+                                 "OsInputServiceStatusReply.size offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, command) == 4,
+                                 "OsInputServiceStatusReply.command offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, result) == 8,
+                                 "OsInputServiceStatusReply.result offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, request_id) == 12,
+                                 "OsInputServiceStatusReply.request_id offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, abi_version) == 16,
+                                 "OsInputServiceStatusReply.abi_version offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, ready) == 20,
+                                 "OsInputServiceStatusReply.ready offset changed");
 OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, capabilities) == 24,
                                  "OsInputServiceStatusReply.capabilities offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsInputServiceStatusReply, reserved) == 28,
+                                 "OsInputServiceStatusReply.reserved offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, size) == 0,
+                                 "OsServiceHealthReply.size offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, command) == 4,
+                                 "OsServiceHealthReply.command offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, result) == 8,
+                                 "OsServiceHealthReply.result offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, request_id) == 12,
+                                 "OsServiceHealthReply.request_id offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, abi_version) == 16,
+                                 "OsServiceHealthReply.abi_version offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, ready) == 20,
+                                 "OsServiceHealthReply.ready offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, health) == 24,
+                                 "OsServiceHealthReply.health offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsServiceHealthReply, reserved) == 28,
+                                 "OsServiceHealthReply.reserved offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, size) == 0,
+                                 "OsDisplayServiceInfoReply.size offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, command) == 4,
+                                 "OsDisplayServiceInfoReply.command offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, result) == 8,
+                                 "OsDisplayServiceInfoReply.result offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, request_id) == 12,
+                                 "OsDisplayServiceInfoReply.request_id offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, abi_version) == 16,
+                                 "OsDisplayServiceInfoReply.abi_version offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, ready) == 20,
+                                 "OsDisplayServiceInfoReply.ready offset changed");
 OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, width) == 24,
                                  "OsDisplayServiceInfoReply.width offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, height) == 28,
+                                 "OsDisplayServiceInfoReply.height offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, pixels_per_scanline) == 32,
+                                 "OsDisplayServiceInfoReply.pixels_per_scanline offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, format) == 36,
+                                 "OsDisplayServiceInfoReply.format offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, capabilities) == 40,
+                                 "OsDisplayServiceInfoReply.capabilities offset changed");
+OS64_SERVICE_PROTO_STATIC_ASSERT(offsetof(OsDisplayServiceInfoReply, reserved) == 44,
+                                 "OsDisplayServiceInfoReply.reserved offset changed");
 
 #undef OS64_SERVICE_PROTO_STATIC_ASSERT
 

@@ -392,19 +392,32 @@ Phase 3.5I contracts:
 
 ## 3.5J. Closure
 
-- [ ] **Z01: Run all Phase 1 through Phase 3 regressions**
+- [x] **Z01: Run all Phase 1 through Phase 3 regressions**
   Completion: every existing regression group passes from a clean build.
 
-- [ ] **Z02: Run the new stabilization stress matrix**
+- [x] **Z02: Run the new stabilization stress matrix**
   Completion: lifecycle, IPC, service, fault-injection, and soak tests pass.
 
-- [ ] **Z03: Freeze ABI versions for Phase 4**
+- [x] **Z03: Freeze ABI versions for Phase 4**
   Record process identity, handle, shared-memory, surface, IPC v2, and service
   protocol layouts.
   Completion: kernel and SDK compile-time assertions cover every shared type.
 
-- [ ] **Z04: Publish the Phase 3.5 regression matrix**
+- [x] **Z04: Publish the Phase 3.5 regression matrix**
   Map each invariant to an automated command and document residual risks.
+
+Phase 3.5 closure record:
+
+- a clean `make all` and `make uefi` completed before the closure suite;
+- `make test-closure` passed every Phase 1 through Phase 3 regression group,
+  the stabilization host tests, fault-injection smoke, and the 60-second soak;
+- the release-gate one-hour soak completed 2,049 cycles with no resource drift,
+  panic, hang, timeout, or lock violation;
+- process, handle/object, IPC, service, graphics, and input shared layouts are
+  versioned and compiled with static assertions from both kernel and SDK views;
+- ABI freeze: `docs/phase3_5_abi_freeze.md`;
+- regression evidence and residual risks:
+  `docs/phase3_5_regression_matrix.md`.
 
 ## Phase 4 Entry Criteria
 
@@ -446,5 +459,11 @@ make test-ipc
 make test-services
 ```
 
-The Phase 3.5 implementation must add its own process, address-space, handle,
-IPC v2, service-supervision, fault-injection, and soak targets to this list.
+The closure aggregate adds the Phase 3.5-specific process, address-space,
+handle, IPC v2, service-supervision, concurrency, fault-injection, ABI, and
+qualification-soak targets:
+
+```sh
+make test-closure
+make test-soak-hour
+```
