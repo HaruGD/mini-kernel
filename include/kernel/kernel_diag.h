@@ -18,6 +18,7 @@ void print_jobs_for_process(const Process* parent, uint32_t tick_now);
 void print_ipc_info();
 void print_service_registry();
 void print_concurrency_info();
+void print_resource_info();
 void print_scheduler_info(Process* const* sched_queue,
                           uint32_t sched_queue_count,
                           uint32_t sched_queue_head,

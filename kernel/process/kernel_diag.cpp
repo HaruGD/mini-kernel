@@ -1,6 +1,9 @@
 #include "fs/vfs.h"
+#include "kernel/handle/kernel_objects.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/kutil64.h"
+#include "kernel/mm/heap.h"
+#include "kernel/mm/pmm.h"
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/spinlock.h"
@@ -382,6 +385,62 @@ void print_concurrency_info() {
     print(" requested_class=");
     print_hex32(stats.last_requested_class);
     print("\n===================");
+}
+
+void print_resource_info() {
+    SchedulerDiagnosticSnapshot processes;
+    ServiceRegistrySnapshot services;
+    KernelObjectStats objects;
+    PmmStats pmm;
+    HeapStats heap;
+    process_get_diagnostic_snapshot(&processes);
+    service_registry_get_snapshot(&services);
+    kernel_object_get_stats(&objects);
+    pmm_get_stats(&pmm);
+    heap_get_stats(&heap);
+
+    uint32_t active_processes = 0;
+    uint32_t mappings = 0;
+    uint32_t handles = 0;
+    uint32_t mailboxes = 0;
+    for (uint32_t i = 0; i < processes.process_count; i++) {
+        const ProcessDiagnosticSnapshot* process = &processes.processes[i];
+        active_processes += process->active ? 1u : 0u;
+        mappings += process->mapping_count;
+        handles += process->handle_count;
+        mailboxes += process->mailbox.count;
+    }
+
+    print("\n=== RESOURCES ===");
+    print("\nprocesses=");
+    print_hex32(active_processes);
+    print(" mappings=");
+    print_hex32(mappings);
+    print(" handles=");
+    print_hex32(handles);
+    print(" mailboxes=");
+    print_hex32(mailboxes);
+    print(" services=");
+    print_hex32(services.count);
+    print("\nshared=");
+    print_hex32(objects.active_shared_memory);
+    print(" surfaces=");
+    print_hex32(objects.active_surfaces);
+    print(" shared_bytes=");
+    print_hex64(objects.shared_memory_bytes);
+    print(" surface_bytes=");
+    print_hex64(objects.surface_bytes);
+    print("\npmm_free=");
+    print_hex32(pmm.free_blocks);
+    print(" pmm_failures=");
+    print_hex64(pmm.alloc_failures);
+    print(" heap_used=");
+    print_hex64(heap.used_bytes);
+    print(" heap_mapped=");
+    print_hex64(heap.mapped_bytes);
+    print(" heap_failures=");
+    print_hex64(heap.alloc_failures);
+    print("\n=================\n");
 }
 
 void print_scheduler_info(Process* const* sched_queue,

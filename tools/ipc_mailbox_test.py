@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TEST_SOURCE = r"""
 #include <stdint.h>
+#include "kernel/fault_injection.h"
 #include "kernel/ipc/ipc_mailbox.h"
 #include "kernel/process64.h"
 
@@ -55,9 +56,14 @@ static void clear_process_table() {
 }
 
 int main() {
+    kernel_fault_injection_reset();
     KernelIpcMailbox mailbox;
     OsIpcMessage message;
     ipc_mailbox_init(&mailbox);
+    OsIpcMessage injected = make_message(1);
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_MAILBOX, 0);
+    check(ipc_mailbox_push(&mailbox, &injected) == 0);
+    check(ipc_mailbox_count(&mailbox) == 0);
 
     check(sizeof(OsIpcMessage) == 88);
     check(ipc_mailbox_capacity(&mailbox) == IPC_MAILBOX_CAPACITY);
@@ -238,6 +244,7 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
+            str(REPO_ROOT / "kernel/debug/fault_injection.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),

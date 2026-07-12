@@ -354,24 +354,41 @@ Phase 3.5H contracts:
 
 ## 3.5I. Fault Injection And Soak Testing
 
-- [ ] **T01: Add deterministic allocation-failure injection**
+- [x] **T01: Add deterministic allocation-failure injection**
   Cover PMM, heap, process, mailbox, registry, handle, and shared-memory
   allocation failures.
   Completion: each failure unwinds without leaks or kernel panic.
 
-- [ ] **T02: Add malformed syscall and IPC fuzz cases**
+- [x] **T02: Add malformed syscall and IPC fuzz cases**
   Exercise invalid pointers, lengths, flags, handles, names, and ABI versions.
   Completion: only the offending request or process fails.
 
-- [ ] **T03: Add a long-running service soak test**
+- [x] **T03: Add a long-running service soak test**
   Run shell, service manager, input, display, IPC traffic, sleep, and process
   churn together.
   Completion: a one-hour QEMU run has no panic, hang, or monotonic leak.
 
-- [ ] **T04: Add resource accounting diagnostics**
+  Certified: the one-hour release gate completed 2,049 health IPC cycles with
+  periodic display restarts, no panic/hang/timeout, no lock violation, and no
+  final resource drift.
+
+- [x] **T04: Add resource accounting diagnostics**
   Report active processes, mappings, PMM pages, heap use, mailboxes, services,
   handles, and shared surfaces.
   Completion: tests can compare a baseline snapshot with the final snapshot.
+
+Phase 3.5I contracts:
+
+- seven named one-shot failure points cover PMM, heap, process, mailbox,
+  service, handle, and shared-memory admission;
+- fault controls are restricted to diagnostic boot images;
+- syscall and IPC malformed inputs return errors without terminating unrelated
+  processes;
+- `resources` provides a machine-readable baseline for active resources and
+  allocator consumption;
+- `make test-soak` performs the qualification run and `make test-soak-hour`
+  is the one-hour release gate;
+- detailed contract: `docs/fault_injection_and_soak.md`.
 
 ## 3.5J. Closure
 

@@ -1,4 +1,5 @@
 #include "kernel/mm/pmm.h"
+#include "kernel/fault_injection.h"
 #include <stddef.h>
 
 #define E820_TYPE_USABLE 1
@@ -225,6 +226,10 @@ extern "C" void pmm_init(const BootInfo* boot_info) {
 
 extern "C" void* pmm_alloc_block() {
     alloc_requests64++;
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_PMM)) {
+        alloc_failures64++;
+        return 0;
+    }
     if (free_blocks64 == 0) {
         alloc_failures64++;
         return 0;
@@ -259,6 +264,10 @@ extern "C" void* pmm_alloc_blocks(uint32_t count) {
     alloc_requests64++;
     alloc_contiguous_requests64++;
     if (count == 0) {
+        alloc_failures64++;
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_PMM)) {
         alloc_failures64++;
         return 0;
     }

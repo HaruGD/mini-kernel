@@ -51,6 +51,7 @@ def main() -> int:
     parser.add_argument("commands", nargs="*", default=[
         "bootinfo",
         "memstat",
+        "resources",
         "input",
         "locks",
         "drivers",
@@ -153,6 +154,9 @@ def main() -> int:
         "Root source: ramdisk",
         "=== DRIVERS ===",
         "=== CONCURRENCY ===",
+        "=== RESOURCES ===",
+        "processes=0x",
+        "pmm_free=0x",
         "order_violations=0x0000000000000000 recursion_violations=0x0000000000000000 release_violations=0x0000000000000000",
         "=== PCI ===",
         "count=",

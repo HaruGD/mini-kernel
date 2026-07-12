@@ -1,6 +1,7 @@
 #include "fs/vfs.h"
 #include "kernel/handle/kernel_handle.h"
 #include "kernel/handle/kernel_objects.h"
+#include "kernel/fault_injection.h"
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
@@ -23,6 +24,27 @@ static KernelSpinlock process_lock =
 
 static void scheduler_enqueue_unlocked(Process* process);
 static void scheduler_remove_unlocked(Process* process);
+
+void process_system_init() {
+    user_program_depth = 0;
+    next_pid = 1;
+    next_process_generation = 1;
+    sched_queue_count = 0;
+    sched_queue_head = 0;
+    sched_last_pid = 0;
+    sched_switch_count = 0;
+    sched_yield_count = 0;
+    input_focus_pid = 0;
+    for (uint32_t i = 0; i < USER_PROGRAM_SLOT_COUNT; i++) {
+        process_stack[i] = 0;
+    }
+    for (uint32_t i = 0; i < SCHED_QUEUE_SIZE; i++) {
+        sched_queue[i] = 0;
+    }
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        process_clear(&process_table[i]);
+    }
+}
 
 static void snapshot_copy_name(char* destination, const char* source) {
     uint32_t i = 0;
@@ -73,6 +95,7 @@ void process_get_diagnostic_snapshot(SchedulerDiagnosticSnapshot* snapshot) {
         out->timeslice_ticks = process->timeslice_ticks;
         out->wake_tick = process->wake_tick;
         out->wait_deadline = process->wait_deadline;
+        out->mapping_count = process->address_space.region_count;
         out->active = process->active;
         out->reaped = process->reaped;
         out->resumable = process->resumable;
@@ -1002,6 +1025,9 @@ int process_record_is_active(const Process* process) {
 }
 
 Process* allocate_process_record() {
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_PROCESS)) {
+        return 0;
+    }
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         if (process_table[i].pid == 0) {
             process_clear(&process_table[i]);

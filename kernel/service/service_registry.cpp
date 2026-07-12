@@ -1,6 +1,7 @@
 #include "kernel/service/service_registry.h"
 
 #include "kernel/process64.h"
+#include "kernel/fault_injection.h"
 #include "kernel/spinlock.h"
 
 struct ServiceEntry {
@@ -179,6 +180,9 @@ int service_register(Process* owner, const char* name, uint32_t flags) {
     }
     if ((flags & ~OS_SERVICE_FLAG_SYSTEM) != 0) {
         return SERVICE_ERR_INVALID_ARGUMENT;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_SERVICE)) {
+        return SERVICE_ERR_NO_RESOURCES;
     }
 
     KernelSpinlockToken token;

@@ -1,4 +1,5 @@
 #include "kernel/handle/kernel_objects.h"
+#include "kernel/fault_injection.h"
 
 #include <stddef.h>
 
@@ -169,6 +170,28 @@ void kernel_objects_init() {
     }
 }
 
+void kernel_object_get_stats(KernelObjectStats* stats) {
+    if (stats == 0) {
+        return;
+    }
+    stats->active_shared_memory = 0;
+    stats->active_surfaces = 0;
+    stats->shared_memory_bytes = 0;
+    stats->surface_bytes = 0;
+    for (uint32_t i = 0; i < KERNEL_SHARED_MEMORY_MAX_OBJECTS; i++) {
+        if (shared_objects[i].active) {
+            stats->active_shared_memory++;
+            stats->shared_memory_bytes += shared_objects[i].page_count * VM_PAGE_SIZE;
+        }
+    }
+    for (uint32_t i = 0; i < KERNEL_GRAPHICS_SURFACE_MAX_OBJECTS; i++) {
+        if (surface_objects[i].active) {
+            stats->active_surfaces++;
+            stats->surface_bytes += surface_objects[i].byte_size;
+        }
+    }
+}
+
 uint64_t kernel_shared_memory_create(KernelHandleTable* table,
                                      uint32_t owner_pid,
                                      uint32_t size,
@@ -179,6 +202,9 @@ uint64_t kernel_shared_memory_create(KernelHandleTable* table,
 
     uint32_t page_count = (size + VM_PAGE_SIZE - 1u) / VM_PAGE_SIZE;
     if (page_count == 0 || page_count > KERNEL_SHARED_MEMORY_MAX_PAGES) {
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_SHARED_MEMORY)) {
         return 0;
     }
 

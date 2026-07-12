@@ -12,6 +12,9 @@ extern "C" {
 #include "drivers/terminal.h"
 #include "fs/vfs.h"
 #include "kernel/driver/driver_manager.h"
+#include "kernel/fault_injection.h"
+#include "kernel/handle/kernel_handle.h"
+#include "kernel/handle/kernel_objects.h"
 #include "kernel/acpi.h"
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
@@ -229,11 +232,121 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, input, ipc, services, locks, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
+    print("\nfree, dump, sched, input, ipc, services, locks, resources, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
-    print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case]");
+    print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
     print("\nrun, resume, service [cmd] [name], usertest, ushell, ushellc");
+}
+
+static void print_fault_injection_status() {
+    KernelFaultInjectionSnapshot snapshot;
+    kernel_fault_injection_get_snapshot(&snapshot);
+    print("\n=== FAULT INJECTION ===");
+    for (uint32_t i = 0; i < KERNEL_FAULT_POINT_COUNT; i++) {
+        print("\n");
+        print(kernel_fault_point_name(i));
+        print(" attempts=");
+        print_hex64(snapshot.points[i].attempts);
+        print(" failures=");
+        print_hex64(snapshot.points[i].failures);
+        print(" armed=");
+        print_hex32(snapshot.points[i].armed);
+        print(" remaining=");
+        print_hex64(snapshot.points[i].remaining);
+    }
+    print("\n=======================");
+}
+
+static int fault_injection_available() {
+    const BootInfo* boot_info = kernel_boot_info();
+    return boot_info != 0 && (boot_info->flags & BOOT_INFO_FLAG_DIAGNOSTIC) != 0;
+}
+
+static void command_faultinject(char* arg) {
+    if (!fault_injection_available()) {
+        print("\nfault injection is only available in diagnostic boot mode");
+        return;
+    }
+    if (arg == 0 || arg[0] == '\0' || strcmp64(arg, "status") == 0) {
+        print_fault_injection_status();
+        return;
+    }
+    if (strcmp64(arg, "off") == 0) {
+        kernel_fault_injection_reset();
+        print("\nfault injection disabled");
+        return;
+    }
+
+    char* after_text = get_argument(arg);
+    if (after_text == 0) {
+        print("\nUsage: faultinject pmm|heap|process|mailbox|service|handle|shared <successes-before-failure>");
+        return;
+    }
+    after_text[-1] = '\0';
+    uint32_t point = kernel_fault_point_from_name(arg);
+    if (point == KERNEL_FAULT_POINT_INVALID) {
+        print("\nUnknown fault point: ");
+        print(arg);
+        return;
+    }
+    uint32_t after = parse_uint32(after_text);
+    kernel_fault_injection_arm(point, after);
+    print("\nfault injection armed point=");
+    print(kernel_fault_point_name(point));
+    print(" after=");
+    print_hex32(after);
+}
+
+static void command_faulttest() {
+    if (!fault_injection_available()) {
+        print("\nfaulttest is only available in diagnostic boot mode");
+        return;
+    }
+
+    uint32_t passed = 0;
+    uint32_t pmm_before = pmm_get_free_block_count();
+    uint64_t heap_before = heap_total_used();
+    KernelObjectStats objects_before;
+    kernel_object_get_stats(&objects_before);
+
+    kernel_fault_injection_reset();
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_PMM, 0);
+    passed += pmm_alloc_block() == 0 ? 1u : 0u;
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_HEAP, 0);
+    passed += kmalloc(32) == 0 ? 1u : 0u;
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_PROCESS, 0);
+    passed += allocate_process_record() == 0 ? 1u : 0u;
+
+    KernelIpcMailbox mailbox;
+    ipc_mailbox_init(&mailbox);
+    OsIpcMessageV2 message = {};
+    message.size = sizeof(message);
+    message.abi_version = OS64_IPC_ABI_VERSION_V2;
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_MAILBOX, 0);
+    passed += ipc_mailbox_push_v2(&mailbox, &message) == 0 && mailbox.count == 0 ? 1u : 0u;
+
+    KernelHandleTable handles;
+    kernel_handle_table_init(&handles);
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_HANDLE, 0);
+    passed += kernel_handle_alloc(&handles, KERNEL_HANDLE_TYPE_VFS_FILE, 0, 1, 0) == 0 &&
+              handles.active_count == 0 ? 1u : 0u;
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_SHARED_MEMORY, 0);
+    passed += kernel_shared_memory_create(&handles, 1, 4096, KERNEL_HANDLE_RIGHT_READ) == 0 ? 1u : 0u;
+
+    KernelObjectStats objects_after;
+    kernel_object_get_stats(&objects_after);
+    int resources_unchanged = pmm_before == pmm_get_free_block_count() &&
+                              heap_before == heap_total_used() &&
+                              objects_before.active_shared_memory == objects_after.active_shared_memory &&
+                              objects_before.shared_memory_bytes == objects_after.shared_memory_bytes;
+    passed += resources_unchanged ? 1u : 0u;
+    kernel_fault_injection_reset();
+
+    print("\nFAULTTEST passed=");
+    print_hex32(passed);
+    print(" expected=0x00000007 result=");
+    print(passed == 7 ? "ok" : "failed");
 }
 
 static void command_input() {
@@ -813,6 +926,12 @@ static void execute_command() {
         print_service_registry();
     } else if (strcmp64(cmd, "locks") == 0) {
         print_concurrency_info();
+    } else if (strcmp64(cmd, "resources") == 0) {
+        print_resource_info();
+    } else if (strcmp64(cmd, "faultinject") == 0) {
+        command_faultinject(arg);
+    } else if (strcmp64(cmd, "faulttest") == 0) {
+        command_faulttest();
     } else if (strcmp64(cmd, "drivers") == 0) {
         command_drivers();
     } else if (strcmp64(cmd, "bindings") == 0) {

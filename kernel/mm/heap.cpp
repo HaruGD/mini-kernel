@@ -1,4 +1,5 @@
 #include "kernel/mm/heap.h"
+#include "kernel/fault_injection.h"
 #include "kernel/mm/pmm.h"
 #include "kernel/mm/vm.h"
 
@@ -353,6 +354,10 @@ extern "C" void heap_init() {
 extern "C" void* kmalloc(size_t size) {
     heap_alloc_requests++;
     if (size == 0) {
+        heap_alloc_failures++;
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_HEAP)) {
         heap_alloc_failures++;
         return 0;
     }

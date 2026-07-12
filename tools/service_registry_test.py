@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TEST_SOURCE = r"""
 #include <stdint.h>
+#include "kernel/fault_injection.h"
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
 
@@ -43,6 +44,10 @@ int main() {
     init_process(other, 200);
 
     check(service_registry_capacity() == SERVICE_REGISTRY_CAPACITY);
+    check(service_registry_count() == 0);
+    kernel_fault_injection_reset();
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_SERVICE, 0);
+    check(service_register(owner, "injected", OS_SERVICE_FLAG_NONE) == SERVICE_ERR_NO_RESOURCES);
     check(service_registry_count() == 0);
     check(service_name_valid("display") == 1);
     check(service_name_valid("input0") == 1);
@@ -146,6 +151,9 @@ int main() {
     check(snapshot.capacity == SERVICE_REGISTRY_CAPACITY);
     check(snapshot.count == 0);
     check(snapshot.count <= snapshot.capacity);
+    KernelFaultInjectionSnapshot fault_stats;
+    kernel_fault_injection_get_snapshot(&fault_stats);
+    check(fault_stats.points[KERNEL_FAULT_POINT_SERVICE].failures == 1);
     clear_all();
     return failures == 0 ? 0 : 1;
 }
@@ -202,6 +210,7 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
+            str(REPO_ROOT / "kernel/debug/fault_injection.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),

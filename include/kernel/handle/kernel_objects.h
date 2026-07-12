@@ -37,7 +37,15 @@ struct KernelGraphicsSurfaceInfo {
     uint32_t ref_count;
 };
 
+struct KernelObjectStats {
+    uint32_t active_shared_memory;
+    uint32_t active_surfaces;
+    uint64_t shared_memory_bytes;
+    uint64_t surface_bytes;
+};
+
 void kernel_objects_init();
+void kernel_object_get_stats(KernelObjectStats* stats);
 
 uint64_t kernel_shared_memory_create(KernelHandleTable* table,
                                      uint32_t owner_pid,

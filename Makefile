@@ -48,11 +48,12 @@ USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(DRIVER_PACKAGES),--
 
 .SECONDARY: $(DRIVER_PROJECT_OBJECTS)
 .SECONDARY: $(patsubst %,./build/driver_ext_%.unsigned.drv,$(DRIVER_PROJECTS))
-.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency clean
+.PHONY: all all64 uefi uefi-diagnostic drivers test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
 	./build/kernel64.o \
+	./build/fault_injection64.o \
 	./build/spinlock64.o \
 	./build/kutil64.o \
 	./build/kernel_diag64.o \
@@ -159,6 +160,16 @@ test-spinlocks:
 
 test-concurrency: test-spinlocks test-kernel-handles test-process-lifecycle test-service-registry test-ipc-contracts
 
+test-fault-injection: uefi uefi-diagnostic test-concurrency
+	python3 ./tools/fault_injection_test.py
+	python3 ./tools/fault_injection_smoke.py
+
+test-soak: uefi
+	python3 ./tools/service_soak.py --duration 60
+
+test-soak-hour: uefi
+	python3 ./tools/service_soak.py --duration 3600
+
 test-service-registry:
 	python3 ./tools/service_registry_test.py
 test-service-smoke: uefi
@@ -189,6 +200,9 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/core/kernel64.cpp -o $@
 
 ./build/spinlock64.o: ./kernel/sync/spinlock.cpp ./include/kernel/spinlock.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/fault_injection64.o: ./kernel/debug/fault_injection.cpp ./include/kernel/fault_injection.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/kutil64.o: ./kernel/util/kutil64.cpp

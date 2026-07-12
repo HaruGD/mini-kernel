@@ -1,4 +1,5 @@
 #include "kernel/handle/kernel_handle.h"
+#include "kernel/fault_injection.h"
 
 static uint64_t encode_handle_token(uint32_t slot, uint32_t generation) {
     return ((uint64_t)generation << 8) | (uint64_t)(slot + 1u);
@@ -80,6 +81,9 @@ uint64_t kernel_handle_alloc(KernelHandleTable* table,
                              uint64_t object,
                              uint64_t extra) {
     if (table == 0 || type == KERNEL_HANDLE_TYPE_NONE) {
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_HANDLE)) {
         return 0;
     }
 

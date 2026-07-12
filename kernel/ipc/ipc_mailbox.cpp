@@ -1,4 +1,5 @@
 #include "kernel/ipc/ipc_mailbox.h"
+#include "kernel/fault_injection.h"
 
 static void clear_message_v2(OsIpcMessageV2* message) {
     if (message == 0) {
@@ -161,6 +162,9 @@ int ipc_mailbox_is_full(const KernelIpcMailbox* mailbox) {
 
 int ipc_mailbox_push_v2(KernelIpcMailbox* mailbox, const OsIpcMessageV2* message) {
     if (mailbox == 0 || !message_shape_valid_v2(message)) {
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_MAILBOX)) {
         return 0;
     }
     KernelSpinlockToken token;

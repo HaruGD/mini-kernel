@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TEST_SOURCE = r"""
 #include <stdint.h>
+#include "kernel/fault_injection.h"
 #include "kernel/handle/kernel_handle.h"
 #include "kernel/handle/kernel_objects.h"
 #include "os64/graphics_types.h"
@@ -30,6 +31,16 @@ int main() {
     KernelHandleTable receiver;
     kernel_handle_table_init(&receiver);
     kernel_objects_init();
+
+    kernel_fault_injection_reset();
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_HANDLE, 0);
+    check(kernel_handle_alloc(&table, KERNEL_HANDLE_TYPE_VFS_FILE, 0, 1, 0) == 0);
+    check(kernel_handle_count_type(&table, KERNEL_HANDLE_TYPE_NONE) == 0);
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_SHARED_MEMORY, 0);
+    check(kernel_shared_memory_create(&table, 42, 128, KERNEL_HANDLE_RIGHT_READ) == 0);
+    KernelObjectStats injected_stats;
+    kernel_object_get_stats(&injected_stats);
+    check(injected_stats.active_shared_memory == 0 && injected_stats.shared_memory_bytes == 0);
 
     uint64_t shared = kernel_shared_memory_create(&table,
                                                   42,
@@ -147,6 +158,10 @@ int main() {
 
     kernel_handle_table_init(&table);
     check(kernel_handle_count_type(&table, KERNEL_HANDLE_TYPE_NONE) == 0);
+    KernelFaultInjectionSnapshot fault_stats;
+    kernel_fault_injection_get_snapshot(&fault_stats);
+    check(fault_stats.points[KERNEL_FAULT_POINT_HANDLE].failures == 1);
+    check(fault_stats.points[KERNEL_FAULT_POINT_SHARED_MEMORY].failures == 1);
     return failures == 0 ? 0 : 1;
 }
 """
@@ -187,6 +202,7 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
+            str(REPO_ROOT / "kernel/debug/fault_injection.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),

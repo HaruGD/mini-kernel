@@ -31,6 +31,7 @@ struct ProcessDiagnosticSnapshot {
     uint32_t timeslice_ticks;
     uint32_t wake_tick;
     uint32_t wait_deadline;
+    uint32_t mapping_count;
     uint32_t handle_count;
     KernelIpcMailboxStats mailbox;
     uint8_t active;
@@ -68,6 +69,7 @@ extern uint32_t sched_yield_count;
 extern uint32_t input_focus_pid;
 
 Process* current_process();
+void process_system_init();
 void process_get_diagnostic_snapshot(SchedulerDiagnosticSnapshot* snapshot);
 
 void process_clear(Process* process);

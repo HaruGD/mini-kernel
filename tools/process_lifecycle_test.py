@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TEST_SOURCE = r"""
 #include <stdint.h>
+#include "kernel/fault_injection.h"
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
 
@@ -47,6 +48,11 @@ static void assign(Process* process, const Process* parent) {
 
 int main() {
     clear_all();
+
+    kernel_fault_injection_reset();
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_PROCESS, 0);
+    check(allocate_process_record() == 0);
+    check(process_table[0].pid == 0);
 
     Process* parent = &process_table[0];
     assign(parent, 0);
@@ -207,6 +213,7 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
+            str(REPO_ROOT / "kernel/debug/fault_injection.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),

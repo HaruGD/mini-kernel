@@ -237,6 +237,7 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
+            str(REPO_ROOT / "kernel/debug/fault_injection.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),

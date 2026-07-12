@@ -42,6 +42,54 @@ static long raw_syscall2(long number, long arg1, long arg2) {
     return result;
 }
 
+static long raw_syscall1(long number, long arg1) {
+    long result;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(number), "D"(arg1)
+        : "memory");
+    return result;
+}
+
+static long raw_syscall3(long number, long arg1, long arg2, long arg3) {
+    long result;
+    __asm__ volatile(
+        "int $0x80"
+        : "=a"(result)
+        : "a"(number), "D"(arg1), "S"(arg2), "d"(arg3)
+        : "memory");
+    return result;
+}
+
+static void test_malformed_requests(void) {
+    const long kernel_pointer = (long)0xFFFFFFFF80000000ULL;
+    check(raw_syscall1(73, kernel_pointer) == OS_ERR_BAD_BUFFER,
+          "IPC v2 rejects kernel output pointer");
+    check(raw_syscall3(72, 1, 1, kernel_pointer) == OS_ERR_BAD_BUFFER,
+          "IPC v2 rejects kernel input pointer");
+
+    OsIpcMessageV2 output;
+    OsIpcReceiveFilter filter;
+    os_ipc_filter_init(&filter);
+    filter.size--;
+    check(os_msg_v2_recv_match(&filter, &output) == OS_ERR_BAD_BUFFER,
+          "IPC filter rejects ABI size");
+    os_ipc_filter_init(&filter);
+    filter.flags = 0x80000000u;
+    check(os_msg_v2_recv_match(&filter, &output) == OS_ERR_INVALID_ARGUMENT,
+          "IPC filter rejects unknown flags");
+
+    check(os_service_register("BadName", OS_SERVICE_FLAG_NONE) == OS_ERR_INVALID_ARGUMENT,
+          "service rejects malformed name");
+    check(os_service_register("fuzz", 0x80000000u) == OS_ERR_INVALID_ARGUMENT,
+          "service rejects unknown flags");
+    check(os_service_find("fuzz", (OsServiceInfo*)(uintptr_t)kernel_pointer) == OS_ERR_BAD_BUFFER,
+          "service rejects kernel output pointer");
+    check(raw_syscall2(35, kernel_pointer, OS_OPEN_READ) == OS_ERR_INVALID_ARGUMENT,
+          "VFS rejects kernel path pointer");
+}
+
 static void test_global_data(void) {
     check(os_streq(global_words[0], "alpha") &&
           os_streq(global_words[1], "beta") &&
@@ -416,6 +464,7 @@ int main(void) {
     test_time();
     test_wait_timeout();
     test_ipc_v2();
+    test_malformed_requests();
     test_graphics();
     test_keyboard();
 

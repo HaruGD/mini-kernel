@@ -138,6 +138,24 @@ int main() {
 
     OsIpcMessageV2 message_v2 = make_message_v2(OS_IPC_MESSAGE_REQUEST, 1000);
     check(ipc_validate_user_message_v2(&message_v2) == IPC_OK);
+    OsIpcMessageV2 malformed_v2 = message_v2;
+    malformed_v2.size--;
+    check(ipc_send_message_v2(sender, target, &malformed_v2) == IPC_ERR_INVALID_ARGUMENT);
+    malformed_v2 = message_v2;
+    malformed_v2.abi_version++;
+    check(ipc_send_message_v2(sender, target, &malformed_v2) == IPC_ERR_INVALID_ARGUMENT);
+    malformed_v2 = message_v2;
+    malformed_v2.length = OS_IPC_V2_MESSAGE_PAYLOAD_SIZE + 1u;
+    check(ipc_send_message_v2(sender, target, &malformed_v2) == IPC_ERR_MESSAGE_TOO_LARGE);
+    malformed_v2 = message_v2;
+    malformed_v2.handle_count = OS_IPC_V2_MAX_HANDLES + 1u;
+    check(ipc_send_message_v2(sender, target, &malformed_v2) == IPC_ERR_INVALID_ARGUMENT);
+    malformed_v2 = message_v2;
+    malformed_v2.flags = OS_IPC_FLAG_HAS_HANDLES;
+    check(ipc_send_message_v2(sender, target, &malformed_v2) == IPC_ERR_INVALID_ARGUMENT);
+    malformed_v2 = message_v2;
+    malformed_v2.handle_count = 1;
+    check(ipc_send_message_v2(sender, target, &malformed_v2) == IPC_ERR_INVALID_ARGUMENT);
     check(ipc_send_message_v2(sender, target, &message_v2) == IPC_OK);
     OsIpcMessageV2 received_v2;
     check(ipc_receive_message_v2(target, &received_v2) == IPC_OK);
@@ -166,6 +184,11 @@ int main() {
     check(received_v2.reply_to == 1000);
     check(ipc_receive_message_v2(target, &received_v2) == IPC_OK);
     check(received_v2.type == OS_IPC_MESSAGE_EVENT);
+    filter.size--;
+    check(ipc_receive_message_v2_match(target, &filter, &received_v2) == IPC_ERR_BAD_BUFFER);
+    filter.size = sizeof(OsIpcReceiveFilter);
+    filter.flags = 0x80000000u;
+    check(ipc_receive_message_v2_match(target, &filter, &received_v2) == IPC_ERR_INVALID_ARGUMENT);
 
     message_v2 = make_message_v2(OS_IPC_MESSAGE_EVENT, 3000);
     message_v2.flags = OS_IPC_FLAG_HAS_HANDLES;
@@ -329,6 +352,7 @@ def main() -> int:
             "-I",
             str(REPO_ROOT / "include"),
             str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
+            str(REPO_ROOT / "kernel/debug/fault_injection.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),
