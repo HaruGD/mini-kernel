@@ -140,6 +140,8 @@ What works on the active 64-bit UEFI path:
 - Phase 3.5 stabilization plan: [docs/phase3_5_stabilization.md](docs/phase3_5_stabilization.md)
 - Phase 3.6 driver packaging/layout plan: [docs/phase3_6_driver_packaging.md](docs/phase3_6_driver_packaging.md)
 - Phase 3.6 regression matrix: [docs/phase3_6_regression_matrix.md](docs/phase3_6_regression_matrix.md)
+- Phase 4 entry baseline: [docs/phase4_entry_baseline.md](docs/phase4_entry_baseline.md)
+- Phase 4 compositor/window contracts: [docs/phase4_compositor_contracts.md](docs/phase4_compositor_contracts.md)
 - Phase 3.5 starting baseline: [docs/phase3_5_baseline.md](docs/phase3_5_baseline.md)
 - Process/scheduler invariants: [docs/process_scheduler_invariants.md](docs/process_scheduler_invariants.md)
 - Kernel context rules: [docs/kernel_context_rules.md](docs/kernel_context_rules.md)

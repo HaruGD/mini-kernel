@@ -49,10 +49,10 @@ def main() -> int:
             "D11/D12 are not marked complete", failures)
     entry = phase.split("## Phase 4 Entry Criteria", 1)[-1]
     require("- [ ]" not in entry, "Phase 4 entry criteria remain unchecked", failures)
-    require("test-driver-regression: test-driver-build test-uefi-smoke test-user-sdk" in makefile,
+    require("test-driver-regression: test-driver-build test-driver-boot test-uefi-smoke test-user-sdk" in makefile,
             "complete driver regression target is not wired", failures)
-    require("test-closure: test-abi-freeze test-driver-regression" in makefile,
-            "driver regression target is not part of closure", failures)
+    require("test-closure: test-abi-freeze test-phase4-entry" in makefile,
+            "Phase 4 entry/driver regression target is not part of closure", failures)
 
     policy = json.loads((root / "config/drivers.json").read_text(encoding="utf-8"))
     enabled = [entry for entry in policy["drivers"] if entry["enabled"]]
@@ -91,6 +91,8 @@ def main() -> int:
             "UEFI boot module verification missing", failures)
     require("BOOT_MODULE_MAX 8" in boot_info and "BOOT_INFO_VERSION 3" in boot_info,
             "BootInfo v3 bounded module ABI missing", failures)
+    require("boot_driver_handoff_smoke.py" in makefile,
+            "live boot driver smoke is not wired", failures)
     for command in ("drvload", "drvunload", "drvreload", "drivers"):
         require(command in smoke, f"UEFI smoke command missing: {command}", failures)
     for token in ("Root source: ramdisk", "fat32 kind=fs state=ready", "gop_demo_c.drv GOP draw OK"):

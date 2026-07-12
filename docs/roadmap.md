@@ -8,7 +8,7 @@ Status:
 
 ## Current Foundation
 
-- [x] UEFI boot and BootInfo v2 handoff
+- [x] UEFI boot and BootInfo v3 handoff with bounded verified boot modules
 - [x] Architecture-neutral PMM, VM policy, and kernel heap under `kernel/mm`
 - [x] x86_64 paging backend under `arch/x86_64/mm`
 - [x] FAT32 root VFS and memfs
@@ -90,7 +90,8 @@ Completed:
 Service principles:
 
 - Services are ordinary ELF user programs.
-- Drivers remain signed `.drv` packages.
+- Every driver remains a package project; product policy selects a kernel-linked
+  artifact or signed `.drv` package.
 - The kernel supplies bounded transport, ownership, and cleanup mechanisms.
 - Service startup and dependency policy stay in `serviced_c.elf`.
 
@@ -119,22 +120,31 @@ Detailed tasks and Phase 4 entry criteria:
 
 Planned work:
 
-- [ ] Treat every driver as a package by default
-- [ ] Replace permanent `builtin`/`external` directory categories with
+- [x] Treat every driver as a package by default
+- [x] Replace permanent `builtin`/`external` directory categories with
   domain-based driver folders
-- [ ] Add central `config/drivers.json` policy for enabled state, artifact,
+- [x] Add central `config/drivers.json` policy for enabled state, artifact,
   load stage, and automatic/manual activation
-- [ ] Move filesystem drivers under `drivers/fs` while keeping VFS as kernel
+- [x] Move filesystem drivers under `drivers/fs` while keeping VFS as kernel
   infrastructure
-- [ ] Generate linked and packaged activation sets for boot, kernel, and
+- [x] Generate linked and packaged activation sets for boot, kernel, and
   runtime stages from central policy
-- [ ] Support verified boot-stage `.drv` handoff through UEFI and BootInfo
-- [ ] Implement all seven allowed artifact/stage/policy combinations and reject
+- [x] Support verified boot-stage `.drv` handoff through UEFI and BootInfo
+- [x] Implement all seven allowed artifact/stage/policy combinations and reject
   every forbidden combination
-- [ ] Preserve current `.drv` build, autoload, unload/reload, and FAT32 root
+- [x] Preserve current `.drv` build, autoload, unload/reload, and FAT32 root
   behavior through the migration
 
+Closure and regression coverage:
+
+- `docs/phase3_6_regression_matrix.md`
+- `docs/phase4_entry_baseline.md`
+
 ## Phase 4: Compositor And Window Server
+
+Frozen boundary contract:
+
+- `docs/phase4_compositor_contracts.md`
 
 The next phase must preserve the existing layering:
 
@@ -150,8 +160,9 @@ application
 
 Planned work:
 
-- [ ] Display-driver abstraction above built-in GOP
-- [ ] Shared or transferable graphics surfaces
+- [ ] Display-driver abstraction above the policy-selected GOP fallback
+- [ ] User-visible creation, mapping, transfer, and submission of graphics
+  surface handles
 - [ ] Framebuffer compositor prototype
   - surface ownership
   - z-order

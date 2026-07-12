@@ -175,7 +175,6 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
         fat32.init();
         root_fat32 = &fat32;
     }
-    driver_manager_activate_linked_kernel();
     vfs_init();
     vfs_mount_fat32_root(root_fat32);
     vfs_mount_memfs("/mem");
@@ -187,6 +186,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     input_events_init();
     keyboard.init();
     pit.init();
+    driver_manager_activate_linked_kernel();
     __asm__ volatile("sti");
     driver_manager_activate_linked_runtime();
     uint32_t runtime_packaged_drivers = diagnostic_mode

@@ -22,17 +22,18 @@ void display_owner_begin(uint32_t owner, DisplayOwnerToken* token) {
         return;
     }
 
-    token->flags = irq_save();
+    uint64_t flags = irq_save();
+    token->flags = 0;
     token->owner = owner;
     token->acquired = 0;
 
     if (owner == DISPLAY_OWNER_NONE) {
-        irq_restore(token->flags);
+        irq_restore(flags);
         return;
     }
     if (owner_state != DISPLAY_OWNER_NONE && owner_state != owner) {
         busy_count++;
-        irq_restore(token->flags);
+        irq_restore(flags);
         return;
     }
 
@@ -40,6 +41,10 @@ void display_owner_begin(uint32_t owner, DisplayOwnerToken* token) {
     owner_depth++;
     acquire_count++;
     token->acquired = 1;
+    // Ownership persists across drawing, but interrupts are disabled only for
+    // the state transition. A competing interrupt-side renderer observes the
+    // busy owner and skips its draw instead of extending IRQ latency.
+    irq_restore(flags);
 }
 
 void display_owner_end(DisplayOwnerToken* token) {
@@ -47,6 +52,7 @@ void display_owner_end(DisplayOwnerToken* token) {
         return;
     }
 
+    uint64_t flags = irq_save();
     if (owner_state == token->owner && owner_depth > 0) {
         owner_depth--;
         if (owner_depth == 0) {
@@ -54,7 +60,7 @@ void display_owner_end(DisplayOwnerToken* token) {
         }
     }
     token->acquired = 0;
-    irq_restore(token->flags);
+    irq_restore(flags);
 }
 
 uint32_t display_owner_current() {
