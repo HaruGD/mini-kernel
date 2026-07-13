@@ -7,6 +7,7 @@ links and test references remain stable from the project root.
 ## Project Direction
 
 - [Roadmap](roadmap.md)
+- [Project history](history/README.md)
 
 ## Architecture
 
