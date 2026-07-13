@@ -47,9 +47,9 @@ them.
 
 Phase 3.5A contracts:
 
-- `docs/phase3_5_baseline.md`
-- `docs/process_scheduler_invariants.md`
-- `docs/kernel_context_rules.md`
+- `docs/phases/phase-3.5/baseline.md`
+- `docs/architecture/process_scheduler_invariants.md`
+- `docs/architecture/kernel_context_rules.md`
 
 ## 3.5B. Common Wait And Wakeup Core
 
@@ -227,7 +227,7 @@ Phase 3.5E contracts:
 - `tools/kernel_handle_test.py` covers malformed, stale, wrong-type,
   insufficient-rights, duplicate-close, table-full behavior, object refcount
   close/release, and non-refcounted clone rejection.
-- Detailed contract: `docs/kernel_handles.md`
+- Detailed contract: `docs/architecture/kernel_handles.md`
 
 ## 3.5F. IPC v2
 
@@ -272,7 +272,7 @@ Phase 3.5F contracts:
   correlation, permission-denied handle transfer, successful transferable
   handle cloning, queue saturation, receiver exit cleanup, timeout/cancel wait
   behavior, and 100,000 v2 local messages.
-- Detailed contract: `docs/ipc_v2.md`
+- Detailed contract: `docs/architecture/ipc_v2.md`
 
 ## 3.5G. Service Supervision And Permissions
 
@@ -319,7 +319,7 @@ Phase 3.5G contracts:
   paths return `OS_ERR_PERMISSION_DENIED` when the required bit is absent.
 - `make test-service-supervision` includes QEMU policy/permission coverage and
   1,000 host-side lifecycle cleanup cycles.
-- Detailed contract: `docs/service_supervision.md`
+- Detailed contract: `docs/architecture/service_supervision.md`
 
 ## 3.5H. Concurrency Readiness
 
@@ -350,7 +350,7 @@ Phase 3.5H contracts:
 - `locks` exposes contention and misuse counters, while
   `make test-concurrency` covers ordering, restoration, contention, and table
   invariants;
-- detailed contract: `docs/concurrency_readiness.md`.
+- detailed contract: `docs/architecture/concurrency_readiness.md`.
 
 ## 3.5I. Fault Injection And Soak Testing
 
@@ -388,7 +388,7 @@ Phase 3.5I contracts:
   allocator consumption;
 - `make test-soak` performs the qualification run and `make test-soak-hour`
   is the one-hour release gate;
-- detailed contract: `docs/fault_injection_and_soak.md`.
+- detailed contract: `docs/testing/fault_injection_and_soak.md`.
 
 ## 3.5J. Closure
 
@@ -415,9 +415,9 @@ Phase 3.5 closure record:
   panic, hang, timeout, or lock violation;
 - process, handle/object, IPC, service, graphics, and input shared layouts are
   versioned and compiled with static assertions from both kernel and SDK views;
-- ABI freeze: `docs/phase3_5_abi_freeze.md`;
+- ABI freeze: `docs/phases/phase-3.5/abi_freeze.md`;
 - regression evidence and residual risks:
-  `docs/phase3_5_regression_matrix.md`.
+  `docs/phases/phase-3.5/regression_matrix.md`.
 
 ## Phase 4 Entry Criteria
 

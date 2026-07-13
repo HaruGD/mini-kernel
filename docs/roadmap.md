@@ -36,7 +36,7 @@ Status:
 
 Detailed tasks and regression coverage:
 
-- `docs/phase1_regression_matrix.md`
+- `docs/phases/phase-1/regression_matrix.md`
 
 Completed:
 
@@ -54,9 +54,9 @@ Completed:
 
 Detailed tasks and regression coverage:
 
-- `docs/phase2_task_breakdown.md`
-- `docs/phase2_regression_matrix.md`
-- `docs/2d_graphics_library.md`
+- `docs/phases/phase-2/task_breakdown.md`
+- `docs/phases/phase-2/regression_matrix.md`
+- `docs/architecture/2d_graphics_library.md`
 
 Completed:
 
@@ -72,8 +72,8 @@ Completed:
 
 Detailed tasks and regression coverage:
 
-- `docs/phase3_task_breakdown.md`
-- `docs/phase3_regression_matrix.md`
+- `docs/phases/phase-3/task_breakdown.md`
+- `docs/phases/phase-3/regression_matrix.md`
 
 Completed:
 
@@ -99,7 +99,7 @@ Service principles:
 
 Detailed tasks and Phase 4 entry criteria:
 
-- `docs/phase3_5_stabilization.md`
+- `docs/phases/phase-3.5/stabilization.md`
 
 Planned work:
 
@@ -116,7 +116,7 @@ Planned work:
 
 Detailed tasks and Phase 4 entry criteria:
 
-- `docs/phase3_6_driver_packaging.md`
+- `docs/phases/phase-3.6/driver_packaging.md`
 
 Planned work:
 
@@ -137,14 +137,14 @@ Planned work:
 
 Closure and regression coverage:
 
-- `docs/phase3_6_regression_matrix.md`
-- `docs/phase4_entry_baseline.md`
+- `docs/phases/phase-3.6/regression_matrix.md`
+- `docs/phases/phase-4/entry_baseline.md`
 
 ## Phase 4: Compositor And Window Server
 
 Frozen boundary contract:
 
-- `docs/phase4_compositor_contracts.md`
+- `docs/phases/phase-4/compositor_contracts.md`
 
 The next phase must preserve the existing layering:
 

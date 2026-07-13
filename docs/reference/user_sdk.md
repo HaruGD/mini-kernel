@@ -172,10 +172,10 @@ discovers both services through the registry and verifies request/reply status
 without special kernel policy.
 
 The full Phase 2 closure matrix is documented in
-`docs/phase2_regression_matrix.md`.
+`docs/phases/phase-2/regression_matrix.md`.
 
 The completed IPC and service coverage is documented in
-`docs/phase3_regression_matrix.md`. Phase 4 will build compositor and window
+`docs/phases/phase-3/regression_matrix.md`. Phase 4 will build compositor and window
 protocols on these transport and discovery APIs without exposing raw
 framebuffer memory to applications.
 

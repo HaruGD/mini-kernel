@@ -128,29 +128,30 @@ What works on the active 64-bit UEFI path:
   policy, with `NO_AUTOLOAD` reserved for shipped runtime-manual packages
 - `hello.drv`, `hello_c.drv`, `hello_cpp.drv`, `provider_c.drv`, `consumer_c.drv`, `pci_probe_c.drv`, and `irq_timer_c.drv` entry execution
 - manual display demo loading through `gop_demo_c.drv`
-- Driver ABI reference: [docs/driver_abi.md](docs/driver_abi.md)
-- User SDK reference: [docs/user_sdk.md](docs/user_sdk.md)
-- ACPI power reference: [docs/acpi_power.md](docs/acpi_power.md)
-- 2D graphics library status: [docs/2d_graphics_library.md](docs/2d_graphics_library.md)
+- Documentation index: [docs/README.md](docs/README.md)
+- Driver ABI reference: [docs/reference/driver_abi.md](docs/reference/driver_abi.md)
+- User SDK reference: [docs/reference/user_sdk.md](docs/reference/user_sdk.md)
+- ACPI power reference: [docs/architecture/acpi_power.md](docs/architecture/acpi_power.md)
+- 2D graphics library status: [docs/architecture/2d_graphics_library.md](docs/architecture/2d_graphics_library.md)
 - Project roadmap: [docs/roadmap.md](docs/roadmap.md)
-- Phase 2 task breakdown: [docs/phase2_task_breakdown.md](docs/phase2_task_breakdown.md)
-- Phase 2 regression matrix: [docs/phase2_regression_matrix.md](docs/phase2_regression_matrix.md)
-- Phase 3 task breakdown: [docs/phase3_task_breakdown.md](docs/phase3_task_breakdown.md)
-- Phase 3 regression matrix: [docs/phase3_regression_matrix.md](docs/phase3_regression_matrix.md)
-- Phase 3.5 stabilization plan: [docs/phase3_5_stabilization.md](docs/phase3_5_stabilization.md)
-- Phase 3.6 driver packaging/layout plan: [docs/phase3_6_driver_packaging.md](docs/phase3_6_driver_packaging.md)
-- Phase 3.6 regression matrix: [docs/phase3_6_regression_matrix.md](docs/phase3_6_regression_matrix.md)
-- Phase 4 entry baseline: [docs/phase4_entry_baseline.md](docs/phase4_entry_baseline.md)
-- Phase 4 compositor/window contracts: [docs/phase4_compositor_contracts.md](docs/phase4_compositor_contracts.md)
-- Phase 3.5 starting baseline: [docs/phase3_5_baseline.md](docs/phase3_5_baseline.md)
-- Process/scheduler invariants: [docs/process_scheduler_invariants.md](docs/process_scheduler_invariants.md)
-- Kernel context rules: [docs/kernel_context_rules.md](docs/kernel_context_rules.md)
-- Service supervision and permissions: [docs/service_supervision.md](docs/service_supervision.md)
-- Concurrency readiness: [docs/concurrency_readiness.md](docs/concurrency_readiness.md)
-- Fault injection and soak testing: [docs/fault_injection_and_soak.md](docs/fault_injection_and_soak.md)
-- Phase 3.5 ABI freeze: [docs/phase3_5_abi_freeze.md](docs/phase3_5_abi_freeze.md)
-- Phase 3.5 regression matrix: [docs/phase3_5_regression_matrix.md](docs/phase3_5_regression_matrix.md)
-- Driver settings and product policy: [docs/driver_policy.md](docs/driver_policy.md)
+- Phase 2 task breakdown: [docs/phases/phase-2/task_breakdown.md](docs/phases/phase-2/task_breakdown.md)
+- Phase 2 regression matrix: [docs/phases/phase-2/regression_matrix.md](docs/phases/phase-2/regression_matrix.md)
+- Phase 3 task breakdown: [docs/phases/phase-3/task_breakdown.md](docs/phases/phase-3/task_breakdown.md)
+- Phase 3 regression matrix: [docs/phases/phase-3/regression_matrix.md](docs/phases/phase-3/regression_matrix.md)
+- Phase 3.5 stabilization plan: [docs/phases/phase-3.5/stabilization.md](docs/phases/phase-3.5/stabilization.md)
+- Phase 3.6 driver packaging/layout plan: [docs/phases/phase-3.6/driver_packaging.md](docs/phases/phase-3.6/driver_packaging.md)
+- Phase 3.6 regression matrix: [docs/phases/phase-3.6/regression_matrix.md](docs/phases/phase-3.6/regression_matrix.md)
+- Phase 4 entry baseline: [docs/phases/phase-4/entry_baseline.md](docs/phases/phase-4/entry_baseline.md)
+- Phase 4 compositor/window contracts: [docs/phases/phase-4/compositor_contracts.md](docs/phases/phase-4/compositor_contracts.md)
+- Phase 3.5 starting baseline: [docs/phases/phase-3.5/baseline.md](docs/phases/phase-3.5/baseline.md)
+- Process/scheduler invariants: [docs/architecture/process_scheduler_invariants.md](docs/architecture/process_scheduler_invariants.md)
+- Kernel context rules: [docs/architecture/kernel_context_rules.md](docs/architecture/kernel_context_rules.md)
+- Service supervision and permissions: [docs/architecture/service_supervision.md](docs/architecture/service_supervision.md)
+- Concurrency readiness: [docs/architecture/concurrency_readiness.md](docs/architecture/concurrency_readiness.md)
+- Fault injection and soak testing: [docs/testing/fault_injection_and_soak.md](docs/testing/fault_injection_and_soak.md)
+- Phase 3.5 ABI freeze: [docs/phases/phase-3.5/abi_freeze.md](docs/phases/phase-3.5/abi_freeze.md)
+- Phase 3.5 regression matrix: [docs/phases/phase-3.5/regression_matrix.md](docs/phases/phase-3.5/regression_matrix.md)
+- Driver settings and product policy: [docs/reference/driver_policy.md](docs/reference/driver_policy.md)
 
 ## Build
 
@@ -204,7 +205,7 @@ make test-phase1
 Diagnostic boot additionally exposes `debugfault gp`,
 `debugfault acpi_rsdp_checksum`, `debugfault acpi_madt_entry_len`, and
 `debugfault acpi_no_ioapic`. Normal boot rejects these commands. See the
-[Phase 1 regression matrix](docs/phase1_regression_matrix.md) for coverage.
+[Phase 1 regression matrix](docs/phases/phase-1/regression_matrix.md) for coverage.
 
 Equivalent default:
 
@@ -245,8 +246,8 @@ The root build validates that policy and generates linked objects and staged
 activation plans. Use `make drivers` to build all enabled policy artifacts,
 `make test-driver-policy` for schema/combination validation, and
 `make test-driver-regression` for the Phase 3.6 migration matrix. See the
-[driver policy](docs/driver_policy.md), [Driver ABI](docs/driver_abi.md), and
-[Phase 3.6 regression matrix](docs/phase3_6_regression_matrix.md).
+[driver policy](docs/reference/driver_policy.md), [Driver ABI](docs/reference/driver_abi.md), and
+[Phase 3.6 regression matrix](docs/phases/phase-3.6/regression_matrix.md).
 
 Important active artifacts:
 

@@ -28,9 +28,9 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     failures: list[str] = []
     readme = (root / "README.md").read_text(encoding="utf-8")
-    abi = (root / "docs/driver_abi.md").read_text(encoding="utf-8")
-    phase = (root / "docs/phase3_6_driver_packaging.md").read_text(encoding="utf-8")
-    matrix_path = root / "docs/phase3_6_regression_matrix.md"
+    abi = (root / "docs/reference/driver_abi.md").read_text(encoding="utf-8")
+    phase = (root / "docs/phases/phase-3.6/driver_packaging.md").read_text(encoding="utf-8")
+    matrix_path = root / "docs/phases/phase-3.6/regression_matrix.md"
     matrix = matrix_path.read_text(encoding="utf-8")
     makefile = (root / "Makefile").read_text(encoding="utf-8")
 
@@ -98,8 +98,8 @@ def main() -> int:
     for token in ("Root source: ramdisk", "fat32 kind=fs state=ready", "gop_demo_c.drv GOP draw OK"):
         require(token in smoke, f"UEFI smoke assertion missing: {token}", failures)
 
-    for document in (root / "README.md", root / "docs/driver_abi.md",
-                     root / "docs/driver_policy.md", matrix_path):
+    for document in (root / "README.md", root / "docs/reference/driver_abi.md",
+                     root / "docs/reference/driver_policy.md", matrix_path):
         check_links(root, document, failures)
 
     if failures:

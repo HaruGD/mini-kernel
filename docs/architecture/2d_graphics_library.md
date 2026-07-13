@@ -330,8 +330,8 @@ Phase 2 implementation is complete. Historical task order:
 
 Current closure status and full regression coverage are tracked in:
 
-- `docs/phase2_task_breakdown.md`
-- `docs/phase2_regression_matrix.md`
+- `docs/phases/phase-2/task_breakdown.md`
+- `docs/phases/phase-2/regression_matrix.md`
 
 ## Design Rules
 

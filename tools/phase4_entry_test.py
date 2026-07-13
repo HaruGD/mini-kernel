@@ -11,8 +11,8 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     failures: list[str] = []
     roadmap = (root / "docs/roadmap.md").read_text(encoding="utf-8")
-    baseline = (root / "docs/phase4_entry_baseline.md").read_text(encoding="utf-8")
-    contracts = (root / "docs/phase4_compositor_contracts.md").read_text(encoding="utf-8")
+    baseline = (root / "docs/phases/phase-4/entry_baseline.md").read_text(encoding="utf-8")
+    contracts = (root / "docs/phases/phase-4/compositor_contracts.md").read_text(encoding="utf-8")
     kernel_main = (root / "kernel/core/kernel64_main.cpp").read_text(encoding="utf-8")
     display_owner = (root / "kernel/graphics/display_owner.cpp").read_text(encoding="utf-8")
     makefile = (root / "Makefile").read_text(encoding="utf-8")

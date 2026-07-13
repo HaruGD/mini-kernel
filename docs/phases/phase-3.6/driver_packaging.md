@@ -272,7 +272,7 @@ Phase 3.6A contracts:
   forbidden combination and dependency violation;
 - legacy `driver.json` build behavior remains active until the directory/build
   migration phases;
-- detailed contract: `docs/driver_policy.md`.
+- detailed contract: `docs/reference/driver_policy.md`.
 
 ### 3.6B. Unified Driver Project Shape
 
@@ -386,7 +386,7 @@ Phase 3.6D contracts:
 - README, Driver ABI, and driver-policy documentation describe every driver as
   a package project and separate local settings, local build interface, and
   central product policy responsibilities;
-- `docs/phase3_6_regression_matrix.md` records R01-R12 coverage from policy
+- `docs/phases/phase-3.6/regression_matrix.md` records R01-R12 coverage from policy
   validation through FAT32 file I/O and documentation synchronization;
 - `make test-driver-regression` combines host policy/generation validation,
   real UEFI driver lifecycle coverage, and User SDK filesystem coverage;

@@ -3,7 +3,7 @@
 Phase 2 builds a reusable 2D graphics path and a common input-event path on
 top of the existing GOP, syscall, process, and keyboard foundations.
 The 2D graphics library design is documented in
-`docs/2d_graphics_library.md`.
+`docs/architecture/2d_graphics_library.md`.
 
 ## Working Rules
 

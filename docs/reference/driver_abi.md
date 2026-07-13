@@ -118,7 +118,7 @@ project owns:
 
 `config/drivers.json` separately selects whether the project is enabled, built
 as `linked` or `drv`, activated at boot/kernel/runtime, and activated
-automatically or manually. See `docs/driver_policy.md`.
+automatically or manually. See `docs/reference/driver_policy.md`.
 
 Phase 3.6C uses `config/drivers.json` as the product build and activation
 policy. Domain-local `settings.json` files provide package identity plus the
