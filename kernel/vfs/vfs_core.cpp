@@ -430,4 +430,4 @@ int vfs_rename(const char* old_path, const char* new_path) {
     return old_mount->ops->rename_path(old_mount->backend_ctx, old_relative_path, new_relative_path);
 }
 
-#include "fs/vfs/vfs_open.cpp"
+#include "kernel/vfs/vfs_open.cpp"

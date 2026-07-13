@@ -376,8 +376,8 @@ all32:
 ./build/fat32_vfs64.o: ./drivers/fs/fat32/src/fat32_vfs.cpp ./drivers/fs/fat32/include/fat32.h ./include/fs/vfs.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/vfs64.o: ./fs/vfs/vfs.cpp ./fs/vfs/vfs_common.cpp ./fs/vfs/vfs_memfs.cpp ./fs/vfs/vfs_core.cpp ./fs/vfs/vfs_open.cpp ./include/fs/vfs.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./fs/vfs/vfs.cpp -o $@
+./build/vfs64.o: ./kernel/vfs/vfs.cpp ./kernel/vfs/vfs_common.cpp ./kernel/vfs/vfs_memfs.cpp ./kernel/vfs/vfs_core.cpp ./kernel/vfs/vfs_open.cpp ./include/fs/vfs.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/vfs/vfs.cpp -o $@
 
 ./build/idt64.o: ./arch/x86_64/idt64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
