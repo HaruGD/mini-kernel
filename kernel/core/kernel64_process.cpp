@@ -73,19 +73,6 @@ extern "C" void save_wait_context64(uint64_t* frame) {
     save_paused_context64(frame, process, PROCESS_PAUSE_WAIT, 0);
 }
 
-static const char* pause_action_name(const Process* process) {
-    if (process != 0 && process->pause_reason == PROCESS_PAUSE_PREEMPT) {
-        return "Preempted";
-    }
-    if (process != 0 && process->pause_reason == PROCESS_PAUSE_SLEEP) {
-        return "Sleeping";
-    }
-    if (process != 0 && process->pause_reason == PROCESS_PAUSE_WAIT) {
-        return "Waiting";
-    }
-    return "Yielded";
-}
-
 static const char* current_process_shell_prompt() {
     Process* process = current_process();
     if (process == 0) {
@@ -194,10 +181,7 @@ int continue_ready_processes(uint32_t exclude_pid) {
 
     Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
 
-    print("Auto-switching to ready process [pid=");
-    print_hex32(next_ready->pid);
-    print("].\n");
-    return resume_user_program_internal(parent, next_ready, 1);
+    return resume_user_program_internal(parent, next_ready, 0);
 }
 
 int continue_woken_processes(uint32_t exclude_pid) {
@@ -208,10 +192,7 @@ int continue_woken_processes(uint32_t exclude_pid) {
 
     Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
 
-    print("Auto-switching to ready process [pid=");
-    print_hex32(next_ready->pid);
-    print("].\n");
-    return resume_user_program_internal(parent, next_ready, 1);
+    return resume_user_program_internal(parent, next_ready, 0);
 }
 
 int continue_background_processes(uint32_t exclude_pid) {
@@ -222,10 +203,7 @@ int continue_background_processes(uint32_t exclude_pid) {
 
     Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
 
-    print("Auto-switching to background process [pid=");
-    print_hex32(next_ready->pid);
-    print("].\n");
-    return resume_user_program_internal(parent, next_ready, 1);
+    return resume_user_program_internal(parent, next_ready, 0);
 }
 
 static int idle_until_ready_process() {

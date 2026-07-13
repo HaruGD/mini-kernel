@@ -18,16 +18,17 @@ for _ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
 
 
 DEFAULT_COMMANDS = [
-    ("ushellc", 4.0),
-    ("pwd", 1.0),
-    ("version", 1.5),
-    ("uptime", 1.0),
-    ("mounts", 3.0),
-    ("ls /", 2.0),
-    ("sleep 1", 1.0),
-    ("save /mem/uefi.txt hello", 1.0),
-    ("cat /mem/uefi.txt", 1.0),
-    ("exit", 2.0),
+    ("ushellc", 4.0, 0.05),
+    ("about", 1.0, 0.005),
+    ("pwd", 1.0, 0.05),
+    ("version", 1.5, 0.05),
+    ("uptime", 1.0, 0.05),
+    ("mounts", 3.0, 0.05),
+    ("ls /", 2.0, 0.05),
+    ("sleep 1", 1.0, 0.05),
+    ("save /mem/uefi.txt hello", 1.0, 0.05),
+    ("cat /mem/uefi.txt", 1.0, 0.05),
+    ("exit", 2.0, 0.05),
 ]
 
 
@@ -37,11 +38,12 @@ def send_monitor_line(proc: subprocess.Popen, line: str) -> None:
     proc.stdin.flush()
 
 
-def send_shell_command(proc: subprocess.Popen, command: str) -> None:
+def send_shell_command(proc: subprocess.Popen, command: str, key_delay: float) -> None:
     for ch in command:
         key = KEY_MAP.get(ch, ch)
         send_monitor_line(proc, f"sendkey {key}")
-        time.sleep(0.05)
+        if key_delay > 0:
+            time.sleep(key_delay)
     send_monitor_line(proc, "sendkey ret")
 
 
@@ -67,7 +69,7 @@ def wait_for_serial_count(serial_log: Path, needle: str, count: int, timeout: fl
     raise TimeoutError(f"timed out waiting for {count} occurrences of {needle!r}")
 
 
-def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
+def run_qemu(serial_log: Path, commands: list[tuple[str, float, float]]) -> None:
     serial_log.unlink(missing_ok=True)
     esp_image = Path("bin/uefi_esp.userland.img")
     esp_image.unlink(missing_ok=True)
@@ -87,13 +89,13 @@ def run_qemu(serial_log: Path, commands: list[tuple[str, float]]) -> None:
     proc = subprocess.Popen(qemu, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:
         wait_for_serial_contains(serial_log, "OS64>", 25.0)
-        for command, delay in commands:
+        for command, delay, key_delay in commands:
             if command == "exit":
-                send_shell_command(proc, command)
+                send_shell_command(proc, command, key_delay)
                 wait_for_serial_contains(serial_log, "Returned from user program", 15.0)
             else:
                 prompt_count = serial_text(serial_log).count("csh>")
-                send_shell_command(proc, command)
+                send_shell_command(proc, command, key_delay)
                 wait_for_serial_count(serial_log, "csh>", prompt_count + 1, 15.0)
             if delay > 0:
                 time.sleep(delay)
@@ -127,6 +129,7 @@ def main() -> int:
         "Root source: ramdisk",
         "Running user program: ushell_c.elf",
         "=== ushell_c.elf ===",
+        "ushell_c.elf runs entirely in user mode using int 0x80 syscalls.",
         "PIT hz:",
         "Approx ms:",
         "Showing VFS mounts from C userland.",
@@ -153,10 +156,13 @@ def main() -> int:
     forbidden = [
         "Unknown command:",
         "Notebook is empty. Use write first.",
+        "Waiting from user program",
+        "Auto-switching to ready process",
+        "Resuming user program",
     ]
     leaked = [item for item in forbidden if item in shell_session]
     if leaked:
-        print("UEFI userland input leaked into kernel shell:")
+        print("UEFI userland session contained unexpected output:")
         for item in leaked:
             print(item)
         return 1

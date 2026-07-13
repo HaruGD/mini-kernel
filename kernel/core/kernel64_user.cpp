@@ -1,5 +1,8 @@
 static void focus_foreground_process(Process* process) {
     if (process != 0 && !process->background) {
+        if (process_focused_pid() != process->pid) {
+            user_input_reset();
+        }
         process_set_focus(process->pid);
     }
 }
@@ -20,7 +23,7 @@ static int resume_saved_parent(Process* parent) {
     Process* grandparent = parent->parent_pid != 0
         ? find_process_by_pid(parent->parent_pid)
         : 0;
-    return resume_user_program_internal(grandparent, parent, 1);
+    return resume_user_program_internal(grandparent, parent, 0);
 }
 
 static uint32_t user_region_rights_from_vm_flags(uint64_t flags) {
@@ -510,7 +513,6 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     print_hex32(process->parent_pid);
     print("]");
     print("\n");
-    user_input_reset();
     interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
     if (!map_user_elf_alias(process)) {
@@ -542,7 +544,6 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     }
 
     interrupt_controller_set_mask(1, saved_keyboard_mask);
-    user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);
     kernel_user_return_rsp = saved_return_rsp;
     kernel_user_saved_rbx = saved_rbx;
@@ -553,12 +554,6 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     kernel_user_saved_r15 = saved_r15;
 
     if (process->state == PROCESS_STATE_PAUSED) {
-        print("\n");
-        print(pause_action_name(process));
-        print(" from user program [pid=");
-        print_hex32(process->pid);
-        print("].\n");
-
         if (parent != 0 && parent->active) {
             if (parent_has_ready_context(parent)) {
                 return resume_saved_parent(parent);
@@ -588,6 +583,9 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         return 1;
     }
 
+    if (!process->background) {
+        user_input_reset();
+    }
     cleanup_user_process_mapping(process);
     process->code_page_count = 0;
 
@@ -693,7 +691,6 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     kernel_user_resume_rsp = process->saved_rsp;
     kernel_user_resume_rflags = process->saved_rflags;
 
-    user_input_reset();
     interrupt_controller_set_mask(1, 0);
     gdt64_set_kernel_stack(current_rsp() - 8);
     if (!map_user_elf_alias(process)) {
@@ -725,7 +722,6 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     }
 
     interrupt_controller_set_mask(1, saved_keyboard_mask);
-    user_input_reset();
     gdt64_set_kernel_stack(saved_rsp0);
     kernel_user_return_rsp = saved_return_rsp;
     kernel_user_saved_rbx = saved_rbx;
@@ -736,12 +732,6 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     kernel_user_saved_r15 = saved_r15;
 
     if (process->state == PROCESS_STATE_PAUSED) {
-        print("\n");
-        print(pause_action_name(process));
-        print(" from user program [pid=");
-        print_hex32(process->pid);
-        print("].\n");
-
         if (parent != 0 && parent->active) {
             if (parent_has_ready_context(parent)) {
                 return resume_saved_parent(parent);
@@ -771,6 +761,9 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         return 1;
     }
 
+    if (!process->background) {
+        user_input_reset();
+    }
     cleanup_user_process_mapping(process);
     process->code_page_count = 0;
     if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
@@ -911,9 +904,12 @@ int set_user_program_background(uint32_t pid, uint32_t enabled) {
 
     process->background = enabled ? 1 : 0;
     if (process->background) {
+        if (process_focused_pid() == process->pid) {
+            user_input_reset();
+        }
         process_clear_focus(process->pid);
     } else {
-        process_set_focus(process->pid);
+        focus_foreground_process(process);
     }
     print("\nSet user program [pid=");
     print_hex32(process->pid);
