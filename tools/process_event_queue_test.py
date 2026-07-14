@@ -249,6 +249,8 @@ def main() -> int:
             str(REPO_ROOT / "kernel/input/input_event_queue.cpp"),
             str(REPO_ROOT / "kernel/input/input_events.cpp"),
             str(REPO_ROOT / "kernel/process/process64.cpp"),
+            str(REPO_ROOT / "kernel/process/process_surface.cpp"),
+            str(REPO_ROOT / "kernel/mm/address_space.cpp"),
             str(REPO_ROOT / "kernel/service/service_registry.cpp"),
             str(source_path),
             str(stub_path),

@@ -6,13 +6,16 @@
 #include "kernel/input/input_events.h"
 #include "kernel/ipc/ipc.h"
 #include "kernel/process64.h"
+#include "kernel/process_surface.h"
 #include "kernel/service/service_registry.h"
+#include "kernel/handle/kernel_objects.h"
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
 #include "os64/input_types.h"
 #include "os64/process_types.h"
 #include "os64/service_types.h"
+#include "os64/surface_types.h"
 
 struct UserGraphicsRect {
     uint32_t x;
@@ -46,6 +49,91 @@ static int current_process_has(uint32_t permissions) {
 
 static uint64_t permission_denied() {
     return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+}
+
+static uint64_t dispatch_surface_create(uint64_t width,
+                                        uint64_t height,
+                                        uint64_t pixel_format) {
+    Process* process = current_process();
+    if (!process_has_permissions(process, OS_PROCESS_PERMISSION_SHARED_SURFACE)) {
+        return permission_denied();
+    }
+    if (width > UINT32_MAX || height > UINT32_MAX || pixel_format > UINT32_MAX) {
+        return invalid_argument();
+    }
+    uint64_t handle = kernel_graphics_surface_create(
+        &process->handle_table,
+        process->pid,
+        (uint32_t)width,
+        (uint32_t)height,
+        (uint32_t)pixel_format,
+        OS_SURFACE_APPLICATION_RIGHTS);
+    return handle != 0 ? handle : (uint64_t)(int64_t)SYS_ERR_NO_RESOURCES;
+}
+
+static uint64_t dispatch_surface_get_info(uint64_t handle, uint64_t user_info_address) {
+    Process* process = current_process();
+    if (!process_has_permissions(process, OS_PROCESS_PERMISSION_SHARED_SURFACE)) {
+        return permission_denied();
+    }
+    KernelHandle resolved;
+    if (!kernel_handle_resolve_copy(&process->handle_table,
+                                    handle,
+                                    KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                    KERNEL_HANDLE_RIGHT_READ,
+                                    &resolved)) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    }
+    KernelGraphicsSurfaceInfo info;
+    if (kernel_graphics_surface_get_info(resolved.object, &info) != KERNEL_OBJECT_OK) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    }
+    return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_info_address,
+                                      (const uint8_t*)&info,
+                                      sizeof(info))
+        ? 0
+        : bad_buffer();
+}
+
+static uint64_t dispatch_surface_map(uint64_t handle, uint64_t map_flags) {
+    Process* process = current_process();
+    if (!process_has_permissions(process, OS_PROCESS_PERMISSION_SHARED_SURFACE)) {
+        return permission_denied();
+    }
+    if (map_flags > UINT32_MAX) {
+        return invalid_argument();
+    }
+    return process_surface_map(process, handle, (uint32_t)map_flags);
+}
+
+static uint64_t dispatch_surface_unmap(uint64_t handle, uint64_t user_address) {
+    Process* process = current_process();
+    if (!process_has_permissions(process, OS_PROCESS_PERMISSION_SHARED_SURFACE)) {
+        return permission_denied();
+    }
+    return (uint64_t)(int64_t)process_surface_unmap(process, handle, user_address);
+}
+
+static uint64_t dispatch_surface_close(uint64_t handle) {
+    Process* process = current_process();
+    if (!process_has_permissions(process, OS_PROCESS_PERMISSION_SHARED_SURFACE)) {
+        return permission_denied();
+    }
+    KernelHandle resolved;
+    if (!kernel_handle_resolve_copy(&process->handle_table,
+                                    handle,
+                                    KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                    0,
+                                    &resolved)) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    }
+    int unmap_result = process_surface_unmap_object(process, resolved.object);
+    if (unmap_result != 0) {
+        return (uint64_t)(int64_t)unmap_result;
+    }
+    return kernel_object_close_handle(&process->handle_table, handle, 0)
+        ? 0
+        : (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
 }
 
 static int pop_current_input_event(OsInputEvent* event) {
@@ -589,6 +677,26 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_GET_PROCESS_IDENTITY) {
         *result = dispatch_process_identity(arg1);
+        return true;
+    }
+    if (syscall_no == SYS_SURFACE_CREATE) {
+        *result = dispatch_surface_create(arg1, arg2, arg3);
+        return true;
+    }
+    if (syscall_no == SYS_SURFACE_GET_INFO) {
+        *result = dispatch_surface_get_info(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_SURFACE_MAP) {
+        *result = dispatch_surface_map(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_SURFACE_UNMAP) {
+        *result = dispatch_surface_unmap(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_SURFACE_CLOSE) {
+        *result = dispatch_surface_close(arg1);
         return true;
     }
     return false;

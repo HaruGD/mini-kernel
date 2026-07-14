@@ -384,6 +384,20 @@ GraphicsSurface* kernel_graphics_surface_get(uint64_t object_id) {
     return object != 0 ? &object->surface : 0;
 }
 
+int kernel_graphics_surface_get_backing(uint64_t object_id,
+                                        uint32_t* backing_slot,
+                                        uint32_t* page_count,
+                                        uint32_t* byte_size) {
+    GraphicsSurfaceObject* object = surface_from_id(object_id);
+    if (object == 0 || backing_slot == 0 || page_count == 0 || byte_size == 0) {
+        return KERNEL_OBJECT_ERR_INVALID;
+    }
+    *backing_slot = object->backing_slot;
+    *page_count = object->page_count;
+    *byte_size = object->byte_size;
+    return KERNEL_OBJECT_OK;
+}
+
 int kernel_object_retain_handle_object(const KernelHandle* handle) {
     if (handle == 0 || !handle->active) {
         return 0;
@@ -419,7 +433,18 @@ void kernel_object_release_handle_object(const KernelHandle* handle) {
 }
 
 uint64_t kernel_object_clone_handle(KernelHandleTable* target_table, const KernelHandle* source) {
+    return kernel_object_clone_handle_with_rights(target_table,
+                                                  source,
+                                                  source != 0 ? source->rights : 0);
+}
+
+uint64_t kernel_object_clone_handle_with_rights(KernelHandleTable* target_table,
+                                                const KernelHandle* source,
+                                                uint32_t rights) {
     if (target_table == 0 || source == 0 || !source->active) {
+        return 0;
+    }
+    if (rights == 0 || (rights & ~source->rights) != 0) {
         return 0;
     }
     if (!is_refcounted_object_type(source->type)) {
@@ -431,7 +456,7 @@ uint64_t kernel_object_clone_handle(KernelHandleTable* target_table, const Kerne
 
     uint64_t cloned = kernel_handle_alloc(target_table,
                                           source->type,
-                                          source->rights,
+                                          rights,
                                           source->object,
                                           source->extra);
     if (cloned == 0) {

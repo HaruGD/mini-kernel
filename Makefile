@@ -33,7 +33,7 @@ USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
 USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
 USER_SDK_LIB = ./build/libos64.a
-USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/process_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/process_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h ./include/os64/surface_types.h
 
 
 # Policy-driven driver build inputs
@@ -54,7 +54,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -69,6 +69,7 @@ KERNEL64_OBJECTS = \
 	./build/kernel_handle64.o \
 	./build/kernel_objects64.o \
 	./build/process64.o \
+	./build/process_surface64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
 	./build/vfs_syscalls64.o \
@@ -140,6 +141,10 @@ test-surface-backing-contracts:
 	python3 ./tools/surface_backing_test.py
 test-surface-backing-smoke: uefi
 	python3 ./tools/surface_backing_smoke.py
+test-surface-abi: uefi
+	python3 ./tools/surface_mapping_test.py
+	python3 ./tools/ipc_core_test.py
+	python3 ./tools/surface_mapping_smoke.py
 test-graphics-demo: uefi
 	python3 ./tools/graphics_demo_smoke.py
 test-gop-present: uefi
@@ -210,7 +215,7 @@ test-uefi-userland: uefi
 test-uefi-screen: uefi
 	python3 ./tools/uefi_screen_smoke.py
 
-test-closure: test-abi-freeze test-phase4-entry test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-fault-injection test-soak
+test-closure: test-abi-freeze test-phase4-entry test-surface-abi test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-fault-injection test-soak
 
 test-service-registry:
 	python3 ./tools/service_registry_test.py
@@ -269,6 +274,9 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/handle/kernel_handle.h ./include/kernel/handle/kernel_objects.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/process_surface64.o: ./kernel/process/process_surface.cpp ./include/kernel/process_surface.h ./include/kernel/process.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/address_space.h ./include/os64/surface_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp

@@ -16,6 +16,7 @@
 #include "os64/service_manager_types.h"
 #include "os64/service_protocol_types.h"
 #include "os64/service_types.h"
+#include "os64/surface.h"
 #include "os64/time.h"
 
 #define OS64_SDK_VERSION_MAJOR 2u

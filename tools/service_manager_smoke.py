@@ -125,6 +125,7 @@ def run() -> int:
 
         send_command(process, "service start restricted")
         wait_for_serial("[svc_perm] denied display, discovery, and child launch as expected", 20)
+        wait_for_serial("[svc_perm] denied shared surface as expected", 20)
         marker = wait_for_serial("[usvcctl] start restricted OK", 20)
         wait_for_serial("OS64>", 10, marker)
         send_command(process, "service health restricted")
@@ -189,6 +190,7 @@ def run() -> int:
         "[usvcctl] restart demo OK",
         "[usvcctl] stop demo OK",
         "[svc_perm] denied display, discovery, and child launch as expected",
+        "[svc_perm] denied shared surface as expected",
         "[usvcctl] health restricted OK",
         "[serviced] auto-restart crash attempt=3",
         "[usvcctl] status crash OK",

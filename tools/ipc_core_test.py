@@ -219,6 +219,49 @@ int main() {
                                 KERNEL_HANDLE_TYPE_SHARED_MEMORY,
                                 KERNEL_HANDLE_RIGHT_MAP) != 0);
 
+    uint64_t surface = kernel_graphics_surface_create(
+        &sender->handle_table,
+        sender->pid,
+        1025,
+        1,
+        OS64_PIXEL_FORMAT_RGB,
+        KERNEL_HANDLE_RIGHT_READ | KERNEL_HANDLE_RIGHT_WRITE |
+            KERNEL_HANDLE_RIGHT_MAP | KERNEL_HANDLE_RIGHT_TRANSFER);
+    check(surface != 0);
+    KernelHandle sender_surface;
+    check(kernel_handle_resolve_copy(&sender->handle_table,
+                                     surface,
+                                     KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                     KERNEL_HANDLE_RIGHT_WRITE | KERNEL_HANDLE_RIGHT_TRANSFER,
+                                     &sender_surface) == 1);
+    uint64_t surface_object = sender_surface.object;
+    message_v2 = make_message_v2(OS_IPC_MESSAGE_EVENT, 3500);
+    message_v2.flags = OS_IPC_FLAG_HAS_HANDLES;
+    message_v2.handle_count = 1;
+    message_v2.handles[0] = surface;
+    check(ipc_send_message_v2(sender, target, &message_v2) == IPC_OK);
+    check(ipc_receive_message_v2(target, &received_v2) == IPC_OK);
+    KernelHandle receiver_surface;
+    check(kernel_handle_resolve_copy(&target->handle_table,
+                                     received_v2.handles[0],
+                                     KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                     KERNEL_HANDLE_RIGHT_READ | KERNEL_HANDLE_RIGHT_MAP,
+                                     &receiver_surface) == 1);
+    check(receiver_surface.rights ==
+          (KERNEL_HANDLE_RIGHT_READ | KERNEL_HANDLE_RIGHT_MAP));
+    check(kernel_handle_resolve(&target->handle_table,
+                                received_v2.handles[0],
+                                KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                KERNEL_HANDLE_RIGHT_WRITE) == 0);
+    check(kernel_handle_resolve(&target->handle_table,
+                                received_v2.handles[0],
+                                KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                KERNEL_HANDLE_RIGHT_TRANSFER) == 0);
+    check(kernel_object_close_handle(&sender->handle_table, surface, 0) == 1);
+    KernelGraphicsSurfaceInfo surface_info;
+    check(kernel_graphics_surface_get_info(surface_object, &surface_info) == KERNEL_OBJECT_OK);
+    check(surface_info.ref_count == 1);
+
     for (uint32_t i = 0; i < 100000u; i++) {
         message_v2 = make_message_v2(OS_IPC_MESSAGE_EVENT, 4000u + i);
         message_v2.length = 12;
@@ -244,6 +287,8 @@ int main() {
     check(process_ipc_mailbox_count(target) == 0);
     check(process_ipc_mailbox_dropped_count(target) == 0);
     check(ipc_receive_message(target, &received) == IPC_ERR_NOT_READY);
+    check(kernel_graphics_surface_get_info(surface_object, &surface_info) ==
+          KERNEL_OBJECT_ERR_NOT_FOUND);
 
     init_process(target, 20);
     message = make_message(OS_IPC_MESSAGE_EVENT, 200);
@@ -364,6 +409,8 @@ def main() -> int:
             str(REPO_ROOT / "kernel/ipc/ipc_mailbox.cpp"),
             str(REPO_ROOT / "kernel/input/input_event_queue.cpp"),
             str(REPO_ROOT / "kernel/process/process64.cpp"),
+            str(REPO_ROOT / "kernel/process/process_surface.cpp"),
+            str(REPO_ROOT / "kernel/mm/address_space.cpp"),
             str(REPO_ROOT / "kernel/service/service_registry.cpp"),
             str(source_path),
             str(stub_path),

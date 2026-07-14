@@ -12,6 +12,19 @@
 #define PROCESS_NAME_MAX 32
 #define PROCESS_ARG_MAX 8
 #define PROCESS_CMDLINE_MAX 96
+#define PROCESS_SURFACE_MAPPING_MAX 16u
+
+struct ProcessSurfaceMapping {
+    uint8_t active;
+    uint8_t reserved0;
+    uint16_t reserved1;
+    uint32_t map_flags;
+    uint32_t page_count;
+    uint32_t mapping_generation;
+    uint64_t object_id;
+    uint64_t user_address;
+    uint64_t byte_size;
+};
 
 typedef struct ProcessIdentity {
     uint32_t pid;
@@ -144,6 +157,9 @@ struct Process {
     uint64_t saved_rsp;
     uint64_t saved_rflags;
     AddressSpace address_space;
+    ProcessSurfaceMapping surface_mappings[PROCESS_SURFACE_MAPPING_MAX];
+    uint32_t next_surface_mapping_generation;
+    uint32_t active_surface_mapping_count;
     KernelHandleTable handle_table;
     KernelInputEventQueue event_queue;
     KernelIpcMailbox ipc_mailbox;

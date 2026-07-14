@@ -48,8 +48,15 @@ uint64_t kernel_graphics_surface_create(KernelHandleTable* table,
                                         uint32_t rights);
 int kernel_graphics_surface_get_info(uint64_t object_id, KernelGraphicsSurfaceInfo* info);
 GraphicsSurface* kernel_graphics_surface_get(uint64_t object_id);
+int kernel_graphics_surface_get_backing(uint64_t object_id,
+                                        uint32_t* backing_slot,
+                                        uint32_t* page_count,
+                                        uint32_t* byte_size);
 
 uint64_t kernel_object_clone_handle(KernelHandleTable* target_table, const KernelHandle* source);
+uint64_t kernel_object_clone_handle_with_rights(KernelHandleTable* target_table,
+                                                const KernelHandle* source,
+                                                uint32_t rights);
 int kernel_object_close_handle(KernelHandleTable* table, uint64_t handle, KernelHandle* closed_out);
 uint32_t kernel_object_release_table(KernelHandleTable* table);
 int kernel_object_retain_handle_object(const KernelHandle* handle);

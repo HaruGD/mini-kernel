@@ -368,6 +368,71 @@ static void test_graphics(void) {
           "graphics rejects kernel pointer");
 }
 
+static void test_surfaces(void) {
+    const long kernel_pointer = (long)0xFFFFFFFF80000000ULL;
+    check(OS64_SURFACE_ABI_VERSION == 1u &&
+          OS_SURFACE_APPLICATION_RIGHTS ==
+              (OS_HANDLE_RIGHT_READ | OS_HANDLE_RIGHT_WRITE |
+               OS_HANDLE_RIGHT_MAP | OS_HANDLE_RIGHT_TRANSFER) &&
+          OS_SURFACE_TRANSFER_RIGHTS ==
+              (OS_HANDLE_RIGHT_READ | OS_HANDLE_RIGHT_MAP),
+          "surface ABI constants");
+    check(os_surface_create(0, 1, OS64_PIXEL_FORMAT_RGB) == 0,
+          "surface rejects zero width");
+    check(os_surface_create(UINT32_MAX, UINT32_MAX, OS64_PIXEL_FORMAT_RGB) == 0,
+          "surface rejects overflowing dimensions");
+
+    OsHandle surface = os_surface_create(1025, 1, OS64_PIXEL_FORMAT_RGB);
+    check(surface != 0, "surface create");
+    if (surface == 0) {
+        return;
+    }
+    OsGraphicsSurfaceHandleInfo info;
+    check(os_surface_get_info(surface, &info) == OS_SUCCESS &&
+          info.width == 1025 && info.height == 1 &&
+          info.stride_pixels == 1025 &&
+          info.pixel_format == OS64_PIXEL_FORMAT_RGB &&
+          info.byte_size == 4100,
+          "surface information");
+    check(raw_syscall2(77, (long)surface, kernel_pointer) == OS_ERR_BAD_BUFFER,
+          "surface info rejects kernel pointer");
+    check(raw_syscall2(78, (long)surface, 0x80000000u) ==
+              OS_ERR_INVALID_ARGUMENT,
+          "surface map rejects unknown flags");
+
+    uint32_t* pixels = (uint32_t*)os_surface_map(
+        surface, OS_SURFACE_MAP_READ | OS_SURFACE_MAP_WRITE);
+    check(pixels != 0, "surface writable mapping");
+    if (pixels != 0) {
+        check(pixels[0] == 0 && pixels[1024] == 0,
+              "surface mapping is zero filled across pages");
+        pixels[0] = 0x00112233u;
+        pixels[1024] = 0x00445566u;
+        check(pixels[0] == 0x00112233u && pixels[1024] == 0x00445566u,
+              "surface writable mapping crosses page boundary");
+        check(os_surface_map(surface,
+                             OS_SURFACE_MAP_READ | OS_SURFACE_MAP_WRITE) == pixels,
+              "surface repeated map is stable");
+        check(os_surface_unmap(surface, pixels + 1) == OS_ERR_INVALID_ARGUMENT,
+              "surface rejects wrong unmap address");
+        check(os_surface_unmap(surface, pixels) == OS_SUCCESS,
+              "surface unmap");
+        check(os_surface_unmap(surface, pixels) == OS_ERR_NOT_FOUND,
+              "surface repeated unmap is safe");
+    }
+    check(os_surface_close(surface) == OS_SUCCESS, "surface close");
+    check(os_surface_close(surface) == OS_ERR_NOT_FOUND,
+          "surface stale close is safe");
+    check(os_surface_map(surface, OS_SURFACE_MAP_READ) == 0,
+          "surface stale map is safe");
+
+    surface = os_surface_create(4, 4, OS64_PIXEL_FORMAT_BGR);
+    pixels = (uint32_t*)os_surface_map(surface,
+                                      OS_SURFACE_MAP_READ | OS_SURFACE_MAP_WRITE);
+    check(surface != 0 && pixels != 0 && os_surface_close(surface) == OS_SUCCESS,
+          "surface close releases active mapping");
+}
+
 static void test_keyboard(void) {
     OsKeyEvent event;
     OsInputEvent input_event;
@@ -465,6 +530,7 @@ int main(void) {
     test_wait_timeout();
     test_ipc_v2();
     test_malformed_requests();
+    test_surfaces();
     test_graphics();
     test_keyboard();
 

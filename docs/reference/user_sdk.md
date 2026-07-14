@@ -30,6 +30,7 @@ permission mask.
 - Results: stable negative error codes and `os_result_string`
 - Time: monotonic ticks, timer frequency, and milliseconds
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
+- Surfaces: page-backed create, metadata query, process-local map/unmap, and close
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
@@ -76,6 +77,26 @@ Phase 3 provides the IPC and service regression groups:
 ```sh
 make test-ipc
 ```
+
+Phase 4B adds the shared-surface ABI and its focused mapping/transfer suite:
+
+```sh
+make test-surface-abi
+```
+
+Applications create a surface with `os_surface_create`, map it with
+`OS_SURFACE_MAP_READ | OS_SURFACE_MAP_WRITE`, draw through the returned linear
+pixel pointer, then unmap and close it. User mappings are always NX. A writable
+mapping requires `WRITE | MAP`; IPC v2 transfers graphics surfaces as
+`READ | MAP` and removes both write and re-transfer authority. Closing a mapped
+surface or exiting the process removes its page-table entries before the final
+object reference can release the backing pages.
+
+`OS_PROCESS_PERMISSION_PROFILE_GUI_APPLICATION` is the least-privilege profile
+for normal GUI clients. It contains service discovery, IPC, and shared-surface
+permissions, but no raw input or display authority. Existing diagnostic launch
+paths retain their explicit compatibility permissions until the Phase 4
+service pipeline replaces direct graphics access.
 
 Service tests cover the fixed service identity ABI, automatic owner cleanup,
 SDK wrappers, Service Manager v2 supervision, permissions, and the

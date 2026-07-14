@@ -35,16 +35,20 @@ int main(int argc, char** argv) {
         long display_result = os_gfx_get_info(&graphics);
         long discover_result = os_service_find("service", &info);
         long child_result = os_run("uhello_c.elf");
+        OsHandle surface_result = os_surface_create(4, 4, OS64_PIXEL_FORMAT_RGB);
         if (display_result != OS_ERR_PERMISSION_DENIED ||
             discover_result != OS_ERR_PERMISSION_DENIED ||
-            child_result != OS_ERR_PERMISSION_DENIED) {
-            os_printf("[svc_perm] permission enforcement failed display=%ld discover=%ld child=%ld\n",
+            child_result != OS_ERR_PERMISSION_DENIED ||
+            surface_result != 0) {
+            os_printf("[svc_perm] permission enforcement failed display=%ld discover=%ld child=%ld surface=%lu\n",
                       display_result,
                       discover_result,
-                      child_result);
+                      child_result,
+                      surface_result);
             return 1;
         }
         os_puts("[svc_perm] denied display, discovery, and child launch as expected");
+        os_puts("[svc_perm] denied shared surface as expected");
         service_name = "restricted";
     } else if (argc > 1 && os_streq(argv[1], "crash")) {
         service_name = "crash";

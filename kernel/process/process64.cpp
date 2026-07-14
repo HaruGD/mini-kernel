@@ -4,6 +4,7 @@
 #include "kernel/fault_injection.h"
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
+#include "kernel/process_surface.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/spinlock.h"
 
@@ -285,6 +286,7 @@ static void process_reset_address_space_record(Process* process) {
         process->address_space.regions[i].start = 0;
         process->address_space.regions[i].end = 0;
     }
+    process_surface_mappings_reset(process);
 }
 
 ProcessIdentity process_identity(const Process* process) {
@@ -499,6 +501,7 @@ void process_clear(Process* process) {
         return;
     }
 
+    process_surface_unmap_all(process);
     service_unregister_owner(process->pid);
     process_clear_focus(process->pid);
     if (process->pid != 0) {
@@ -701,6 +704,7 @@ static void process_finish(Process* process,
     kernel_spinlock_release(&process_lock, &token);
 
     vfs_close_all_for_owner(own_pid);
+    process_surface_unmap_all(process);
     kernel_object_release_table(&process->handle_table);
     kernel_handle_table_init(&process->handle_table);
     service_unregister_owner(own_pid);
