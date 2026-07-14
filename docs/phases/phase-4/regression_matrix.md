@@ -21,7 +21,7 @@ requires the existing full `make test-closure` suite.
 | --- | --- | --- | --- | --- | --- |
 | P4-R01 | 4A | Surface storage is PMM-page-backed, zero-filled, bounded, and rollback safe | `make test-surface-backing`; `make test-graphics`; `make test-fault-injection`; `make test-closure` | Valid bounds allocate correctly; invalid/partial allocations release every page and object; existing graphics behavior remains intact. | Complete |
 | P4-R02 | 4B | User surface mapping, rights attenuation, transfer lifetime, and process cleanup are enforced | `make test-surface-abi`; `make test-user-sdk`; `make test-service-manager-smoke`; `make test-concurrency`; `make test-closure` | App write mapping and compositor read mapping work; escalation fails; exit order leaves zero unexplained handle, mapping, or page drift. | Complete |
-| P4-R03 | 4C | Only `displayd` can present, and its chunked generation protocol is bounded | display protocol host tests; display-service QEMU smoke; permission denial tests | Valid frames are acknowledged; malformed/stale transactions are rejected; ordinary apps cannot present; terminal fallback survives restart. | Planned |
+| P4-R03 | 4C | Only `displayd` can present, and its chunked generation protocol is bounded | `make test-display-present`; `make test-kernel-handles`; `make test-ipc-contracts` | Valid frames are acknowledged; malformed/stale transactions are rejected; ordinary apps cannot present; terminal fallback survives restart. | Complete |
 | P4-R04 | 4D | One full-screen client reaches the display only through `windowd -> displayd` | single-window protocol tests; deterministic QEMU first-window smoke | Create/attach/damage/destroy succeeds without direct display authority and unexpected client exit cleans all state. | Planned |
 | P4-R05 | 4E | Multiwindow z-order, clipping, damage merge, and composition stay within fixed bounds | compositor host pixel/hash tests; multiwindow QEMU smoke | Up to 12 windows compose deterministically; malformed damage is safe; accumulator overflow becomes one full-screen rectangle. | Planned |
 | P4-R06 | 4F | Input reaches exactly one valid focused window with ordered focus events | input-routing host tests; keyboard-focus QEMU smoke | Background, hidden, destroyed, and stale-generation windows receive no key events; focus order and sequences remain valid. | Planned |
@@ -51,8 +51,13 @@ clean build smoke, and full closure all passed with zero surface-page drift.
 P4-R02 was certified on 2026-07-15 at implementation commit `b14bca1`.
 The public surface ABI, per-process NX mappings, read-only non-transferable IPC
 clones, sender/receiver exit ordering, failure rollback, restricted permission
-profile, and QEMU resource accounting passed with zero drift. P4-R03 through
-P4-R10 remain uncertified. Phase 4H will add the final tested
+profile, and QEMU resource accounting passed with zero drift. P4-R03 was
+certified on 2026-07-15 at implementation commit `23ee0f0`. Its bounded
+display protocol/backend tests, restricted-client
+denial, real full/partial pixel presentation, terminal fallback, forced
+display-service crash, automatic restart, resubmission, and transient resource
+cleanup passed both focused QEMU testing and the 498.06-second full closure.
+P4-R04 through P4-R10 remain uncertified. Phase 4H will add the final tested
 commit, aggregate command results, durations, relevant counts, QEMU display
 evidence, and 60-second soak measurements. The optional one-hour release soak
 remains separate from the ordinary Phase 4 closure run.

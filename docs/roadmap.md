@@ -164,8 +164,8 @@ application
 Planned work:
 
 - [x] 4A: Page-backed surface foundation
-- [ ] 4B: Surface ABI, mapping, and transfer rights
-- [ ] 4C: Display-service present path and GOP backend abstraction
+- [x] 4B: Surface ABI, mapping, and transfer rights
+- [x] 4C: Display-service present path and GOP backend abstraction
 - [ ] 4D: Supervised `windowd` with one full-screen client
 - [ ] 4E: Bounded multiwindow z-order, damage, and composition
 - [ ] 4F: `inputd` forwarding and keyboard focus routing

@@ -25,14 +25,14 @@ that records those immutable implementation commit hashes.
 | --- | --- | --- | --- | --- | --- |
 | 4A: Page-backed surface foundation | Complete | 2026-07-14 | 2026-07-14 | `196339c` | [record](#4a-page-backed-surface-foundation) |
 | 4B: Surface ABI, mapping, and transfer rights | Complete | 2026-07-15 | 2026-07-15 | `b14bca1` | [record](#4b-surface-abi-mapping-and-transfer-rights) |
-| 4C: Display-service present path | In progress | 2026-07-15 | - | - | - |
+| 4C: Display-service present path | Complete | 2026-07-15 | 2026-07-15 | `23ee0f0` | [record](#4c-display-service-present-path) |
 | 4D: Single-window bring-up | Planned | - | - | - | - |
 | 4E: Multiwindow compositor | Planned | - | - | - | - |
 | 4F: Input routing and focus | Planned | - | - | - | - |
 | 4G: Window SDK and first GUI application | Planned | - | - | - | - |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Current work: Phase 4C, display-service present path.
+Current work: Phase 4C is complete. Phase 4D remains Planned.
 
 ## Recording Workflow
 
@@ -211,6 +211,78 @@ notes or issue tracker until corrected.
   service pipeline is introduced;
 - window policy, damage submission, composition, and input routing remain in
   Phases 4D through 4F.
+
+## 4C: Display-Service Present Path
+
+- Status: Complete
+- Started: 2026-07-15
+- Completed: 2026-07-15
+- Implementation commit: `23ee0f0bd08f0c54c104fbe1f73304c5e673c365`
+
+### Delivered
+
+- added display ABI v1 and User SDK support for correlated
+  `BEGIN -> DAMAGE chunks -> COMMIT -> REPLY` transactions with one
+  read-only transferred surface, a maximum of 64 rectangles, exact accepted
+  generations, stale rejection, bounded timeout cleanup, and newest-full-frame
+  replacement of pending partial state;
+- replaced the placeholder display service with a blocking IPC v2 server that
+  validates sender PID plus process generation, request and frame generation,
+  dimensions, stride, format, handle count/type/rights, chunk order, and commit
+  totals before presentation;
+- added an identity-safe service-owner lookup without changing the frozen
+  `OsServiceInfo` v1 layout, plus generic received-object close and IPC v2
+  blocking-wait SDK/syscall paths;
+- added a stable kernel display backend boundary with GOP fallback, secondary
+  clipping/merge validation, statistics, and a sole-normal-authority check that
+  requires the currently registered `display` owner and attenuated
+  `READ | MAP` surface rights;
+- retained explicit direct-graphics diagnostic exceptions, while a restricted
+  GUI application proved that ordinary direct display access is denied and
+  service present succeeds;
+- extended service supervision with a deterministic managed-child crash
+  command, terminal fallback check, bounded automatic display restart, and
+  post-restart frame resubmission;
+- added host protocol/backend tests, real 800x600 pixel probes, full/partial
+  ACK markers, permission checks, crash/restart coverage, resource checks, and
+  public display-service documentation.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make clean && make -j2 uefi` | PASS | Clean kernel, SDK, userland, drivers, FAT32, and ESP build with zero compiler warnings. |
+| `make test-display-present test-kernel-handles test-ipc-contracts test-service-registry test-abi-freeze` | PASS | Malformed/stale/duplicate/missing/reordered/oversized protocol cases, clipping/backend failures, handle attenuation, identity lookup, ABI freeze, and QEMU present path passed. |
+| `make test-service-manager-smoke test-first-services` | PASS | Existing lifecycle, permissions, dependencies, health, bounded restart, and input/display service discovery remained intact. |
+| `make test-closure` | PASS in 498.06 seconds | SDK 91/91; boot, driver, graphics, input, IPC, services, concurrency, fault injection, new 4C target, and 60-second soak with 41 cycles passed. |
+
+### Resource Accounting
+
+- QEMU producer surface: 800x600 BGR, 480,000 pixels, transferred as exactly
+  `READ | MAP`; final screenshot contained 318,288 base-color pixels and
+  30,000 partial-damage pixels despite concurrent terminal output;
+- warmed sample before measured present:
+  `processes=2 mappings=10 handles=0 mailboxes=0 services=2 shared=0 surfaces=0`;
+- sample after present, forced display crash, automatic restart, and second
+  present: the same active process/mapping/handle/mailbox/service/object counts,
+  with heap unchanged at `used=0x001DAB70 mapped=0x001DF000`;
+- active graphics-surface handles, mappings, objects, logical bytes, and backing
+  pages returned to zero after every producer exit and after display restart;
+- PMM samples include bounded returned-process image/page-table history until
+  process-table slot reuse (`0x6C2B` through `0x6C3A` during this run), so the focused
+  check excludes that explained history while requiring immediate transient
+  surface cleanup; the warmed 60-second service soak completed 41 cycles with
+  no reported resource drift;
+- unexplained transient display-resource drift: zero.
+
+### Remaining
+
+- `windowd`, its one-client protocol, composition surface, display reconnect,
+  and full-frame resubmission belong to Phase 4D;
+- general multiwindow damage composition and input focus routing remain in
+  Phases 4E and 4F;
+- the explicit direct-graphics diagnostic exceptions remain until their tests
+  are migrated to the complete service pipeline.
 
 ## Phase Milestones
 
