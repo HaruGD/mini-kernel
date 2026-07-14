@@ -25,14 +25,14 @@ that records those immutable implementation commit hashes.
 | --- | --- | --- | --- | --- | --- |
 | 4A: Page-backed surface foundation | Complete | 2026-07-14 | 2026-07-14 | `196339c` | [record](#4a-page-backed-surface-foundation) |
 | 4B: Surface ABI, mapping, and transfer rights | Complete | 2026-07-15 | 2026-07-15 | `b14bca1` | [record](#4b-surface-abi-mapping-and-transfer-rights) |
-| 4C: Display-service present path | Planned | - | - | - | - |
+| 4C: Display-service present path | In progress | 2026-07-15 | - | - | - |
 | 4D: Single-window bring-up | Planned | - | - | - | - |
 | 4E: Multiwindow compositor | Planned | - | - | - | - |
 | 4F: Input routing and focus | Planned | - | - | - | - |
 | 4G: Window SDK and first GUI application | Planned | - | - | - | - |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Current work: Phase 4C, display-service present path, is ready to begin.
+Current work: Phase 4C, display-service present path.
 
 ## Recording Workflow
 

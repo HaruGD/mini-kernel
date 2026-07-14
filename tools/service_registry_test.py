@@ -72,6 +72,11 @@ int main() {
     check(info.state == OS_SERVICE_STATE_REGISTERED);
     check(info.flags == OS_SERVICE_FLAG_NONE);
     check(info.generation != 0);
+    OsProcessIdentity owner_identity;
+    check(service_find_owner_identity("display", &owner_identity) == SERVICE_OK);
+    check(owner_identity.pid == owner->pid &&
+          owner_identity.generation == owner->generation);
+    check(service_find_owner_identity("display", 0) == SERVICE_ERR_BAD_BUFFER);
     uint32_t first_generation = info.generation;
     check(service_find("missing", &info) == SERVICE_ERR_NOT_FOUND);
     check(service_find("Display", &info) == SERVICE_ERR_INVALID_ARGUMENT);
@@ -135,6 +140,9 @@ int main() {
         check(service_find("stress", &info) == SERVICE_OK);
         check(info.owner_pid == owner->pid);
         check(info.generation != 0 && info.generation != previous_generation);
+        check(service_find_owner_identity("stress", &owner_identity) == SERVICE_OK);
+        check(owner_identity.pid == owner->pid &&
+              owner_identity.generation == owner->generation);
         previous_generation = info.generation;
         if ((cycle & 1u) == 0) {
             check(service_unregister(owner, "stress") == SERVICE_OK);

@@ -93,6 +93,14 @@ long os_msg_v2_recv(OsIpcMessageV2* message) {
     return os_syscall1(OS_SYS_IPC_V2_RECV, (long)message);
 }
 
+long os_msg_v2_wait(OsIpcMessageV2* message) {
+    return os_syscall2(OS_SYS_IPC_V2_WAIT, (long)message, 0);
+}
+
+long os_msg_v2_wait_timeout(OsIpcMessageV2* message, uint32_t timeout_ticks) {
+    return os_syscall2(OS_SYS_IPC_V2_WAIT, (long)message, timeout_ticks);
+}
+
 long os_msg_v2_recv_match(const OsIpcReceiveFilter* filter, OsIpcMessageV2* message) {
     return os_syscall2(OS_SYS_IPC_V2_RECV_MATCH, (long)filter, (long)message);
 }

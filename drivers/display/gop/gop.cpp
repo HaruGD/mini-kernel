@@ -198,6 +198,30 @@ int GOPDriver::present() {
     return 1;
 }
 
+uint32_t GOPDriver::present_surface(const GraphicsSurface* source,
+                                    const OsRect* rects,
+                                    uint32_t rect_count) {
+    if (!ready_state || framebuffer == 0 ||
+        !gfx_surface_is_valid(source) || rects == 0 || rect_count == 0) {
+        return 0;
+    }
+    DisplayOwnerToken token;
+    display_owner_begin(DISPLAY_OWNER_GOP, &token);
+    if (!token.acquired) {
+        return 0;
+    }
+    uint32_t presented = 0;
+    for (uint32_t i = 0; i < rect_count; i++) {
+        if (gfx_rect_is_empty(&rects[i])) {
+            continue;
+        }
+        gfx_blit(&surface, source, &rects[i], rects[i].x, rects[i].y);
+        presented++;
+    }
+    display_owner_end(&token);
+    return presented;
+}
+
 void GOPDriver::putpixel(uint32_t x, uint32_t y, uint32_t color) {
     if (!ready_state || framebuffer == 0) {
         return;

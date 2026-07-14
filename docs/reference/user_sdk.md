@@ -31,6 +31,7 @@ permission mask.
 - Time: monotonic ticks, timer frequency, and milliseconds
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
 - Surfaces: page-backed create, metadata query, process-local map/unmap, and close
+- Display service: correlated full-frame or bounded partial-damage surface present
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
@@ -82,6 +83,12 @@ Phase 4B adds the shared-surface ABI and its focused mapping/transfer suite:
 
 ```sh
 make test-surface-abi
+```
+
+Phase 4C adds the display-service protocol and real-screen integration suite:
+
+```sh
+make test-display-present
 ```
 
 Applications create a surface with `os_surface_create`, map it with
@@ -186,11 +193,12 @@ space. ABI v2 adds formal lifecycle states, health/failure reporting, bounded
 restart, dependency validation, and static process permissions. The dependency
 table starts `base` before `demo`.
 
-`inputd_c.elf` and `displayd_c.elf` are the first placeholder user-space
-services. They register as `input` and `display`, then answer small IPC query
-messages using the shared `service_protocol_types.h` ABI. `usvcprobe_c.elf`
-discovers both services through the registry and verifies request/reply status
-without special kernel policy.
+`inputd_c.elf` remains the initial input service. `displayd_c.elf` is the
+supervised physical-display service: it answers display-info queries and
+accepts the versioned begin/damage/commit protocol described in
+`docs/reference/display_service.md`. `usvcprobe_c.elf` discovers both services
+through the registry and verifies request/reply status without special kernel
+policy.
 
 The full Phase 2 closure matrix is documented in
 `docs/phases/phase-2/regression_matrix.md`.

@@ -55,6 +55,9 @@ public:
     void mark_dirty_full();
     void clear_dirty();
     int present();
+    uint32_t present_surface(const GraphicsSurface* source,
+                             const OsRect* rects,
+                             uint32_t rect_count);
 
     void clear(uint32_t color);
     void putpixel(uint32_t x, uint32_t y, uint32_t color);

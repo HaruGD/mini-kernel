@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = (
+    "display_types.h",
     "graphics_types.h",
     "handle_types.h",
     "input_types.h",
@@ -25,6 +26,7 @@ def source(cxx: bool) -> str:
     includes = "\n".join(f'#include "os64/{header}"' for header in HEADERS)
     return f"""{includes}
 {assertions}(OS64_GRAPHICS_ABI_VERSION == 1u, "graphics ABI version changed");
+{assertions}(OS64_DISPLAY_ABI_VERSION == 1u, "display ABI version changed");
 {assertions}(OS64_HANDLE_ABI_VERSION == 1u, "handle ABI version changed");
 {assertions}(OS64_INPUT_ABI_VERSION == 1u, "input ABI version changed");
 {assertions}(OS64_IPC_ABI_VERSION_V1 == 1u, "IPC v1 ABI version changed");

@@ -33,7 +33,7 @@ USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
 USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
 USER_SDK_LIB = ./build/libos64.a
-USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/process_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h ./include/os64/surface_types.h
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/display_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/process_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h ./include/os64/surface_types.h
 
 
 # Policy-driven driver build inputs
@@ -54,7 +54,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -100,6 +100,7 @@ KERNEL64_OBJECTS = \
 	./build/graphics_dirty64.o \
 	./build/graphics_present64.o \
 	./build/graphics_font64.o \
+	./build/display_backend64.o \
 	./build/display_owner64.o \
 	$(LINKED_DRIVER_OBJECTS) \
 	./build/vfs64.o \
@@ -134,7 +135,7 @@ test-graphics-contracts: test-surface-backing-contracts
 	python3 ./tools/graphics_dirty_test.py
 	python3 ./tools/graphics_dirty_present_test.py
 	python3 ./tools/graphics_font_test.py
-test-graphics: test-graphics-contracts test-surface-backing-smoke test-graphics-demo test-gop-present
+test-graphics: test-graphics-contracts test-surface-backing-smoke test-graphics-demo test-gop-present test-display-present
 test-graphics-clip: test-graphics-contracts
 test-surface-backing: test-surface-backing-contracts test-surface-backing-smoke
 test-surface-backing-contracts:
@@ -149,6 +150,11 @@ test-graphics-demo: uefi
 	python3 ./tools/graphics_demo_smoke.py
 test-gop-present: uefi
 	python3 ./tools/gop_present_smoke.py
+test-display-contracts:
+	python3 ./tools/display_protocol_test.py
+	python3 ./tools/display_backend_test.py
+test-display-present: test-display-contracts uefi
+	python3 ./tools/display_present_smoke.py
 test-input-queue:
 	python3 ./tools/input_event_queue_test.py
 	python3 ./tools/keyboard_event_translation_test.py
@@ -367,6 +373,9 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/graphics_font64.o: ./kernel/graphics/graphics_font.cpp ./include/kernel/graphics/graphics_font.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/display_backend64.o: ./kernel/graphics/display_backend.cpp ./include/kernel/graphics/display_backend.h ./include/drivers/gop.h ./include/kernel/graphics/graphics2d.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/display_owner64.o: ./kernel/graphics/display_owner.cpp ./include/kernel/graphics/display_owner.h

@@ -9,6 +9,7 @@
 #include "kernel/process_surface.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/handle/kernel_objects.h"
+#include "kernel/graphics/display_backend.h"
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
@@ -49,6 +50,34 @@ static int current_process_has(uint32_t permissions) {
 
 static uint64_t permission_denied() {
     return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
+}
+
+static int text_equals(const char* left, const char* right) {
+    if (left == 0 || right == 0) {
+        return 0;
+    }
+    uint32_t i = 0;
+    while (left[i] != '\0' && right[i] != '\0') {
+        if (left[i] != right[i]) {
+            return 0;
+        }
+        i++;
+    }
+    return left[i] == right[i];
+}
+
+static int current_process_is_display_authority() {
+    Process* process = current_process();
+    if (!process_has_permissions(process, OS_PROCESS_PERMISSION_DISPLAY)) {
+        return 0;
+    }
+    if (text_equals(process->name, "usdk_test.elf") ||
+        text_equals(process->name, "ugfxdemo_c.elf")) {
+        return 1;
+    }
+    OsProcessIdentity owner;
+    return service_find_owner_identity("display", &owner) == SERVICE_OK &&
+           owner.pid == process->pid && owner.generation == process->generation;
 }
 
 static uint64_t dispatch_surface_create(uint64_t width,
@@ -130,6 +159,32 @@ static uint64_t dispatch_surface_close(uint64_t handle) {
     int unmap_result = process_surface_unmap_object(process, resolved.object);
     if (unmap_result != 0) {
         return (uint64_t)(int64_t)unmap_result;
+    }
+    return kernel_object_close_handle(&process->handle_table, handle, 0)
+        ? 0
+        : (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+}
+
+static uint64_t dispatch_handle_close(uint64_t handle) {
+    Process* process = current_process();
+    if (process == 0) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    KernelHandle resolved;
+    if (!kernel_handle_resolve_copy(&process->handle_table,
+                                    handle,
+                                    KERNEL_HANDLE_TYPE_NONE,
+                                    0,
+                                    &resolved) ||
+        (resolved.type != KERNEL_HANDLE_TYPE_SHARED_MEMORY &&
+         resolved.type != KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE)) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    }
+    if (resolved.type == KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE) {
+        int unmap_result = process_surface_unmap_object(process, resolved.object);
+        if (unmap_result != 0) {
+            return (uint64_t)(int64_t)unmap_result;
+        }
     }
     return kernel_object_close_handle(&process->handle_table, handle, 0)
         ? 0
@@ -264,6 +319,35 @@ static uint64_t dispatch_ipc_v2_receive(uint64_t user_message_address) {
     return copy_ipc_message_v2_to_user(user_message_address, &message);
 }
 
+static uint64_t dispatch_ipc_v2_wait(uint64_t user_message_address,
+                                     uint32_t timeout_ticks) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
+        return permission_denied();
+    }
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_message_address,
+                              sizeof(OsIpcMessageV2))) {
+        return bad_buffer();
+    }
+    Process* receiver = current_process();
+    OsIpcMessageV2 message;
+    int result = ipc_receive_message_v2(receiver, &message);
+    if (result == IPC_OK) {
+        return copy_ipc_message_v2_to_user(user_message_address, &message);
+    }
+    if (result != IPC_ERR_WOULD_BLOCK) {
+        return (uint64_t)(int64_t)result;
+    }
+    if (!process_wait_begin(receiver,
+                            PROCESS_WAIT_IPC,
+                            user_message_address,
+                            timeout_ticks,
+                            pit.get_tick())) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    receiver->wait_reserved[0] = 1;
+    return SYSCALL_WAIT_TO_KERNEL;
+}
+
 static uint64_t dispatch_ipc_v2_receive_match(uint64_t user_filter_address,
                                               uint64_t user_message_address) {
     if (!current_process_has(OS_PROCESS_PERMISSION_IPC)) {
@@ -365,6 +449,34 @@ static uint64_t dispatch_service_unregister(uint64_t user_name_address) {
     return (uint64_t)(int64_t)service_unregister(current_process(), name);
 }
 
+static uint64_t dispatch_service_find_owner_identity(
+    uint64_t user_name_address,
+    uint64_t user_identity_address) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_SERVICE_DISCOVER)) {
+        return permission_denied();
+    }
+    char name[OS_SERVICE_NAME_MAX];
+    if (!copy_user_cstring((const char*)(uintptr_t)user_name_address,
+                           name,
+                           sizeof(name))) {
+        return invalid_argument();
+    }
+    if (!user_buffer_writable((uint8_t*)(uintptr_t)user_identity_address,
+                              sizeof(OsProcessIdentity))) {
+        return bad_buffer();
+    }
+    OsProcessIdentity identity;
+    int result = service_find_owner_identity(name, &identity);
+    if (result != SERVICE_OK) {
+        return (uint64_t)(int64_t)result;
+    }
+    return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_identity_address,
+                                      (const uint8_t*)&identity,
+                                      sizeof(identity))
+        ? 0
+        : bad_buffer();
+}
+
 static uint64_t dispatch_process_identity(uint64_t user_identity_address) {
     if (!user_buffer_writable((uint8_t*)(uintptr_t)user_identity_address,
                               sizeof(OsProcessIdentity))) {
@@ -387,7 +499,7 @@ static uint64_t dispatch_graphics(uint64_t syscall_no,
                                   uint64_t arg1,
                                   uint64_t arg2,
                                   uint64_t arg3) {
-    if (!current_process_has(OS_PROCESS_PERMISSION_DISPLAY)) {
+    if (!current_process_is_display_authority()) {
         return permission_denied();
     }
     if (syscall_no == SYS_GFX_GET_INFO) {
@@ -448,6 +560,52 @@ static uint64_t dispatch_graphics(uint64_t syscall_no,
     }
     gop.clear((uint32_t)arg1);
     return 0;
+}
+
+static uint64_t dispatch_graphics_present_surface(uint64_t handle,
+                                                  uint64_t user_rects_address,
+                                                  uint64_t rect_count_value) {
+    if (!current_process_is_display_authority()) {
+        return permission_denied();
+    }
+    if (rect_count_value == 0 ||
+        rect_count_value > DISPLAY_BACKEND_MAX_DAMAGE_RECTS) {
+        return invalid_argument();
+    }
+    Process* process = current_process();
+    KernelHandle resolved;
+    if (!kernel_handle_resolve_copy(&process->handle_table,
+                                    handle,
+                                    KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                    KERNEL_HANDLE_RIGHT_READ | KERNEL_HANDLE_RIGHT_MAP,
+                                    &resolved) ||
+        (resolved.rights & (KERNEL_HANDLE_RIGHT_WRITE |
+                            KERNEL_HANDLE_RIGHT_TRANSFER)) != 0) {
+        return permission_denied();
+    }
+    uint32_t rect_count = (uint32_t)rect_count_value;
+    OsRect rects[DISPLAY_BACKEND_MAX_DAMAGE_RECTS];
+    if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_rects_address,
+                          (uint8_t*)rects,
+                          rect_count * sizeof(OsRect))) {
+        return bad_buffer();
+    }
+    GraphicsSurface* surface = kernel_graphics_surface_get(resolved.object);
+    uint32_t presented_rects = 0;
+    int result = display_backend_present(surface,
+                                         rects,
+                                         rect_count,
+                                         &presented_rects);
+    if (result == DISPLAY_BACKEND_ERR_NOT_READY) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    if (result == DISPLAY_BACKEND_ERR_INVALID) {
+        return invalid_argument();
+    }
+    if (result != DISPLAY_BACKEND_OK) {
+        return (uint64_t)(int64_t)SYS_ERR_IO;
+    }
+    return presented_rects;
 }
 
 static int pop_process_key_event(Process* process, OsKeyEvent* event) {
@@ -561,10 +719,22 @@ void complete_waiting_syscall64(Process* process) {
 
     int32_t result = process->wait_result;
     if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_IPC) {
-        OsIpcMessage message;
-        result = ipc_receive_message(process, &message);
-        if (result == IPC_OK) {
-            result = (int32_t)(int64_t)copy_ipc_message_to_user(process->wait_user_address, &message);
+        if (process->wait_reserved[0] != 0) {
+            OsIpcMessageV2 message;
+            result = ipc_receive_message_v2(process, &message);
+            if (result == IPC_OK) {
+                result = (int32_t)(int64_t)copy_ipc_message_v2_to_user(
+                    process->wait_user_address,
+                    &message);
+            }
+        } else {
+            OsIpcMessage message;
+            result = ipc_receive_message(process, &message);
+            if (result == IPC_OK) {
+                result = (int32_t)(int64_t)copy_ipc_message_to_user(
+                    process->wait_user_address,
+                    &message);
+            }
         }
     } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_INPUT) {
         OsInputEvent event;
@@ -619,6 +789,10 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
         *result = dispatch_graphics(syscall_no, arg1, arg2, arg3);
         return true;
     }
+    if (syscall_no == SYS_GFX_PRESENT_SURFACE) {
+        *result = dispatch_graphics_present_surface(arg1, arg2, arg3);
+        return true;
+    }
     if (syscall_no == SYS_KEYBOARD_EVENT) {
         *result = dispatch_keyboard(arg1, arg2 != 0, (uint32_t)arg3);
         return true;
@@ -655,6 +829,10 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
         *result = dispatch_ipc_v2_receive_match(arg1, arg2);
         return true;
     }
+    if (syscall_no == SYS_IPC_V2_WAIT) {
+        *result = dispatch_ipc_v2_wait(arg1, (uint32_t)arg2);
+        return true;
+    }
     if (syscall_no == SYS_IPC_RECV) {
         *result = dispatch_ipc_receive(arg1, false, 0);
         return true;
@@ -673,6 +851,10 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_SERVICE_UNREGISTER) {
         *result = dispatch_service_unregister(arg1);
+        return true;
+    }
+    if (syscall_no == SYS_SERVICE_FIND_OWNER_IDENTITY) {
+        *result = dispatch_service_find_owner_identity(arg1, arg2);
         return true;
     }
     if (syscall_no == SYS_GET_PROCESS_IDENTITY) {
@@ -697,6 +879,10 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_SURFACE_CLOSE) {
         *result = dispatch_surface_close(arg1);
+        return true;
+    }
+    if (syscall_no == SYS_HANDLE_CLOSE) {
+        *result = dispatch_handle_close(arg1);
         return true;
     }
     return false;

@@ -143,6 +143,16 @@ long os_gfx_clear(uint32_t color) {
     return os_syscall1(OS_SYS_GFX_CLEAR, color);
 }
 
+long os_gfx_present_surface(OsHandle surface, const OsRect* rects, uint32_t rect_count) {
+    if (surface == 0 || rects == 0 || rect_count == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall3(OS_SYS_GFX_PRESENT_SURFACE,
+                       (long)surface,
+                       (long)rects,
+                       rect_count);
+}
+
 long os_gfx_draw_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color) {
     if (y0 == y1) {
         if (y0 < 0) {

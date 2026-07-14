@@ -246,6 +246,32 @@ int service_find(const char* name, OsServiceInfo* info) {
     return SERVICE_ERR_NOT_FOUND;
 }
 
+int service_find_owner_identity(const char* name, OsProcessIdentity* identity) {
+    service_prune_stale();
+    if (identity == 0) {
+        return SERVICE_ERR_BAD_BUFFER;
+    }
+    if (!service_name_valid(name)) {
+        return SERVICE_ERR_INVALID_ARGUMENT;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&service_lock, &token)) {
+        return SERVICE_ERR_NOT_READY;
+    }
+    for (uint32_t i = 0; i < SERVICE_REGISTRY_CAPACITY; i++) {
+        ServiceEntry* entry = &service_table[i];
+        if (entry->state == OS_SERVICE_STATE_REGISTERED &&
+            service_name_equal(entry->name, name)) {
+            identity->pid = entry->owner_pid;
+            identity->generation = entry->owner_generation;
+            kernel_spinlock_release(&service_lock, &token);
+            return SERVICE_OK;
+        }
+    }
+    kernel_spinlock_release(&service_lock, &token);
+    return SERVICE_ERR_NOT_FOUND;
+}
+
 int service_unregister(Process* owner, const char* name) {
     service_prune_stale();
     if (owner == 0 || owner->pid == 0) {

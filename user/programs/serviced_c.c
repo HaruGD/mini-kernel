@@ -125,7 +125,12 @@ static int registry_lookup(ManagedService* service, OsServiceInfo* info) {
         return 0;
     }
     service->pid = info->owner_pid;
-    service->owner_generation = info->generation;
+    OsProcessIdentity identity;
+    if (os_service_find_owner_identity(service->name, &identity) != OS_SUCCESS ||
+        identity.pid != info->owner_pid) {
+        return 0;
+    }
+    service->owner_generation = identity.generation;
     return 1;
 }
 
@@ -312,6 +317,26 @@ static int restart_service(ManagedService* service) {
     return start_service(service, 0);
 }
 
+static int crash_service(ManagedService* service) {
+    OsServiceInfo info;
+    if (service == 0) {
+        return OS_ERR_NOT_FOUND;
+    }
+    if (!registry_lookup(service, &info)) {
+        return OS_ERR_NOT_READY;
+    }
+    if (os_kill(service->pid) < 0 ||
+        !wait_for_registry(service, 0, SERVICE_STOP_TIMEOUT_TICKS)) {
+        return OS_ERR_TIMEOUT;
+    }
+    os_reap_children();
+    os_printf("[serviced] injected crash %s pid=%u\n", service->name, service->pid);
+    service->pid = 0;
+    service->owner_generation = 0;
+    fail_service(service, OS_SERVICE_FAILURE_EXITED);
+    return OS_SUCCESS;
+}
+
 static int health_service(ManagedService* service) {
     OsServiceInfo info;
     if (service == 0) {
@@ -481,6 +506,8 @@ static int handle_request(const OsIpcMessage* message) {
         }
     } else if (request.command == OS_SERVICE_MANAGER_CMD_HEALTH) {
         result = health_service(service);
+    } else if (request.command == OS_SERVICE_MANAGER_CMD_CRASH) {
+        result = crash_service(service);
     } else if (request.command == OS_SERVICE_MANAGER_CMD_EXIT) {
         for (uint32_t i = MANAGED_SERVICE_COUNT; i > 0; i--) {
             stop_service(&services[i - 1], 0);

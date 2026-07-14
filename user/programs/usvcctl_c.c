@@ -19,6 +19,9 @@ static uint32_t command_from_text(const char* text) {
     if (os_streq(text, "health")) {
         return OS_SERVICE_MANAGER_CMD_HEALTH;
     }
+    if (os_streq(text, "crash")) {
+        return OS_SERVICE_MANAGER_CMD_CRASH;
+    }
     if (os_streq(text, "exit")) {
         return OS_SERVICE_MANAGER_CMD_EXIT;
     }
@@ -40,6 +43,9 @@ static const char* command_name(uint32_t command) {
     }
     if (command == OS_SERVICE_MANAGER_CMD_HEALTH) {
         return "health";
+    }
+    if (command == OS_SERVICE_MANAGER_CMD_CRASH) {
+        return "crash";
     }
     if (command == OS_SERVICE_MANAGER_CMD_EXIT) {
         return "exit";
@@ -94,7 +100,7 @@ int main(int argc, char** argv) {
     uint32_t command = command_from_text(argc > 1 ? argv[1] : "ping");
     const char* target = argc > 2 ? argv[2] : "demo";
     if (command == OS_SERVICE_MANAGER_CMD_NONE) {
-        os_puts("[usvcctl] usage: usvcctl_c.elf [ping|start|stop|restart|status|health|exit] [name]");
+        os_puts("[usvcctl] usage: usvcctl_c.elf [ping|start|stop|restart|status|health|crash|exit] [name]");
         return 1;
     }
     if (command == OS_SERVICE_MANAGER_CMD_PING || command == OS_SERVICE_MANAGER_CMD_EXIT) {

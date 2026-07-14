@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "kernel/process.h"
+#include "os64/process_types.h"
 #include "os64/service_types.h"
 
 #define SERVICE_REGISTRY_CAPACITY 16u
@@ -33,6 +34,7 @@ uint32_t service_registry_count();
 int service_name_valid(const char* name);
 int service_register(Process* owner, const char* name, uint32_t flags);
 int service_find(const char* name, OsServiceInfo* info);
+int service_find_owner_identity(const char* name, OsProcessIdentity* identity);
 int service_unregister(Process* owner, const char* name);
 void service_unregister_owner(uint32_t owner_pid);
 int service_registry_get_info(uint32_t index, OsServiceInfo* info);

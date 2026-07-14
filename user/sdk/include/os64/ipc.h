@@ -17,6 +17,8 @@ long os_ipc_features(uint32_t* abi_version_out, uint32_t* features_out);
 uint32_t os_msg_next_request_id(void);
 long os_msg_v2_send_to_identity(OsProcessIdentity target, const OsIpcMessageV2* message);
 long os_msg_v2_recv(OsIpcMessageV2* message);
+long os_msg_v2_wait(OsIpcMessageV2* message);
+long os_msg_v2_wait_timeout(OsIpcMessageV2* message, uint32_t timeout_ticks);
 long os_msg_v2_recv_match(const OsIpcReceiveFilter* filter, OsIpcMessageV2* message);
 long os_msg_v2_request(OsProcessIdentity target,
                        OsIpcMessageV2* request,
