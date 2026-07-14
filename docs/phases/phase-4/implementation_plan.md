@@ -5,6 +5,11 @@ contracts into an executable implementation sequence. Each subphase must leave
 the tree buildable, add focused regression coverage, and satisfy its exit gate
 before the next subphase begins.
 
+Live implementation state and completed evidence are recorded in
+`docs/phases/phase-4/progress.md`. Contract-to-test coverage is recorded in
+`docs/phases/phase-4/regression_matrix.md`. Do not rewrite this plan to make
+partial implementation appear complete.
+
 ## Target Architecture
 
 Phase 4 keeps GUI policy in supervised user-space services. All three services
@@ -356,9 +361,10 @@ exclusive, and the Phase 4 closure record contains reproducible evidence.
  -> 4H fault, soak, and closure
 ```
 
-Each subphase is implemented, tested, documented, and committed independently.
-No later step may bypass an earlier service boundary for convenience. In
-particular, the first GUI demo must not write the framebuffer directly, and
+Each subphase receives an implementation/test commit followed by an evidence
+commit that records the already-known implementation hash and measured test
+results. No later step may bypass an earlier service boundary for convenience.
+In particular, the first GUI demo must not write the framebuffer directly, and
 `windowd` must not acquire `DISPLAY` permission merely to simplify bring-up.
 
 ## Deferred Work

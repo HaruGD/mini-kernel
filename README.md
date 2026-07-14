@@ -144,6 +144,8 @@ What works on the active 64-bit UEFI path:
 - Phase 4 entry baseline: [docs/phases/phase-4/entry_baseline.md](docs/phases/phase-4/entry_baseline.md)
 - Phase 4 compositor/window contracts: [docs/phases/phase-4/compositor_contracts.md](docs/phases/phase-4/compositor_contracts.md)
 - Phase 4 implementation plan: [docs/phases/phase-4/implementation_plan.md](docs/phases/phase-4/implementation_plan.md)
+- Phase 4 live progress: [docs/phases/phase-4/progress.md](docs/phases/phase-4/progress.md)
+- Phase 4 regression matrix: [docs/phases/phase-4/regression_matrix.md](docs/phases/phase-4/regression_matrix.md)
 - Phase 3.5 starting baseline: [docs/phases/phase-3.5/baseline.md](docs/phases/phase-3.5/baseline.md)
 - Process/scheduler invariants: [docs/architecture/process_scheduler_invariants.md](docs/architecture/process_scheduler_invariants.md)
 - Kernel context rules: [docs/architecture/kernel_context_rules.md](docs/architecture/kernel_context_rules.md)

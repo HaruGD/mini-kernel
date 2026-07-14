@@ -146,6 +146,8 @@ Frozen boundary contract:
 
 - `docs/phases/phase-4/compositor_contracts.md`
 - `docs/phases/phase-4/implementation_plan.md`
+- `docs/phases/phase-4/progress.md`
+- `docs/phases/phase-4/regression_matrix.md`
 
 The next phase must preserve the existing layering:
 
