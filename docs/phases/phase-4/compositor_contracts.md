@@ -198,6 +198,9 @@ rights, object generation, dimensions, and rectangle bounds before mutation.
 
 ## Phase 4 Implementation Order
 
+The detailed subphase plan, required tests, and exit gates are recorded in
+`docs/phases/phase-4/implementation_plan.md`.
+
 1. Page-backed user surface syscall and SDK contract.
 2. Surface handle transfer/mapping integration tests.
 3. `displayd` present protocol and bounded ownership handoff.

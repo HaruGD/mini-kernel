@@ -44,4 +44,5 @@ links and test references remain stable from the project root.
 - Phase 3.6: [driver packaging and layout](phases/phase-3.6/driver_packaging.md),
   [regression matrix](phases/phase-3.6/regression_matrix.md)
 - Phase 4: [entry baseline](phases/phase-4/entry_baseline.md),
-  [compositor and window service contracts](phases/phase-4/compositor_contracts.md)
+  [compositor and window service contracts](phases/phase-4/compositor_contracts.md),
+  [implementation plan](phases/phase-4/implementation_plan.md)

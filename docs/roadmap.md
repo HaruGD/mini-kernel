@@ -145,6 +145,7 @@ Closure and regression coverage:
 Frozen boundary contract:
 
 - `docs/phases/phase-4/compositor_contracts.md`
+- `docs/phases/phase-4/implementation_plan.md`
 
 The next phase must preserve the existing layering:
 
@@ -160,23 +161,18 @@ application
 
 Planned work:
 
-- [ ] Display-driver abstraction above the policy-selected GOP fallback
-- [ ] User-visible creation, mapping, transfer, and submission of graphics
-  surface handles
-- [ ] Framebuffer compositor prototype
-  - surface ownership
-  - z-order
-  - damage tracking
-  - screen composition
-- [ ] Window service
-  - create, destroy, move, and resize
-  - focus and input routing
-  - application IPC protocol
-- [ ] GUI application SDK
-  - window lifecycle API
-  - drawing surface API
-  - event loop
-  - basic widget foundation
+- [ ] 4A: Page-backed surface foundation
+- [ ] 4B: Surface ABI, mapping, and transfer rights
+- [ ] 4C: Display-service present path and GOP backend abstraction
+- [ ] 4D: Supervised `windowd` with one full-screen client
+- [ ] 4E: Bounded multiwindow z-order, damage, and composition
+- [ ] 4F: `inputd` forwarding and keyboard focus routing
+- [ ] 4G: Window SDK and first event-driven GUI application
+- [ ] 4H: Lifecycle, fault, soak, regression, and closure
+
+Widgets, the desktop shell, per-user session services, alpha composition, and a
+separate compositor process are deferred until the Phase 4 lifecycle and
+failure gates pass.
 
 ## Phase 5: Desktop Foundation
 
