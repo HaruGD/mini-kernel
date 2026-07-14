@@ -15,11 +15,11 @@ make test-phase4
 Phase 4H wires the completed focused targets into it. Phase 4 closure also
 requires the existing full `make test-closure` suite.
 
-## Planned Regression Matrix
+## Regression Matrix
 
-| ID | Subphase | Contract | Planned automated evidence | Pass condition | Status |
+| ID | Subphase | Contract | Automated evidence | Pass condition | Status |
 | --- | --- | --- | --- | --- | --- |
-| P4-R01 | 4A | Surface storage is PMM-page-backed, zero-filled, bounded, and rollback safe | focused surface-object host tests; existing `make test-graphics`; QEMU graphics smoke | Valid bounds allocate correctly; invalid/partial allocations release every page and object; existing graphics behavior remains intact. | Planned |
+| P4-R01 | 4A | Surface storage is PMM-page-backed, zero-filled, bounded, and rollback safe | `make test-surface-backing`; `make test-graphics`; `make test-fault-injection`; `make test-closure` | Valid bounds allocate correctly; invalid/partial allocations release every page and object; existing graphics behavior remains intact. | Complete |
 | P4-R02 | 4B | User surface mapping, rights attenuation, transfer lifetime, and process cleanup are enforced | syscall/SDK integration tests; handle-transfer and fault-injection tests | App write mapping and compositor read mapping work; escalation fails; exit order leaves zero unexplained handle, mapping, or page drift. | Planned |
 | P4-R03 | 4C | Only `displayd` can present, and its chunked generation protocol is bounded | display protocol host tests; display-service QEMU smoke; permission denial tests | Valid frames are acknowledged; malformed/stale transactions are rejected; ordinary apps cannot present; terminal fallback survives restart. | Planned |
 | P4-R04 | 4D | One full-screen client reaches the display only through `windowd -> displayd` | single-window protocol tests; deterministic QEMU first-window smoke | Create/attach/damage/destroy succeeds without direct display authority and unexpected client exit cleans all state. | Planned |
@@ -45,7 +45,10 @@ requires the existing full `make test-closure` suite.
 
 ## Closure Results
 
-No Phase 4 regression row is certified yet. Phase 4H will replace this
-paragraph with the tested commit, date, command results, durations, relevant
-counts, QEMU display evidence, and 60-second soak measurements. The optional
-one-hour release soak remains separate from the ordinary Phase 4 closure run.
+P4-R01 was certified on 2026-07-14 at implementation commit `196339c`.
+Its focused host/QEMU target, existing graphics suite, fault-injection suite,
+clean build smoke, and full closure all passed with zero surface-page drift.
+P4-R02 through P4-R10 remain uncertified. Phase 4H will add the final tested
+commit, aggregate command results, durations, relevant counts, QEMU display
+evidence, and 60-second soak measurements. The optional one-hour release soak
+remains separate from the ordinary Phase 4 closure run.

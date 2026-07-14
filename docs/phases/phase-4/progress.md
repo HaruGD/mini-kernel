@@ -23,7 +23,7 @@ that records those immutable implementation commit hashes.
 
 | Subphase | Status | Started | Completed | Implementation commit(s) | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| 4A: Page-backed surface foundation | In progress | 2026-07-14 | - | - | - |
+| 4A: Page-backed surface foundation | Complete | 2026-07-14 | 2026-07-14 | `196339c` | [record](#4a-page-backed-surface-foundation) |
 | 4B: Surface ABI, mapping, and transfer rights | Planned | - | - | - | - |
 | 4C: Display-service present path | Planned | - | - | - | - |
 | 4D: Single-window bring-up | Planned | - | - | - | - |
@@ -32,7 +32,7 @@ that records those immutable implementation commit hashes.
 | 4G: Window SDK and first GUI application | Planned | - | - | - | - |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Current work: Phase 4A, page-backed surface foundation.
+Next planned work: Phase 4B, surface ABI, mapping, and transfer rights.
 
 ## Recording Workflow
 
@@ -92,6 +92,62 @@ Implementation commits: `<full or unambiguous commit hashes>`
 Do not use a completion record to hide partial failures. A failed required test
 leaves the subphase `In progress`, with the failure summarized in the working
 notes or issue tracker until corrected.
+
+## 4A: Page-Backed Surface Foundation
+
+- Status: Complete
+- Started: 2026-07-14
+- Completed: 2026-07-14
+- Implementation commit: `196339c0b9350ddd29218f6313bcc5297987c27c`
+
+### Delivered
+
+- replaced graphics-surface kernel-heap pixels with individually allocated,
+  zero-filled PMM pages;
+- added fixed per-object kernel virtual slots in `0x78000000-0x80000000`,
+  producing a contiguous software-rendering view over non-contiguous physical
+  pages without overlapping heap, PCI MMIO, or driver-section arenas;
+- enforced 16 object slots, 2,025 pages per maximum 1920x1080 surface, and an
+  8,192-page global surface budget before allocation;
+- added complete rollback for partial PMM and page-map failure, plus quarantined
+  retry behavior when a low-level unmap fails;
+- returned every page and kernel mapping on the final surface reference and
+  exposed logical bytes, backing bytes, and page counts in diagnostics;
+- added a real-kernel `surfacetest`, focused host tests, a QEMU smoke, and a
+  reusable MM host fixture for object/process/IPC/service tests;
+- wired the focused host test and QEMU smoke into the graphics and full closure
+  regression paths.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-surface-backing` | PASS | Host allocation/zero/limit/rollback/unmap-retry coverage and QEMU two-page cross-boundary read/write. |
+| `make test-graphics` | PASS | All graphics contract tests, user graphics demo, and GOP present at 1280x800 and 800x600. |
+| `make test-fault-injection` | PASS | Host fault suite and diagnostic QEMU smoke passed after direct-link test migration. |
+| `make test-uefi-screen` | PASS | 1280x800 framebuffer, 30,372 visible pixels. |
+| `make test-closure` | PASS in 465.9 seconds | SDK 73/73, driver policy/build/boot matrix, boot/userland, graphics, input, IPC, services, concurrency, fault injection, and 60-second soak with 42 cycles. |
+| `make clean && make -j2 uefi && python3 tools/surface_backing_smoke.py` | PASS | Clean parallel image build followed by the same two-page QEMU check. |
+
+### Resource Accounting
+
+- QEMU test surface: 1025x1 RGB, 4,100 logical bytes, two PMM pages;
+- warmed PMM baseline: `0x00006A59` free pages;
+- final PMM sample: `0x00006A59` free pages;
+- final surface backing state: zero active backings, zero mapped surface pages,
+  zero unmap failures;
+- host fault cases: partial PMM allocation, partial VM mapping, global budget
+  exhaustion, and one injected unmap failure all returned to zero allocated and
+  mapped pages after cleanup/retry;
+- unexplained resource drift: zero.
+
+### Remaining
+
+- user-visible surface create/info/map/unmap/close syscalls and SDK wrappers are
+  Phase 4B work;
+- per-process user mapping records, NX/user protection, rights attenuation,
+  transfer lifetime, and process-exit mapping cleanup remain Phase 4B work;
+- no user process can map the new backing pages yet.
 
 ## Phase Milestones
 

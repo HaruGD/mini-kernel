@@ -163,7 +163,7 @@ application
 
 Planned work:
 
-- [ ] 4A: Page-backed surface foundation
+- [x] 4A: Page-backed surface foundation
 - [ ] 4B: Surface ABI, mapping, and transfer rights
 - [ ] 4C: Display-service present path and GOP backend abstraction
 - [ ] 4D: Supervised `windowd` with one full-screen client
