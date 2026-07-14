@@ -23,7 +23,7 @@ that records those immutable implementation commit hashes.
 
 | Subphase | Status | Started | Completed | Implementation commit(s) | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| 4A: Page-backed surface foundation | Planned | - | - | - | - |
+| 4A: Page-backed surface foundation | In progress | 2026-07-14 | - | - | - |
 | 4B: Surface ABI, mapping, and transfer rights | Planned | - | - | - | - |
 | 4C: Display-service present path | Planned | - | - | - | - |
 | 4D: Single-window bring-up | Planned | - | - | - | - |
@@ -32,7 +32,7 @@ that records those immutable implementation commit hashes.
 | 4G: Window SDK and first GUI application | Planned | - | - | - | - |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Next planned work: Phase 4A, page-backed surface foundation.
+Current work: Phase 4A, page-backed surface foundation.
 
 ## Recording Workflow
 

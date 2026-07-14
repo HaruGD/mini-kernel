@@ -31,6 +31,8 @@ struct GraphicsSurfaceObject {
     uint32_t owner_pid;
     uint32_t ref_count;
     uint32_t byte_size;
+    uint32_t page_count;
+    uint32_t backing_slot;
     GraphicsSurface surface;
 };
 
@@ -128,13 +130,12 @@ static void release_surface(GraphicsSurfaceObject* object) {
         return;
     }
 
-    if ((object->surface.flags & GFX_SURFACE_FLAG_OWNS_PIXELS) != 0 &&
-        object->surface.pixels != 0) {
-        kfree(object->surface.pixels);
-    }
+    kernel_graphics_surface_backing_release(object->backing_slot);
     object->active = 0;
     object->owner_pid = 0;
     object->byte_size = 0;
+    object->page_count = 0;
+    object->backing_slot = 0;
     gfx_surface_init(&object->surface, 0, 0, 0, 0, OS64_PIXEL_FORMAT_RGB, 0);
 }
 
@@ -165,9 +166,12 @@ void kernel_objects_init() {
         surface_objects[i].owner_pid = 0;
         surface_objects[i].ref_count = 0;
         surface_objects[i].byte_size = 0;
+        surface_objects[i].page_count = 0;
+        surface_objects[i].backing_slot = 0;
         gfx_surface_init(&surface_objects[i].surface, 0, 0, 0, 0, OS64_PIXEL_FORMAT_RGB, 0);
         surface_objects[i].generation = 0;
     }
+    kernel_graphics_surface_backing_init();
 }
 
 void kernel_object_get_stats(KernelObjectStats* stats) {
@@ -176,8 +180,11 @@ void kernel_object_get_stats(KernelObjectStats* stats) {
     }
     stats->active_shared_memory = 0;
     stats->active_surfaces = 0;
+    stats->surface_pages = 0;
+    stats->reserved = 0;
     stats->shared_memory_bytes = 0;
     stats->surface_bytes = 0;
+    stats->surface_backing_bytes = 0;
     for (uint32_t i = 0; i < KERNEL_SHARED_MEMORY_MAX_OBJECTS; i++) {
         if (shared_objects[i].active) {
             stats->active_shared_memory++;
@@ -187,7 +194,10 @@ void kernel_object_get_stats(KernelObjectStats* stats) {
     for (uint32_t i = 0; i < KERNEL_GRAPHICS_SURFACE_MAX_OBJECTS; i++) {
         if (surface_objects[i].active) {
             stats->active_surfaces++;
+            stats->surface_pages += surface_objects[i].page_count;
             stats->surface_bytes += surface_objects[i].byte_size;
+            stats->surface_backing_bytes +=
+                (uint64_t)surface_objects[i].page_count * VM_PAGE_SIZE;
         }
     }
 }
@@ -289,7 +299,9 @@ uint64_t kernel_graphics_surface_create(KernelHandleTable* table,
                                         uint32_t height,
                                         uint32_t pixel_format,
                                         uint32_t rights) {
-    if (table == 0 || width == 0 || height == 0 || width > KERNEL_GRAPHICS_SURFACE_MAX_PIXELS / height) {
+    if (table == 0 || width == 0 || height == 0 ||
+        (pixel_format != OS64_PIXEL_FORMAT_RGB && pixel_format != OS64_PIXEL_FORMAT_BGR) ||
+        width > KERNEL_GRAPHICS_SURFACE_MAX_PIXELS / height) {
         return 0;
     }
 
@@ -305,11 +317,15 @@ uint64_t kernel_graphics_surface_create(KernelHandleTable* table,
             continue;
         }
 
-        uint32_t* pixels = (uint32_t*)kmalloc(byte_size);
-        if (pixels == 0) {
+        uint32_t* pixels = 0;
+        uint32_t page_count = 0;
+        if (!kernel_graphics_surface_backing_allocate(i,
+                                                      byte_size,
+                                                      &pixels,
+                                                      &page_count)) {
+            kernel_graphics_surface_backing_release(i);
             return 0;
         }
-        zero_bytes((uint8_t*)pixels, byte_size);
 
         if (!gfx_surface_init(&object->surface,
                               pixels,
@@ -317,8 +333,8 @@ uint64_t kernel_graphics_surface_create(KernelHandleTable* table,
                               height,
                               width,
                               pixel_format,
-                              GFX_SURFACE_FLAG_OWNS_PIXELS)) {
-            kfree(pixels);
+                              GFX_SURFACE_FLAG_PAGE_BACKED)) {
+            kernel_graphics_surface_backing_release(i);
             return 0;
         }
 
@@ -327,6 +343,8 @@ uint64_t kernel_graphics_surface_create(KernelHandleTable* table,
         object->owner_pid = owner_pid;
         object->ref_count = 1;
         object->byte_size = byte_size;
+        object->page_count = page_count;
+        object->backing_slot = i;
 
         uint64_t object_id = make_object_id(i, object->generation);
         uint64_t handle = kernel_handle_alloc(table,

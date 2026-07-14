@@ -54,7 +54,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -94,6 +94,7 @@ KERNEL64_OBJECTS = \
 	./build/input_events64.o \
 	./build/graphics_clip64.o \
 	./build/graphics_surface64.o \
+	./build/surface_backing64.o \
 	./build/graphics_draw64.o \
 	./build/graphics_dirty64.o \
 	./build/graphics_present64.o \
@@ -125,15 +126,20 @@ test-phase1: uefi uefi-diagnostic
 	python3 ./tools/phase1_smoke.py
 test-shutdown: uefi
 	python3 ./tools/acpi_shutdown_smoke.py
-test-graphics-contracts:
+test-graphics-contracts: test-surface-backing-contracts
 	python3 ./tools/graphics_clip_test.py
 	python3 ./tools/graphics_surface_test.py
 	python3 ./tools/graphics_draw_test.py
 	python3 ./tools/graphics_dirty_test.py
 	python3 ./tools/graphics_dirty_present_test.py
 	python3 ./tools/graphics_font_test.py
-test-graphics: test-graphics-contracts test-graphics-demo test-gop-present
+test-graphics: test-graphics-contracts test-surface-backing-smoke test-graphics-demo test-gop-present
 test-graphics-clip: test-graphics-contracts
+test-surface-backing: test-surface-backing-contracts test-surface-backing-smoke
+test-surface-backing-contracts:
+	python3 ./tools/surface_backing_test.py
+test-surface-backing-smoke: uefi
+	python3 ./tools/surface_backing_smoke.py
 test-graphics-demo: uefi
 	python3 ./tools/graphics_demo_smoke.py
 test-gop-present: uefi
@@ -244,7 +250,7 @@ all32:
 ./build/kutil64.o: ./kernel/util/kutil64.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/kernel_diag64.o: ./kernel/process/kernel_diag.cpp ./include/kernel/kernel_diag.h ./include/kernel/process.h
+./build/kernel_diag64.o: ./kernel/process/kernel_diag.cpp ./include/kernel/kernel_diag.h ./include/kernel/process.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/ipc_mailbox64.o: ./kernel/ipc/ipc_mailbox.cpp ./include/kernel/ipc/ipc_mailbox.h ./include/os64/ipc_types.h
@@ -259,7 +265,7 @@ all32:
 ./build/kernel_handle64.o: ./kernel/handle/kernel_handle.cpp ./include/kernel/handle/kernel_handle.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/kernel_objects64.o: ./kernel/handle/kernel_objects.cpp ./include/kernel/handle/kernel_objects.h ./include/kernel/handle/kernel_handle.h ./include/kernel/graphics/graphics2d.h ./include/kernel/mm/vm.h
+./build/kernel_objects64.o: ./kernel/handle/kernel_objects.cpp ./include/kernel/handle/kernel_objects.h ./include/kernel/handle/kernel_handle.h ./include/kernel/graphics/graphics2d.h ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/vm.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/handle/kernel_handle.h ./include/kernel/handle/kernel_objects.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
@@ -292,7 +298,7 @@ all32:
 ./build/apic64.o: ./arch/x86_64/apic.cpp ./include/arch/x86_64/apic.h ./include/kernel/acpi.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/ksh64.o: ./kernel/shell/ksh64.cpp ./include/kernel/pci.h ./include/drivers/gop.h
+./build/ksh64.o: ./kernel/shell/ksh64.cpp ./include/kernel/pci.h ./include/drivers/gop.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/shell/ksh64.cpp -o $@
 
 ./build/driver_manager64.o: ./kernel/driver/driver_manager.cpp ./include/kernel/driver/driver_manager.h
@@ -338,6 +344,9 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/graphics_surface64.o: ./kernel/graphics/graphics_surface.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/surface_backing64.o: ./kernel/graphics/surface_backing.cpp ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/pmm.h ./include/kernel/mm/vm.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/graphics_draw64.o: ./kernel/graphics/graphics_draw.cpp ./include/kernel/graphics/graphics2d.h ./include/kernel/graphics/graphics_font.h ./include/os64/graphics_types.h

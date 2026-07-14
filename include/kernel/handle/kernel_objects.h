@@ -4,12 +4,11 @@
 #include <stdint.h>
 
 #include "kernel/graphics/graphics2d.h"
+#include "kernel/graphics/surface_backing.h"
 #include "kernel/handle/kernel_handle.h"
 
 #define KERNEL_SHARED_MEMORY_MAX_OBJECTS 16u
 #define KERNEL_SHARED_MEMORY_MAX_PAGES 64u
-#define KERNEL_GRAPHICS_SURFACE_MAX_OBJECTS 16u
-#define KERNEL_GRAPHICS_SURFACE_MAX_PIXELS (1920u * 1080u)
 
 #define KERNEL_OBJECT_OK 0
 #define KERNEL_OBJECT_ERR_INVALID (-2)
@@ -23,8 +22,11 @@ typedef OsGraphicsSurfaceHandleInfo KernelGraphicsSurfaceInfo;
 struct KernelObjectStats {
     uint32_t active_shared_memory;
     uint32_t active_surfaces;
+    uint32_t surface_pages;
+    uint32_t reserved;
     uint64_t shared_memory_bytes;
     uint64_t surface_bytes;
+    uint64_t surface_backing_bytes;
 };
 
 void kernel_objects_init();

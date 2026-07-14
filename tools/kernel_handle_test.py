@@ -14,6 +14,7 @@ TEST_SOURCE = r"""
 #include "kernel/handle/kernel_handle.h"
 #include "kernel/handle/kernel_objects.h"
 #include "os64/graphics_types.h"
+#include "kernel_mm_host_stubs.h"
 
 static int failures = 0;
 
@@ -30,6 +31,7 @@ int main() {
 
     KernelHandleTable receiver;
     kernel_handle_table_init(&receiver);
+    host_mm_reset();
     kernel_objects_init();
 
     kernel_fault_injection_reset();
@@ -105,9 +107,40 @@ int main() {
           surface_info.stride_pixels == 32 &&
           surface_info.ref_count == 1);
     check(surface_handle != 0 && kernel_graphics_surface_get(surface_handle->object) != 0);
+    GraphicsSurface* surface_view =
+        surface_handle != 0 ? kernel_graphics_surface_get(surface_handle->object) : 0;
+    check(surface_view != 0 &&
+          (surface_view->flags & GFX_SURFACE_FLAG_PAGE_BACKED) != 0);
+    check(injected_stats.active_surfaces == 0);
+    KernelObjectStats surface_stats;
+    kernel_object_get_stats(&surface_stats);
+    check(surface_stats.active_surfaces == 1 &&
+          surface_stats.surface_pages == 1 &&
+          surface_stats.surface_backing_bytes == VM_PAGE_SIZE);
+    uint64_t surface_phys = kernel_graphics_surface_backing_get_phys(0, 0);
+    check(surface_phys != 0 && *(const uint8_t*)(uintptr_t)surface_phys == 0);
     check(kernel_object_close_handle(&table, surface, 0) == 1);
     check(surface_handle != 0 &&
           kernel_graphics_surface_get_info(surface_handle->object, &surface_info) == KERNEL_OBJECT_ERR_NOT_FOUND);
+    check(host_mm_allocated_pages() == 0 && host_mm_mapped_pages() == 0);
+
+    kernel_fault_injection_arm(KERNEL_FAULT_POINT_PMM, 1);
+    check(kernel_graphics_surface_create(&table,
+                                         42,
+                                         1025,
+                                         1,
+                                         OS64_PIXEL_FORMAT_RGB,
+                                         KERNEL_HANDLE_RIGHT_MAP) == 0);
+    kernel_object_get_stats(&surface_stats);
+    check(surface_stats.active_surfaces == 0 && surface_stats.surface_pages == 0 &&
+          surface_stats.surface_backing_bytes == 0);
+    check(host_mm_allocated_pages() == 0 && host_mm_mapped_pages() == 0);
+    check(kernel_graphics_surface_create(&table,
+                                         42,
+                                         4,
+                                         4,
+                                         99,
+                                         KERNEL_HANDLE_RIGHT_MAP) == 0);
 
     uint64_t file = kernel_handle_alloc(&table,
                                         KERNEL_HANDLE_TYPE_VFS_FILE,
@@ -162,6 +195,8 @@ int main() {
     kernel_fault_injection_get_snapshot(&fault_stats);
     check(fault_stats.points[KERNEL_FAULT_POINT_HANDLE].failures == 1);
     check(fault_stats.points[KERNEL_FAULT_POINT_SHARED_MEMORY].failures == 1);
+    check(fault_stats.points[KERNEL_FAULT_POINT_PMM].failures == 1);
+    host_mm_reset();
     return failures == 0 ? 0 : 1;
 }
 """
@@ -201,11 +236,15 @@ def main() -> int:
             "-DOS64_HOST_TEST",
             "-I",
             str(REPO_ROOT / "include"),
+            "-I",
+            str(REPO_ROOT / "tools/fixtures"),
             str(REPO_ROOT / "kernel/sync/spinlock.cpp"),
             str(REPO_ROOT / "kernel/debug/fault_injection.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_handle.cpp"),
             str(REPO_ROOT / "kernel/handle/kernel_objects.cpp"),
             str(REPO_ROOT / "kernel/graphics/graphics_surface.cpp"),
+            str(REPO_ROOT / "kernel/graphics/surface_backing.cpp"),
+            str(REPO_ROOT / "tools/fixtures/kernel_mm_host_stubs.cpp"),
             str(source_path),
             str(stub_path),
             "-o",

@@ -430,6 +430,10 @@ void print_resource_info() {
     print_hex64(objects.shared_memory_bytes);
     print(" surface_bytes=");
     print_hex64(objects.surface_bytes);
+    print(" surface_pages=");
+    print_hex32(objects.surface_pages);
+    print(" surface_backing_bytes=");
+    print_hex64(objects.surface_backing_bytes);
     print("\npmm_free=");
     print_hex32(pmm.free_blocks);
     print(" pmm_failures=");

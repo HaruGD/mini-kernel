@@ -236,7 +236,7 @@ static void command_help() {
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
-    print("\nrun, resume, service [cmd] [name], usertest, ushell, ushellc");
+    print("\nrun, resume, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
 }
 
 static void print_fault_injection_status() {
@@ -347,6 +347,84 @@ static void command_faulttest() {
     print_hex32(passed);
     print(" expected=0x00000007 result=");
     print(passed == 7 ? "ok" : "failed");
+}
+
+static void command_surfacetest() {
+    uint32_t passed = 0;
+    KernelHandleTable handles;
+    kernel_handle_table_init(&handles);
+    const uint32_t rights = KERNEL_HANDLE_RIGHT_READ |
+                            KERNEL_HANDLE_RIGHT_WRITE |
+                            KERNEL_HANDLE_RIGHT_MAP |
+                            KERNEL_HANDLE_RIGHT_TRANSFER;
+
+    uint64_t warm = kernel_graphics_surface_create(&handles,
+                                                   1,
+                                                   1025,
+                                                   1,
+                                                   OS64_PIXEL_FORMAT_RGB,
+                                                   rights);
+    passed += warm != 0 ? 1u : 0u;
+    passed += warm != 0 && kernel_object_close_handle(&handles, warm, 0) ? 1u : 0u;
+
+    uint32_t pmm_before = pmm_get_free_block_count();
+    KernelObjectStats objects_before;
+    kernel_object_get_stats(&objects_before);
+
+    uint64_t handle = kernel_graphics_surface_create(&handles,
+                                                     1,
+                                                     1025,
+                                                     1,
+                                                     OS64_PIXEL_FORMAT_RGB,
+                                                     rights);
+    passed += handle != 0 ? 1u : 0u;
+    KernelHandle* resolved = kernel_handle_resolve(&handles,
+                                                   handle,
+                                                   KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+                                                   KERNEL_HANDLE_RIGHT_MAP);
+    GraphicsSurface* surface =
+        resolved != 0 ? kernel_graphics_surface_get(resolved->object) : 0;
+    passed += surface != 0 && gfx_surface_is_valid(surface) &&
+              (surface->flags & GFX_SURFACE_FLAG_PAGE_BACKED) != 0 ? 1u : 0u;
+
+    KernelGraphicsSurfaceInfo info;
+    KernelObjectStats objects_live;
+    int info_ok = resolved != 0 &&
+                  kernel_graphics_surface_get_info(resolved->object, &info) == KERNEL_OBJECT_OK;
+    kernel_object_get_stats(&objects_live);
+    passed += info_ok && info.width == 1025 && info.height == 1 &&
+              info.byte_size == 4100 && objects_live.active_surfaces == 1 &&
+              objects_live.surface_pages == 2 &&
+              objects_live.surface_backing_bytes == 2 * VM_PAGE_SIZE ? 1u : 0u;
+
+    passed += surface != 0 && surface->pixels[0] == 0 && surface->pixels[1024] == 0 ? 1u : 0u;
+    if (surface != 0) {
+        OsRect bounds = {0, 0, 1025, 1};
+        gfx_fill_rect(surface, &bounds, 0x00123456);
+    }
+    passed += surface != 0 && surface->pixels[0] == 0x00123456 &&
+              surface->pixels[1024] == 0x00123456 ? 1u : 0u;
+
+    passed += handle != 0 && kernel_object_close_handle(&handles, handle, 0) ? 1u : 0u;
+    KernelObjectStats objects_after;
+    KernelGraphicsSurfaceBackingStats backing_after;
+    kernel_object_get_stats(&objects_after);
+    kernel_graphics_surface_backing_get_stats(&backing_after);
+    passed += pmm_before == pmm_get_free_block_count() &&
+              objects_before.active_surfaces == objects_after.active_surfaces &&
+              objects_before.surface_pages == objects_after.surface_pages &&
+              objects_before.surface_backing_bytes == objects_after.surface_backing_bytes &&
+              backing_after.active_backings == 0 && backing_after.mapped_pages == 0 &&
+              backing_after.unmap_failures == 0 ? 1u : 0u;
+
+    print("\nSURFACETEST passed=");
+    print_hex32(passed);
+    print(" expected=0x00000009 result=");
+    print(passed == 9 ? "ok" : "failed");
+    print(" pmm_before=");
+    print_hex32(pmm_before);
+    print(" pmm_after=");
+    print_hex32(pmm_get_free_block_count());
 }
 
 static void command_input() {
@@ -932,6 +1010,8 @@ static void execute_command() {
         command_faultinject(arg);
     } else if (strcmp64(cmd, "faulttest") == 0) {
         command_faulttest();
+    } else if (strcmp64(cmd, "surfacetest") == 0) {
+        command_surfacetest();
     } else if (strcmp64(cmd, "drivers") == 0) {
         command_drivers();
     } else if (strcmp64(cmd, "bindings") == 0) {

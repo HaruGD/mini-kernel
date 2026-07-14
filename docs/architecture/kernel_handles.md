@@ -61,8 +61,12 @@ requested size, allocated page count, rights, generation, and refcount.
 
 `kernel_graphics_surface_create()` allocates a bounded 32-bit pixel surface and
 returns a handle that can be passed to future compositor or graphics service
-code. The object records owner PID, dimensions, stride, pixel format, byte
-size, generation, and refcount.
+code. Surface pixels are zero-filled PMM pages, not kernel-heap storage.
+Non-contiguous physical pages are mapped into a fixed per-object kernel virtual
+slot so the software renderer retains a linear pixel view. The object records
+owner PID, dimensions, stride, pixel format, logical byte size, backing page
+count, generation, and refcount. Closing the final reference unmaps the kernel
+view and returns every backing page.
 
 Both object families use generation-checked object IDs internally, so stale
 handle entries cannot resurrect destroyed object slots.
