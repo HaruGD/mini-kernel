@@ -26,13 +26,13 @@ that records those immutable implementation commit hashes.
 | 4A: Page-backed surface foundation | Complete | 2026-07-14 | 2026-07-14 | `196339c` | [record](#4a-page-backed-surface-foundation) |
 | 4B: Surface ABI, mapping, and transfer rights | Complete | 2026-07-15 | 2026-07-15 | `b14bca1` | [record](#4b-surface-abi-mapping-and-transfer-rights) |
 | 4C: Display-service present path | Complete | 2026-07-15 | 2026-07-15 | `23ee0f0` | [record](#4c-display-service-present-path) |
-| 4D: Single-window bring-up | Planned | - | - | - | - |
+| 4D: Single-window bring-up | Complete | 2026-07-15 | 2026-07-15 | `231f27e` | [record](#4d-single-window-bring-up) |
 | 4E: Multiwindow compositor | Planned | - | - | - | - |
 | 4F: Input routing and focus | Planned | - | - | - | - |
 | 4G: Window SDK and first GUI application | Planned | - | - | - | - |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Current work: Phase 4C is complete. Phase 4D remains Planned.
+Current work: Phase 4D is complete. Phase 4E remains Planned.
 
 ## Recording Workflow
 
@@ -277,12 +277,80 @@ notes or issue tracker until corrected.
 
 ### Remaining
 
-- `windowd`, its one-client protocol, composition surface, display reconnect,
-  and full-frame resubmission belong to Phase 4D;
 - general multiwindow damage composition and input focus routing remain in
   Phases 4E and 4F;
 - the explicit direct-graphics diagnostic exceptions remain until their tests
   are migrated to the complete service pipeline.
+
+## 4D: Single-Window Bring-Up
+
+- Status: Complete
+- Started: 2026-07-15
+- Completed: 2026-07-15
+- Implementation commit: `231f27ed90322bc6c40d8a6c6801d88ddb463212`
+
+### Delivered
+
+- added the supervised `windowd_c.elf` service with a registered `window`
+  identity, a dependency on `display`, and a GUI-service permission profile
+  that has no direct `DISPLAY` authority;
+- added a bounded window ABI and split server implementation for protocol
+  validation, single-window state, opaque full-screen composition, and the
+  input-routing boundary reserved for Phase 4F;
+- implemented one-client `CREATE -> SET_SURFACE -> DAMAGE -> DESTROY` with
+  exact PID/process-generation ownership, window/content generations,
+  correlated replies, read-only surface transfer, and full-frame damage;
+- made surface replacement transactional across display acknowledgement,
+  rejected stale, malformed, and wrong-owner requests, and retained the last
+  composed frame while cleaning an unexpectedly exited owner;
+- tracked display-service identity changes and marked the retained full frame
+  for resubmission after reconnect; the source/host contract verifies this
+  state path, while display crash/restart behavior remains exercised by the
+  existing display-service QEMU smoke;
+- added a restricted deterministic window client, real pixel probes, lifecycle
+  and owner-exit QEMU coverage, host protocol/state/compositor tests, service
+  integration, and full regression wiring;
+- expanded bounded execution slots safely, fixed higher-slot address
+  calculation, reaped orphaned returned children, and allowed the FAT32 root
+  directory to span multiple clusters for the additional service image.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make clean && make -j2 uefi` | PASS | Clean kernel, SDK, userland, drivers, FAT32, and ESP build with zero compiler warnings. |
+| `make test-window-single` | PASS | Host protocol/state/compositor and authority checks plus supervised QEMU lifecycle, pixel, and unexpected-owner-exit cleanup passed. |
+| `make test-display-present test-process-lifecycle test-ipc-contracts test-abi-freeze` | PASS | Earlier display restart, process cleanup, IPC rights, and frozen ABI contracts remained intact. |
+| `make test-service-manager-smoke test-first-services` | PASS | Supervision, dependency, permission, health, restart, and existing input/display discovery behavior remained intact. |
+| `make test-closure` | PASS in 515.74 seconds | SDK 91/91; boot, driver, graphics, input, IPC, services, concurrency, fault injection, Phase 4D, and 60-second service soak with 42 cycles passed. |
+
+### Resource Accounting
+
+- active supervised baseline and every post-client sample matched at
+  `processes=4 mappings=21 handles=1 mailboxes=0 services=4 shared=0 surfaces=1`;
+- the remaining handle and surface are the long-lived `windowd` composition
+  surface; every transferred client surface, client mapping, and client handle
+  was released after normal destroy and unexpected owner exit;
+- the deterministic 800x600 frame contained 245,904 base-color pixels,
+  120,000 secondary-color pixels, and 30,000 damage-highlight pixels despite
+  concurrent terminal output;
+- three complete measured client lifecycles covered unexpected exit, normal
+  destroy, and a second unexpected exit with identical warmed/final resource
+  samples;
+- the aggregate 60-second service soak completed 42 cycles without reported
+  drift;
+- unexplained transient window-resource drift: zero.
+
+### Remaining
+
+- multiple simultaneous windows, bounded z-order, per-window position and
+  clipping, damage accumulation, and selective recomposition are Phase 4E;
+- keyboard/pointer forwarding, focus transitions, and stale-focus rejection
+  remain Phase 4F;
+- the public high-level window SDK and first event-driven GUI application are
+  Phase 4G work;
+- dedicated QEMU `windowd` crash/reconnect fault injection and GUI soak closure
+  remain Phase 4H gates; Phase 4D does not claim that scenario as tested.
 
 ## Phase Milestones
 

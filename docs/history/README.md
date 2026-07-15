@@ -12,6 +12,7 @@ recorded state.
 | 2026-07-12 | [Phase 3.5 stabilization complete](phase-3.5/README.md) | `phase-3.5-complete` | `27e18e3` | 150 | 351 | 47,906 |
 | 2026-07-13 | [Phase 3.6 driver packaging complete](phase-3.6/README.md) | `phase-3.6-complete` | `5107211` | 154 | 361 | 49,563 |
 | 2026-07-13 | [Phase 4 entry baseline](phase-4-entry/README.md) | `phase-4-entry` | `53053a6` | 155 | 365 | 50,092 |
+| 2026-07-15 | [First supervised window](first-window/README.md) | `first-window` | `231f27e` | 168 | 416 | 57,217 |
 
 The documentation reorganization immediately after the Phase 4 entry baseline
 is commit `b553657` (`156` commits, `366` tracked files, and `50,139` total
