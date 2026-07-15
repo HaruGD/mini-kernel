@@ -495,6 +495,26 @@ static uint64_t dispatch_process_identity(uint64_t user_identity_address) {
     return 0;
 }
 
+static uint64_t dispatch_process_identity_alive(uint64_t pid,
+                                                uint64_t generation) {
+    if (!current_process_has(OS_PROCESS_PERMISSION_MANAGE_CHILD)) {
+        return permission_denied();
+    }
+    if (pid == 0 || generation == 0 || pid > UINT32_MAX ||
+        generation > UINT32_MAX) {
+        return invalid_argument();
+    }
+    ProcessIdentity identity;
+    identity.pid = (uint32_t)pid;
+    identity.generation = (uint32_t)generation;
+    Process* process = find_process_by_identity(identity);
+    if (process == 0 || process->state == PROCESS_STATE_RETURNED ||
+        process->state == PROCESS_STATE_FAILED) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    }
+    return 0;
+}
+
 static uint64_t dispatch_graphics(uint64_t syscall_no,
                                   uint64_t arg1,
                                   uint64_t arg2,
@@ -859,6 +879,10 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_GET_PROCESS_IDENTITY) {
         *result = dispatch_process_identity(arg1);
+        return true;
+    }
+    if (syscall_no == SYS_PROCESS_IDENTITY_ALIVE) {
+        *result = dispatch_process_identity_alive(arg1, arg2);
         return true;
     }
     if (syscall_no == SYS_SURFACE_CREATE) {

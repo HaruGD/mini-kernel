@@ -32,6 +32,7 @@ permission mask.
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
 - Surfaces: page-backed create, metadata query, process-local map/unmap, and close
 - Display service: correlated full-frame or bounded partial-damage surface present
+- Window ABI types: single-window create, surface replace, damage, destroy, and reply
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
@@ -89,6 +90,13 @@ Phase 4C adds the display-service protocol and real-screen integration suite:
 
 ```sh
 make test-display-present
+```
+
+Phase 4D adds the frozen window protocol types and single-window integration
+suite. The complete public convenience API remains Phase 4G work:
+
+```sh
+make test-window-single
 ```
 
 Applications create a surface with `os_surface_create`, map it with
@@ -193,12 +201,21 @@ space. ABI v2 adds formal lifecycle states, health/failure reporting, bounded
 restart, dependency validation, and static process permissions. The dependency
 table starts `base` before `demo`.
 
+`os_process_identity_alive` is restricted to processes with
+`MANAGE_CHILD`; `windowd` uses it to release a transferred client surface when
+the owning PID plus generation exits. Ordinary GUI applications do not have
+this permission.
+
 `inputd_c.elf` remains the initial input service. `displayd_c.elf` is the
 supervised physical-display service: it answers display-info queries and
 accepts the versioned begin/damage/commit protocol described in
 `docs/reference/display_service.md`. `usvcprobe_c.elf` discovers both services
 through the registry and verifies request/reply status without special kernel
 policy.
+
+`windowd_c.elf` is the supervised `window` service and depends on `display`.
+Its Phase 4D one-client protocol and authority boundary are documented in
+`docs/reference/window_service.md`.
 
 The full Phase 2 closure matrix is documented in
 `docs/phases/phase-2/regression_matrix.md`.

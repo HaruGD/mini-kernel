@@ -220,10 +220,19 @@ def main() -> int:
     fat = bytearray(sectors_per_fat * BYTES_PER_SECTOR)
     set_fat32_entry(fat, 0, 0x0FFFFFF8)
     set_fat32_entry(fat, 1, 0x0FFFFFFF)
-    set_fat32_entry(fat, ROOT_CLUSTER, 0x0FFFFFFF)
+    root_entry_count = sum(
+        len(make_lfn_entries(spec.image_name, 0)) + 1 for spec in specs
+    )
+    root_bytes_required = (root_entry_count + 1) * 32
+    cluster_size = BYTES_PER_SECTOR * SECTORS_PER_CLUSTER
+    root_cluster_count = max(1, math.ceil(root_bytes_required / cluster_size))
+    for index in range(root_cluster_count):
+        cluster = ROOT_CLUSTER + index
+        value = 0x0FFFFFFF if index + 1 == root_cluster_count else cluster + 1
+        set_fat32_entry(fat, cluster, value)
 
     root_entries: list[bytes] = []
-    next_cluster = ROOT_CLUSTER + 1
+    next_cluster = ROOT_CLUSTER + root_cluster_count
     used_aliases: set[bytes] = set()
 
     for index, spec in enumerate(specs, start=1):
@@ -247,10 +256,10 @@ def main() -> int:
         root_entries.append(make_dir_entry(alias, 0x20, first_cluster, len(data)))
         write_file_data(image, data_start_sector, first_cluster, data)
 
-    root_capacity = BYTES_PER_SECTOR * SECTORS_PER_CLUSTER
+    root_capacity = cluster_size * root_cluster_count
     root_bytes = b"".join(root_entries)
     if len(root_bytes) + 32 > root_capacity:
-        raise SystemExit("root directory does not fit in one FAT32 cluster")
+        raise SystemExit("root directory allocation is too small")
     root_start = cluster_offset(data_start_sector, ROOT_CLUSTER)
     image[root_start:root_start + len(root_bytes)] = root_bytes
 

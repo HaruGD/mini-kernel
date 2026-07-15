@@ -1,5 +1,7 @@
 #include <os64/os64.h>
 
+int window_demo_main(int argc, char** argv);
+
 static int query_display(OsProcessIdentity* display,
                          OsDisplayServiceInfoReply* info) {
     long result = os_service_find_owner_identity("display", display);
@@ -148,6 +150,16 @@ static int run_display_present_client(void) {
 
 int main(int argc, char** argv) {
     char cwd[OS_PATH_MAX];
+
+    if (argc == 2 &&
+        (os_streq(argv[1], "window-present") ||
+         os_streq(argv[1], "window-hold") ||
+         os_streq(argv[1], "window-exit") ||
+         os_streq(argv[1], "window-present-client") ||
+         os_streq(argv[1], "window-hold-client") ||
+         os_streq(argv[1], "window-exit-client"))) {
+        return window_demo_main(argc, argv);
+    }
 
     if (argc == 2 && os_streq(argv[1], "display-present-client")) {
         return run_display_present_client();

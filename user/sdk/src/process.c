@@ -19,6 +19,15 @@ long os_get_process_identity(OsProcessIdentity* identity) {
     return os_syscall1(OS_SYS_GET_PROCESS_IDENTITY, (long)identity);
 }
 
+long os_process_identity_alive(OsProcessIdentity identity) {
+    if (identity.pid == 0 || identity.generation == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall2(OS_SYS_PROCESS_IDENTITY_ALIVE,
+                       identity.pid,
+                       identity.generation);
+}
+
 long os_run(const char* command) {
     return os_syscall1(OS_SYS_RUN, (long)command);
 }

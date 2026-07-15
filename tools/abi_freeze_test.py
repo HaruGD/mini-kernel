@@ -16,6 +16,7 @@ HEADERS = (
     "service_protocol_types.h",
     "service_manager_types.h",
     "surface_types.h",
+    "window_types.h",
 )
 
 
@@ -36,6 +37,7 @@ def source(cxx: bool) -> str:
 {assertions}(OS64_SERVICE_PROTOCOL_ABI_VERSION == 2u, "service protocol ABI version changed");
 {assertions}(OS64_SERVICE_MANAGER_ABI_VERSION == 2u, "service manager ABI version changed");
 {assertions}(OS64_SURFACE_ABI_VERSION == 1u, "surface ABI version changed");
+{assertions}(OS64_WINDOW_ABI_VERSION == 1u, "window ABI version changed");
 {assertions}(OS_SURFACE_MAP_VALID_MASK == 3u, "surface map flags changed");
 {assertions}(OS_SURFACE_TRANSFER_RIGHTS == (OS_HANDLE_RIGHT_READ | OS_HANDLE_RIGHT_MAP),
              "surface transfer rights changed");

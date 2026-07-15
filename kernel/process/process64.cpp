@@ -715,6 +715,10 @@ static void process_finish(Process* process,
     parent_identity.pid = parent_pid;
     parent_identity.generation = parent_generation;
     Process* parent = find_process_by_identity(parent_identity);
+    if (parent == 0 || parent->state == PROCESS_STATE_RETURNED ||
+        parent->state == PROCESS_STATE_FAILED) {
+        process->reaped = 1;
+    }
     process_wait_signal(parent, PROCESS_WAIT_CHILD, PROCESS_WAIT_OK);
 }
 

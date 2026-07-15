@@ -128,19 +128,10 @@ static int allocate_execution_slot(uint32_t* slot_index_out) {
 }
 
 static void get_execution_slot_bases(uint32_t slot_index, uint64_t* code_base, uint64_t* stack_base) {
-    uint64_t code = USER_SLOT0_CODE_BASE;
-    uint64_t stack = USER_SLOT0_STACK_BASE;
-
-    if (slot_index == 1) {
-        code = USER_SLOT1_CODE_BASE;
-        stack = USER_SLOT1_STACK_BASE;
-    } else if (slot_index == 2) {
-        code = USER_SLOT2_CODE_BASE;
-        stack = USER_SLOT2_STACK_BASE;
-    } else if (slot_index == 3) {
-        code = USER_SLOT3_CODE_BASE;
-        stack = USER_SLOT3_STACK_BASE;
-    }
+    uint64_t code = USER_SLOT0_CODE_BASE +
+        (uint64_t)slot_index * USER_SLOT_SPAN;
+    uint64_t stack = USER_SLOT0_STACK_BASE +
+        (uint64_t)slot_index * USER_SLOT_SPAN;
 
     if (code_base != 0) {
         *code_base = code;
