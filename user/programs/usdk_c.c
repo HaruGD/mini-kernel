@@ -157,7 +157,10 @@ int main(int argc, char** argv) {
          os_streq(argv[1], "window-exit") ||
          os_streq(argv[1], "window-present-client") ||
          os_streq(argv[1], "window-hold-client") ||
-         os_streq(argv[1], "window-exit-client"))) {
+         os_streq(argv[1], "window-exit-client") ||
+         os_streq(argv[1], "window-multi") ||
+         os_streq(argv[1], "window-multi-back-client") ||
+         os_streq(argv[1], "window-multi-front-client"))) {
         return window_demo_main(argc, argv);
     }
 

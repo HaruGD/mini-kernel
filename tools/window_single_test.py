@@ -84,31 +84,35 @@ int main(void) {
     check(window_protocol_validate_destroy(&destroy) == OS_ERR_INVALID_ARGUMENT,
           "destroy reserved field");
 
-    WindowSingleState state;
+    WindowTable state;
     OsProcessIdentity owner = {20, 3};
     OsProcessIdentity attacker = {21, 4};
     window_state_init(&state);
-    check(window_state_can_create(&state, owner, 1) == OS_SUCCESS,
+    check(window_state_can_create(&state, owner, 1, 4, 3) == OS_SUCCESS,
           "empty state accepts create");
-    window_state_commit_create(&state, owner, 1);
-    check(state.active && state.window_id == OS_WINDOW_ID_FULLSCREEN &&
-          state.window_generation == 1, "create commit");
-    check(window_state_can_create(&state, attacker, 1) == OS_ERR_NO_RESOURCES,
-          "one-client bound");
-    check(window_state_validate_target(&state, attacker, 1, 1) ==
+    WindowEntry* entry = window_state_commit_create(&state, owner, 1,
+                                                     0, 0, 4, 3);
+    check(entry != NULL && entry->active &&
+          entry->window_id == OS_WINDOW_ID_FULLSCREEN &&
+          entry->window_generation == 1, "create commit");
+    WindowEntry* found = NULL;
+    check(window_state_validate_target(&state, attacker, 1, 1, &found) ==
           OS_ERR_PERMISSION_DENIED, "wrong owner denied");
-    check(window_state_validate_target(&state, owner, 1, 2) == OS_ERR_NOT_FOUND,
+    check(window_state_validate_target(&state, owner, 1, 2, &found) ==
+          OS_ERR_NOT_FOUND,
           "stale generation denied");
-    check(window_state_validate_content(&state, owner, 1, 1, 1) ==
+    check(window_state_validate_content(&state, owner, 1, 1, 1, &found) ==
           OS_ERR_ALREADY_EXISTS, "duplicate content denied");
-    check(window_state_validate_content(&state, owner, 1, 1, 2) == OS_SUCCESS,
+    check(window_state_validate_content(&state, owner, 1, 1, 2, &found) ==
+          OS_SUCCESS,
           "new content accepted");
-    window_state_commit_content(&state, 2);
-    check(state.accepted_content_generation == 2, "content commit");
-    window_state_destroy(&state);
-    check(!state.active && state.owner.pid == 0, "destroy cleanup");
-    window_state_commit_create(&state, attacker, 1);
-    check(state.window_generation == 2, "window generation advances");
+    window_state_commit_content(entry, 2);
+    check(entry->accepted_content_generation == 2, "content commit");
+    window_state_destroy(&state, entry);
+    check(!entry->active && entry->owner.pid == 0, "destroy cleanup");
+    entry = window_state_commit_create(&state, attacker, 1, 0, 0, 4, 3);
+    check(entry != NULL && entry->window_generation == 2,
+          "window generation advances");
 
     const uint32_t source[6] = {
         0xFF112233u, 0x00445566u, 0,

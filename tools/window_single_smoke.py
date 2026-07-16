@@ -245,8 +245,8 @@ def main() -> int:
             "[window-client] DAMAGE ACK",
             "[window-client] DESTROY ACK",
             "[windowd] created id=",
-            "[windowd] surface replaced content=",
-            "[windowd] damage accepted content=",
+            "[windowd] surface replaced id=",
+            "[windowd] damage accepted id=",
             "[windowd] destroyed id=",
         )
         happy_log = serial_bytes()[happy:complete].decode(errors="replace")

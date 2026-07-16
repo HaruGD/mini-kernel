@@ -7,17 +7,46 @@
 
 #define WINDOW_FRAME_DEADLINE_TICKS 10u
 #define WINDOW_PRESENT_TIMEOUT_TICKS 50u
+#define WINDOW_BACKGROUND_COLOR OS_RGB(12, 16, 24)
 
-static WindowSingleState window_state;
+typedef struct WindowSurfaceSlot {
+    OsHandle handle;
+    OsGraphicsSurfaceHandleInfo info;
+} WindowSurfaceSlot;
+
+typedef struct WindowSurfaceCandidate {
+    OsHandle handle;
+    const uint32_t* pixels;
+    OsGraphicsSurfaceHandleInfo info;
+} WindowSurfaceCandidate;
+
+typedef struct WindowDamageTransaction {
+    uint32_t active;
+    OsProcessIdentity sender;
+    uint32_t request_id;
+    uint32_t window_id;
+    uint32_t window_generation;
+    uint32_t content_generation;
+    uint32_t submission_id;
+    uint32_t rect_count;
+    uint32_t chunk_count;
+    uint32_t next_chunk;
+    uint32_t received_rects;
+    uint32_t started_ticks;
+    OsRect rects[OS_WINDOW_DAMAGE_MAX_RECTS];
+} WindowDamageTransaction;
+
+static WindowTable window_table;
 static WindowInputRouter input_router;
+static WindowSurfaceSlot window_surfaces[OS_WINDOW_MAX_WINDOWS];
+static WindowCompositorSource compositor_sources[OS_WINDOW_MAX_WINDOWS];
+static WindowDamageAccumulator screen_damage;
+static WindowDamageTransaction damage_transaction;
 static OsProcessIdentity display_owner;
 static OsGraphicsInfo display_info;
 static OsHandle composite_surface;
 static uint32_t* composite_pixels;
 static OsGraphicsSurfaceHandleInfo composite_info;
-static OsHandle client_surface;
-static const uint32_t* client_pixels;
-static OsGraphicsSurfaceHandleInfo client_info;
 static uint32_t next_frame_generation;
 static uint32_t pending_full_frame;
 
@@ -42,14 +71,35 @@ static void close_message_handles(const OsIpcMessageV2* message) {
     }
 }
 
-static void release_client_surface(void) {
-    if (client_pixels != 0 && client_surface != 0) {
-        os_surface_unmap(client_surface, (void*)client_pixels);
+static void release_surface_values(OsHandle handle, const uint32_t* pixels) {
+    if (handle != 0 && pixels != 0) {
+        os_surface_unmap(handle, (void*)pixels);
     }
-    client_pixels = 0;
-    close_handle(client_surface);
-    client_surface = 0;
-    os_memset(&client_info, 0, sizeof(client_info));
+    close_handle(handle);
+}
+
+static void release_window_surface(uint32_t slot) {
+    if (slot >= OS_WINDOW_MAX_WINDOWS) {
+        return;
+    }
+    release_surface_values(window_surfaces[slot].handle,
+                           compositor_sources[slot].pixels);
+    window_surfaces[slot].handle = 0;
+    os_memset(&window_surfaces[slot].info, 0,
+              sizeof(window_surfaces[slot].info));
+    compositor_sources[slot].pixels = 0;
+    compositor_sources[slot].stride_pixels = 0;
+}
+
+static void install_window_surface(uint32_t slot,
+                                   const WindowSurfaceCandidate* candidate) {
+    if (slot >= OS_WINDOW_MAX_WINDOWS || candidate == 0) {
+        return;
+    }
+    window_surfaces[slot].handle = candidate->handle;
+    window_surfaces[slot].info = candidate->info;
+    compositor_sources[slot].pixels = candidate->pixels;
+    compositor_sources[slot].stride_pixels = candidate->info.stride_pixels;
 }
 
 static void release_composite_surface(void) {
@@ -111,10 +161,23 @@ static long refresh_display_owner(void) {
         display_owner = current;
         pending_full_frame = 1;
         os_printf("[windowd] display connected pid=%u generation=%u\n",
-                  current.pid,
-                  current.generation);
+                  current.pid, current.generation);
     }
     return OS_SUCCESS;
+}
+
+static long compose_pending(void) {
+    if (screen_damage.count == 0) {
+        return OS_SUCCESS;
+    }
+    return window_compositor_compose(composite_pixels,
+                                     composite_info.stride_pixels,
+                                     display_info.width,
+                                     display_info.height,
+                                     WINDOW_BACKGROUND_COLOR,
+                                     &window_table,
+                                     compositor_sources,
+                                     &screen_damage);
 }
 
 static long present_composite(void) {
@@ -126,23 +189,43 @@ static long present_composite(void) {
     if (generation == 0) {
         generation = next_frame_generation++;
     }
+    const OsRect* rects = screen_damage.rects;
+    uint32_t rect_count = screen_damage.count;
+    if (pending_full_frame || screen_damage.full_screen) {
+        rects = 0;
+        rect_count = 0;
+    }
     OsDisplayPresentReply reply;
     result = os_display_present(display_owner,
                                 composite_surface,
                                 generation,
-                                0,
-                                0,
+                                rects,
+                                rect_count,
                                 WINDOW_PRESENT_TIMEOUT_TICKS,
                                 &reply);
     if (result < 0 || reply.accepted_generation != generation) {
         pending_full_frame = 1;
         return result < 0 ? result : OS_ERR_BAD_BUFFER;
     }
+    os_printf("[windowd] frame ACK generation=%u windows=%u damage=%u\n",
+              generation, window_table.count,
+              rect_count == 0 ? 1u : rect_count);
     pending_full_frame = 0;
-    os_printf("[windowd] frame ACK generation=%u window=%u\n",
-              generation,
-              window_state.active ? window_state.window_id : 0);
+    window_damage_reset(&screen_damage);
     return OS_SUCCESS;
+}
+
+static long compose_and_present(void) {
+    long result = compose_pending();
+    return result < 0 ? result : present_composite();
+}
+
+static void rebuild_composite(void) {
+    window_damage_full(&screen_damage);
+    if (compose_pending() < 0) {
+        return;
+    }
+    pending_full_frame = 1;
 }
 
 static void send_window_reply(OsProcessIdentity target,
@@ -210,93 +293,135 @@ static long validate_surface(OsHandle surface,
                              uint32_t height,
                              uint32_t stride_pixels,
                              uint32_t pixel_format,
-                             OsGraphicsSurfaceHandleInfo* info,
-                             const uint32_t** pixels) {
-    if (surface == 0 || info == 0 || pixels == 0 ||
-        os_surface_get_info(surface, info) < 0 ||
-        info->width != display_info.width || info->height != display_info.height ||
-        width != info->width || height != info->height ||
-        stride_pixels != info->stride_pixels || pixel_format != info->pixel_format ||
+                             WindowSurfaceCandidate* candidate) {
+    if (surface == 0 || candidate == 0 || width == 0 || height == 0 ||
+        width > display_info.width || height > display_info.height) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    candidate->handle = surface;
+    candidate->pixels = 0;
+    if (os_surface_get_info(surface, &candidate->info) < 0 ||
+        candidate->info.width != width || candidate->info.height != height ||
+        candidate->info.stride_pixels != stride_pixels ||
+        candidate->info.pixel_format != pixel_format ||
         pixel_format != display_info.format) {
         return OS_ERR_INVALID_ARGUMENT;
     }
-    *pixels = (const uint32_t*)os_surface_map(surface, OS_SURFACE_MAP_READ);
-    return *pixels != 0 ? OS_SUCCESS : OS_ERR_PERMISSION_DENIED;
+    candidate->pixels = (const uint32_t*)os_surface_map(surface,
+                                                         OS_SURFACE_MAP_READ);
+    return candidate->pixels != 0 ? OS_SUCCESS : OS_ERR_PERMISSION_DENIED;
+}
+
+static void release_candidate(WindowSurfaceCandidate* candidate) {
+    if (candidate == 0) {
+        return;
+    }
+    release_surface_values(candidate->handle, candidate->pixels);
+    candidate->handle = 0;
+    candidate->pixels = 0;
+}
+
+static int request_matches(const OsIpcMessageV2* message,
+                           uint32_t request_id) {
+    return request_id != 0 && request_id == message->request_id;
 }
 
 static void handle_create(const OsIpcMessageV2* message) {
     OsProcessIdentity sender = os_msg_v2_sender_identity(message);
-    OsWindowCreateRequest request;
-    if (message->length != sizeof(request) || message->handle_count != 1 ||
+    uint32_t request_id = message->request_id;
+    uint32_t content_generation = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t stride = 0;
+    uint32_t format = 0;
+    int32_t x = 0;
+    int32_t y = 0;
+    long result = OS_ERR_INVALID_ARGUMENT;
+    if (message->handle_count != 1 ||
         !(message->flags & OS_IPC_FLAG_HAS_HANDLES)) {
         close_message_handles(message);
-        send_window_reply(sender, message->request_id, OS_WINDOW_CREATE,
-                          OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
+        send_window_reply(sender, request_id, OS_WINDOW_CREATE, result, 0, 0, 0);
         return;
     }
-    os_memcpy(&request, message->payload, sizeof(request));
-    long result = window_protocol_validate_create(&request);
-    if (result == OS_SUCCESS && request.request_id != message->request_id) {
+    if (message->length == sizeof(OsWindowCreateRequest)) {
+        OsWindowCreateRequest request;
+        os_memcpy(&request, message->payload, sizeof(request));
+        result = window_protocol_validate_create(&request);
+        request_id = request.request_id;
+        content_generation = request.content_generation;
+        width = request.width;
+        height = request.height;
+        stride = request.stride_pixels;
+        format = request.pixel_format;
+    } else if (message->length == sizeof(OsWindowCreateGeometryRequest)) {
+        OsWindowCreateGeometryRequest request;
+        os_memcpy(&request, message->payload, sizeof(request));
+        result = window_protocol_validate_create_geometry(&request);
+        request_id = request.request_id;
+        content_generation = request.content_generation;
+        x = request.x;
+        y = request.y;
+        width = request.width;
+        height = request.height;
+        stride = request.stride_pixels;
+        format = request.pixel_format;
+    }
+    if (result == OS_SUCCESS && !request_matches(message, request_id)) {
         result = OS_ERR_INVALID_ARGUMENT;
     }
     if (result == OS_SUCCESS) {
-        result = window_state_can_create(&window_state,
-                                         sender,
-                                         request.content_generation);
+        result = window_state_can_create(&window_table, sender,
+                                         content_generation, width, height);
     }
-    OsGraphicsSurfaceHandleInfo candidate_info;
-    const uint32_t* candidate_pixels = 0;
+    WindowSurfaceCandidate candidate;
+    os_memset(&candidate, 0, sizeof(candidate));
+    uint32_t candidate_released = 0;
     if (result == OS_SUCCESS) {
-        result = validate_surface(message->handles[0],
-                                  request.width,
-                                  request.height,
-                                  request.stride_pixels,
-                                  request.pixel_format,
-                                  &candidate_info,
-                                  &candidate_pixels);
+        result = validate_surface(message->handles[0], width, height, stride,
+                                  format, &candidate);
     }
+    WindowEntry* entry = 0;
+    uint32_t slot = OS_WINDOW_MAX_WINDOWS;
     if (result == OS_SUCCESS) {
-        result = window_compositor_copy_full(composite_pixels,
-                                             composite_info.stride_pixels,
-                                             candidate_pixels,
-                                             candidate_info.stride_pixels,
-                                             display_info.width,
-                                             display_info.height);
-    }
-    if (result == OS_SUCCESS) {
-        pending_full_frame = 1;
-        result = present_composite();
+        entry = window_state_commit_create(&window_table, sender,
+                                           content_generation, x, y,
+                                           width, height);
+        if (entry == 0) {
+            result = OS_ERR_NO_RESOURCES;
+        } else {
+            slot = window_state_slot(&window_table, entry);
+            install_window_surface(slot, &candidate);
+            window_damage_add_screen(&screen_damage,
+                                     window_state_screen_rect(entry));
+            result = compose_and_present();
+        }
     }
     if (result < 0) {
-        if (candidate_pixels != 0) {
-            os_surface_unmap(message->handles[0], (void*)candidate_pixels);
+        if (entry != 0) {
+            window_state_destroy(&window_table, entry);
+            release_window_surface(slot);
+            candidate.handle = 0;
+            candidate.pixels = 0;
+            candidate_released = 1;
+            rebuild_composite();
+        } else if (candidate.handle != 0) {
+            release_candidate(&candidate);
+            candidate_released = 1;
         }
-        close_handle(message->handles[0]);
-        window_compositor_clear(composite_pixels,
-                                composite_info.stride_pixels,
-                                display_info.width,
-                                display_info.height,
-                                0);
-        send_window_reply(sender, request.request_id, OS_WINDOW_CREATE,
+        if (!candidate_released) {
+            close_handle(message->handles[0]);
+        }
+        send_window_reply(sender, request_id, OS_WINDOW_CREATE,
                           (int32_t)result, 0, 0, 0);
         return;
     }
-    client_surface = message->handles[0];
-    client_pixels = candidate_pixels;
-    client_info = candidate_info;
-    window_state_commit_create(&window_state, sender, request.content_generation);
-    send_window_reply(sender,
-                      request.request_id,
-                      OS_WINDOW_CREATE,
-                      OS_SUCCESS,
-                      window_state.window_id,
-                      window_state.window_generation,
-                      window_state.accepted_content_generation);
-    os_printf("[windowd] created id=%u generation=%u owner=%u:%u\n",
-              window_state.window_id,
-              window_state.window_generation,
-              sender.pid,
-              sender.generation);
+    send_window_reply(sender, request_id, OS_WINDOW_CREATE, OS_SUCCESS,
+                      entry->window_id, entry->window_generation,
+                      entry->accepted_content_generation);
+    os_printf("[windowd] created id=%u generation=%u owner=%u:%u geometry=%d,%d %ux%u z=%u\n",
+              entry->window_id, entry->window_generation,
+              sender.pid, sender.generation, entry->x, entry->y,
+              entry->width, entry->height, window_table.count - 1u);
 }
 
 static void handle_set_surface(const OsIpcMessageV2* message) {
@@ -311,78 +436,74 @@ static void handle_set_surface(const OsIpcMessageV2* message) {
     }
     os_memcpy(&request, message->payload, sizeof(request));
     long result = window_protocol_validate_set_surface(&request);
-    if (result == OS_SUCCESS && request.request_id != message->request_id) {
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
         result = OS_ERR_INVALID_ARGUMENT;
     }
+    WindowEntry* entry = 0;
     if (result == OS_SUCCESS) {
-        result = window_state_validate_content(&window_state,
-                                               sender,
+        result = window_state_validate_content(&window_table, sender,
                                                request.window_id,
                                                request.window_generation,
-                                               request.content_generation);
+                                               request.content_generation,
+                                               &entry);
     }
-    OsGraphicsSurfaceHandleInfo candidate_info;
-    const uint32_t* candidate_pixels = 0;
-    if (result == OS_SUCCESS) {
-        result = validate_surface(message->handles[0],
-                                  request.width,
-                                  request.height,
-                                  request.stride_pixels,
-                                  request.pixel_format,
-                                  &candidate_info,
-                                  &candidate_pixels);
+    if (result == OS_SUCCESS &&
+        (request.width != entry->width || request.height != entry->height)) {
+        result = OS_ERR_INVALID_ARGUMENT;
     }
+    WindowSurfaceCandidate candidate;
+    os_memset(&candidate, 0, sizeof(candidate));
+    uint32_t candidate_released = 0;
     if (result == OS_SUCCESS) {
-        result = window_compositor_copy_full(composite_pixels,
-                                             composite_info.stride_pixels,
-                                             candidate_pixels,
-                                             candidate_info.stride_pixels,
-                                             display_info.width,
-                                             display_info.height);
+        result = validate_surface(message->handles[0], request.width,
+                                  request.height, request.stride_pixels,
+                                  request.pixel_format, &candidate);
     }
+    uint32_t slot = entry != 0
+        ? window_state_slot(&window_table, entry)
+        : OS_WINDOW_MAX_WINDOWS;
+    WindowSurfaceSlot old_surface;
+    WindowCompositorSource old_source;
+    os_memset(&old_surface, 0, sizeof(old_surface));
+    os_memset(&old_source, 0, sizeof(old_source));
     if (result == OS_SUCCESS) {
-        pending_full_frame = 1;
-        result = present_composite();
+        old_surface = window_surfaces[slot];
+        old_source = compositor_sources[slot];
+        install_window_surface(slot, &candidate);
+        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        result = compose_and_present();
+        if (result < 0) {
+            window_surfaces[slot] = old_surface;
+            compositor_sources[slot] = old_source;
+            release_candidate(&candidate);
+            candidate_released = 1;
+            rebuild_composite();
+        }
     }
     if (result < 0) {
-        if (candidate_pixels != 0) {
-            os_surface_unmap(message->handles[0], (void*)candidate_pixels);
+        if (!candidate_released && candidate.handle != 0) {
+            release_candidate(&candidate);
+            candidate_released = 1;
+        } else if (!candidate_released) {
+            close_handle(message->handles[0]);
         }
-        close_handle(message->handles[0]);
-        if (client_pixels != 0) {
-            window_compositor_copy_full(composite_pixels,
-                                        composite_info.stride_pixels,
-                                        client_pixels,
-                                        client_info.stride_pixels,
-                                        display_info.width,
-                                        display_info.height);
-        }
-        send_window_reply(sender,
-                          request.request_id,
-                          OS_WINDOW_SET_SURFACE,
+        send_window_reply(sender, request.request_id, OS_WINDOW_SET_SURFACE,
                           (int32_t)result,
-                          window_state.window_id,
-                          window_state.window_generation,
-                          window_state.accepted_content_generation);
+                          entry != 0 ? entry->window_id : 0,
+                          entry != 0 ? entry->window_generation : 0,
+                          entry != 0 ? entry->accepted_content_generation : 0);
         return;
     }
-    release_client_surface();
-    client_surface = message->handles[0];
-    client_pixels = candidate_pixels;
-    client_info = candidate_info;
-    window_state_commit_content(&window_state, request.content_generation);
-    send_window_reply(sender,
-                      request.request_id,
-                      OS_WINDOW_SET_SURFACE,
-                      OS_SUCCESS,
-                      window_state.window_id,
-                      window_state.window_generation,
-                      window_state.accepted_content_generation);
-    os_printf("[windowd] surface replaced content=%u\n",
-              request.content_generation);
+    release_surface_values(old_surface.handle, old_source.pixels);
+    window_state_commit_content(entry, request.content_generation);
+    send_window_reply(sender, request.request_id, OS_WINDOW_SET_SURFACE,
+                      OS_SUCCESS, entry->window_id, entry->window_generation,
+                      entry->accepted_content_generation);
+    os_printf("[windowd] surface replaced id=%u content=%u\n",
+              entry->window_id, request.content_generation);
 }
 
-static void handle_damage(const OsIpcMessageV2* message) {
+static void handle_full_damage(const OsIpcMessageV2* message) {
     OsProcessIdentity sender = os_msg_v2_sender_identity(message);
     OsWindowDamageRequest request;
     if (message->length != sizeof(request) || message->handle_count != 0) {
@@ -393,64 +514,406 @@ static void handle_damage(const OsIpcMessageV2* message) {
     }
     os_memcpy(&request, message->payload, sizeof(request));
     long result = window_protocol_validate_damage(&request);
-    if (result == OS_SUCCESS && request.request_id != message->request_id) {
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
         result = OS_ERR_INVALID_ARGUMENT;
     }
+    WindowEntry* entry = 0;
     if (result == OS_SUCCESS) {
-        result = window_state_validate_content(&window_state,
-                                               sender,
+        result = window_state_validate_content(&window_table, sender,
                                                request.window_id,
                                                request.window_generation,
-                                               request.content_generation);
+                                               request.content_generation,
+                                               &entry);
     }
     if (result == OS_SUCCESS) {
-        result = window_compositor_copy_full(composite_pixels,
-                                             composite_info.stride_pixels,
-                                             client_pixels,
-                                             client_info.stride_pixels,
-                                             display_info.width,
-                                             display_info.height);
+        OsRect full = {0, 0, (int32_t)entry->width, (int32_t)entry->height};
+        result = window_damage_add_window(&screen_damage, entry, full);
     }
     if (result == OS_SUCCESS) {
-        pending_full_frame = 1;
-        result = present_composite();
+        result = compose_and_present();
     }
     if (result == OS_SUCCESS) {
-        window_state_commit_content(&window_state, request.content_generation);
+        window_state_commit_content(entry, request.content_generation);
     }
-    send_window_reply(sender,
-                      request.request_id,
-                      OS_WINDOW_DAMAGE,
+    send_window_reply(sender, request.request_id, OS_WINDOW_DAMAGE,
                       (int32_t)result,
-                      window_state.window_id,
-                      window_state.window_generation,
-                      window_state.accepted_content_generation);
+                      entry != 0 ? entry->window_id : 0,
+                      entry != 0 ? entry->window_generation : 0,
+                      entry != 0 ? entry->accepted_content_generation : 0);
     if (result == OS_SUCCESS) {
-        os_printf("[windowd] damage accepted content=%u\n",
-                  request.content_generation);
+        os_printf("[windowd] damage accepted id=%u content=%u rects=1\n",
+                  entry->window_id, request.content_generation);
     }
 }
 
-static void destroy_window(int unexpected) {
-    uint32_t window_id = window_state.window_id;
-    OsProcessIdentity owner = window_state.owner;
-    release_client_surface();
-    window_state_destroy(&window_state);
-    window_input_router_reset(&input_router);
-    if (unexpected) {
-        os_printf("[windowd] owner exit cleanup id=%u owner=%u:%u retained-frame=1\n",
-                  window_id,
-                  owner.pid,
-                  owner.generation);
+static void clear_damage_transaction(void) {
+    os_memset(&damage_transaction, 0, sizeof(damage_transaction));
+}
+
+static void handle_damage_begin(const OsIpcMessageV2* message) {
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsWindowDamageBeginRequest request;
+    if (message->length != sizeof(request) || message->handle_count != 0) {
+        close_message_handles(message);
+        send_window_reply(sender, message->request_id, OS_WINDOW_DAMAGE,
+                          OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
         return;
     }
-    window_compositor_clear(composite_pixels,
-                            composite_info.stride_pixels,
-                            display_info.width,
-                            display_info.height,
-                            0);
-    pending_full_frame = 1;
-    present_composite();
+    os_memcpy(&request, message->payload, sizeof(request));
+    long result = window_protocol_validate_damage_begin(&request);
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
+        result = OS_ERR_INVALID_ARGUMENT;
+    }
+    WindowEntry* entry = 0;
+    if (result == OS_SUCCESS) {
+        result = window_state_validate_content(&window_table, sender,
+                                               request.window_id,
+                                               request.window_generation,
+                                               request.content_generation,
+                                               &entry);
+    }
+    if (result == OS_SUCCESS && damage_transaction.active) {
+        result = OS_ERR_NO_RESOURCES;
+    }
+    if (result < 0) {
+        send_window_reply(sender, request.request_id, OS_WINDOW_DAMAGE,
+                          (int32_t)result,
+                          entry != 0 ? entry->window_id : 0,
+                          entry != 0 ? entry->window_generation : 0,
+                          entry != 0 ? entry->accepted_content_generation : 0);
+        return;
+    }
+    clear_damage_transaction();
+    damage_transaction.active = 1;
+    damage_transaction.sender = sender;
+    damage_transaction.request_id = request.request_id;
+    damage_transaction.window_id = request.window_id;
+    damage_transaction.window_generation = request.window_generation;
+    damage_transaction.content_generation = request.content_generation;
+    damage_transaction.submission_id = request.submission_id;
+    damage_transaction.rect_count = request.rect_count;
+    damage_transaction.chunk_count = request.chunk_count;
+    damage_transaction.started_ticks = (uint32_t)os_time_ticks();
+}
+
+static void reject_active_damage(int32_t result) {
+    if (!damage_transaction.active) {
+        return;
+    }
+    WindowEntry* entry = window_state_find(&window_table,
+                                          damage_transaction.window_id,
+                                          damage_transaction.window_generation);
+    send_window_reply(damage_transaction.sender,
+                      damage_transaction.request_id,
+                      OS_WINDOW_DAMAGE,
+                      result,
+                      entry != 0 ? entry->window_id : 0,
+                      entry != 0 ? entry->window_generation : 0,
+                      entry != 0 ? entry->accepted_content_generation : 0);
+    clear_damage_transaction();
+}
+
+static void handle_damage_rects(const OsIpcMessageV2* message) {
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsWindowDamageRectsRequest request;
+    if (message->length != sizeof(request) || message->handle_count != 0) {
+        close_message_handles(message);
+        if (damage_transaction.active &&
+            identity_equal(sender, damage_transaction.sender)) {
+            reject_active_damage(OS_ERR_INVALID_ARGUMENT);
+        } else {
+            send_window_reply(sender, message->request_id, OS_WINDOW_DAMAGE,
+                              OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
+        }
+        return;
+    }
+    os_memcpy(&request, message->payload, sizeof(request));
+    long result = window_protocol_validate_damage_rects(&request);
+    if (result == OS_SUCCESS &&
+        (!damage_transaction.active ||
+         !identity_equal(sender, damage_transaction.sender) ||
+         request.request_id != damage_transaction.request_id ||
+         request.submission_id != damage_transaction.submission_id ||
+         request.chunk_index != damage_transaction.next_chunk ||
+         request.chunk_index >= damage_transaction.chunk_count ||
+         damage_transaction.received_rects + request.rect_count >
+             damage_transaction.rect_count)) {
+        result = OS_ERR_INVALID_ARGUMENT;
+    }
+    if (result < 0) {
+        if (damage_transaction.active &&
+            identity_equal(sender, damage_transaction.sender)) {
+            reject_active_damage((int32_t)result);
+        } else {
+            send_window_reply(sender, message->request_id, OS_WINDOW_DAMAGE,
+                              (int32_t)result, 0, 0, 0);
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < request.rect_count; i++) {
+        damage_transaction.rects[damage_transaction.received_rects++] =
+            request.rects[i];
+    }
+    damage_transaction.next_chunk++;
+}
+
+static void handle_damage_commit(const OsIpcMessageV2* message) {
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsWindowDamageCommitRequest request;
+    if (message->length != sizeof(request) || message->handle_count != 0) {
+        close_message_handles(message);
+        if (damage_transaction.active &&
+            identity_equal(sender, damage_transaction.sender)) {
+            reject_active_damage(OS_ERR_INVALID_ARGUMENT);
+        } else {
+            send_window_reply(sender, message->request_id, OS_WINDOW_DAMAGE,
+                              OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
+        }
+        return;
+    }
+    os_memcpy(&request, message->payload, sizeof(request));
+    long result = window_protocol_validate_damage_commit(&request);
+    if (result == OS_SUCCESS &&
+        (!damage_transaction.active ||
+         !identity_equal(sender, damage_transaction.sender) ||
+         request.request_id != damage_transaction.request_id ||
+         request.submission_id != damage_transaction.submission_id ||
+         damage_transaction.next_chunk != damage_transaction.chunk_count ||
+         damage_transaction.received_rects != damage_transaction.rect_count)) {
+        result = OS_ERR_INVALID_ARGUMENT;
+    }
+    WindowEntry* entry = 0;
+    if (result == OS_SUCCESS) {
+        result = window_state_validate_content(&window_table, sender,
+                                               damage_transaction.window_id,
+                                               damage_transaction.window_generation,
+                                               damage_transaction.content_generation,
+                                               &entry);
+    }
+    if (result == OS_SUCCESS) {
+        for (uint32_t i = 0; i < damage_transaction.rect_count; i++) {
+            result = window_damage_add_window(&screen_damage, entry,
+                                              damage_transaction.rects[i]);
+            if (result < 0) {
+                break;
+            }
+        }
+    }
+    if (result == OS_SUCCESS) {
+        result = compose_and_present();
+    }
+    uint32_t content_generation = damage_transaction.content_generation;
+    uint32_t rect_count = damage_transaction.rect_count;
+    if (result == OS_SUCCESS) {
+        window_state_commit_content(entry, content_generation);
+    }
+    send_window_reply(sender,
+                      damage_transaction.active
+                          ? damage_transaction.request_id
+                          : request.request_id,
+                      OS_WINDOW_DAMAGE,
+                      (int32_t)result,
+                      entry != 0 ? entry->window_id : 0,
+                      entry != 0 ? entry->window_generation : 0,
+                      entry != 0 ? entry->accepted_content_generation : 0);
+    clear_damage_transaction();
+    if (result == OS_SUCCESS) {
+        os_printf("[windowd] damage accepted id=%u content=%u rects=%u\n",
+                  entry->window_id, content_generation, rect_count);
+    }
+}
+
+static void handle_visibility(const OsIpcMessageV2* message, uint32_t command) {
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsWindowStateRequest request;
+    if (message->length != sizeof(request) || message->handle_count != 0) {
+        close_message_handles(message);
+        send_window_reply(sender, message->request_id, command,
+                          OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
+        return;
+    }
+    os_memcpy(&request, message->payload, sizeof(request));
+    long result = window_protocol_validate_state(&request, command);
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
+        result = OS_ERR_INVALID_ARGUMENT;
+    }
+    WindowEntry* entry = 0;
+    if (result == OS_SUCCESS) {
+        result = window_state_validate_target(&window_table, sender,
+                                              request.window_id,
+                                              request.window_generation,
+                                              &entry);
+    }
+    uint32_t old_visible = entry != 0 ? entry->visible : 0;
+    uint8_t old_z[OS_WINDOW_MAX_WINDOWS];
+    for (uint32_t i = 0; i < OS_WINDOW_MAX_WINDOWS; i++) {
+        old_z[i] = window_table.z_slots[i];
+    }
+    if (result == OS_SUCCESS) {
+        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_state_set_visible(&window_table, entry,
+                                 command == OS_WINDOW_SHOW, 1);
+        result = compose_and_present();
+        if (result < 0) {
+            entry->visible = old_visible;
+            for (uint32_t i = 0; i < OS_WINDOW_MAX_WINDOWS; i++) {
+                window_table.z_slots[i] = old_z[i];
+            }
+            rebuild_composite();
+        }
+    }
+    send_window_reply(sender, request.request_id, command, (int32_t)result,
+                      entry != 0 ? entry->window_id : 0,
+                      entry != 0 ? entry->window_generation : 0,
+                      entry != 0 ? entry->accepted_content_generation : 0);
+    if (result == OS_SUCCESS) {
+        os_printf("[windowd] %s id=%u\n",
+                  command == OS_WINDOW_SHOW ? "shown" : "hidden",
+                  entry->window_id);
+    }
+}
+
+static void handle_move(const OsIpcMessageV2* message) {
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsWindowMoveRequest request;
+    if (message->length != sizeof(request) || message->handle_count != 0) {
+        close_message_handles(message);
+        send_window_reply(sender, message->request_id, OS_WINDOW_MOVE,
+                          OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
+        return;
+    }
+    os_memcpy(&request, message->payload, sizeof(request));
+    long result = window_protocol_validate_move(&request);
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
+        result = OS_ERR_INVALID_ARGUMENT;
+    }
+    WindowEntry* entry = 0;
+    if (result == OS_SUCCESS) {
+        result = window_state_validate_target(&window_table, sender,
+                                              request.window_id,
+                                              request.window_generation,
+                                              &entry);
+    }
+    int32_t old_x = entry != 0 ? entry->x : 0;
+    int32_t old_y = entry != 0 ? entry->y : 0;
+    if (result == OS_SUCCESS) {
+        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_state_move(entry, request.x, request.y);
+        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        result = compose_and_present();
+        if (result < 0) {
+            window_state_move(entry, old_x, old_y);
+            rebuild_composite();
+        }
+    }
+    send_window_reply(sender, request.request_id, OS_WINDOW_MOVE,
+                      (int32_t)result,
+                      entry != 0 ? entry->window_id : 0,
+                      entry != 0 ? entry->window_generation : 0,
+                      entry != 0 ? entry->accepted_content_generation : 0);
+    if (result == OS_SUCCESS) {
+        os_printf("[windowd] moved id=%u geometry=%d,%d %ux%u\n",
+                  entry->window_id, entry->x, entry->y,
+                  entry->width, entry->height);
+    }
+}
+
+static void handle_resize(const OsIpcMessageV2* message) {
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsWindowResizeRequest request;
+    if (message->length != sizeof(request) || message->handle_count != 1 ||
+        !(message->flags & OS_IPC_FLAG_HAS_HANDLES)) {
+        close_message_handles(message);
+        send_window_reply(sender, message->request_id, OS_WINDOW_RESIZE,
+                          OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
+        return;
+    }
+    os_memcpy(&request, message->payload, sizeof(request));
+    long result = window_protocol_validate_resize(&request);
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
+        result = OS_ERR_INVALID_ARGUMENT;
+    }
+    WindowEntry* entry = 0;
+    if (result == OS_SUCCESS) {
+        result = window_state_validate_content(&window_table, sender,
+                                               request.window_id,
+                                               request.window_generation,
+                                               request.content_generation,
+                                               &entry);
+    }
+    WindowSurfaceCandidate candidate;
+    os_memset(&candidate, 0, sizeof(candidate));
+    uint32_t candidate_released = 0;
+    if (result == OS_SUCCESS) {
+        result = validate_surface(message->handles[0], request.width,
+                                  request.height, request.stride_pixels,
+                                  request.pixel_format, &candidate);
+    }
+    uint32_t slot = entry != 0
+        ? window_state_slot(&window_table, entry)
+        : OS_WINDOW_MAX_WINDOWS;
+    uint32_t old_width = entry != 0 ? entry->width : 0;
+    uint32_t old_height = entry != 0 ? entry->height : 0;
+    WindowSurfaceSlot old_surface;
+    WindowCompositorSource old_source;
+    os_memset(&old_surface, 0, sizeof(old_surface));
+    os_memset(&old_source, 0, sizeof(old_source));
+    if (result == OS_SUCCESS) {
+        old_surface = window_surfaces[slot];
+        old_source = compositor_sources[slot];
+        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_state_resize(entry, request.width, request.height);
+        install_window_surface(slot, &candidate);
+        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        result = compose_and_present();
+        if (result < 0) {
+            window_state_resize(entry, old_width, old_height);
+            window_surfaces[slot] = old_surface;
+            compositor_sources[slot] = old_source;
+            release_candidate(&candidate);
+            candidate_released = 1;
+            rebuild_composite();
+        }
+    }
+    if (result < 0) {
+        if (!candidate_released && candidate.handle != 0) {
+            release_candidate(&candidate);
+            candidate_released = 1;
+        } else if (!candidate_released) {
+            close_handle(message->handles[0]);
+        }
+        send_window_reply(sender, request.request_id, OS_WINDOW_RESIZE,
+                          (int32_t)result,
+                          entry != 0 ? entry->window_id : 0,
+                          entry != 0 ? entry->window_generation : 0,
+                          entry != 0 ? entry->accepted_content_generation : 0);
+        return;
+    }
+    release_surface_values(old_surface.handle, old_source.pixels);
+    window_state_commit_content(entry, request.content_generation);
+    send_window_reply(sender, request.request_id, OS_WINDOW_RESIZE, OS_SUCCESS,
+                      entry->window_id, entry->window_generation,
+                      entry->accepted_content_generation);
+    os_printf("[windowd] resized id=%u geometry=%d,%d %ux%u content=%u\n",
+              entry->window_id, entry->x, entry->y,
+              entry->width, entry->height, request.content_generation);
+}
+
+static void destroy_entry(WindowEntry* entry, int unexpected) {
+    if (entry == 0 || !entry->active) {
+        return;
+    }
+    uint32_t slot = window_state_slot(&window_table, entry);
+    uint32_t window_id = entry->window_id;
+    OsProcessIdentity owner = entry->owner;
+    OsRect old_rect = window_state_screen_rect(entry);
+    window_state_destroy(&window_table, entry);
+    release_window_surface(slot);
+    window_damage_add_screen(&screen_damage, old_rect);
+    if (unexpected) {
+        os_printf("[windowd] owner exit cleanup id=%u owner=%u:%u retained-frame=0\n",
+                  window_id, owner.pid, owner.generation);
+    }
 }
 
 static void handle_destroy(const OsIpcMessageV2* message) {
@@ -464,31 +927,29 @@ static void handle_destroy(const OsIpcMessageV2* message) {
     }
     os_memcpy(&request, message->payload, sizeof(request));
     long result = window_protocol_validate_destroy(&request);
-    if (result == OS_SUCCESS && request.request_id != message->request_id) {
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
         result = OS_ERR_INVALID_ARGUMENT;
     }
+    WindowEntry* entry = 0;
     if (result == OS_SUCCESS) {
-        result = window_state_validate_target(&window_state,
-                                              sender,
+        result = window_state_validate_target(&window_table, sender,
                                               request.window_id,
-                                              request.window_generation);
+                                              request.window_generation,
+                                              &entry);
     }
-    uint32_t window_id = window_state.window_id;
-    uint32_t window_generation = window_state.window_generation;
+    uint32_t id = entry != 0 ? entry->window_id : 0;
+    uint32_t generation = entry != 0 ? entry->window_generation : 0;
     if (result == OS_SUCCESS) {
-        destroy_window(0);
+        destroy_entry(entry, 0);
+        if (compose_and_present() < 0) {
+            pending_full_frame = 1;
+        }
     }
-    send_window_reply(sender,
-                      request.request_id,
-                      OS_WINDOW_DESTROY,
-                      (int32_t)result,
-                      window_id,
-                      window_generation,
-                      0);
+    send_window_reply(sender, request.request_id, OS_WINDOW_DESTROY,
+                      (int32_t)result, id, generation, 0);
     if (result == OS_SUCCESS) {
-        os_printf("[windowd] destroyed id=%u generation=%u\n",
-                  window_id,
-                  window_generation);
+        os_printf("[windowd] destroyed id=%u generation=%u remaining=%u\n",
+                  id, generation, window_table.count);
     }
 }
 
@@ -517,27 +978,54 @@ static void handle_message(const OsIpcMessageV2* message) {
         return;
     }
     const uint32_t* words = (const uint32_t*)message->payload;
-    if (words[2] == OS_WINDOW_CREATE) {
-        handle_create(message);
-    } else if (words[2] == OS_WINDOW_SET_SURFACE) {
-        handle_set_surface(message);
-    } else if (words[2] == OS_WINDOW_DAMAGE) {
-        handle_damage(message);
-    } else if (words[2] == OS_WINDOW_DESTROY) {
-        handle_destroy(message);
-    } else {
-        reject_message(message, OS_ERR_UNSUPPORTED);
+    switch (words[2]) {
+        case OS_WINDOW_CREATE: handle_create(message); break;
+        case OS_WINDOW_SET_SURFACE: handle_set_surface(message); break;
+        case OS_WINDOW_DAMAGE: handle_full_damage(message); break;
+        case OS_WINDOW_DESTROY: handle_destroy(message); break;
+        case OS_WINDOW_SHOW: handle_visibility(message, OS_WINDOW_SHOW); break;
+        case OS_WINDOW_HIDE: handle_visibility(message, OS_WINDOW_HIDE); break;
+        case OS_WINDOW_MOVE: handle_move(message); break;
+        case OS_WINDOW_RESIZE: handle_resize(message); break;
+        case OS_WINDOW_DAMAGE_BEGIN: handle_damage_begin(message); break;
+        case OS_WINDOW_DAMAGE_RECTS: handle_damage_rects(message); break;
+        case OS_WINDOW_DAMAGE_COMMIT: handle_damage_commit(message); break;
+        default: reject_message(message, OS_ERR_UNSUPPORTED); break;
+    }
+}
+
+static void cleanup_dead_owners(void) {
+    uint32_t removed = 0;
+    for (uint32_t i = 0; i < OS_WINDOW_MAX_WINDOWS; i++) {
+        WindowEntry* entry = &window_table.entries[i];
+        if (entry->active && os_process_identity_alive(entry->owner) < 0) {
+            if (damage_transaction.active &&
+                identity_equal(damage_transaction.sender, entry->owner)) {
+                clear_damage_transaction();
+            }
+            destroy_entry(entry, 1);
+            removed++;
+        }
+    }
+    if (removed != 0 && compose_and_present() < 0) {
+        pending_full_frame = 1;
     }
 }
 
 static void service_deadlines(void) {
-    if (window_state.active && os_process_identity_alive(window_state.owner) < 0) {
-        destroy_window(1);
-        return;
+    cleanup_dead_owners();
+    if (damage_transaction.active &&
+        (uint32_t)(os_time_ticks() - damage_transaction.started_ticks) >=
+            WINDOW_PRESENT_TIMEOUT_TICKS) {
+        reject_active_damage(OS_ERR_TIMEOUT);
     }
     OsProcessIdentity previous = display_owner;
     if (refresh_display_owner() == OS_SUCCESS &&
         (!identity_equal(previous, display_owner) || pending_full_frame)) {
+        if (screen_damage.count == 0) {
+            window_damage_full(&screen_damage);
+            compose_pending();
+        }
         present_composite();
         if (!identity_equal(previous, display_owner)) {
             os_puts("[windowd] display reconnect full frame submitted");
@@ -546,12 +1034,13 @@ static void service_deadlines(void) {
 }
 
 int main(void) {
-    window_state_init(&window_state);
+    window_state_init(&window_table);
     window_input_router_init(&input_router);
+    os_memset(window_surfaces, 0, sizeof(window_surfaces));
+    os_memset(compositor_sources, 0, sizeof(compositor_sources));
+    clear_damage_transaction();
     display_owner.pid = 0;
     display_owner.generation = 0;
-    client_surface = 0;
-    client_pixels = 0;
     composite_surface = 0;
     composite_pixels = 0;
     next_frame_generation = (uint32_t)os_time_ticks() + 1u;
@@ -561,6 +1050,7 @@ int main(void) {
         os_puts("[windowd] display unavailable");
         return 1;
     }
+    window_damage_init(&screen_damage, display_info.width, display_info.height);
     composite_surface = os_surface_create(display_info.width,
                                           display_info.height,
                                           display_info.format);
@@ -578,19 +1068,17 @@ int main(void) {
                             composite_info.stride_pixels,
                             display_info.width,
                             display_info.height,
-                            0);
+                            WINDOW_BACKGROUND_COLOR);
     long result = os_service_register("window", OS_SERVICE_FLAG_SYSTEM);
     if (result < 0) {
         os_printf("[windowd] register failed %ld\n", result);
         release_composite_surface();
         return 1;
     }
-    os_printf("[windowd] ready pid=%u size=%ux%u display=%u:%u\n",
-              (uint32_t)os_getpid(),
-              display_info.width,
-              display_info.height,
-              display_owner.pid,
-              display_owner.generation);
+    os_printf("[windowd] ready pid=%u size=%ux%u display=%u:%u capacity=%u\n",
+              (uint32_t)os_getpid(), display_info.width, display_info.height,
+              display_owner.pid, display_owner.generation,
+              OS_WINDOW_MAX_WINDOWS);
 
     while (1) {
         OsIpcMessageV2 message;
@@ -601,7 +1089,9 @@ int main(void) {
         }
         if (result < 0) {
             os_printf("[windowd] wait failed %ld\n", result);
-            release_client_surface();
+            for (uint32_t i = 0; i < OS_WINDOW_MAX_WINDOWS; i++) {
+                release_window_surface(i);
+            }
             release_composite_surface();
             return 1;
         }

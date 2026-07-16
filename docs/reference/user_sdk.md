@@ -32,7 +32,8 @@ permission mask.
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
 - Surfaces: page-backed create, metadata query, process-local map/unmap, and close
 - Display service: correlated full-frame or bounded partial-damage surface present
-- Window ABI types: single-window create, surface replace, damage, destroy, and reply
+- Window ABI types: bounded create, surface replace, chunked damage,
+  show/hide, move, resize, destroy, and reply
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
@@ -97,6 +98,13 @@ suite. The complete public convenience API remains Phase 4G work:
 
 ```sh
 make test-window-single
+```
+
+Phase 4E extends those types without changing the Phase 4D layouts and adds
+bounded multiwindow composition coverage:
+
+```sh
+make test-window-multi
 ```
 
 Applications create a surface with `os_surface_create`, map it with

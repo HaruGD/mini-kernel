@@ -11,9 +11,23 @@
 #define OS_WINDOW_DAMAGE      0x574003u
 #define OS_WINDOW_DESTROY     0x574004u
 #define OS_WINDOW_REPLY       0x574005u
+#define OS_WINDOW_SHOW          0x574006u
+#define OS_WINDOW_HIDE          0x574007u
+#define OS_WINDOW_MOVE          0x574008u
+#define OS_WINDOW_RESIZE        0x574009u
+#define OS_WINDOW_DAMAGE_BEGIN  0x57400Au
+#define OS_WINDOW_DAMAGE_RECTS  0x57400Bu
+#define OS_WINDOW_DAMAGE_COMMIT 0x57400Cu
 
 #define OS_WINDOW_FLAG_NONE 0u
 #define OS_WINDOW_ID_FULLSCREEN 1u
+#define OS_WINDOW_MAX_WINDOWS 12u
+#define OS_WINDOW_DAMAGE_MAX_RECTS 16u
+#define OS_WINDOW_DAMAGE_RECTS_PER_CHUNK 4u
+#define OS_WINDOW_DAMAGE_MAX_CHUNKS \
+    (OS_WINDOW_DAMAGE_MAX_RECTS / OS_WINDOW_DAMAGE_RECTS_PER_CHUNK)
+
+#include "os64/graphics_types.h"
 
 typedef struct OsWindowCreateRequest {
     uint32_t size;
@@ -78,6 +92,97 @@ typedef struct OsWindowReply {
     uint32_t accepted_content_generation;
 } OsWindowReply;
 
+/* Extended CREATE layout. The original full-screen layout remains accepted. */
+typedef struct OsWindowCreateGeometryRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t request_id;
+    uint32_t content_generation;
+    int32_t x;
+    int32_t y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride_pixels;
+    uint32_t pixel_format;
+} OsWindowCreateGeometryRequest;
+
+typedef struct OsWindowStateRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t request_id;
+    uint32_t window_id;
+    uint32_t window_generation;
+    uint32_t reserved;
+} OsWindowStateRequest;
+
+typedef struct OsWindowMoveRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t request_id;
+    uint32_t window_id;
+    uint32_t window_generation;
+    int32_t x;
+    int32_t y;
+    uint32_t reserved;
+} OsWindowMoveRequest;
+
+typedef struct OsWindowResizeRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t request_id;
+    uint32_t window_id;
+    uint32_t window_generation;
+    uint32_t content_generation;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride_pixels;
+    uint32_t pixel_format;
+} OsWindowResizeRequest;
+
+typedef struct OsWindowDamageBeginRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t request_id;
+    uint32_t window_id;
+    uint32_t window_generation;
+    uint32_t content_generation;
+    uint32_t submission_id;
+    uint32_t rect_count;
+    uint32_t chunk_count;
+} OsWindowDamageBeginRequest;
+
+typedef struct OsWindowDamageRectsRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t request_id;
+    uint32_t submission_id;
+    uint32_t chunk_index;
+    uint32_t rect_count;
+    OsRect rects[OS_WINDOW_DAMAGE_RECTS_PER_CHUNK];
+} OsWindowDamageRectsRequest;
+
+typedef struct OsWindowDamageCommitRequest {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t request_id;
+    uint32_t submission_id;
+    uint32_t reserved;
+} OsWindowDamageCommitRequest;
+
 #ifdef __cplusplus
 #define OS64_WINDOW_STATIC_ASSERT(condition, message) static_assert((condition), message)
 #else
@@ -94,6 +199,22 @@ OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowDestroyRequest) == 32,
                           "OsWindowDestroyRequest ABI changed");
 OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowReply) == 40,
                           "OsWindowReply ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowCreateGeometryRequest) == 48,
+                          "OsWindowCreateGeometryRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowStateRequest) == 32,
+                          "OsWindowStateRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowMoveRequest) == 40,
+                          "OsWindowMoveRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowResizeRequest) == 48,
+                          "OsWindowResizeRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowDamageBeginRequest) == 44,
+                          "OsWindowDamageBeginRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowDamageRectsRequest) == 96,
+                          "OsWindowDamageRectsRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowDamageCommitRequest) == 28,
+                          "OsWindowDamageCommitRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowDamageRectsRequest, rects) == 32,
+                          "OsWindowDamageRectsRequest.rects offset changed");
 OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowReply, result) == 16,
                           "OsWindowReply.result offset changed");
 

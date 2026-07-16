@@ -1,15 +1,14 @@
-# Window Service And Single-Window ABI
+# Window Service And Multiwindow ABI
 
-Phase 4D adds `windowd_c.elf` between GUI applications and `displayd_c.elf`.
-The first implementation intentionally supports one opaque, display-sized
-window. It proves the complete service pipeline before z-order, geometry,
-focus, and general damage composition are added.
+Phase 4D introduced `windowd_c.elf` between GUI applications and
+`displayd_c.elf`. Phase 4E extends the same supervised service into a bounded
+opaque multiwindow compositor without granting it direct display authority.
 
 ```text
-restricted GUI application
-  -> transferred client surface (READ | MAP at the receiver)
-  -> windowd: ownership, generation checks, opaque full-frame copy
-  -> windowd composite surface
+restricted GUI applications
+  -> transferred client surfaces (READ | MAP at the receiver)
+  -> windowd: ownership, geometry, z-order, damage, opaque composition
+  -> one retained windowd composite surface
   -> displayd present protocol
   -> display backend / GOP
 ```
@@ -22,74 +21,101 @@ normal presentation authority.
 ## Protocol v1
 
 The shared ABI is `OS64_WINDOW_ABI_VERSION == 1` in
-`include/os64/window_types.h`. Phase 4D implements these commands:
+`include/os64/window_types.h`. The original Phase 4D request layouts remain
+accepted. Phase 4E adds bounded geometry and partial-damage messages without
+changing those layouts.
 
-- `CREATE`: transfers one full-screen client surface and creates the sole
-  window;
-- `SET_SURFACE`: atomically replaces that window's current surface after the
-  replacement frame is acknowledged by `displayd`;
-- `DAMAGE`: announces a new full-frame content generation on the current
-  surface;
-- `DESTROY`: releases the caller-owned window and clears the composite frame;
-- `REPLY`: returns the operation result, window id and generation, and the
-  content generation accepted through the display pipeline.
+Commands:
 
-Every request uses IPC v2 and binds mutation to the sender PID plus process
-generation, request id, window id, window generation, and monotonically
-increasing content generation. The service rejects malformed ABI fields,
-wrong owners, stale window generations, duplicate content generations,
-unexpected handles, non-display-sized surfaces, stride mismatches, and format
-mismatches without changing the active window.
+- `CREATE`: transfers one client surface; the extended layout also supplies
+  signed screen position and initial geometry;
+- `SET_SURFACE`: atomically replaces a same-sized current surface;
+- `DAMAGE`: retains the compatible full-window damage operation;
+- `DAMAGE_BEGIN`, `DAMAGE_RECTS`, `DAMAGE_COMMIT`: submit 1-16 rectangles as
+  an ordered transaction with at most four rectangles per 96-byte IPC chunk;
+- `SHOW` and `HIDE`: update visibility; `SHOW` also raises the window to the
+  front of the stable z-order;
+- `MOVE`: changes signed screen position and damages both old and new bounds;
+- `RESIZE`: transfers and atomically installs a new correctly sized surface;
+- `DESTROY`: releases a caller-owned window and reveals the windows below it;
+- `REPLY`: returns the result, exact window identity, and accepted content
+  generation.
 
-Phase 4D uses one fixed window id and advances its generation after every
-destroy/create cycle. The fixed id is not a reusable authority token without
-the matching generation.
+Every mutation is bound to sender PID plus process generation, request id,
+window id plus generation, and a monotonically increasing content generation
+where pixels change. The service rejects malformed ABI fields, wrong owners,
+stale generations, duplicate content generations, invalid handle counts,
+surface metadata mismatches, reordered or incomplete chunks, oversized
+submissions, and nonzero unused rectangle slots without mutating valid state.
+Only one chunk transaction is active at a time; it has an exact sender and a
+bounded deadline. A message from another sender cannot cancel it.
 
-## Composition And Lifetime
+## Window State And Z-Order
 
-`windowd` allocates one display-sized, page-backed composite surface and maps
-it read/write. Transferred client surfaces are attenuated by IPC and mapped
-read-only. Composition copies opaque 24-bit pixel values into the composite;
-client writes can never target the composite or physical framebuffer.
+The server owns a fixed table of 12 slots. Each slot has a stable numeric id
+and an incrementing generation, so reuse never revives a stale authority
+token. An active entry records owner identity, content generation, signed
+position, dimensions, visibility, and its place in a fixed-capacity z-order.
 
-`CREATE`, `SET_SURFACE`, and `DAMAGE` keep the frame pending until
-`os_display_present` returns the exact accepted generation. A failed surface
-replacement restores the previous composite and releases the candidate.
-Repeated client updates are bounded by the one-request service loop and the
-display protocol's newest-full-frame replacement rule.
+New visible windows are appended at the front. Hiding preserves table
+ownership, showing raises to the front, and destruction removes only the
+target slot while preserving the relative order of the others. Owners may
+hold multiple windows. Owner death destroys every matching entry and releases
+every received surface in arbitrary slot or z-order.
 
-The window service checks owner liveness by PID plus process generation using
-the GUI-service-only process-liveness query. Unexpected client exit drops the
-read mapping and transferred handle immediately while retaining the last
-composite pixels as the display fallback. Explicit `DESTROY` clears and
-presents the composite.
+## Damage And Composition
 
-`windowd` tracks the registered display owner identity. When `displayd`
-disappears it keeps a full frame pending; when a different owner generation is
-registered it submits the complete composite again. The reconnect path does
-not grant `windowd` direct display authority.
+Client rectangles use surface coordinates. `windowd` validates positive
+extent, clips to the surface, translates with overflow-safe signed arithmetic,
+then clips again to the display. Overlapping or touching screen rectangles are
+merged into a 64-entry accumulator. A 65th independent rectangle collapses
+the accumulator to one full-screen rectangle.
+
+For every accepted screen-damage rectangle, the compositor:
+
+1. fills that region with the opaque background;
+2. visits visible windows from back to front;
+3. intersects each window with both the display and damaged region;
+4. copies only the intersecting opaque RGB/BGR pixels;
+5. submits only the accepted screen damage to `displayd`.
+
+The composite surface is display-sized and page-backed. Client surfaces arrive
+with attenuated `READ | MAP` rights and are mapped read-only. Pixel copying
+runs in user space; applications cannot write the composite or framebuffer.
+
+Surface replacement and resize install a candidate only for validation and
+presentation. If presentation fails, `windowd` restores the previous surface,
+geometry, and composite state and releases the candidate. Damage remains
+pending until the exact frame generation is acknowledged. Display reconnect
+forces a complete recomposition and full-frame resubmission.
 
 ## Current Limits
 
-- one client and one visible full-screen window;
-- opaque RGB/BGR 32-bit surfaces only;
-- full-frame composition and damage only;
-- no move, resize, show/hide, z-order, focus, or input routing;
-- the test producer uses the existing SDK test binary; the public Window SDK
-  remains Phase 4G work.
+- at most 12 opaque windows and one current surface per window;
+- RGB/BGR 32-bit surfaces no larger than the display;
+- no alpha, decorations, shadows, animation, or separate compositor process;
+- `SHOW` is the current explicit raise operation;
+- focus and keyboard/pointer routing remain Phase 4F;
+- the test producer is linked into the existing SDK test binary; the stable
+  public Window SDK convenience API remains Phase 4G.
 
 ## Verification
 
 ```sh
 make test-window-contracts
 make test-window-single
+make test-window-multi-contracts
+make test-window-multi
 ```
 
-The host target covers ABI validation, wrong-owner and stale-generation
-denial, duplicate generations, the one-client bound, pixel copying, alpha-bit
-removal, stride bounds, supervision policy, authority separation, and the
-display reconnect/full-resubmit implementation path. The QEMU target starts
-`inputd`, `displayd`, and `windowd` under supervision, runs a restricted
-client through `CREATE`, `SET_SURFACE`, full damage, and `DESTROY`, validates
-deterministic 800x600 pixels, proves direct-display denial, and checks
-unexpected-exit resource cleanup.
+The host targets cover ABI layout, ownership and generation denial, 12-slot
+capacity, slot reuse, z-order, hide/show, movement, resize state, four-edge
+clipping, deterministic frame hash, partial composition, malformed chunks,
+overflow-safe rectangle arithmetic, and full-screen accumulator collapse.
+
+The QEMU targets retain the full-screen Phase 4D lifecycle and add two
+restricted concurrent clients. Pixel evidence verifies overlap, hide/reveal,
+raise, clipped movement, atomic resize, and chunked partial damage. Both
+destruction orders are accepted and the final active process, mapping, handle,
+mailbox, service, shared-object, surface, and heap samples must match the
+warmed supervised-service baseline.
