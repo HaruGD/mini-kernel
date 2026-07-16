@@ -27,12 +27,12 @@ that records those immutable implementation commit hashes.
 | 4B: Surface ABI, mapping, and transfer rights | Complete | 2026-07-15 | 2026-07-15 | `b14bca1` | [record](#4b-surface-abi-mapping-and-transfer-rights) |
 | 4C: Display-service present path | Complete | 2026-07-15 | 2026-07-15 | `23ee0f0` | [record](#4c-display-service-present-path) |
 | 4D: Single-window bring-up | Complete | 2026-07-15 | 2026-07-15 | `231f27e` | [record](#4d-single-window-bring-up) |
-| 4E: Multiwindow compositor | Planned | - | - | - | - |
+| 4E: Multiwindow compositor | Complete | 2026-07-17 | 2026-07-17 | `4e0e296` | [record](#4e-multiwindow-compositor) |
 | 4F: Input routing and focus | Planned | - | - | - | - |
 | 4G: Window SDK and first GUI application | Planned | - | - | - | - |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Current work: Phase 4D is complete. Phase 4E remains Planned.
+Current work: Phase 4E is complete. Phase 4F remains Planned.
 
 ## Recording Workflow
 
@@ -343,14 +343,87 @@ notes or issue tracker until corrected.
 
 ### Remaining
 
-- multiple simultaneous windows, bounded z-order, per-window position and
-  clipping, damage accumulation, and selective recomposition are Phase 4E;
 - keyboard/pointer forwarding, focus transitions, and stale-focus rejection
   remain Phase 4F;
 - the public high-level window SDK and first event-driven GUI application are
   Phase 4G work;
 - dedicated QEMU `windowd` crash/reconnect fault injection and GUI soak closure
   remain Phase 4H gates; Phase 4D does not claim that scenario as tested.
+
+## 4E: Multiwindow Compositor
+
+- Status: Complete
+- Started: 2026-07-17
+- Completed: 2026-07-17
+- Implementation commit: `4e0e2965e15840da50a977b7c66377ff2fcba61d`
+
+### Delivered
+
+- extended window ABI v1 without changing the Phase 4D layouts, adding signed
+  geometry create, show/hide, move, resize, and a correlated
+  `DAMAGE_BEGIN -> DAMAGE_RECTS -> DAMAGE_COMMIT` transaction with at most 16
+  client rectangles and four rectangles per 96-byte IPC payload;
+- replaced the single-window state with 12 fixed generation-tagged slots that
+  retain exact PID/process-generation ownership, visibility, signed geometry,
+  content generation, and a stable fixed-capacity back-to-front z-order;
+- added deterministic create ordering, show-and-raise, hide, move, atomic
+  surface resize, arbitrary destruction order, slot-generation reuse, and
+  cleanup of every window owned by an exited process;
+- added overflow-safe client clipping and screen translation, overlap/touch
+  merging into a 64-rectangle screen accumulator, and full-screen collapse on
+  the 65th independent rectangle;
+- changed composition to clear and redraw only accepted screen damage, visiting
+  visible opaque RGB/BGR windows from back to front and clipping against all
+  four display edges;
+- made same-size surface replacement and resize transactional across exact
+  display acknowledgement, restoring the previous geometry, surface, z-order,
+  and composite state while releasing a failed candidate;
+- isolated the single in-flight damage transaction by sender identity, exact
+  chunk order and totals, unused-payload validation, and a bounded timeout so
+  another sender cannot cancel valid work;
+- added two concurrent restricted test clients plus host and QEMU tests for
+  overlap, z-order, hide/reveal, clipped movement, resize, chunked damage,
+  deterministic pixels, cleanup, and resource stability.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make clean && make -j2 uefi` | PASS in 2.77 seconds | Clean kernel, SDK, userland, drivers, FAT32, and ESP image build with zero compiler warnings. |
+| `make test-window-multi-contracts` | PASS | 12-slot/generation/ownership/z-order state, ABI/chunk rejection, four-edge clipping, partial composition, overflow collapse, and deterministic host hash `96154b890048ddf0`. |
+| `make test-window-multi` | PASS | Supervised QEMU overlap, hide/show/raise, move, atomic resize, five-rectangle chunked damage, both destroy orders, pixel evidence, and stable resources. |
+| `make test-window-single test-display-present test-process-lifecycle test-ipc-contracts test-abi-freeze test-user-sdk` | PASS | Phase 4D compatibility, display restart, process/IPC boundaries, frozen earlier ABI, and SDK 91/91 remained intact. |
+| `make test-closure` | PASS in 538.32 seconds | Boot, driver, memory, graphics, input, IPC, services, concurrency, fault injection, both window targets, and 60-second service soak with 43 cycles passed. |
+
+### Resource Accounting
+
+- warmed supervised baseline and final sample matched exactly at
+  `processes=4 mappings=21 handles=1 mailboxes=0 services=4 shared=0 surfaces=1`;
+- baseline and final long-lived composite accounting matched at
+  `surface_bytes=0x1D4C00 surface_pages=0x1D5`, with heap unchanged at
+  `used=0x1DAB70 mapped=0x1DF000`;
+- both client surface mappings, transferred handles, and surface objects were
+  released after the two clients destroyed ids 1 and 2 in either order;
+- PMM changed from `0x6A4E` to `0x6A35` only through the already documented
+  bounded returned-process image/page-table history; active mappings, handles,
+  objects, and heap returned immediately to the warmed baseline;
+- QEMU screenshots contained 36,000 back-window and 75,600 front-window base
+  pixels while overlapping, 69,000 revealed back-window pixels while hidden,
+  34,805 clipped moved-window pixels, and 14,620 partial-damage pixels;
+- the aggregate 60-second service soak completed 43 cycles without reported
+  resource drift;
+- unexplained active multiwindow-resource drift: zero.
+
+### Remaining
+
+- normalized input forwarding, keyboard focus selection, ordered focus events,
+  and stale/hidden recipient rejection remain Phase 4F;
+- the stable high-level Window SDK and first event-driven GUI application are
+  Phase 4G work; the current producers remain explicit integration clients;
+- dedicated GUI-service fault injection, restart recovery, client churn, and
+  GUI-specific soak closure remain Phase 4H;
+- alpha blending, decorations, shadows, animation, and a separate compositor
+  process remain intentionally deferred beyond Phase 4.
 
 ## Phase Milestones
 

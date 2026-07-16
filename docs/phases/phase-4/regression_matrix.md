@@ -23,7 +23,7 @@ requires the existing full `make test-closure` suite.
 | P4-R02 | 4B | User surface mapping, rights attenuation, transfer lifetime, and process cleanup are enforced | `make test-surface-abi`; `make test-user-sdk`; `make test-service-manager-smoke`; `make test-concurrency`; `make test-closure` | App write mapping and compositor read mapping work; escalation fails; exit order leaves zero unexplained handle, mapping, or page drift. | Complete |
 | P4-R03 | 4C | Only `displayd` can present, and its chunked generation protocol is bounded | `make test-display-present`; `make test-kernel-handles`; `make test-ipc-contracts` | Valid frames are acknowledged; malformed/stale transactions are rejected; ordinary apps cannot present; terminal fallback survives restart. | Complete |
 | P4-R04 | 4D | One full-screen client reaches the display only through `windowd -> displayd` | `make test-window-contracts`; `make test-window-single` | Host ownership/generation denials pass; create/attach/damage/destroy succeeds in QEMU without direct display authority; deterministic pixels appear and unexpected client exit cleans all transient state. | Complete |
-| P4-R05 | 4E | Multiwindow z-order, clipping, damage merge, and composition stay within fixed bounds | compositor host pixel/hash tests; multiwindow QEMU smoke | Up to 12 windows compose deterministically; malformed damage is safe; accumulator overflow becomes one full-screen rectangle. | Planned |
+| P4-R05 | 4E | Multiwindow z-order, clipping, damage merge, and composition stay within fixed bounds | `make test-window-multi-contracts`; `make test-window-multi` | Up to 12 windows compose deterministically; malformed/partial chunk transactions are safe; all four edges clip; hide/show/move/resize and arbitrary destruction work; accumulator overflow becomes one full-screen rectangle with zero active-resource drift. | Complete |
 | P4-R06 | 4F | Input reaches exactly one valid focused window with ordered focus events | input-routing host tests; keyboard-focus QEMU smoke | Background, hidden, destroyed, and stale-generation windows receive no key events; focus order and sequences remain valid. | Planned |
 | P4-R07 | 4G | A normal application can use only the public SDK for its complete window lifecycle | ABI/layout tests; SDK integration suite; first-GUI-app QEMU smoke | The demo creates, draws, receives input, damages, resizes, and exits without raw `INPUT` or `DISPLAY`. | Planned |
 | P4-R08 | 4H | Client and GUI-service failure paths recover or enter bounded fallback without leaks | fault-injection matrix; service restart QEMU smoke | Failure at every allocation/protocol boundary rolls back; restart limits hold; terminal fallback remains usable. | Planned |
@@ -62,7 +62,12 @@ bounded one-client protocol, exact ownership/generation checks, supervised
 window/display chain, restricted direct-display denial, deterministic pixels,
 normal lifecycle, unexpected owner-exit cleanup, and stable resource samples
 passed focused host/QEMU testing and the 515.74-second full closure. P4-R05
-through P4-R10 remain uncertified. Phase 4H will add the final tested
+was certified on 2026-07-17 at implementation commit `4e0e296`. Its 12-slot
+generation/ownership model, stable z-order, chunked damage validation,
+four-edge clipping, deterministic host hash, QEMU overlap/hide/show/move/
+resize pixels, arbitrary destruction order, and stable active-resource samples
+passed focused testing and the 538.32-second full closure. P4-R06 through
+P4-R10 remain uncertified. Phase 4H will add the final tested
 commit, aggregate command results, durations, relevant counts, QEMU display
 evidence, and 60-second soak measurements. The optional one-hour release soak
 remains separate from the ordinary Phase 4 closure run.
