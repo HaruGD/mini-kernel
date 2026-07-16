@@ -207,6 +207,54 @@ This track may progress beside GUI work, but DMA infrastructure comes first.
 - [ ] Add an AArch64 UEFI loader and kernel entry
 - [ ] Implement AArch64 paging, exception, timer, and context-switch backends
 
+## Future End Goal: High-Performance Windows Compatibility VM
+
+This is a post-roadmap research goal. It begins only after the native desktop,
+preemptive SMP execution, storage, networking, IOMMU, and device-lifecycle
+foundations are stable. The target is a general-purpose, low-latency virtual
+machine that boots an actual user-supplied and properly licensed Windows
+installation rather than reimplementing the Windows API or kernel ABI.
+
+Planned foundation:
+
+- [ ] Define an architecture-neutral hypervisor, vCPU, guest-memory, interrupt,
+  and device-model contract
+- [ ] Add x86_64 Intel VMX and AMD SVM backends with capability detection and
+  safe fallback
+- [ ] Execute guest code directly in hardware virtualization mode with EPT/NPT,
+  bounded VM-exit handling, and isolated guest memory
+- [ ] Keep latency-critical vCPU, memory, interrupt, and IOMMU paths in the
+  kernel while placing lifecycle and device policy in a supervised `vmd`
+  service
+- [ ] Support dedicated physical-core pinning, preallocated guest memory, large
+  pages, stable TSC handling, and optional APICv/AVIC acceleration
+- [ ] Provide a coherent boot platform with guest UEFI, ACPI, APIC, PCI, timers,
+  storage, display, keyboard, and pointer devices
+- [ ] Boot Windows from a user-provided installation image and virtual disk,
+  then reach a stable desktop inside one OS64 window
+- [ ] Add IOMMU interrupt remapping and exclusive GPU, NVMe, USB, and other PCI
+  device passthrough without allowing concurrent host ownership
+- [ ] Run compatible Windows applications, services, and kernel drivers against
+  either supported virtual devices or explicitly passed-through hardware
+- [ ] Integrate guest display, audio, input, clipboard, files, and networking
+  with the native OS64 service boundaries
+- [ ] Add an optional Windows guest agent that maps individual guest application
+  windows onto OS64 `windowd` surfaces for seamless desktop integration
+- [ ] Add bounded failure recovery, resource accounting, snapshots, suspend and
+  resume, deterministic fault injection, and long-duration VM soak coverage
+
+Scope and distribution boundaries:
+
+- OS64 remains visibly and honestly virtualized; anti-cheat, DRM, licensing, or
+  virtual-machine detection circumvention is not a project feature.
+- OS64 does not distribute Windows images, product keys, proprietary firmware,
+  game files, or third-party kernel drivers.
+- Users must supply valid licenses and follow the terms of Windows, applications,
+  games, online services, and hardware vendors. Some services may reject virtual
+  machines or impose account restrictions even when the VM operates correctly.
+- The first supported profile may intentionally freeze one Windows x64 release,
+  one CPU family, and one virtual hardware layout before broader compatibility.
+
 ## Engineering Principles
 
 - Keep kernel mechanisms smaller than user-space policy.
