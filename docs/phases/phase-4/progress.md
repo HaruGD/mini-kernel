@@ -558,6 +558,10 @@ notes or issue tracker until corrected.
 - the foreground `drive`/`udrive_c.elf` scheduler helper is transitional;
   Phase 4H must prove services and GUI applications progress while the kernel
   shell is idle and then remove the helper from code and tests;
+- after `service start window`, a bare `service` ping can currently leave
+  `usvcctl_c.elf` waiting for IPC while exposing an unusable kernel prompt;
+  Phase 4H must fix foreground wait/shell restoration, add a bounded control
+  timeout, and cover repeated ping/status commands without `drive`;
 - client/service crash injection, display/window reconnection behavior,
   resource-exhaustion rollback, GUI churn, and the 60-second GUI soak belong
   to Phase 4H;

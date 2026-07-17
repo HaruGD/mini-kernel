@@ -338,6 +338,10 @@ Implementation and tests:
   owners, and restore console input on normal release or GUI-service failure;
 - make the single-CPU scheduler select ready user processes while the kernel
   shell is idle, with an explicit idle task or equivalent idle state;
+- correct foreground IPC wait handling so `service` and
+  `service status window` run `serviced`, resume the exact waiting client, and
+  restore the shell only after one terminal process result; add a bounded
+  `usvcctl` reply timeout as a secondary failure guard;
 - remove the foreground `drive`/`udrive_c.elf` scheduler helper from the shell,
   GUI/input tests, and normal application execution after drive-free QEMU
   scheduling tests pass;

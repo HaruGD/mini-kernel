@@ -32,6 +32,32 @@ Phase 4 must not be reported complete while GUI correctness or service
 liveness depends on `drive`, `udrive_c.elf`, or an equivalent foreground
 helper.
 
+### Reproduced Foreground IPC Stall
+
+The same execution-model gap affects ordinary service control. On 2026-07-17,
+the following sequence reproduced a deterministic stall after `windowd` and
+its `displayd` dependency had started:
+
+```text
+OS64> service start window
+[usvcctl] start window OK ...
+Returned from user program ...
+OS64> service
+Running user program: usvcctl_c.elf [pid=0x00000005 parent=0x00000000]
+OS64>
+```
+
+The second command is a service-manager ping. PID 5 sends an IPC request and
+enters a blocking receive, but no reply or terminal process record is printed.
+The kernel shell prompt is exposed prematurely while foreground input ownership
+still belongs to the waiting client, so the prompt cannot accept commands.
+This is not a `windowd` deadlock and not a QEMU halt; it is an invalid
+foreground-wait/shell-return scheduling transition.
+
+The plural `services` kernel command remains the service-registry diagnostic.
+The singular bare `service` command intentionally pings the service manager and
+must also complete safely.
+
 ## Phase 4H: Drive-Free Single-CPU Scheduling
 
 Phase 4H retains one execution context per process and one active CPU. Its
@@ -46,6 +72,14 @@ Required behavior:
   process anchoring the scheduler;
 - keep waiting processes off the ready queue and wake each completed wait at
   most once;
+- when a foreground process blocks on IPC, run the ready service manager,
+  deliver its reply, resume the exact waiting PID plus generation, and restore
+  the kernel shell only after that foreground process exits or fails;
+- never print or accept a kernel shell prompt while foreground input ownership
+  still belongs to a live waiting user process;
+- give `usvcctl_c.elf` a bounded reply timeout so a missing or failed service
+  manager returns a diagnostic instead of creating an infinite foreground
+  wait;
 - preserve exact process identity, terminal-state, cleanup, and permission
   invariants from the Phase 3.5 scheduler contract;
 - keep the terminal responsive while GUI services and applications execute;
@@ -64,7 +98,10 @@ Required evidence:
    incorrectly nor corrupts scheduler state;
 4. wake timer, IPC, input, and child waits while the shell remains idle and
    prove ready-queue membership and completion occur exactly once;
-5. repeat service restart and client churn with no unexplained process, wait,
+5. after `service start window`, run bare `service`, `service status window`,
+   and repeated service-control requests; require a reply or bounded error,
+   one terminal process result, restored shell input, and no `drive` helper;
+6. repeat service restart and client churn with no unexplained process, wait,
    handle, mapping, surface, or heap drift.
 
 Phase 4H exits only when the ordinary QEMU GUI and input tests contain no
