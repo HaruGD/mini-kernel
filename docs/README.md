@@ -21,6 +21,7 @@ links and test references remain stable from the project root.
 - [Process and scheduler invariants](architecture/process_scheduler_invariants.md)
 - [Scheduler modernization plan](architecture/scheduler_modernization.md)
 - [Service supervision and permissions](architecture/service_supervision.md)
+- [Windows GUI domain and compatibility runtime](architecture/windows_gui_domain.md)
 
 ## Reference
 

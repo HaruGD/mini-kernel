@@ -130,6 +130,15 @@ the compositor or transferring input to another client.
   damage chunking, information queries, and event validation; explicit
   integration producers remain only for lower-level protocol regression.
 
+## Future Presentation Backends
+
+The public Window SDK and `windowd` authority remain stable if composition is
+later presented through another backend. The proposed
+[Windows GUI domain](../architecture/windows_gui_domain.md) first exports one
+complete native composite and only later exports individual Host-owned windows
+as proxy HWNDs. Neither path transfers native window authority or secure UI to
+the Guest.
+
 ## Verification
 
 ```sh

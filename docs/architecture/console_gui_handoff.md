@@ -190,6 +190,20 @@ A later virtual-terminal switch may move between text and graphical sessions
 without destroying either session. Phase 4H requires only one active visible
 mode and deterministic first-window/last-window handoff.
 
+## Future Windows Presentation Domain
+
+The post-desktop [Windows GUI domain architecture](windows_gui_domain.md)
+extends this ownership model with another optional presentation backend. It
+does not let Windows replace the native handoff or become the authority for
+OS64 windows, physical input, permissions, or recovery.
+
+The future state machine starts from a fully functional native display mode,
+boots and negotiates the Windows domain, and returns to native output whenever
+the VM, Guest Agent, DWM, assigned GPU, output switch, or bridge stops making
+progress. Phase 4H therefore remains a prerequisite: native applications and
+their Host-owned surfaces must survive a presentation-domain failure and be
+redrawn without Guest cooperation.
+
 ## Required Regression Evidence
 
 Phase 4H must add host contract tests and QEMU integration evidence for:

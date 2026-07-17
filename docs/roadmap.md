@@ -243,13 +243,20 @@ This track may progress beside GUI work, but DMA infrastructure comes first.
 - [ ] Add an AArch64 UEFI loader and kernel entry
 - [ ] Implement AArch64 paging, exception, timer, and context-switch backends
 
-## Future End Goal: High-Performance Windows Compatibility VM
+## Future End Goal: Windows Compatibility And GUI Domain
+
+Detailed architecture:
+
+- [Windows GUI domain and compatibility runtime](architecture/windows_gui_domain.md)
 
 This is a post-roadmap research goal. It begins only after the native desktop,
 preemptive SMP execution, storage, networking, IOMMU, and device-lifecycle
-foundations are stable. The target is a general-purpose, low-latency virtual
-machine that boots an actual user-supplied and properly licensed Windows
-installation rather than reimplementing the Windows API or kernel ABI.
+foundations are stable. The target is a general-purpose, low-latency VM that
+boots an actual user-supplied and properly licensed Windows installation rather
+than reimplementing the Windows API or kernel ABI. Windows may additionally act
+as an optional untrusted presentation domain for normal desktop content, while
+OS64 retains machine authority, physical input, secure UI, and a complete native
+recovery path.
 
 Planned foundation:
 
@@ -266,23 +273,42 @@ Planned foundation:
   pages, stable TSC handling, and optional APICv/AVIC acceleration
 - [ ] Provide a coherent boot platform with guest UEFI, ACPI, APIC, PCI, timers,
   storage, display, keyboard, and pointer devices
+- [ ] Add a virtual TPM and Secure Boot path for the selected supported Windows
+  profile
 - [ ] Boot Windows from a user-provided installation image and virtual disk,
   then reach a stable desktop inside one OS64 window
+- [ ] Freeze and test a bounded, generation-tagged presentation bridge with a
+  Host simulator before attaching the protocol to the hypervisor
+- [ ] Export the complete native OS64 composite into one Windows proxy window,
+  return its input through Host validation, and prove automatic native-output
+  recovery before attempting per-window integration
 - [ ] Add IOMMU interrupt remapping and exclusive GPU, NVMe, USB, and other PCI
   device passthrough without allowing concurrent host ownership
+- [ ] Certify an explicit physical-output topology: separate monitor inputs,
+  Host-owned scanout with cross-GPU transfer, or a supported hardware mux
 - [ ] Run compatible Windows applications, services, and kernel drivers against
   either supported virtual devices or explicitly passed-through hardware
 - [ ] Integrate guest display, audio, input, clipboard, files, and networking
   with the native OS64 service boundaries
-- [ ] Add an optional Windows guest agent that maps individual guest application
-  windows onto OS64 `windowd` surfaces for seamless desktop integration
-- [ ] Add bounded failure recovery, resource accounting, snapshots, suspend and
-  resume, deterministic fault injection, and long-duration VM soak coverage
+- [ ] Replicate individual OS64-native windows as generation-tagged proxy HWNDs
+  so DWM can compose normal Windows and native application content together
+- [ ] Keep Explorer and run LunaShell as a companion first; make shell
+  replacement an optional, edition-specific product profile
+- [ ] Optionally map individual guest application windows back onto OS64
+  `windowd` surfaces for a native-presentation profile; this reverse path is a
+  separate feature, not the primary Windows-presentation bridge
+- [ ] Add bounded failure recovery, resource accounting, offline snapshots,
+  deterministic fault injection, and long-duration VM soak coverage; live
+  suspend/resume remains profile-dependent when physical devices are assigned
 
 Scope and distribution boundaries:
 
 - OS64 remains visibly and honestly virtualized; anti-cheat, DRM, licensing, or
   virtual-machine detection circumvention is not a project feature.
+- Windows-rendered pixels are never trusted for Host authentication,
+  permissions, recovery, or other security-sensitive UI.
+- Physical input and secure-attention handling terminate at OS64 before any
+  event is injected into the Guest.
 - OS64 does not distribute Windows images, product keys, proprietary firmware,
   game files, or third-party kernel drivers.
 - Users must supply valid licenses and follow the terms of Windows, applications,
