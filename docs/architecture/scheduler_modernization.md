@@ -6,6 +6,10 @@ first make one CPU schedule independently and correctly, then introduce
 multiple execution contexts per process, and only then allow several CPUs to
 schedule concurrently.
 
+Phase 4H performs the persistent console/GUI display and input handoff in
+[Console And GUI Display Handoff](console_gui_handoff.md) before removing the
+foreground scheduler helper described here.
+
 ## Current Transitional Limitation
 
 The current kernel can save, preempt, wait, wake, and resume one user execution
@@ -141,8 +145,12 @@ CPUs before SMP becomes the default configuration.
 ## Required Order
 
 ```text
-Phase 4H
+Phase 4H-A
+console/GUI display and input handoff
+    -> Phase 4H-B
 drive-free single-CPU preemption and idle scheduling
+    -> Phase 4H-C
+lifecycle, fault, resource, and soak closure
     -> Phase 4.5
 process/thread separation and synchronization APIs
     -> Phase 4.6

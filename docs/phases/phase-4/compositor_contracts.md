@@ -134,6 +134,14 @@ forbidden.
 `displayd` is the only normal user-space process with `DISPLAY` permission.
 Applications and `windowd` do not call GOP presentation directly.
 
+The per-operation display-owner token is not sufficient for a graphical
+session: terminal output can still draw between GUI presents. Phase 4H adds the
+persistent, generation-tagged console/GUI session handoff defined in
+`docs/architecture/console_gui_handoff.md`. While GUI mode is active, ordinary
+terminal output updates retained console state and logs but never GOP scanout;
+the retained console snapshot is composed below normal windows until the last
+window closes or failure restores console mode.
+
 Display ownership state transitions may briefly disable interrupts, but pixel
 copy, composition, dirty present, and MMIO framebuffer writes must run with
 interrupts enabled. An interrupt-side terminal draw that encounters another
@@ -208,7 +216,8 @@ The detailed subphase plan, required tests, and exit gates are recorded in
 5. Multiwindow z-order and damage composition.
 6. `inputd` forwarding and keyboard focus routing.
 7. Window protocol SDK and first GUI application.
-8. Move/resize/lifecycle/failure regression matrix.
+8. Persistent console/GUI display and input handoff with exact fallback.
+9. Drive-free idle-shell scheduling and lifecycle/failure regression matrix.
 
 Each step adds focused host tests plus a QEMU integration test. Phase 4 does
 not proceed to widgets or desktop components until window lifecycle, surface

@@ -321,11 +321,21 @@ draw, receive input, redraw damaged regions, resize, and close cleanly.
 Goal: certify the GUI stack under malformed input, resource pressure, process
 failure, and repeated lifecycle operations.
 
-The scheduler boundary and the post-Phase-4 threading/SMP sequence are defined
-in `docs/architecture/scheduler_modernization.md`.
+The console/GUI ownership state is defined in
+`docs/architecture/console_gui_handoff.md`. The scheduler boundary and the
+post-Phase-4 threading/SMP sequence are defined in
+`docs/architecture/scheduler_modernization.md`.
 
 Implementation and tests:
 
+- add a persistent generation-tagged console/GUI display session so terminal
+  rendering cannot overwrite pixels between GUI presents;
+- capture a read-only retained console underlay on first-window acquisition,
+  compose normal windows above it, keep GUI-time logs in serial/klog and the
+  retained terminal state, and redraw the current console on last-window
+  release;
+- transfer input exactly once with visible display mode, reject stale session
+  owners, and restore console input on normal release or GUI-service failure;
 - make the single-CPU scheduler select ready user processes while the kernel
   shell is idle, with an explicit idle task or equivalent idle state;
 - remove the foreground `drive`/`udrive_c.elf` scheduler helper from the shell,
@@ -352,11 +362,13 @@ Implementation and tests:
 The one-hour soak remains an explicit release-certification run rather than a
 mandatory inner development test unless the release checklist requests it.
 
-Exit gate: services and GUI applications continue running while the kernel
-shell is idle with no `drive`-style foreground helper; all focused and full
-regression suites pass; the 60-second soak has no unexplained resource drift;
-the normal display/input permissions are exclusive; and the Phase 4 closure
-record contains reproducible evidence.
+Exit gate: terminal output cannot alter GUI scanout while GUI mode is active;
+the retained console appears below normal windows and is restored with command
+input after last-window close or GUI failure; services and GUI applications
+continue running while the kernel shell is idle with no `drive`-style
+foreground helper; all focused and full regression suites pass; the 60-second
+soak has no unexplained resource drift; the normal display/input permissions
+are exclusive; and the Phase 4 closure record contains reproducible evidence.
 
 ## Dependency And Commit Sequence
 
@@ -368,7 +380,7 @@ record contains reproducible evidence.
  -> 4E bounded multiwindow composition
  -> 4F keyboard focus routing
  -> 4G public SDK and first GUI app
- -> 4H drive-free scheduling, fault, soak, and closure
+ -> 4H console/GUI handoff, drive-free scheduling, fault, soak, and closure
 ```
 
 Each subphase receives an implementation/test commit followed by an evidence

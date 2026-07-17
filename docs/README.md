@@ -14,6 +14,7 @@ links and test references remain stable from the project root.
 - [2D graphics library](architecture/2d_graphics_library.md)
 - [ACPI power-off](architecture/acpi_power.md)
 - [Concurrency readiness](architecture/concurrency_readiness.md)
+- [Console and GUI display handoff](architecture/console_gui_handoff.md)
 - [IPC v2](architecture/ipc_v2.md)
 - [Kernel context and concurrency rules](architecture/kernel_context_rules.md)
 - [Kernel objects and handles](architecture/kernel_handles.md)

@@ -73,6 +73,18 @@ diagnostic `service crash display` command kills the managed child without
 marking an explicit stop, allowing the automatic restart and terminal fallback
 path to be tested reproducibly.
 
+## Phase 4H Session Handoff
+
+The current owner token protects each individual GOP operation but does not yet
+reserve scanout for the duration of a GUI session. Phase 4H adds the persistent
+console/GUI state, retained console underlay, logging behavior, input transfer,
+last-window restoration, and stale-session recovery specified in
+`docs/architecture/console_gui_handoff.md`.
+
+Until that contract is implemented, kernel terminal output may obscure GUI
+pixels between accepted presents. This is a known transitional limitation, not
+the intended final display-service behavior.
+
 ## Verification
 
 ```sh

@@ -550,6 +550,11 @@ notes or issue tracker until corrected.
 
 ### Remaining
 
+- the kernel terminal and GUI currently serialize individual GOP operations
+  but do not hold a persistent display session; Phase 4H must preserve the
+  console as a read-only underlay, prevent GUI-time terminal scanout writes,
+  and restore current console content and input after last-window close or GUI
+  failure;
 - the foreground `drive`/`udrive_c.elf` scheduler helper is transitional;
   Phase 4H must prove services and GUI applications progress while the kernel
   shell is idle and then remove the helper from code and tests;
