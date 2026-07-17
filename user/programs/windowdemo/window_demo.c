@@ -278,6 +278,65 @@ static long set_visibility(DemoWindow* window,
                         operation, 0, reply);
 }
 
+static long wait_window_event(DemoWindow* window,
+                              uint32_t timeout_ticks,
+                              OsWindowEvent* event) {
+    OsIpcReceiveFilter filter;
+    os_ipc_filter_init(&filter);
+    filter.flags = OS_IPC_FILTER_SENDER | OS_IPC_FILTER_TYPE;
+    filter.sender_pid = window->server.pid;
+    filter.sender_generation = window->server.generation;
+    filter.type = OS_IPC_MESSAGE_EVENT;
+    uint32_t start = (uint32_t)os_time_ticks();
+    while ((uint32_t)(os_time_ticks() - start) < timeout_ticks) {
+        OsIpcMessageV2 message;
+        long result = os_msg_v2_recv_match(&filter, &message);
+        if (result == OS_SUCCESS) {
+            if (message.length != sizeof(*event)) {
+                return OS_ERR_BAD_BUFFER;
+            }
+            os_memcpy(event, message.payload, sizeof(*event));
+            if (event->size != sizeof(*event) ||
+                event->abi_version != OS64_WINDOW_ABI_VERSION ||
+                event->window_id != window->window_id ||
+                event->window_generation != window->window_generation ||
+                event->event_sequence == 0) {
+                return OS_ERR_BAD_BUFFER;
+            }
+            return OS_SUCCESS;
+        }
+        if (result != OS_ERR_WOULD_BLOCK) {
+            return result;
+        }
+        os_sleep(1);
+    }
+    return OS_ERR_TIMEOUT;
+}
+
+static long drain_key_traffic(DemoWindow* window,
+                              uint32_t* last_sequence,
+                              uint32_t forbidden_keycode) {
+    uint32_t quiet_ticks = 0;
+    while (quiet_ticks < 20) {
+        OsWindowEvent event;
+        long result = wait_window_event(window, 2, &event);
+        if (result == OS_ERR_TIMEOUT) {
+            quiet_ticks += 2;
+            continue;
+        }
+        if (result < 0 || event.event_sequence <= *last_sequence) {
+            return result < 0 ? result : OS_ERR_BAD_BUFFER;
+        }
+        *last_sequence = event.event_sequence;
+        quiet_ticks = 0;
+        if (event.command == OS_WINDOW_EVENT_KEY &&
+            event.input.data.key.keycode == forbidden_keycode) {
+            return OS_ERR_PERMISSION_DENIED;
+        }
+    }
+    return OS_SUCCESS;
+}
+
 static long move_window(DemoWindow* window,
                         int32_t x,
                         int32_t y,
@@ -695,6 +754,168 @@ static int run_multi_front_client(void) {
     return 0;
 }
 
+static int run_input_a_client(void) {
+    os_sleep(40);
+    DemoWindow window;
+    if (!setup_multi_window(&window, 280, 200, 80, 80,
+                            OS_RGB(42, 92, 180), OS_RGB(96, 204, 232))) {
+        os_puts("[window-input-a] setup failed");
+        return 1;
+    }
+    OsWindowReply reply;
+    if (create_window(&window, &reply) < 0 ||
+        set_visibility(&window, OS_WINDOW_FOCUS, &reply) < 0) {
+        os_puts("[window-input-a] create/focus failed");
+        release_surface(&window);
+        return 1;
+    }
+    OsWindowEvent event;
+    uint32_t last_sequence = 0;
+    int focused = 0;
+    while (!focused && wait_window_event(&window, 5000, &event) == OS_SUCCESS) {
+        if (event.event_sequence <= last_sequence) {
+            os_printf("[window-input-a] sequence failure last=%u event=%u command=%u\n",
+                      last_sequence, event.event_sequence, event.command);
+            return 1;
+        }
+        last_sequence = event.event_sequence;
+        focused = event.command == OS_WINDOW_EVENT_FOCUS_IN;
+    }
+    if (!focused) {
+        os_puts("[window-input-a] focus-in missing");
+        return 1;
+    }
+    os_puts("[window-input-a] focused ready");
+
+    int got_f1 = 0;
+    while (!got_f1 && wait_window_event(&window, 10000, &event) == OS_SUCCESS) {
+        if (event.event_sequence <= last_sequence) {
+            os_puts("[window-input-a] sequence failure");
+            return 1;
+        }
+        last_sequence = event.event_sequence;
+        got_f1 = event.command == OS_WINDOW_EVENT_KEY &&
+                 event.input.type == OS_INPUT_EVENT_KEY &&
+                 event.input.data.key.type == OS_KEY_EVENT_DOWN &&
+                 event.input.data.key.keycode == OS_KEY_F1;
+    }
+    if (!got_f1) {
+        os_puts("[window-input-a] key F1 missing");
+        return 1;
+    }
+    os_puts("[window-input-a] key F1 received");
+
+    if (drain_key_traffic(&window, &last_sequence, OS_KEY_F2) < 0) {
+        os_puts("[window-input-a] pre-hide drain failed");
+        return 1;
+    }
+
+    if (set_visibility(&window, OS_WINDOW_HIDE, &reply) < 0) {
+        os_puts("[window-input-a] hide failed");
+        return 1;
+    }
+    int focus_out = 0;
+    while (!focus_out && wait_window_event(&window, 5000, &event) == OS_SUCCESS) {
+        if (event.event_sequence <= last_sequence) {
+            os_puts("[window-input-a] sequence failure");
+            return 1;
+        }
+        last_sequence = event.event_sequence;
+        focus_out = event.command == OS_WINDOW_EVENT_FOCUS_OUT;
+        if (event.command == OS_WINDOW_EVENT_KEY &&
+            event.input.data.key.keycode == OS_KEY_F2) {
+            os_puts("[window-input-a] hidden key leak");
+            return 1;
+        }
+    }
+    if (!focus_out) {
+        os_puts("[window-input-a] focus-out missing");
+        return 1;
+    }
+    os_puts("[window-input-a] hidden focus-out");
+    os_sleep(50);
+    while (wait_window_event(&window, 1, &event) == OS_SUCCESS) {
+        if (event.command == OS_WINDOW_EVENT_KEY &&
+            event.input.data.key.keycode == OS_KEY_F2) {
+            os_puts("[window-input-a] hidden key leak");
+            return 1;
+        }
+    }
+    if (destroy_window(&window, &reply) < 0) {
+        os_puts("[window-input-a] destroy failed");
+        return 1;
+    }
+    release_surface(&window);
+    os_puts("[window-input-a] lifecycle OK");
+    return 0;
+}
+
+static int run_input_b_client(void) {
+    DemoWindow window;
+    if (!setup_multi_window(&window, 300, 220, 360, 220,
+                            OS_RGB(56, 148, 88), OS_RGB(224, 184, 72))) {
+        os_puts("[window-input-b] setup failed");
+        return 1;
+    }
+    OsWindowReply reply;
+    if (create_window(&window, &reply) < 0) {
+        os_puts("[window-input-b] create failed");
+        release_surface(&window);
+        return 1;
+    }
+    os_puts("[window-input-b] background ready");
+    OsWindowEvent event;
+    uint32_t last_sequence = 0;
+    int focused = 0;
+    while (!focused && wait_window_event(&window, 20000, &event) == OS_SUCCESS) {
+        if (event.event_sequence <= last_sequence) {
+            os_puts("[window-input-b] sequence failure");
+            return 1;
+        }
+        last_sequence = event.event_sequence;
+        if (event.command == OS_WINDOW_EVENT_KEY &&
+            event.input.data.key.keycode == OS_KEY_F1) {
+            os_puts("[window-input-b] background key leak");
+            return 1;
+        }
+        focused = event.command == OS_WINDOW_EVENT_FOCUS_IN;
+    }
+    if (!focused) {
+        os_puts("[window-input-b] fallback focus missing");
+        return 1;
+    }
+    os_puts("[window-input-b] fallback focused");
+
+    int got_f2 = 0;
+    while (!got_f2 && wait_window_event(&window, 20000, &event) == OS_SUCCESS) {
+        if (event.event_sequence <= last_sequence) {
+            os_puts("[window-input-b] sequence failure");
+            return 1;
+        }
+        last_sequence = event.event_sequence;
+        got_f2 = event.command == OS_WINDOW_EVENT_KEY &&
+                 event.input.type == OS_INPUT_EVENT_KEY &&
+                 event.input.data.key.type == OS_KEY_EVENT_DOWN &&
+                 event.input.data.key.keycode == OS_KEY_F2;
+    }
+    if (!got_f2) {
+        os_puts("[window-input-b] key F2 missing");
+        return 1;
+    }
+    os_puts("[window-input-b] key F2 received");
+    if (drain_key_traffic(&window, &last_sequence, OS_KEY_F1) < 0) {
+        os_puts("[window-input-b] pre-destroy drain failed");
+        return 1;
+    }
+    if (destroy_window(&window, &reply) < 0) {
+        os_puts("[window-input-b] destroy failed");
+        return 1;
+    }
+    release_surface(&window);
+    os_puts("[window-input-b] lifecycle OK");
+    return 0;
+}
+
 static int launch_client(const char* mode) {
     char command[OS_PATH_MAX];
     const char* prefix = "usdk_c.elf ";
@@ -731,9 +952,18 @@ static int launch_multi_clients(void) {
     return 0;
 }
 
+static int launch_input_clients(void) {
+    if (launch_client("window-input-b-client") != 0 ||
+        launch_client("window-input-a-client") != 0) {
+        return 1;
+    }
+    os_puts("[window-demo] restricted input clients launched");
+    return 0;
+}
+
 int window_demo_main(int argc, char** argv) {
     if (argc != 2) {
-        os_puts("usage: usdk_c.elf window-present|window-hold|window-exit|window-multi");
+        os_puts("usage: usdk_c.elf window-present|window-hold|window-exit|window-multi|window-input");
         return 1;
     }
     if (os_streq(argv[1], "window-present")) {
@@ -753,6 +983,15 @@ int window_demo_main(int argc, char** argv) {
     }
     if (os_streq(argv[1], "window-multi-front-client")) {
         return run_multi_front_client();
+    }
+    if (os_streq(argv[1], "window-input")) {
+        return launch_input_clients();
+    }
+    if (os_streq(argv[1], "window-input-a-client")) {
+        return run_input_a_client();
+    }
+    if (os_streq(argv[1], "window-input-b-client")) {
+        return run_input_b_client();
     }
     if (os_streq(argv[1], "window-present-client") ||
         os_streq(argv[1], "window-hold-client") ||

@@ -18,6 +18,13 @@
 #define OS_WINDOW_DAMAGE_BEGIN  0x57400Au
 #define OS_WINDOW_DAMAGE_RECTS  0x57400Bu
 #define OS_WINDOW_DAMAGE_COMMIT 0x57400Cu
+#define OS_WINDOW_FOCUS         0x57400Du
+#define OS_WINDOW_INPUT_EVENT   0x57400Eu
+
+#define OS_WINDOW_EVENT_FOCUS_IN  0x574101u
+#define OS_WINDOW_EVENT_FOCUS_OUT 0x574102u
+#define OS_WINDOW_EVENT_KEY       0x574103u
+#define OS_WINDOW_EVENT_POINTER   0x574104u
 
 #define OS_WINDOW_FLAG_NONE 0u
 #define OS_WINDOW_ID_FULLSCREEN 1u
@@ -28,6 +35,7 @@
     (OS_WINDOW_DAMAGE_MAX_RECTS / OS_WINDOW_DAMAGE_RECTS_PER_CHUNK)
 
 #include "os64/graphics_types.h"
+#include "os64/input_types.h"
 
 typedef struct OsWindowCreateRequest {
     uint32_t size;
@@ -183,6 +191,30 @@ typedef struct OsWindowDamageCommitRequest {
     uint32_t reserved;
 } OsWindowDamageCommitRequest;
 
+typedef OsWindowStateRequest OsWindowFocusRequest;
+
+typedef struct OsWindowInputForward {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t input_sequence;
+    uint32_t reserved;
+    OsInputEvent event;
+} OsWindowInputForward;
+
+typedef struct OsWindowEvent {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    uint32_t event_sequence;
+    uint32_t window_id;
+    uint32_t window_generation;
+    uint32_t reserved;
+    OsInputEvent input;
+} OsWindowEvent;
+
 #ifdef __cplusplus
 #define OS64_WINDOW_STATIC_ASSERT(condition, message) static_assert((condition), message)
 #else
@@ -213,8 +245,16 @@ OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowDamageRectsRequest) == 96,
                           "OsWindowDamageRectsRequest ABI changed");
 OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowDamageCommitRequest) == 28,
                           "OsWindowDamageCommitRequest ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowInputForward) == 72,
+                          "OsWindowInputForward ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowEvent) == 80,
+                          "OsWindowEvent ABI changed");
 OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowDamageRectsRequest, rects) == 32,
                           "OsWindowDamageRectsRequest.rects offset changed");
+OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowInputForward, event) == 24,
+                          "OsWindowInputForward.event offset changed");
+OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowEvent, input) == 32,
+                          "OsWindowEvent.input offset changed");
 OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowReply, result) == 16,
                           "OsWindowReply.result offset changed");
 

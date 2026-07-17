@@ -160,7 +160,10 @@ int main(int argc, char** argv) {
          os_streq(argv[1], "window-exit-client") ||
          os_streq(argv[1], "window-multi") ||
          os_streq(argv[1], "window-multi-back-client") ||
-         os_streq(argv[1], "window-multi-front-client"))) {
+         os_streq(argv[1], "window-multi-front-client") ||
+         os_streq(argv[1], "window-input") ||
+         os_streq(argv[1], "window-input-a-client") ||
+         os_streq(argv[1], "window-input-b-client"))) {
         return window_demo_main(argc, argv);
     }
 

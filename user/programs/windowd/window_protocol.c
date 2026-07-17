@@ -85,7 +85,8 @@ long window_protocol_validate_state(const OsWindowStateRequest* request,
                                     uint32_t command) {
     if (request == 0 || request->size != sizeof(*request) ||
         request->abi_version != OS64_WINDOW_ABI_VERSION ||
-        (command != OS_WINDOW_SHOW && command != OS_WINDOW_HIDE) ||
+        (command != OS_WINDOW_SHOW && command != OS_WINDOW_HIDE &&
+         command != OS_WINDOW_FOCUS) ||
         request->command != command || request->flags != 0 ||
         request->request_id == 0 || request->window_id == 0 ||
         request->window_generation == 0 || request->reserved != 0) {

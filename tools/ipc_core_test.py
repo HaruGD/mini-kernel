@@ -169,9 +169,11 @@ int main() {
 
     OsIpcMessageV2 unrelated = make_message_v2(OS_IPC_MESSAGE_EVENT, 2000);
     OsIpcMessageV2 reply = make_message_v2(OS_IPC_MESSAGE_REPLY, 1001);
+    OsIpcMessageV2 newer = make_message_v2(OS_IPC_MESSAGE_EVENT, 2001);
     reply.reply_to = 1000;
     check(ipc_send_message_v2(sender, target, &unrelated) == IPC_OK);
     check(ipc_send_message_v2(sender, target, &reply) == IPC_OK);
+    check(ipc_send_message_v2(sender, target, &newer) == IPC_OK);
     OsIpcReceiveFilter filter;
     filter.size = sizeof(OsIpcReceiveFilter);
     filter.flags = OS_IPC_FILTER_SENDER | OS_IPC_FILTER_TYPE | OS_IPC_FILTER_REPLY_TO;
@@ -184,6 +186,10 @@ int main() {
     check(received_v2.reply_to == 1000);
     check(ipc_receive_message_v2(target, &received_v2) == IPC_OK);
     check(received_v2.type == OS_IPC_MESSAGE_EVENT);
+    check(received_v2.request_id == 2000);
+    check(ipc_receive_message_v2(target, &received_v2) == IPC_OK);
+    check(received_v2.type == OS_IPC_MESSAGE_EVENT);
+    check(received_v2.request_id == 2001);
     filter.size--;
     check(ipc_receive_message_v2_match(target, &filter, &received_v2) == IPC_ERR_BAD_BUFFER);
     filter.size = sizeof(OsIpcReceiveFilter);

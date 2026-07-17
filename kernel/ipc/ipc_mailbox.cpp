@@ -234,16 +234,16 @@ int ipc_mailbox_pop_v2_match(KernelIpcMailbox* mailbox,
         return 0;
     }
 
-    for (uint32_t i = 0; i < found_offset; i++) {
-        OsIpcMessageV2 rotated = mailbox->messages[mailbox->head];
-        clear_message_v2(&mailbox->messages[mailbox->head]);
-        mailbox->head = (mailbox->head + 1u) % IPC_MAILBOX_CAPACITY;
-        mailbox->messages[mailbox->tail] = rotated;
-        mailbox->tail = (mailbox->tail + 1u) % IPC_MAILBOX_CAPACITY;
+    uint32_t found_index = (mailbox->head + found_offset) % IPC_MAILBOX_CAPACITY;
+    *message = mailbox->messages[found_index];
+    for (uint32_t i = found_offset; i + 1u < mailbox->count; i++) {
+        uint32_t current = (mailbox->head + i) % IPC_MAILBOX_CAPACITY;
+        uint32_t next = (mailbox->head + i + 1u) % IPC_MAILBOX_CAPACITY;
+        mailbox->messages[current] = mailbox->messages[next];
     }
-    *message = mailbox->messages[mailbox->head];
-    clear_message_v2(&mailbox->messages[mailbox->head]);
-    mailbox->head = (mailbox->head + 1u) % IPC_MAILBOX_CAPACITY;
+    mailbox->tail = (mailbox->tail + IPC_MAILBOX_CAPACITY - 1u) %
+                    IPC_MAILBOX_CAPACITY;
+    clear_message_v2(&mailbox->messages[mailbox->tail]);
     mailbox->count--;
     mailbox->delivered_count++;
     kernel_spinlock_release(&mailbox->lock, &token);

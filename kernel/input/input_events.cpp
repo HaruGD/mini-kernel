@@ -1,5 +1,6 @@
 #include "kernel/input/input_events.h"
 #include "kernel/process64.h"
+#include "kernel/service/service_registry.h"
 
 static KernelInputEventQueue input_queue;
 
@@ -19,6 +20,14 @@ int input_events_push(const OsInputEvent* event) {
                 event->data.key.character != 0) {
                 process_wait_signal(focused, PROCESS_WAIT_CHAR, PROCESS_WAIT_OK);
             }
+        }
+    }
+    OsProcessIdentity input_owner;
+    if (service_find_owner_identity("input", &input_owner) == SERVICE_OK) {
+        Process* input_service = find_process_by_identity_compat(input_owner.pid,
+                                                                 input_owner.generation);
+        if (input_service != 0 && input_service != focused) {
+            process_wait_signal(input_service, PROCESS_WAIT_INPUT, PROCESS_WAIT_OK);
         }
     }
     return result;

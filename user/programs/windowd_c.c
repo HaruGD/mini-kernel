@@ -43,6 +43,7 @@ static WindowCompositorSource compositor_sources[OS_WINDOW_MAX_WINDOWS];
 static WindowDamageAccumulator screen_damage;
 static WindowDamageTransaction damage_transaction;
 static OsProcessIdentity display_owner;
+static OsProcessIdentity input_owner;
 static OsGraphicsInfo display_info;
 static OsHandle composite_surface;
 static uint32_t* composite_pixels;
@@ -53,6 +54,101 @@ static uint32_t pending_full_frame;
 static int identity_equal(OsProcessIdentity left, OsProcessIdentity right) {
     return left.pid != 0 && left.pid == right.pid && left.generation != 0 &&
            left.generation == right.generation;
+}
+
+static void send_window_event(const WindowFocusEndpoint* endpoint,
+                              uint32_t command,
+                              uint64_t timestamp,
+                              const OsInputEvent* input) {
+    if (endpoint == 0 || endpoint->owner.pid == 0 ||
+        endpoint->event_sequence == 0 ||
+        os_process_identity_alive(endpoint->owner) < 0) {
+        return;
+    }
+    OsWindowEvent event;
+    os_memset(&event, 0, sizeof(event));
+    event.size = sizeof(event);
+    event.abi_version = OS64_WINDOW_ABI_VERSION;
+    event.command = command;
+    event.event_sequence = endpoint->event_sequence;
+    event.window_id = endpoint->window_id;
+    event.window_generation = endpoint->window_generation;
+    if (input != 0) {
+        event.input = *input;
+    } else {
+        event.input.type = OS_INPUT_EVENT_NONE;
+        event.input.size = sizeof(event.input);
+        event.input.timestamp_ticks = timestamp;
+    }
+
+    OsIpcMessageV2 message;
+    os_msg_v2_init(&message, OS_IPC_MESSAGE_EVENT);
+    message.length = sizeof(event);
+    os_memcpy(message.payload, &event, sizeof(event));
+    os_msg_v2_send_to_identity(endpoint->owner, &message);
+}
+
+static void emit_focus_change(const WindowFocusChange* change,
+                              uint64_t timestamp) {
+    if (change == 0) {
+        return;
+    }
+    send_window_event(&change->focus_out, OS_WINDOW_EVENT_FOCUS_OUT,
+                      timestamp, 0);
+    send_window_event(&change->focus_in, OS_WINDOW_EVENT_FOCUS_IN,
+                      timestamp, 0);
+}
+
+static WindowEntry* topmost_visible_window(void) {
+    for (uint32_t i = window_table.count; i != 0; i--) {
+        uint32_t slot = window_table.z_slots[i - 1u];
+        if (slot < OS_WINDOW_MAX_WINDOWS) {
+            WindowEntry* entry = &window_table.entries[slot];
+            if (entry->active && entry->visible) {
+                return entry;
+            }
+        }
+    }
+    return 0;
+}
+
+static void focus_entry(WindowEntry* entry, uint64_t timestamp) {
+    WindowFocusChange change;
+    if (entry != 0 && entry->active && entry->visible) {
+        window_input_router_focus(&input_router, entry->owner,
+                                  entry->window_id, entry->window_generation,
+                                  &change);
+    } else {
+        window_input_router_clear(&input_router, &change);
+    }
+    emit_focus_change(&change, timestamp);
+}
+
+static void reconcile_invalid_focus(uint64_t timestamp) {
+    if (input_router.focused_window_id == 0) {
+        return;
+    }
+    WindowEntry* focused = window_state_find(&window_table,
+                                             input_router.focused_window_id,
+                                             input_router.focused_window_generation);
+    if (focused != 0 && focused->visible &&
+        identity_equal(focused->owner, input_router.focused_owner)) {
+        return;
+    }
+    focus_entry(topmost_visible_window(), timestamp);
+}
+
+static void notify_input_service(void) {
+    OsProcessIdentity input;
+    if (os_service_find_owner_identity("input", &input) < 0) {
+        return;
+    }
+    uint32_t command = OS_WINDOW_INPUT_EVENT;
+    OsIpcMessage message;
+    os_msg_init(&message, OS_IPC_MESSAGE_EVENT);
+    message.length = sizeof(command);
+    os_memcpy(message.payload, &command, sizeof(command));
+    os_msg_send_to_identity(input, &message);
 }
 
 static void close_handle(OsHandle handle) {
@@ -770,7 +866,100 @@ static void handle_visibility(const OsIpcMessageV2* message, uint32_t command) {
         os_printf("[windowd] %s id=%u\n",
                   command == OS_WINDOW_SHOW ? "shown" : "hidden",
                   entry->window_id);
+        if (command == OS_WINDOW_HIDE) {
+            reconcile_invalid_focus(os_time_ticks());
+        }
     }
+}
+
+static void handle_focus(const OsIpcMessageV2* message) {
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsWindowFocusRequest request;
+    if (message->length != sizeof(request) || message->handle_count != 0) {
+        close_message_handles(message);
+        send_window_reply(sender, message->request_id, OS_WINDOW_FOCUS,
+                          OS_ERR_INVALID_ARGUMENT, 0, 0, 0);
+        return;
+    }
+    os_memcpy(&request, message->payload, sizeof(request));
+    long result = window_protocol_validate_state(&request, OS_WINDOW_FOCUS);
+    if (result == OS_SUCCESS && !request_matches(message, request.request_id)) {
+        result = OS_ERR_INVALID_ARGUMENT;
+    }
+    WindowEntry* entry = 0;
+    if (result == OS_SUCCESS) {
+        result = window_state_validate_target(&window_table, sender,
+                                              request.window_id,
+                                              request.window_generation,
+                                              &entry);
+    }
+    if (result == OS_SUCCESS && !entry->visible) {
+        result = OS_ERR_NOT_READY;
+    }
+    if (result == OS_SUCCESS) {
+        focus_entry(entry, os_time_ticks());
+    }
+    send_window_reply(sender, request.request_id, OS_WINDOW_FOCUS,
+                      (int32_t)result,
+                      entry != 0 ? entry->window_id : 0,
+                      entry != 0 ? entry->window_generation : 0,
+                      entry != 0 ? entry->accepted_content_generation : 0);
+    if (result == OS_SUCCESS) {
+        os_printf("[windowd] focused id=%u owner=%u:%u\n",
+                  entry->window_id, entry->owner.pid, entry->owner.generation);
+    }
+}
+
+static void handle_input_event(const OsIpcMessageV2* message) {
+    if (message == 0 || message->type != OS_IPC_MESSAGE_EVENT ||
+        message->flags != 0 || message->length != sizeof(OsWindowInputForward) ||
+        message->request_id != 0 || message->reply_to != 0 ||
+        message->handle_count != 0) {
+        close_message_handles(message);
+        return;
+    }
+    OsProcessIdentity sender = os_msg_v2_sender_identity(message);
+    OsProcessIdentity registered;
+    if (os_service_find_owner_identity("input", &registered) < 0 ||
+        !identity_equal(sender, registered)) {
+        return;
+    }
+    if (!identity_equal(registered, input_owner)) {
+        input_owner = registered;
+        input_router.input_sequence = 0;
+        os_printf("[windowd] input connected pid=%u generation=%u\n",
+                  registered.pid, registered.generation);
+    }
+
+    OsWindowInputForward forward;
+    os_memcpy(&forward, message->payload, sizeof(forward));
+    if (forward.size != sizeof(forward) ||
+        forward.abi_version != OS64_WINDOW_ABI_VERSION ||
+        forward.command != OS_WINDOW_INPUT_EVENT || forward.flags != 0 ||
+        forward.reserved != 0 || forward.event.size != sizeof(forward.event) ||
+        forward.event.type != OS_INPUT_EVENT_KEY ||
+        (forward.event.data.key.type != OS_KEY_EVENT_DOWN &&
+         forward.event.data.key.type != OS_KEY_EVENT_UP) ||
+        window_input_router_accept_input(&input_router,
+                                         forward.input_sequence) < 0) {
+        return;
+    }
+
+    reconcile_invalid_focus(forward.event.timestamp_ticks);
+    WindowEntry* focused = window_state_find(&window_table,
+                                             input_router.focused_window_id,
+                                             input_router.focused_window_generation);
+    if (focused == 0 || !focused->visible ||
+        !identity_equal(focused->owner, input_router.focused_owner)) {
+        return;
+    }
+    WindowFocusEndpoint endpoint;
+    endpoint.owner = focused->owner;
+    endpoint.window_id = focused->window_id;
+    endpoint.window_generation = focused->window_generation;
+    endpoint.event_sequence = window_input_router_next_event(&input_router);
+    send_window_event(&endpoint, OS_WINDOW_EVENT_KEY,
+                      forward.event.timestamp_ticks, &forward.event);
 }
 
 static void handle_move(const OsIpcMessageV2* message) {
@@ -948,6 +1137,7 @@ static void handle_destroy(const OsIpcMessageV2* message) {
     send_window_reply(sender, request.request_id, OS_WINDOW_DESTROY,
                       (int32_t)result, id, generation, 0);
     if (result == OS_SUCCESS) {
+        reconcile_invalid_focus(os_time_ticks());
         os_printf("[windowd] destroyed id=%u generation=%u remaining=%u\n",
                   id, generation, window_table.count);
     }
@@ -972,6 +1162,10 @@ static void handle_message(const OsIpcMessageV2* message) {
     if (handle_service_query(message)) {
         return;
     }
+    if (message != 0 && message->type == OS_IPC_MESSAGE_EVENT) {
+        handle_input_event(message);
+        return;
+    }
     if (message == 0 || message->type != OS_IPC_MESSAGE_REQUEST ||
         message->length < 12) {
         reject_message(message, OS_ERR_INVALID_ARGUMENT);
@@ -985,6 +1179,7 @@ static void handle_message(const OsIpcMessageV2* message) {
         case OS_WINDOW_DESTROY: handle_destroy(message); break;
         case OS_WINDOW_SHOW: handle_visibility(message, OS_WINDOW_SHOW); break;
         case OS_WINDOW_HIDE: handle_visibility(message, OS_WINDOW_HIDE); break;
+        case OS_WINDOW_FOCUS: handle_focus(message); break;
         case OS_WINDOW_MOVE: handle_move(message); break;
         case OS_WINDOW_RESIZE: handle_resize(message); break;
         case OS_WINDOW_DAMAGE_BEGIN: handle_damage_begin(message); break;
@@ -1009,6 +1204,9 @@ static void cleanup_dead_owners(void) {
     }
     if (removed != 0 && compose_and_present() < 0) {
         pending_full_frame = 1;
+    }
+    if (removed != 0) {
+        reconcile_invalid_focus(os_time_ticks());
     }
 }
 
@@ -1041,6 +1239,8 @@ int main(void) {
     clear_damage_transaction();
     display_owner.pid = 0;
     display_owner.generation = 0;
+    input_owner.pid = 0;
+    input_owner.generation = 0;
     composite_surface = 0;
     composite_pixels = 0;
     next_frame_generation = (uint32_t)os_time_ticks() + 1u;
@@ -1075,6 +1275,7 @@ int main(void) {
         release_composite_surface();
         return 1;
     }
+    notify_input_service();
     os_printf("[windowd] ready pid=%u size=%ux%u display=%u:%u capacity=%u\n",
               (uint32_t)os_getpid(), display_info.width, display_info.height,
               display_owner.pid, display_owner.generation,

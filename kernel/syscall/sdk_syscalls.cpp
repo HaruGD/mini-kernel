@@ -80,6 +80,15 @@ static int current_process_is_display_authority() {
            owner.pid == process->pid && owner.generation == process->generation;
 }
 
+static int process_is_input_authority(Process* process) {
+    if (!process_has_permissions(process, OS_PROCESS_PERMISSION_INPUT)) {
+        return 0;
+    }
+    OsProcessIdentity owner;
+    return service_find_owner_identity("input", &owner) == SERVICE_OK &&
+           owner.pid == process->pid && owner.generation == process->generation;
+}
+
 static uint64_t dispatch_surface_create(uint64_t width,
                                         uint64_t height,
                                         uint64_t pixel_format) {
@@ -193,6 +202,9 @@ static uint64_t dispatch_handle_close(uint64_t handle) {
 
 static int pop_current_input_event(OsInputEvent* event) {
     Process* process = current_process();
+    if (process_is_input_authority(process)) {
+        return input_events_pop(event);
+    }
     if (process != 0) {
         return process_event_queue_pop(process, event);
     }
@@ -719,7 +731,8 @@ static uint64_t dispatch_input_event(uint64_t user_event_address,
     if (!wait) {
         return (uint64_t)(int64_t)SYS_ERR_WOULD_BLOCK;
     }
-    if (process == 0 || process_focused_pid() != process->pid) {
+    if (process == 0 ||
+        (!process_is_input_authority(process) && process_focused_pid() != process->pid)) {
         return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
     }
     if (!process_wait_begin(process,
@@ -758,7 +771,10 @@ void complete_waiting_syscall64(Process* process) {
         }
     } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_INPUT) {
         OsInputEvent event;
-        if (!process_event_queue_pop(process, &event)) {
+        int has_event = process_is_input_authority(process)
+            ? input_events_pop(&event)
+            : process_event_queue_pop(process, &event);
+        if (!has_event) {
             result = SYS_ERR_NOT_READY;
         } else if (!copy_kernel_to_user_buffer(
                        (uint8_t*)(uintptr_t)process->wait_user_address,

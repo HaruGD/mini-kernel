@@ -22,6 +22,8 @@
 #define OS_KEY_ESCAPE 0x001u
 #define OS_KEY_ENTER 0x01Cu
 #define OS_KEY_SPACE 0x039u
+#define OS_KEY_F1 0x03Bu
+#define OS_KEY_F2 0x03Cu
 #define OS_KEY_UP 0x148u
 #define OS_KEY_LEFT 0x14Bu
 #define OS_KEY_RIGHT 0x14Du
