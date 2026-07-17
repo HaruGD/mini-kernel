@@ -179,3 +179,14 @@ long window_protocol_validate_damage_commit(
     }
     return OS_SUCCESS;
 }
+
+long window_protocol_validate_info(const OsWindowInfoRequest* request) {
+    if (request == 0 || request->size != sizeof(*request) ||
+        request->abi_version != OS64_WINDOW_ABI_VERSION ||
+        request->command != OS_WINDOW_GET_INFO || request->flags != 0 ||
+        request->request_id == 0 || request->reserved != 0 ||
+        ((request->window_id == 0) != (request->window_generation == 0))) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return OS_SUCCESS;
+}

@@ -36,6 +36,7 @@ void window_input_router_init(WindowInputRouter* router) {
     router->focused_owner.generation = 0;
     router->focused_window_id = 0;
     router->focused_window_generation = 0;
+    router->focused_since_ticks = 0;
     router->input_sequence = 0;
     router->event_sequence = 0;
 }
@@ -57,6 +58,7 @@ void window_input_router_focus(WindowInputRouter* router,
                                OsProcessIdentity owner,
                                uint32_t window_id,
                                uint32_t window_generation,
+                               uint64_t focused_since_ticks,
                                WindowFocusChange* change) {
     if (change != 0) {
         clear_endpoint(&change->focus_out);
@@ -77,6 +79,7 @@ void window_input_router_focus(WindowInputRouter* router,
     router->focused_owner = owner;
     router->focused_window_id = window_id;
     router->focused_window_generation = window_generation;
+    router->focused_since_ticks = focused_since_ticks;
     if (change != 0) {
         change->focus_in.owner = owner;
         change->focus_in.window_id = window_id;
@@ -104,6 +107,7 @@ void window_input_router_clear(WindowInputRouter* router,
     router->focused_owner.generation = 0;
     router->focused_window_id = 0;
     router->focused_window_generation = 0;
+    router->focused_since_ticks = 0;
 }
 
 long window_input_router_accept_input(WindowInputRouter* router,

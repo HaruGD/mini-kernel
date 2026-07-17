@@ -191,9 +191,15 @@ def require_color_max_region(path: Path,
 def screenshot(process: subprocess.Popen, name: str) -> Path:
     path = ROOT / f"logs/window_multi_{name}.ppm"
     path.unlink(missing_ok=True)
-    monitor_line(process, f"screendump {path}", 0.05)
-    if not path.exists():
-        raise RuntimeError(f"missing {name} screendump")
+    # A screendump is not atomic with respect to a running vCPU.  Pause the
+    # guest so a display present cannot tear the validation image midway.
+    monitor_line(process, "stop")
+    try:
+        monitor_line(process, f"screendump {path}", 0.05)
+        if not path.exists():
+            raise RuntimeError(f"missing {name} screendump")
+    finally:
+        monitor_line(process, "cont")
     return path
 
 
@@ -263,7 +269,9 @@ def main() -> int:
         partial_screen = screenshot(process, "partial")
         require_color_count(partial_screen, (232, 72, 152), 8_000,
                             "partial damage")
-        require_color_count(partial_screen, (48, 152, 92), 7_000,
+        # Serial/status output still shares the GOP console during this phase,
+        # so retain a conservative lower bound for the unobscured base color.
+        require_color_count(partial_screen, (48, 152, 92), 6_500,
                             "resized surface")
 
         front_done = drive_until(process, "[window-multi-front] lifecycle OK", partial)

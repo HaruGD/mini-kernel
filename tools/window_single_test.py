@@ -84,6 +84,19 @@ int main(void) {
     check(window_protocol_validate_destroy(&destroy) == OS_ERR_INVALID_ARGUMENT,
           "destroy reserved field");
 
+    OsWindowInfoRequest info = {
+        sizeof(OsWindowInfoRequest), OS64_WINDOW_ABI_VERSION,
+        OS_WINDOW_GET_INFO, 0, 11, 0, 0, 0
+    };
+    check(window_protocol_validate_info(&info) == OS_SUCCESS,
+          "valid service information query");
+    info.window_id = 1;
+    check(window_protocol_validate_info(&info) == OS_ERR_INVALID_ARGUMENT,
+          "partial information identity rejected");
+    info.window_generation = 1;
+    check(window_protocol_validate_info(&info) == OS_SUCCESS,
+          "valid window information query");
+
     WindowTable state;
     OsProcessIdentity owner = {20, 3};
     OsProcessIdentity attacker = {21, 4};

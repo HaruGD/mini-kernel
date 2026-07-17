@@ -21,5 +21,6 @@ long window_protocol_validate_damage_rects(
     const OsWindowDamageRectsRequest* request);
 long window_protocol_validate_damage_commit(
     const OsWindowDamageCommitRequest* request);
+long window_protocol_validate_info(const OsWindowInfoRequest* request);
 
 #endif

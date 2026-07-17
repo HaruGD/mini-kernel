@@ -22,9 +22,10 @@
 #include "os64/surface.h"
 #include "os64/time.h"
 #include "os64/window_types.h"
+#include "os64/window.h"
 
 #define OS64_SDK_VERSION_MAJOR 2u
-#define OS64_SDK_VERSION_MINOR 0u
+#define OS64_SDK_VERSION_MINOR 1u
 #define OS_OK 0
 #define OS_ERROR (-1)
 #define OS_PATH_MAX 160u

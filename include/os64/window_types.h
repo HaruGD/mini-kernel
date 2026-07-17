@@ -20,6 +20,7 @@
 #define OS_WINDOW_DAMAGE_COMMIT 0x57400Cu
 #define OS_WINDOW_FOCUS         0x57400Du
 #define OS_WINDOW_INPUT_EVENT   0x57400Eu
+#define OS_WINDOW_GET_INFO      0x57400Fu
 
 #define OS_WINDOW_EVENT_FOCUS_IN  0x574101u
 #define OS_WINDOW_EVENT_FOCUS_OUT 0x574102u
@@ -193,6 +194,29 @@ typedef struct OsWindowDamageCommitRequest {
 
 typedef OsWindowStateRequest OsWindowFocusRequest;
 
+typedef OsWindowStateRequest OsWindowInfoRequest;
+
+typedef struct OsWindowInfoReply {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t command;
+    uint32_t flags;
+    int32_t result;
+    uint32_t request_id;
+    uint32_t window_id;
+    uint32_t window_generation;
+    int32_t x;
+    int32_t y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride_pixels;
+    uint32_t pixel_format;
+    uint32_t content_generation;
+    uint32_t visible;
+    uint32_t focused;
+    uint32_t capacity;
+} OsWindowInfoReply;
+
 typedef struct OsWindowInputForward {
     uint32_t size;
     uint32_t abi_version;
@@ -247,6 +271,8 @@ OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowDamageCommitRequest) == 28,
                           "OsWindowDamageCommitRequest ABI changed");
 OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowInputForward) == 72,
                           "OsWindowInputForward ABI changed");
+OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowInfoReply) == 72,
+                          "OsWindowInfoReply ABI changed");
 OS64_WINDOW_STATIC_ASSERT(sizeof(OsWindowEvent) == 80,
                           "OsWindowEvent ABI changed");
 OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowDamageRectsRequest, rects) == 32,
@@ -255,6 +281,8 @@ OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowInputForward, event) == 24,
                           "OsWindowInputForward.event offset changed");
 OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowEvent, input) == 32,
                           "OsWindowEvent.input offset changed");
+OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowInfoReply, result) == 16,
+                          "OsWindowInfoReply.result offset changed");
 OS64_WINDOW_STATIC_ASSERT(offsetof(OsWindowReply, result) == 16,
                           "OsWindowReply.result offset changed");
 

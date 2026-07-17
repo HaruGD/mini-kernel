@@ -236,7 +236,7 @@ static void command_help() {
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
-    print("\nrun, resume, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
+    print("\nrun, resume, drive, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
 }
 
 static void print_fault_injection_status() {
@@ -955,6 +955,11 @@ static void command_resume() {
     resume_user_program(0);
 }
 
+static void command_drive() {
+    char driver_program[] = "udrive_c.elf";
+    command_run(driver_program);
+}
+
 static void execute_command() {
     shell_buffer[buffer_index] = '\0';
     save_history();
@@ -1070,6 +1075,8 @@ static void execute_command() {
         command_service(arg);
     } else if (strcmp64(cmd, "resume") == 0) {
         command_resume();
+    } else if (strcmp64(cmd, "drive") == 0) {
+        command_drive();
     } else if (strcmp64(cmd, "pagefault") == 0) {
         volatile uint32_t* bad_ptr =
             (volatile uint32_t*)(uintptr_t)0x0000000800000000ULL;

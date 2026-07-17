@@ -7,6 +7,7 @@ typedef struct WindowInputRouter {
     OsProcessIdentity focused_owner;
     uint32_t focused_window_id;
     uint32_t focused_window_generation;
+    uint64_t focused_since_ticks;
     uint32_t input_sequence;
     uint32_t event_sequence;
 } WindowInputRouter;
@@ -33,6 +34,7 @@ void window_input_router_focus(WindowInputRouter* router,
                                OsProcessIdentity owner,
                                uint32_t window_id,
                                uint32_t window_generation,
+                               uint64_t focused_since_ticks,
                                WindowFocusChange* change);
 void window_input_router_clear(WindowInputRouter* router,
                                WindowFocusChange* change);

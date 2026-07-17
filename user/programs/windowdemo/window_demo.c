@@ -742,7 +742,9 @@ static int run_multi_front_client(void) {
         return 1;
     }
     os_puts("[window-multi-front] partial damage visible");
-    os_sleep(150);
+    // Keep the final damage frame observable long enough for a monitor-side
+    // screendump before the destroy present clears it.
+    os_sleep(500);
 
     result = destroy_window(&window, &reply);
     release_surface(&window);

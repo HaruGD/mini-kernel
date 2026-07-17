@@ -33,7 +33,7 @@ int main(void) {
     OsProcessIdentity b = {11, 3};
     WindowFocusChange change;
 
-    window_input_router_focus(&router, a, 1, 4, &change);
+    window_input_router_focus(&router, a, 1, 4, 10, &change);
     check(change.focus_out.event_sequence == 0 &&
           change.focus_in.event_sequence == 1 &&
           change.focus_in.window_id == 1,
@@ -41,7 +41,7 @@ int main(void) {
     check(window_input_router_is_focused(&router, a, 1, 4),
           "first focus state");
 
-    window_input_router_focus(&router, a, 1, 4, &change);
+    window_input_router_focus(&router, a, 1, 4, 11, &change);
     check(change.focus_out.event_sequence == 0 &&
           change.focus_in.event_sequence == 0 && router.event_sequence == 1,
           "idempotent focus emits nothing");
@@ -55,12 +55,14 @@ int main(void) {
     check(window_input_router_accept_input(&router, 3) == OS_SUCCESS,
           "monotonic input accepts bounded drop gap");
 
-    window_input_router_focus(&router, b, 2, 7, &change);
+    window_input_router_focus(&router, b, 2, 7, 20, &change);
     check(change.focus_out.event_sequence == 2 &&
           change.focus_out.owner.pid == a.pid &&
           change.focus_in.event_sequence == 3 &&
           change.focus_in.owner.pid == b.pid,
           "focus-out precedes focus-in");
+    check(router.focused_since_ticks == 20,
+          "focus acquisition timestamp tracks routing boundary");
     check(!window_input_router_is_focused(&router, b, 2, 6),
           "stale window generation rejected");
     check(!window_input_router_is_focused(&router,
@@ -76,7 +78,8 @@ int main(void) {
           "clear emits focus-out and no replacement");
 
     window_input_router_reset(&router);
-    check(router.input_sequence == 0 && router.event_sequence == 0,
+    check(router.input_sequence == 0 && router.event_sequence == 0 &&
+          router.focused_since_ticks == 0,
           "restart resets transport sequences");
     if (failures != 0) return 1;
     puts("window input router tests OK");
@@ -97,6 +100,7 @@ def require_sources() -> None:
         "reconcile_invalid_focus",
         "os_process_identity_alive",
         "window_input_router_accept_input",
+        "focused_since_ticks",
     )
     required_inputd = (
         "os_input_wait_timeout",

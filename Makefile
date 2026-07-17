@@ -57,7 +57,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -138,7 +138,7 @@ test-graphics-contracts: test-surface-backing-contracts
 	python3 ./tools/graphics_dirty_test.py
 	python3 ./tools/graphics_dirty_present_test.py
 	python3 ./tools/graphics_font_test.py
-test-graphics: test-graphics-contracts test-surface-backing-smoke test-graphics-demo test-gop-present test-display-present test-window-single test-window-multi
+test-graphics: test-graphics-contracts test-surface-backing-smoke test-graphics-demo test-gop-present test-display-present test-window-single test-window-multi test-window-sdk
 test-graphics-clip: test-graphics-contracts
 test-surface-backing: test-surface-backing-contracts test-surface-backing-smoke
 test-surface-backing-contracts:
@@ -170,6 +170,11 @@ test-window-input-contracts:
 	python3 ./tools/window_input_test.py
 test-window-input: test-window-input-contracts uefi
 	python3 ./tools/window_input_smoke.py
+test-window-sdk-contracts:
+	python3 ./tools/window_sdk_test.py
+test-gui-app: uefi
+	python3 ./tools/gui_app_smoke.py
+test-window-sdk: test-window-sdk-contracts test-gui-app
 test-input-queue:
 	python3 ./tools/input_event_queue_test.py
 	python3 ./tools/keyboard_event_translation_test.py
