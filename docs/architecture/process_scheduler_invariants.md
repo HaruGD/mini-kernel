@@ -156,3 +156,9 @@ Phase 3.5 implementation should eventually enforce:
 - cleanup is idempotent
 - wakeup changes a waiting process to ready at most once
 - process-table reuse changes the process identity generation
+
+The drive-free single-CPU closure, process/thread separation, and later SMP
+expansion are specified in
+[Scheduler Modernization Plan](scheduler_modernization.md). That plan extends
+this contract; it does not permit later scheduler work to bypass these process,
+wait, identity, or cleanup invariants.

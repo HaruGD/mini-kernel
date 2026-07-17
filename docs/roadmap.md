@@ -170,11 +170,45 @@ Planned work:
 - [x] 4E: Bounded multiwindow z-order, damage, and composition
 - [x] 4F: `inputd` forwarding and keyboard focus routing
 - [x] 4G: Window SDK and first event-driven GUI application
-- [ ] 4H: Lifecycle, fault, soak, regression, and closure
+- [ ] 4H: Drive-free single-CPU scheduling, lifecycle, fault, soak, regression,
+  and closure
 
 Widgets, the desktop shell, per-user session services, alpha composition, and a
 separate compositor process are deferred until the Phase 4 lifecycle and
 failure gates pass.
+
+## Phase 4.5: Threading Foundation
+
+Detailed contract:
+
+- [Scheduler modernization plan](architecture/scheduler_modernization.md)
+
+Planned work:
+
+- [ ] Separate schedulable threads from process-owned address spaces and
+  resources
+- [ ] Give every thread its own saved context, kernel stack, user stack, wait
+  state, identity generation, and accounting
+- [ ] Add thread create, exit, join, yield, sleep, and thread-local storage
+  foundations
+- [ ] Move blocking waits from whole-process state to per-thread state
+- [ ] Add mutex, semaphore, condition-variable, and once primitives
+- [ ] Certify multithreaded process exit, fault isolation, resource cleanup,
+  fairness, and starvation bounds on one CPU
+
+## Phase 4.6: SMP And Multicore Scheduling
+
+Planned work:
+
+- [ ] Start application processors and establish per-CPU scheduler, interrupt,
+  current-thread, kernel-stack, and idle state
+- [ ] Add an initially simple synchronized run-queue policy, reschedule IPIs,
+  remote wakeups, CPU affinity, and bounded load balancing
+- [ ] Implement cross-CPU TLB shootdown before concurrent address-space changes
+- [ ] Define interrupt routing and CPU ownership for timer and device work
+- [ ] Audit kernel subsystems for SMP-safe lock ordering and memory ordering
+- [ ] Pass concurrent lifecycle, VM, IPC, service, VFS, and graphics stress on
+  at least two virtual CPUs before enabling SMP by default
 
 ## Phase 5: Desktop Foundation
 

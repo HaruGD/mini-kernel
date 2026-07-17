@@ -550,6 +550,9 @@ notes or issue tracker until corrected.
 
 ### Remaining
 
+- the foreground `drive`/`udrive_c.elf` scheduler helper is transitional;
+  Phase 4H must prove services and GUI applications progress while the kernel
+  shell is idle and then remove the helper from code and tests;
 - client/service crash injection, display/window reconnection behavior,
   resource-exhaustion rollback, GUI churn, and the 60-second GUI soak belong
   to Phase 4H;

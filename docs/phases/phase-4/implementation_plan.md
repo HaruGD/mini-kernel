@@ -321,8 +321,16 @@ draw, receive input, redraw damaged regions, resize, and close cleanly.
 Goal: certify the GUI stack under malformed input, resource pressure, process
 failure, and repeated lifecycle operations.
 
+The scheduler boundary and the post-Phase-4 threading/SMP sequence are defined
+in `docs/architecture/scheduler_modernization.md`.
+
 Implementation and tests:
 
+- make the single-CPU scheduler select ready user processes while the kernel
+  shell is idle, with an explicit idle task or equivalent idle state;
+- remove the foreground `drive`/`udrive_c.elf` scheduler helper from the shell,
+  GUI/input tests, and normal application execution after drive-free QEMU
+  scheduling tests pass;
 - inject PMM, mapping-region, handle-table, IPC-queue, and service-launch
   exhaustion at every allocation boundary;
 - crash clients during create, transfer, damage submission, composition,
@@ -344,9 +352,11 @@ Implementation and tests:
 The one-hour soak remains an explicit release-certification run rather than a
 mandatory inner development test unless the release checklist requests it.
 
-Exit gate: all focused and full regression suites pass, the 60-second soak has
-no unexplained resource drift, the normal display/input permissions are
-exclusive, and the Phase 4 closure record contains reproducible evidence.
+Exit gate: services and GUI applications continue running while the kernel
+shell is idle with no `drive`-style foreground helper; all focused and full
+regression suites pass; the 60-second soak has no unexplained resource drift;
+the normal display/input permissions are exclusive; and the Phase 4 closure
+record contains reproducible evidence.
 
 ## Dependency And Commit Sequence
 
@@ -358,7 +368,7 @@ exclusive, and the Phase 4 closure record contains reproducible evidence.
  -> 4E bounded multiwindow composition
  -> 4F keyboard focus routing
  -> 4G public SDK and first GUI app
- -> 4H fault, soak, and closure
+ -> 4H drive-free scheduling, fault, soak, and closure
 ```
 
 Each subphase receives an implementation/test commit followed by an evidence

@@ -18,6 +18,7 @@ links and test references remain stable from the project root.
 - [Kernel context and concurrency rules](architecture/kernel_context_rules.md)
 - [Kernel objects and handles](architecture/kernel_handles.md)
 - [Process and scheduler invariants](architecture/process_scheduler_invariants.md)
+- [Scheduler modernization plan](architecture/scheduler_modernization.md)
 - [Service supervision and permissions](architecture/service_supervision.md)
 
 ## Reference
