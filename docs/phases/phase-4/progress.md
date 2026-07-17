@@ -28,11 +28,11 @@ that records those immutable implementation commit hashes.
 | 4C: Display-service present path | Complete | 2026-07-15 | 2026-07-15 | `23ee0f0` | [record](#4c-display-service-present-path) |
 | 4D: Single-window bring-up | Complete | 2026-07-15 | 2026-07-15 | `231f27e` | [record](#4d-single-window-bring-up) |
 | 4E: Multiwindow compositor | Complete | 2026-07-17 | 2026-07-17 | `4e0e296` | [record](#4e-multiwindow-compositor) |
-| 4F: Input routing and focus | Planned | - | - | - | - |
+| 4F: Input routing and focus | Complete | 2026-07-17 | 2026-07-17 | `76cb52e` | [record](#4f-input-routing-and-focus) |
 | 4G: Window SDK and first GUI application | Planned | - | - | - | - |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Current work: Phase 4E is complete. Phase 4F remains Planned.
+Current work: Phase 4F is complete. Phase 4G remains Planned.
 
 ## Recording Workflow
 
@@ -424,6 +424,68 @@ notes or issue tracker until corrected.
   GUI-specific soak closure remain Phase 4H;
 - alpha blending, decorations, shadows, animation, and a separate compositor
   process remain intentionally deferred beyond Phase 4.
+
+## 4F: Input Routing And Focus
+
+- Status: Complete
+- Started: 2026-07-17
+- Completed: 2026-07-17
+- Implementation commit: `76cb52e53cb1ae8216c184f59d2a2cd7010af759`
+
+### Delivered
+
+- made the exact registered `input` service identity the sole normal consumer
+  of the kernel raw-input queue and granted `inputd`, but not GUI clients, the
+  discovery authority needed to resolve `windowd` by PID plus generation;
+- replaced the placeholder input service loop with blocking normalized keyboard
+  consumption, versioned IPC v2 forwarding, monotonic transport sequences,
+  bounded nonblocking overflow accounting, and window-service generation
+  rediscovery;
+- made `windowd` the sole focus-policy owner, with either one exact
+  owner/window generation focused or no focus, explicit `FOCUS`, ordered
+  `FOCUS_OUT -> FOCUS_IN`, and a shared monotonic application-event sequence;
+- routed keyboard events only to the current visible, live, exact-generation
+  focused owner and reconciled focus to the topmost remaining visible window on
+  hide, destroy, owner exit, stale identity, or invalid state;
+- corrected filtered IPC receive removal so extracting a correlated reply no
+  longer rotates older unmatched events behind newer messages, preserving the
+  event order emitted by `windowd`;
+- added restricted two-client integration producers, host ABI/router/authority
+  checks, IPC FIFO regression coverage, and a QEMU driver-to-application smoke
+  using F1/F2 to prove background and hidden-window isolation.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make -j2 uefi` | PASS | Kernel, SDK, userland, drivers, FAT32, and ESP image rebuilt without compiler errors. |
+| `make test-window-input-contracts test-window-contracts test-window-multi-contracts test-input-queue test-ipc-contracts` | PASS | Window ABI/router sequencing, exact input authority, reconnect source paths, prior single/multiwindow behavior, keyboard translation, process queues, IPC FIFO, and IPC core passed. |
+| `python3 tools/window_input_smoke.py` | PASS | F1 reached only the explicitly focused front window; hide emitted focus-out and fallback focus-in; F2 reached only the fallback window; both clients completed lifecycle cleanup. |
+| `python3 tools/window_multi_smoke.py` | PASS | Existing overlap, z-order, hide/show, move/resize, chunked damage, arbitrary destruction order, and zero stable-resource-drift QEMU path remained intact. |
+
+### Resource Accounting
+
+- warmed supervised baseline:
+  `processes=4 mappings=21 handles=1 mailboxes=0 services=4 shared=0 surfaces=1`;
+- final sample after two focused clients, two key routes, focus transfer, hide,
+  and both destroys: the same active process, mapping, handle, mailbox, service,
+  shared-object, surface, and heap counts;
+- baseline and final heap matched at
+  `used=0x1DAB70 mapped=0x1DF000`;
+- PMM moved from `0x6A4D` to `0x6A37` through the documented bounded
+  returned-process image/page-table history; all active client surfaces,
+  mappings, handles, mailboxes, and processes were released immediately;
+- unexplained active input/window resource drift: zero.
+
+### Remaining
+
+- pointer hardware, hit testing, pointer capture, global shortcuts, and focus
+  decorations remain follow-up work and are not part of the keyboard-only 4F
+  exit gate;
+- the stable high-level Window SDK and first event-driven GUI application are
+  Phase 4G work; current input clients remain explicit integration producers;
+- GUI-service restart fault injection, client churn, 60-second GUI soak, and
+  full Phase 4 closure remain Phase 4H gates.
 
 ## Phase Milestones
 

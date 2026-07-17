@@ -1,11 +1,14 @@
 # Window Service And Multiwindow ABI
 
 Phase 4D introduced `windowd_c.elf` between GUI applications and
-`displayd_c.elf`. Phase 4E extends the same supervised service into a bounded
-opaque multiwindow compositor without granting it direct display authority.
+`displayd_c.elf`. Phase 4E extended the same supervised service into a bounded
+opaque multiwindow compositor, and Phase 4F added normalized keyboard routing
+and server-owned focus without granting `windowd` direct display or raw-input
+authority.
 
 ```text
 restricted GUI applications
+  <- focused window events from windowd
   -> transferred client surfaces (READ | MAP at the receiver)
   -> windowd: ownership, geometry, z-order, damage, opaque composition
   -> one retained windowd composite surface
@@ -16,7 +19,9 @@ restricted GUI applications
 `windowd` is supervised as the system service `window`, depends on `display`,
 and uses the GUI-service permission profile. It has no `DISPLAY` permission
 and contains no direct graphics-present call. `displayd` remains the sole
-normal presentation authority.
+normal presentation authority. The registered `inputd` identity is the sole
+normal raw-input authority; it forwards normalized events to `windowd`, while
+ordinary GUI clients have neither `INPUT` nor `DISPLAY` permission.
 
 ## Protocol v1
 
@@ -38,6 +43,7 @@ Commands:
 - `MOVE`: changes signed screen position and damages both old and new bounds;
 - `RESIZE`: transfers and atomically installs a new correctly sized surface;
 - `DESTROY`: releases a caller-owned window and reveals the windows below it;
+- `FOCUS`: requests keyboard focus for one visible caller-owned window;
 - `REPLY`: returns the result, exact window identity, and accepted content
   generation.
 
@@ -89,13 +95,37 @@ geometry, and composite state and releases the candidate. Damage remains
 pending until the exact frame generation is acknowledged. Display reconnect
 forces a complete recomposition and full-frame resubmission.
 
+## Input Routing And Focus
+
+`inputd` blocks on the kernel input queue and forwards only normalized keyboard
+events in `OsWindowInputForward`. Each forward carries ABI version, a monotonic
+input sequence, the original `OsInputEvent`, and its hardware timestamp.
+`windowd` accepts this internal event only from the exact PID plus generation
+currently registered as `input`; an input-service generation change resets the
+transport sequence boundary.
+
+`windowd` owns one focused window identity or no focus. An explicit successful
+`FOCUS` selects a visible caller-owned window. Hiding, destroying, or losing
+the focused owner transfers focus to the topmost remaining visible window, or
+clears it when no candidate remains. A repeated focus request for the current
+window emits no duplicate transition.
+
+Applications receive `OsWindowEvent` IPC v2 events from the exact registered
+window-service identity. Focus changes emit `FOCUS_OUT` before `FOCUS_IN` and
+keyboard input emits `KEY`; every event carries the target window id plus
+generation and one shared monotonic event sequence. The server verifies that
+the target process identity is still alive immediately before nonblocking
+delivery. Queue exhaustion drops bounded event traffic rather than blocking
+the compositor or transferring input to another client.
+
 ## Current Limits
 
 - at most 12 opaque windows and one current surface per window;
 - RGB/BGR 32-bit surfaces no larger than the display;
 - no alpha, decorations, shadows, animation, or separate compositor process;
 - `SHOW` is the current explicit raise operation;
-- focus and keyboard/pointer routing remain Phase 4F;
+- PS/2 keyboard routing is complete; pointer devices, hit testing, capture, and
+  global shortcuts remain follow-up work;
 - the test producer is linked into the existing SDK test binary; the stable
   public Window SDK convenience API remains Phase 4G.
 
@@ -106,6 +136,8 @@ make test-window-contracts
 make test-window-single
 make test-window-multi-contracts
 make test-window-multi
+make test-window-input-contracts
+make test-window-input
 ```
 
 The host targets cover ABI layout, ownership and generation denial, 12-slot
@@ -119,3 +151,9 @@ raise, clipped movement, atomic resize, and chunked partial damage. Both
 destruction orders are accepted and the final active process, mapping, handle,
 mailbox, service, shared-object, surface, and heap samples must match the
 warmed supervised-service baseline.
+
+The input targets add exact raw-input authority checks, transport and
+application sequence validation, stale PID-generation rejection, focus
+cleanup/reconnection source checks, and a two-client QEMU route. The QEMU test
+proves keyboard delivery to only the focused visible owner, ordered focus
+transfer on hide, and stable active resources after both client lifecycles.
