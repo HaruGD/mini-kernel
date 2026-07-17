@@ -1,9 +1,9 @@
 # Windows GUI Domain And Compatibility Runtime
 
 This document defines a feasible long-term architecture for using a
-user-supplied Windows VM as both a Windows application runtime and an optional
-accelerated presentation domain for OS64. It replaces the less precise idea of
-"Windows as the GUI server" with an explicit trust, ownership, recovery, and
+user-supplied Windows VM as both a Windows application runtime and the default
+normal-session presentation domain for OS64. It replaces the less precise idea
+of "Windows as the GUI server" with an explicit trust, ownership, recovery, and
 implementation model.
 
 This is a post-native-desktop research goal. It does not change the current
@@ -20,9 +20,32 @@ The primary product motivations are:
    Windows application or browser, its licensed content-decryption system, and
    the Windows protected media and output stack.
 
-The Windows presentation domain is the integration layer that makes those
-capabilities feel like part of one desktop. It is not the reason to trust
-Windows with Host policy or to remove the native desktop.
+The Windows presentation domain is intended to be the finished normal-user
+experience, not a temporary migration screen. It makes those capabilities feel
+like part of one desktop without trusting Windows with Host policy or removing
+the native desktop and recovery implementation.
+
+### Normal-Mode User Experience
+
+During an ordinary session the user sees one continuously composed desktop:
+
+- a Windows application creates its ordinary Guest HWND and renders through
+  the original Windows graphics and media stacks;
+- an OS64-native application creates a Host-authoritative window that appears
+  as a matched proxy HWND;
+- DWM and the Windows display stack place both kinds of window on the same
+  desktop and the integrated shell lists both kinds of application;
+- launching, focusing, minimizing, or closing a Windows application does not
+  open a visible VM container, replace the desktop, or switch display modes;
+- protected video remains on the same direct Windows GPU output instead of
+  crossing into a Host compositor.
+
+This is why Windows owns normal presentation: it gives the cleanest unified
+desktop, preserves Windows application behavior, and gives legitimate DRM
+playback the best chance of retaining its expected protected path. Native
+presentation still exists for boot, secure Host UI, administration, and
+failure recovery; those exceptional transitions are not the ordinary app
+workflow.
 
 OS64 remains the system owner:
 
@@ -36,7 +59,7 @@ OS64 remains the system owner:
 - security decisions, diagnostics, and recovery;
 - the authoritative state of OS64-native windows and surfaces.
 
-The Windows VM provides two optional runtime roles:
+The Windows VM provides two runtime roles in the integrated session:
 
 ```text
 Windows Compatibility Runtime
@@ -53,8 +76,9 @@ Windows Compatibility Runtime
 
 The concise description is:
 
-> OS64 owns the machine and all security-relevant state. A Windows VM is an
-> optional, replaceable, and untrusted compatibility and presentation domain.
+> OS64 owns the machine and all security-relevant state. A Windows VM is the
+> default normal-session compatibility and presentation domain, but remains
+> replaceable, untrusted, and unnecessary for native recovery.
 
 Windows is not a required boot dependency. If it cannot start or must be
 terminated, OS64 returns to a complete native recovery and administration
@@ -71,6 +95,8 @@ This project does not:
   output protection, licensing, or online-service policy;
 - extract, capture, map into Host memory, or redistribute decrypted protected
   media;
+- make Host-side translation or recapture of Windows application windows the
+  normal integrated-session presentation path;
 - promise that every Windows kernel driver or application supports a VM;
 - promise that a content provider permits playback in the supported VM profile
   or that every title, resolution, codec, and DRM security level is available;
@@ -175,7 +201,10 @@ applications and preserved surfaces after the Windows domain fails.
 
 An exclusively assigned RTX GPU cannot simultaneously be a Host recovery
 device. The physical display topology must be selected before GPU passthrough
-is treated as complete.
+is treated as complete. During a healthy normal session, the selected Windows
+output remains active for the whole session; opening a native or Windows
+application never changes monitor inputs. Output switching is restricted to
+session bring-up, secure Host UI, administration, and failure recovery.
 
 ### Profile A: Dual Monitor Inputs
 
@@ -229,6 +258,11 @@ NATIVE_RECOVERY
     -> RECOVERING
     -> NATIVE_RECOVERY or WINDOWS_PRESENTING
 ```
+
+These are lifecycle and failure states, not per-application presentation
+modes. Once `WINDOWS_PRESENTING` begins, native proxy windows and ordinary
+Windows windows remain in that state together until a secure or recovery event
+requires Host-native output.
 
 Every transition carries a nonzero Host display-session generation and exact
 VM and Guest Agent identities. Old proxy, present, input, and release messages

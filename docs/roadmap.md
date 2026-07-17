@@ -256,9 +256,11 @@ boots an actual user-supplied and properly licensed Windows installation rather
 than reimplementing the Windows API or kernel ABI. Its primary product goals are
 broad Windows-application compatibility and legitimate DRM-protected video
 playback through the original Windows protected-media stack. Windows may
-additionally act as an optional untrusted presentation domain for normal desktop
-content, while OS64 retains machine authority, physical input, secure UI, and a
-complete native recovery path.
+additionally act as the default untrusted presentation domain for a single
+integrated normal desktop, while OS64 retains machine authority, physical input,
+secure UI, and a complete native recovery path. Users do not switch between a
+Host desktop and a visible VM when opening applications; native proxy HWNDs and
+ordinary Windows HWNDs remain together under DWM for the healthy session.
 
 Planned foundation:
 
@@ -298,11 +300,11 @@ Planned foundation:
   with the native OS64 service boundaries
 - [ ] Replicate individual OS64-native windows as generation-tagged proxy HWNDs
   so DWM can compose normal Windows and native application content together
+- [ ] Keep one Windows-presented desktop active across ordinary native and
+  Windows application lifecycle; restrict visible output transitions to boot,
+  secure Host UI, administration, and recovery
 - [ ] Keep Explorer and run LunaShell as a companion first; make shell
   replacement an optional, edition-specific product profile
-- [ ] Optionally map individual guest application windows back onto OS64
-  `windowd` surfaces for a native-presentation profile; this reverse path is a
-  separate feature, not the primary Windows-presentation bridge
 - [ ] Add bounded failure recovery, resource accounting, offline snapshots,
   deterministic fault injection, and long-duration VM soak coverage; live
   suspend/resume remains profile-dependent when physical devices are assigned
