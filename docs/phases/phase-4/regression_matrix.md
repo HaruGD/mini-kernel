@@ -24,8 +24,8 @@ requires the existing full `make test-closure` suite.
 | P4-R03 | 4C | Only `displayd` can present, and its chunked generation protocol is bounded | `make test-display-present`; `make test-kernel-handles`; `make test-ipc-contracts` | Valid frames are acknowledged; malformed/stale transactions are rejected; ordinary apps cannot present; terminal fallback survives restart. | Complete |
 | P4-R04 | 4D | One full-screen client reaches the display only through `windowd -> displayd` | `make test-window-contracts`; `make test-window-single` | Host ownership/generation denials pass; create/attach/damage/destroy succeeds in QEMU without direct display authority; deterministic pixels appear and unexpected client exit cleans all transient state. | Complete |
 | P4-R05 | 4E | Multiwindow z-order, clipping, damage merge, and composition stay within fixed bounds | `make test-window-multi-contracts`; `make test-window-multi` | Up to 12 windows compose deterministically; malformed/partial chunk transactions are safe; all four edges clip; hide/show/move/resize and arbitrary destruction work; accumulator overflow becomes one full-screen rectangle with zero active-resource drift. | Complete |
-| P4-R06 | 4F | Input reaches exactly one valid focused window with ordered focus events | input-routing host tests; keyboard-focus QEMU smoke | Background, hidden, destroyed, and stale-generation windows receive no key events; focus order and sequences remain valid. | Planned |
-| P4-R07 | 4G | A normal application can use only the public SDK for its complete window lifecycle | ABI/layout tests; SDK integration suite; first-GUI-app QEMU smoke | The demo creates, draws, receives input, damages, resizes, and exits without raw `INPUT` or `DISPLAY`. | Planned |
+| P4-R06 | 4F | Input reaches exactly one valid focused window with ordered focus events | `make test-window-input-contracts`; `make test-window-input` | Background, hidden, destroyed, stale-generation, and pre-focus queued input never reaches the current client; focus order and sequences remain valid. | Complete |
+| P4-R07 | 4G | A normal application can use only the public SDK for its complete window lifecycle | `make test-window-sdk-contracts`; `make test-gui-app` | The demo creates, draws, receives input, damages, replaces its surface, resizes, and exits while raw `INPUT` and `DISPLAY` calls are denied. | Complete |
 | P4-R08 | 4H | Client and GUI-service failure paths recover or enter bounded fallback without leaks | fault-injection matrix; service restart QEMU smoke | Failure at every allocation/protocol boundary rolls back; restart limits hold; terminal fallback remains usable. | Planned |
 | P4-R09 | 4H | Repeated GUI lifecycle and service churn has no unexplained resource drift | 60-second Phase 4 soak | Warmed and final handle/page/region/object/process/service samples match after allowed caches stabilize. | Planned |
 | P4-R10 | 4H | Phase 4 and all earlier contracts pass together from a clean tree | `make test-phase4`; `make test-closure`; clean parallel UEFI build and QEMU smoke | Every focused row and the full closure suite pass; docs contain exact commands, results, commits, and measured evidence. | Planned |
@@ -66,8 +66,15 @@ was certified on 2026-07-17 at implementation commit `4e0e296`. Its 12-slot
 generation/ownership model, stable z-order, chunked damage validation,
 four-edge clipping, deterministic host hash, QEMU overlap/hide/show/move/
 resize pixels, arbitrary destruction order, and stable active-resource samples
-passed focused testing and the 538.32-second full closure. P4-R06 through
-P4-R10 remain uncertified. Phase 4H will add the final tested
+passed focused testing and the 538.32-second full closure. P4-R06 was certified
+on 2026-07-17 at implementation commit `76cb52e`, covering exact raw-input
+authority, ordered focus transitions, focused-only keyboard routing, stale
+identity rejection, and stable active resources. P4-R07 was certified on
+2026-07-17 at implementation commit `4bafe1f`. The public SDK ABI, correlated
+transport, mapped canvas, restricted first GUI application, F1 redraw, F2
+resize, Escape teardown, temporal focus boundary, pixels, and active resource
+stability passed focused host and QEMU testing. P4-R08 through P4-R10 remain
+uncertified. Phase 4H will add the final tested
 commit, aggregate command results, durations, relevant counts, QEMU display
 evidence, and 60-second soak measurements. The optional one-hour release soak
 remains separate from the ordinary Phase 4 closure run.

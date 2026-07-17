@@ -32,8 +32,8 @@ permission mask.
 - Graphics: GOP information, pixel, rectangle, line, bitmap blit, color-key blit, text, and clear primitives
 - Surfaces: page-backed create, metadata query, process-local map/unmap, and close
 - Display service: correlated full-frame or bounded partial-damage surface present
-- Window ABI types: bounded create, surface replace, chunked damage,
-  show/hide, move, resize, destroy, and reply
+- Window SDK: create/destroy, mapped drawing, surface attach/replace, bounded
+  damage, show/hide, move/resize, focus, live information, and event wait
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
@@ -94,7 +94,7 @@ make test-display-present
 ```
 
 Phase 4D adds the frozen window protocol types and single-window integration
-suite. The complete public convenience API remains Phase 4G work:
+suite:
 
 ```sh
 make test-window-single
@@ -105,6 +105,13 @@ bounded multiwindow composition coverage:
 
 ```sh
 make test-window-multi
+```
+
+Phase 4G adds the public Window SDK, mapped canvas helpers, and first
+event-driven GUI application:
+
+```sh
+make test-window-sdk
 ```
 
 Applications create a surface with `os_surface_create`, map it with
@@ -118,8 +125,8 @@ object reference can release the backing pages.
 `OS_PROCESS_PERMISSION_PROFILE_GUI_APPLICATION` is the least-privilege profile
 for normal GUI clients. It contains service discovery, IPC, and shared-surface
 permissions, but no raw input or display authority. Existing diagnostic launch
-paths retain their explicit compatibility permissions until the Phase 4
-service pipeline replaces direct graphics access.
+paths retain explicit compatibility permissions; the Phase 4G GUI application
+uses only the restricted window-service path.
 
 Service tests cover the fixed service identity ABI, automatic owner cleanup,
 SDK wrappers, Service Manager v2 supervision, permissions, and the
@@ -222,15 +229,16 @@ through the registry and verifies request/reply status without special kernel
 policy.
 
 `windowd_c.elf` is the supervised `window` service and depends on `display`.
-Its Phase 4D one-client protocol and authority boundary are documented in
-`docs/reference/window_service.md`.
+Its protocol and authority boundary are documented in
+`docs/reference/window_service.md`; ordinary application usage is documented
+in `docs/reference/window_sdk.md`.
 
 The full Phase 2 closure matrix is documented in
 `docs/phases/phase-2/regression_matrix.md`.
 
 The completed IPC and service coverage is documented in
-`docs/phases/phase-3/regression_matrix.md`. Phase 4 will build compositor and window
-protocols on these transport and discovery APIs without exposing raw
+`docs/phases/phase-3/regression_matrix.md`. Phase 4 compositor and window
+protocols build on these transport and discovery APIs without exposing raw
 framebuffer memory to applications.
 
 All SDK buffers are checked against the current process mappings. Kernel addresses,

@@ -29,10 +29,10 @@ that records those immutable implementation commit hashes.
 | 4D: Single-window bring-up | Complete | 2026-07-15 | 2026-07-15 | `231f27e` | [record](#4d-single-window-bring-up) |
 | 4E: Multiwindow compositor | Complete | 2026-07-17 | 2026-07-17 | `4e0e296` | [record](#4e-multiwindow-compositor) |
 | 4F: Input routing and focus | Complete | 2026-07-17 | 2026-07-17 | `76cb52e` | [record](#4f-input-routing-and-focus) |
-| 4G: Window SDK and first GUI application | Planned | - | - | - | - |
+| 4G: Window SDK and first GUI application | Complete | 2026-07-17 | 2026-07-17 | `4bafe1f` | [record](#4g-window-sdk-and-first-gui-application) |
 | 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
 
-Current work: Phase 4F is complete. Phase 4G remains Planned.
+Current work: Phase 4G is complete. Phase 4H remains Planned.
 
 ## Recording Workflow
 
@@ -486,6 +486,77 @@ notes or issue tracker until corrected.
   Phase 4G work; current input clients remain explicit integration producers;
 - GUI-service restart fault injection, client churn, 60-second GUI soak, and
   full Phase 4 closure remain Phase 4H gates.
+
+## 4G: Window SDK And First GUI Application
+
+- Status: Complete
+- Started: 2026-07-17
+- Completed: 2026-07-17
+- Implementation commit: `4bafe1f68ae13c2eab5ae92e49a5655b56492447`
+
+### Delivered
+
+- added the public Window SDK v1 client API for create/destroy,
+  attach/replace surface, bounded damage arrays, move, resize, show/hide,
+  focus, live information, and blocking or nonblocking event reception;
+- hid correlated IPC v2 requests and the bounded
+  `BEGIN -> RECTS chunks -> COMMIT` damage transaction behind ordinary SDK
+  calls while preserving unrelated mailbox messages and rejecting malformed
+  matching replies without changing local client state;
+- added a correlated window-service information operation for display
+  capabilities and exact owner-window state, with stable ABI size/offset
+  assertions and PID-plus-generation authorization;
+- added mapped-surface canvas helpers for clipped pixel, rectangle, line, and
+  5x7 text drawing, including extreme-coordinate line clipping and no direct
+  framebuffer syscall dependency;
+- added `ugui_c.elf`, the first event-driven GUI application, with initial
+  paint, focus wait, F1 surface replacement and six-rectangle redraw, F2
+  atomic resize and repaint, and Escape cleanup;
+- launched the application with the least-privilege GUI application profile
+  and proved that raw input polling and direct graphics information are both
+  denied while the window-service path remains usable;
+- rejected raw input events older than the current focus acquisition time, so
+  shell keystrokes queued before a focus transition cannot become application
+  input, and added the short `drive` scheduler command to keep test input below
+  the bounded client mailbox capacity;
+- added host ABI/transport/canvas/source-boundary tests and an end-to-end QEMU
+  GUI application smoke, plus hardened multiwindow screenshot observation.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make -j2 uefi` | PASS | Kernel, SDK, userland, drivers, FAT32, and ESP image rebuilt with the public Window SDK and GUI binaries. |
+| `make test-user-sdk test-window-sdk-contracts test-window-contracts test-window-multi-contracts test-window-input-contracts test-input-queue test-ipc-contracts test-abi-freeze` | PASS | SDK 91/91; Window SDK ABI, reply correlation, unexpected-message preservation, malformed reply rejection, canvas clipping, prior window/input/IPC contracts, and frozen ABI checks passed. |
+| `python3 tools/gui_app_smoke.py` | PASS | Restricted application created and focused, drew its first frame, processed F1 redraw and F2 resize, handled Escape, and completed lifecycle cleanup. |
+| `python3 tools/window_input_smoke.py` | PASS | Focused keyboard routing and temporal focus boundary passed after the queued-input hardening. |
+| `python3 tools/window_multi_smoke.py && python3 tools/window_single_smoke.py` | PASS | Existing overlap/z-order/hide/show/move/resize/chunked-damage and single-window lifecycle paths remained intact. |
+
+### Resource Accounting
+
+- warmed supervised baseline:
+  `processes=4 mappings=21 handles=1 mailboxes=0 services=4 shared=0 surfaces=1`;
+- final sample after create, surface replacement, resize, focus, input events,
+  and destroy matched every active resource count in that baseline;
+- long-lived surface and heap values matched at
+  `surface_bytes=0x1D4C00`, `heap_used=0x1DAB70`, and
+  `heap_mapped=0x1DF000`;
+- PMM moved from `0x6A4D` to `0x6A37` only through the documented bounded
+  returned-process image/page-table history; all GUI-owned mappings, handles,
+  surfaces, and process state were released;
+- QEMU pixel evidence counted 22,176 initial background pixels, 2,147 initial
+  accent pixels, and 2,121 F1 redraw accent pixels;
+- unexplained active GUI-resource drift: zero.
+
+### Remaining
+
+- client/service crash injection, display/window reconnection behavior,
+  resource-exhaustion rollback, GUI churn, and the 60-second GUI soak belong
+  to Phase 4H;
+- Phase 4H must add the aggregate `make test-phase4` target and run the full
+  clean-build and closure matrix before Phase 4 itself is complete;
+- widgets, desktop shell, decorations, alpha, and a separate compositor
+  process remain deferred beyond Phase 4.
 
 ## Phase Milestones
 

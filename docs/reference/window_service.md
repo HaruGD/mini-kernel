@@ -126,8 +126,9 @@ the compositor or transferring input to another client.
 - `SHOW` is the current explicit raise operation;
 - PS/2 keyboard routing is complete; pointer devices, hit testing, capture, and
   global shortcuts remain follow-up work;
-- the test producer is linked into the existing SDK test binary; the stable
-  public Window SDK convenience API remains Phase 4G.
+- the public Window SDK now owns ordinary client transport, mapped drawing,
+  damage chunking, information queries, and event validation; explicit
+  integration producers remain only for lower-level protocol regression.
 
 ## Verification
 
@@ -138,6 +139,8 @@ make test-window-multi-contracts
 make test-window-multi
 make test-window-input-contracts
 make test-window-input
+make test-window-sdk-contracts
+make test-gui-app
 ```
 
 The host targets cover ABI layout, ownership and generation denial, 12-slot
@@ -157,3 +160,8 @@ application sequence validation, stale PID-generation rejection, focus
 cleanup/reconnection source checks, and a two-client QEMU route. The QEMU test
 proves keyboard delivery to only the focused visible owner, ordered focus
 transfer on hide, and stable active resources after both client lifecycles.
+
+The Window SDK targets add client ABI layout, correlated reply filtering,
+unexpected-message preservation, canvas clipping, and a restricted QEMU GUI
+application that replaces and damages its surface, resizes, processes focused
+keyboard input, and exits without raw input or display authority.

@@ -169,7 +169,7 @@ Planned work:
 - [x] 4D: Supervised `windowd` with one full-screen client
 - [x] 4E: Bounded multiwindow z-order, damage, and composition
 - [x] 4F: `inputd` forwarding and keyboard focus routing
-- [ ] 4G: Window SDK and first event-driven GUI application
+- [x] 4G: Window SDK and first event-driven GUI application
 - [ ] 4H: Lifecycle, fault, soak, regression, and closure
 
 Widgets, the desktop shell, per-user session services, alpha composition, and a

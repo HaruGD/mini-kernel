@@ -26,6 +26,7 @@ links and test references remain stable from the project root.
 - [Driver settings and product policy](reference/driver_policy.md)
 - [Display service and present ABI](reference/display_service.md)
 - [Window service and single-window ABI](reference/window_service.md)
+- [Window SDK](reference/window_sdk.md)
 - [User SDK v2](reference/user_sdk.md)
 
 ## Testing
