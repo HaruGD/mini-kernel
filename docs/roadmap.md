@@ -253,10 +253,12 @@ This is a post-roadmap research goal. It begins only after the native desktop,
 preemptive SMP execution, storage, networking, IOMMU, and device-lifecycle
 foundations are stable. The target is a general-purpose, low-latency VM that
 boots an actual user-supplied and properly licensed Windows installation rather
-than reimplementing the Windows API or kernel ABI. Windows may additionally act
-as an optional untrusted presentation domain for normal desktop content, while
-OS64 retains machine authority, physical input, secure UI, and a complete native
-recovery path.
+than reimplementing the Windows API or kernel ABI. Its primary product goals are
+broad Windows-application compatibility and legitimate DRM-protected video
+playback through the original Windows protected-media stack. Windows may
+additionally act as an optional untrusted presentation domain for normal desktop
+content, while OS64 retains machine authority, physical input, secure UI, and a
+complete native recovery path.
 
 Planned foundation:
 
@@ -286,6 +288,10 @@ Planned foundation:
   device passthrough without allowing concurrent host ownership
 - [ ] Certify an explicit physical-output topology: separate monitor inputs,
   Host-owned scanout with cross-GPU transfer, or a supported hardware mux
+- [ ] Qualify protected video on an exact Windows/player/GPU/display profile
+  using Windows protected media, required Guest-visible hardware trust, direct
+  Guest scanout, and required HDCP; never copy decrypted protected frames into
+  Host surfaces
 - [ ] Run compatible Windows applications, services, and kernel drivers against
   either supported virtual devices or explicitly passed-through hardware
 - [ ] Integrate guest display, audio, input, clipboard, files, and networking
@@ -305,6 +311,10 @@ Scope and distribution boundaries:
 
 - OS64 remains visibly and honestly virtualized; anti-cheat, DRM, licensing, or
   virtual-machine detection circumvention is not a project feature.
+- DRM playback means standards-compliant use of the licensed Windows player,
+  protected media path, hardware driver, and protected output. Availability is
+  service- and profile-dependent and is not guaranteed merely because Windows
+  boots.
 - Windows-rendered pixels are never trusted for Host authentication,
   permissions, recovery, or other security-sensitive UI.
 - Physical input and secure-attention handling terminate at OS64 before any

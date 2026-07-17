@@ -12,6 +12,18 @@ input, or recovery paths to be removed.
 
 ## 1. Goal
 
+The primary product motivations are:
+
+1. run Windows applications that have no native OS64 build or practical native
+   substitute; and
+2. play legitimately accessed DRM-protected video through the original
+   Windows application or browser, its licensed content-decryption system, and
+   the Windows protected media and output stack.
+
+The Windows presentation domain is the integration layer that makes those
+capabilities feel like part of one desktop. It is not the reason to trust
+Windows with Host policy or to remove the native desktop.
+
 OS64 remains the system owner:
 
 - boot and shutdown;
@@ -31,10 +43,11 @@ Windows Compatibility Runtime
 ├─ Windows Application Runtime
 │  ├─ Win32 and Windows services
 │  ├─ DirectX
+│  ├─ licensed protected-media playback
 │  └─ supported Windows kernel drivers
 └─ Windows Presentation Domain
    ├─ proxy HWNDs for OS64-native windows
-   ├─ DWM composition
+   ├─ DWM composition and Windows protected scanout
    └─ an exclusively assigned high-performance GPU
 ```
 
@@ -54,9 +67,13 @@ This project does not:
 - reimplement the Windows API or Windows kernel ABI;
 - distribute Windows images, product keys, Microsoft binaries, proprietary
   GPU drivers, games, or third-party kernel drivers;
-- hide virtualization or bypass VM detection, anti-cheat, DRM, licensing, or
-  online-service policy;
+- hide virtualization or bypass VM detection, anti-cheat, DRM enforcement,
+  output protection, licensing, or online-service policy;
+- extract, capture, map into Host memory, or redistribute decrypted protected
+  media;
 - promise that every Windows kernel driver or application supports a VM;
+- promise that a content provider permits playback in the supported VM profile
+  or that every title, resolution, codec, and DRM security level is available;
 - trust Windows-rendered pixels for Host authentication or permission prompts;
 - grant the Windows guest unrestricted access to Host storage or memory;
 - require Windows for the native desktop, terminal, diagnostics, or recovery.
@@ -167,10 +184,11 @@ AMD iGPU  -> monitor input A: native and recovery
 RTX guest -> monitor input B: Windows normal mode
 ```
 
-This is the recommended first hardware profile. It is simple and preserves an
-independent recovery path, but changing monitor inputs may require a physical
-button, DDC/CI support, or an external switch. Seamless automatic switching is
-not guaranteed.
+This is the recommended first hardware profile and the first candidate for DRM
+qualification because Windows owns a direct RTX-to-monitor link. It is simple
+and preserves an independent recovery path, but changing monitor inputs may
+require a physical button, DDC/CI support, or an external switch. Seamless
+automatic switching is not guaranteed.
 
 ### Profile B: Host-Owned Scanout
 
@@ -183,14 +201,16 @@ Windows renders on RTX
 
 This allows seamless native overlays and recovery, but requires an efficient
 cross-GPU frame-transfer path and may add latency or bandwidth cost to every
-Windows frame.
+Windows frame. It is not a baseline DRM profile: protected video cannot be
+assumed to permit readback or copying through a Host-visible frame buffer.
 
 ### Profile C: Hardware Display Mux
 
 A hardware mux can switch the monitor between Host and Guest GPUs under Host
-control. This provides direct Guest scanout and deterministic recovery but
-depends on specific hardware and must not be assumed on ordinary desktop
-systems.
+control. This provides direct Guest scanout and deterministic recovery and may
+support protected playback when the complete Guest GPU-to-monitor link meets
+the DRM policy. It depends on specific hardware and must not be assumed on
+ordinary desktop systems.
 
 OS64 must publish which profile a machine uses. A failure to switch output is a
 recoverable platform limitation, not a reason to leave input owned by the
@@ -341,7 +361,52 @@ measurement.
 Windows games and graphics-heavy Windows applications render directly inside
 the Guest on the assigned RTX and do not use the Host-surface copy path.
 
-## 11. Input Routing
+## 11. Protected Media And DRM Playback
+
+Protected-media playback is a supported compatibility goal, not a DRM bypass.
+The viable high-quality path keeps protected content inside the Windows trust
+and output boundary:
+
+```text
+licensed Windows application or browser
+    -> service-approved DRM/CDM and applicable Windows Protected Media Path
+    -> signed Windows media and graphics components
+    -> Guest-visible hardware trust plus RTX protected decode/render/scanout
+    -> HDCP-capable HDMI or DisplayPort link
+    -> monitor
+```
+
+The Host presentation bridge carries ordinary OS64-native pixels into Windows.
+It never carries decrypted protected video pixels back into OS64, exposes them
+as a shared surface, implements capture, or depends on Guest readback. Guest
+control messages may report playback state and errors but contain no protected
+media payload.
+
+Protected playback is qualified per exact runtime profile. A profile records:
+
+- Windows edition and build;
+- application or browser and content-decryption component version;
+- GPU, firmware, and signed Windows driver version;
+- virtual firmware, TPM, Secure Boot, Guest-visible trusted-execution support,
+  and assigned-device configuration;
+- monitor, cable, connector, resolution, refresh rate, and negotiated HDCP
+  capability;
+- streaming service, test title, codec, DRM system, achieved resolution, and
+  observed failure code;
+- whether the provider permits that VM environment under its current policy.
+
+Windows PlayReady hardware DRM protects keys and decrypted samples in hardware,
+and some output policies require HDCP. Meeting the hardware path is necessary
+for those profiles but does not force a provider to issue a license to a VM.
+Software DRM or a lower resolution may work in another profile, but it is not
+used as evidence that high-resolution hardware DRM is complete.
+
+Activating native secure UI may switch away from the Guest output and interrupt
+or pause protected playback. That is an acceptable security consequence. OS64
+does not weaken secure attention or keep an untrusted Guest output visible just
+to preserve a video session.
+
+## 12. Input Routing
 
 All physical input first enters OS64:
 
@@ -368,7 +433,7 @@ Secure attention is intercepted before virtual HID injection. It revokes Guest
 input even if the VM, Guest Agent, DWM, or RTX is unresponsive. The same input
 event is never delivered to both native and Guest paths.
 
-## 12. VM And Hypervisor Prerequisites
+## 13. VM And Hypervisor Prerequisites
 
 Windows GUI integration starts only after OS64 has stable native execution,
 threading, SMP, storage, networking, IOMMU, and device lifecycle.
@@ -382,6 +447,8 @@ The initial hypervisor platform requires:
   initial display devices;
 - Guest UEFI boot and a virtual TPM/Secure Boot path for supported Windows 11
   configurations;
+- an explicitly qualified Guest-visible hardware trust path when the selected
+  DRM profile requires hardware-protected keys and media samples;
 - deterministic guest reset and power state;
 - isolated guest memory and explicit DMA mappings;
 - a supervised `vmd` for lifecycle policy while latency-critical VM-exit,
@@ -390,7 +457,7 @@ The initial hypervisor platform requires:
 Windows must first boot and remain stable on virtual devices. GPU passthrough
 is not part of the first Windows boot milestone.
 
-## 13. GPU Passthrough
+## 14. GPU Passthrough
 
 Exclusive RTX assignment is a separate hardware milestone. Required work
 includes:
@@ -403,6 +470,8 @@ includes:
 - MSI/MSI-X routing;
 - device reset and failure containment;
 - firmware and power-state handling;
+- preservation of the Windows protected decode, protected scanout, and output
+  protection path without Host mapping or readback;
 - rejection when the GPU shares an unsafe isolation group;
 - recovery when the device cannot be reset without a platform reboot.
 
@@ -414,7 +483,7 @@ Live VM save/restore is not assumed while a physical GPU is attached. Storage
 snapshots are taken after the Guest is quiesced or stopped, and device state is
 recreated through a new assignment session.
 
-## 14. File, Clipboard, And Data Portals
+## 15. File, Clipboard, And Data Portals
 
 Windows never receives the Host root filesystem or raw Host block device.
 
@@ -446,7 +515,7 @@ Per-Windows-application restrictions may improve UX but are not a Host security
 boundary if the Guest is compromised. Clipboard integration follows the same
 rule and remains disabled in secure native mode.
 
-## 15. Windows Guest Components
+## 16. Windows Guest Components
 
 The Windows side is split into small replaceable components:
 
@@ -473,7 +542,7 @@ runtime profile instead of assuming every user ISO can replace Explorer.
 Guest kernel drivers require an appropriate Windows signing and installation
 strategy. Development test signing is not a production distribution plan.
 
-## 16. Installation And Distribution
+## 17. Installation And Distribution
 
 Official OS64 releases contain no Windows image or proprietary third-party
 driver:
@@ -508,7 +577,7 @@ This is preferred over modifying `boot.wim` and `install.wim` in the first
 implementation. Image servicing remains an optional builder feature after the
 ordinary Tools ISO path is reliable.
 
-## 17. Runtime Images, Updates, And Snapshots
+## 18. Runtime Images, Updates, And Snapshots
 
 The virtual disk interface supports sparse allocation and copy-on-write, but
 the on-disk format is selected separately. The architecture does not require
@@ -547,7 +616,7 @@ profile explicitly supports live device-state capture. With an assigned GPU,
 the baseline uses Guest quiesce or shutdown, offline snapshot, restart, and
 bridge regeneration.
 
-## 18. Development Sequence
+## 19. Development Sequence
 
 ### Stage 0: Native Prerequisites
 
@@ -612,10 +681,15 @@ native applications or surfaces.
 - assign RTX exclusively to Windows;
 - install the user-provided compatible driver;
 - prove reset, interrupt, MMIO, DMA isolation, and native-output recovery;
-- select and certify one physical output topology.
+- select and certify one physical output topology;
+- validate the Windows protected media path, protected GPU output, HDCP
+  negotiation, and representative service playback without Host pixel access.
 
 Exit gate: Guest GPU load cannot DMA outside mapped Guest memory or prevent
-Host input recovery and native diagnostics.
+Host input recovery and native diagnostics. The certified DRM test profile
+either reaches its expected protected resolution or reports a documented
+provider, license, driver, hardware, or output-policy incompatibility without
+attempting circumvention.
 
 ### Stage 7: Per-Window Integration
 
@@ -635,12 +709,14 @@ without killing native applications.
 - compatibility manifests, offline snapshots, update qualification, and
   rollback;
 - fault injection, resource accounting, long-duration soak, and hardware
-  compatibility matrix.
+  compatibility matrix;
+- publish a separate protected-media matrix by Windows build, player, service,
+  DRM level, GPU driver, display link, and achieved resolution.
 
 Exit gate: installation and recovery are reproducible without distributing
 Windows or hiding virtualization.
 
-## 19. Current OS64 Mapping
+## 20. Current OS64 Mapping
 
 Existing OS64 work already supplies the beginning of this architecture:
 
@@ -660,7 +736,7 @@ The current decision to combine window management and native composition in
 `windowd` does not block the plan. The presentation backend can be split after
 the native contract is stable and measured.
 
-## 20. Final Invariants
+## 21. Final Invariants
 
 The Windows GUI Domain is acceptable only while all of the following remain
 true:
@@ -675,6 +751,9 @@ true:
 - GPU ownership is exclusive and IOMMU constrained;
 - bridge queues and resource use are bounded and generation checked;
 - unsupported Windows versions, GPUs, or drivers fail into native recovery;
+- protected media remains inside the Windows protected path and direct Guest
+  output; OS64 neither reads back decrypted frames nor claims universal DRM
+  service compatibility;
 - Windows and third-party proprietary components are supplied and licensed by
   the user;
 - virtualization is disclosed and no compatibility feature attempts detection
@@ -687,3 +766,5 @@ true:
 - [Microsoft: Discrete Device Assignment planning and limitations](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/plan/plan-for-deploying-devices-using-discrete-device-assignment)
 - [Microsoft: Windows 11 and VM requirements](https://learn.microsoft.com/en-us/windows/whats-new/windows-11-requirements)
 - [Microsoft: adding drivers during Windows Setup](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/add-device-drivers-to-windows-during-windows-setup?view=windows-11)
+- [Microsoft: Protected Media Path](https://learn.microsoft.com/en-us/windows/win32/medfound/protected-media-path)
+- [Microsoft: PlayReady DRM and output protection](https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/playready-client-sdk)
