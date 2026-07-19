@@ -84,6 +84,43 @@ Windows is not a required boot dependency. If it cannot start or must be
 terminated, OS64 returns to a complete native recovery and administration
 path.
 
+### End-State Topology
+
+The final integrated system separates presentation, data, input, and security
+authority instead of treating the visible desktop as the machine owner:
+
+```text
+physical keyboard and pointer
+    -> OS64 input drivers
+    -> secure-attention detector
+    -> Host input router
+         ├─ native secure/recovery UI
+         └─ virtual HID -> Windows
+
+OS64 native application
+    -> Window SDK -> windowd -> winpresentd
+    -> bounded surface bridge -> Proxy HWND ---------+
+                                                       |
+Windows application -> original HWND -----------------+-> DWM/display stack
+Windows protected media -> protected surface --------+-> passed-through dGPU
+                                                       -> direct HDCP output
+
+OS64 user data -> VFS capability -> fileportald
+    -> VirtIO-FS queues -> Windows VirtIO-FS/WinFsp -> Z:\
+
+Windows system, applications, ACLs, and AppData
+    -> private VM virtual disk -> C:\
+
+window/app/control metadata
+    <-> versioned vsock or dedicated virtual control device
+
+OS64 native recovery -> iGPU/GOP -> independent output profile
+```
+
+The visible Windows desktop is therefore a presentation client of Host-owned
+native state. It never becomes the source of truth for physical input, Host
+files, native windows, permissions, VM lifecycle, or recovery.
+
 ## 2. Non-Goals
 
 This project does not:
@@ -184,8 +221,8 @@ native application
               -> Windows bridge
 ```
 
-The component names `winpresentd`, `display-supervisor`, and `vmd` are
-architectural placeholders, not current binaries.
+The component names `winpresentd`, `display-supervisor`, `fileportald`, and
+`vmd` are architectural placeholders, not current binaries.
 
 `windowd` continues to own native window policy regardless of active
 presentation backend. In native mode it composites current surfaces itself. In
@@ -232,6 +269,13 @@ This allows seamless native overlays and recovery, but requires an efficient
 cross-GPU frame-transfer path and may add latency or bandwidth cost to every
 Windows frame. It is not a baseline DRM profile: protected video cannot be
 assumed to permit readback or copying through a Host-visible frame buffer.
+
+Laptop hybrid graphics demonstrates that an ordinary render surface can move
+from a render-only dGPU to an iGPU-owned display when one OS and cooperating
+drivers manage a cross-adapter resource. It does not prove that an exclusively
+passed-through Guest GPU or hardware-protected surface can be imported by the
+Host. OS64 treats non-protected cross-GPU presentation as a separately measured
+optimization and never uses it as DRM evidence.
 
 ### Profile C: Hardware Display Mux
 
@@ -453,6 +497,24 @@ physical input
          └─ virtual HID injection into Windows
 ```
 
+The integrated hardware profile does not pass a physical keyboard, pointer,
+USB input controller, or other secure-attention source directly to Windows.
+Only normalized virtual HID events cross into the Guest. Device passthrough for
+specialized controllers is a separate explicit grant and cannot include the
+Host's last secure recovery input.
+
+The secure-attention sequence is a Host policy with a reserved event path, not
+a LunaShell shortcut or a fixed application-visible `Escape` combination. It
+is recognized before Guest injection and cannot be remapped, suppressed, or
+acknowledged by Windows. Activation:
+
+1. increments the input-session generation;
+2. stops new virtual HID injection;
+3. drops or drains events from the old generation without replay;
+4. clears Guest and native proxy focus;
+5. activates native secure output; and
+6. presents Host-owned controls for resume, quarantine, reset, or shutdown.
+
 In Windows normal mode, DWM performs final hit testing. Input over a Windows
 application remains inside the Guest. Input delivered to a native proxy HWND
 is returned by the bridge to the exact Host window identity, where `windowd`
@@ -521,50 +583,226 @@ recreated through a new assignment session.
 
 Windows never receives the Host root filesystem or raw Host block device.
 
-The first file-transfer implementation is a copy portal:
+### Namespace And Ownership
+
+The final user-visible storage model deliberately separates Windows
+compatibility state from Host-owned user data:
+
+| Guest namespace | Authority | Intended content | Normal LunaShell view |
+| --- | --- | --- | --- |
+| `C:` | Windows VM virtual disk | Windows, Program Files, ProgramData, AppData, registry-dependent and NTFS-sensitive state | hidden from ordinary home view |
+| `Z:` | OS64 VFS through bounded export grants | Desktop, Documents, Downloads, Pictures, and other selected user data | primary home namespace |
+| OS64 system roots | OS64 only | kernel, boot, drivers, services, configuration, snapshots | never exported |
+
+Hiding `C:` is a user-experience decision, not a security boundary. Windows
+applications and malware still have the Guest permissions granted to them on
+`C:`. The native administration UI discloses the VM, Windows build and license,
+private disk, shared roots, grant modes, dGPU assignment, and runtime health.
+
+Windows protected-media stores, application installation directories, caches,
+memory-mapped databases, and data requiring exact NTFS ACL, alternate-stream,
+reparse-point, or locking semantics remain on `C:`. OS64 does not redirect all
+of `C:\Users` or `AppData` into `Z:` merely to make the namespace look uniform.
+
+### Delivery Sequence
+
+The first implementation remains a copy portal:
 
 1. the user selects a Host file or directory in native trusted UI;
 2. OS64 creates an expiring capability for the Windows VM;
 3. a broker copies approved data into a bounded exchange area;
 4. the Guest imports or exports through the bridge;
-5. OS64 validates destination, size, name, and final commit;
+5. OS64 validates destination, size, name, and final commit; and
 6. the capability expires or is revoked.
 
-Live shared folders and a virtual drive are later features. They require
-defined behavior for path canonicalization, case sensitivity, symlinks,
-locking, rename, deletion, cache coherence, quotas, and partial failure.
+Live `Z:` sharing follows only after the copy portal, VFS object identity,
+snapshot, and revocation contracts are stable. The future live path uses a
+VirtIO-FS-compatible device because it provides file-level Host/Guest access
+without exposing a Host block device or storage network.
 
-Capability fields include:
+### Host File Service Boundary
+
+Complex Guest FUSE requests are never parsed in the OS64 kernel. The split is:
 
 ```text
-capability_id + generation
-VM session identity
-Host object identity, not an unchecked path string
-read/write direction
-size and object-count limits
-expiry and revocation state
+OS64 kernel
+    -> bounded VirtIO PCI configuration and virtqueues
+    -> Guest-memory range, direction, and lifetime validation
+    -> interrupt/event delivery
+    -> exact VM and device-session generation
+    -> VFS handle and permission enforcement
+
+fileportald, sandboxed user service
+    -> VirtIO-FS/FUSE request parsing
+    -> capability-rooted object lookup
+    -> naming and filesystem-semantics translation
+    -> quotas, rate limits, audit, and revocation policy
+    -> VFS operations through attenuated handles
 ```
 
+The name `fileportald` is an architectural placeholder, not a current binary.
+It runs with no display, raw input, device assignment, unrestricted filesystem,
+VM lifecycle, or arbitrary process-control permission. A crash terminates the
+file session, leaves snapshots and Host system state intact, and causes the
+Guest mount to fail closed until a new generation is negotiated.
+
+### Windows File Stack
+
+The supported Windows profile contains a signed VirtIO-FS PCI driver, WinFsp,
+and a supervised Windows VirtIO-FS service installed from the OS64 Tools ISO.
+The service mounts the negotiated export as `Z:` or another recorded drive
+letter. The mount is a filesystem proxy, not an assertion that every NTFS
+feature is available.
+
+The compatibility profile explicitly tests:
+
+- Windows ACL and OS64 identity mapping;
+- case sensitivity and case-only rename;
+- Windows reserved names and trailing-dot/space rules;
+- UTF encoding and normalization;
+- symlinks, junctions, and reparse points;
+- alternate data streams and extended attributes;
+- sharing modes, byte-range locks, delete-on-close, and atomic rename;
+- memory mapping, sparse files, flush, durability, and crash recovery;
+- executable, installer, antivirus, and indexing behavior; and
+- directory enumeration and change-notification overflow.
+
+Unsupported semantics return a deterministic error. They are not silently
+approximated when doing so could corrupt data. Applications that require exact
+NTFS behavior use `C:` and may import or export documents through the portal.
+
+### Capability-Rooted Lookup
+
+A Guest never selects an arbitrary Host absolute path. Each export grant
+contains at least:
+
+```text
+grant_id + grant_generation
+Host boot and exact VM session identity
+Host directory object identity and object generation
+read, create, modify, rename, delete, and metadata rights
+maximum bytes, objects, open handles, queue depth, and operation rate
+expiry, revocation, and audit identity
+snapshot and recovery policy
+```
+
+Every lookup begins from the authorized Host directory object. Path
+normalization is necessary but insufficient because a Guest may race a symlink
+or reparse-point change between validation and open. The VFS operation must
+resolve and open relative to the capability root as one protected operation,
+apply the configured no-follow/beneath policy, and verify the resulting object
+identity before returning a handle.
+
+Open file and directory handles retain the grant and VM-session generation.
+Revocation increments the generation, rejects new requests, cancels or drains
+old in-flight requests according to the operation contract, and prevents a
+stale completion from restoring write authority.
+
 Per-Windows-application restrictions may improve UX but are not a Host security
-boundary if the Guest is compromised. Clipboard integration follows the same
-rule and remains disabled in secure native mode.
+boundary if the Guest is compromised. Host authorization is issued to the VM
+session as a whole unless a stronger independently attested boundary is later
+defined.
+
+### Data And Control Planes
+
+VirtIO-FS request queues carry file operations and data. If both sides
+negotiate `VIRTIO_FS_F_NOTIFICATION`, the VirtIO-FS notification queue carries
+supported FUSE invalidation and lock messages. A file change does not require a
+second vsock message merely because it originated in an OS64-native process.
+
+Notification support and queue capacity are never assumed. On unsupported
+notifications, overflow, dropped invalidation, or generation mismatch,
+`fileportald` increments a directory change generation. LunaShell and the
+Windows filesystem service discard affected caches and perform a bounded
+rescan. Cache state is an optimization, never authority.
+
+A versioned vsock or dedicated virtual control device carries non-file state:
+
+- session handshake, heartbeat, and capabilities;
+- native application and window metadata;
+- application launch and open-with requests;
+- VM and service health;
+- clipboard offer and approval metadata; and
+- file-portal UI requests that require native approval.
+
+vsock avoids an IP network dependency but is not authenticated merely by being
+local. Every message validates ABI version and size, exact VM and bridge
+generation, request sequence, capability, queue bounds, and sender role. File
+payloads do not move over this control channel once VirtIO-FS is active.
+
+Clipboard integration follows the same capability rule, is size and format
+bounded, and remains disabled in secure native mode.
+
+### Ransomware Containment And Recovery
+
+A read-write `Z:` grant gives a compromised Windows VM the ability to modify or
+destroy the granted user data. Virtualization protects unexported Host state;
+it does not turn a read-write user share into a ransomware-proof sandbox.
+
+The Host defense is layered:
+
+- immutable snapshots unavailable to the Guest;
+- copy-on-write or versioned user-data history with retention and storage
+  quotas;
+- bounded write, create, delete, rename, handle, and traversal rates;
+- auditing by VM session and grant generation;
+- signals for unusual rename/delete breadth, extension churn, write volume,
+  directory traversal, and content change; and
+- an independent network-policy service able to quarantine the VM.
+
+Content entropy is at most one weak signal. Compressed or encrypted legitimate
+files can have high entropy, and malware can change data slowly to evade a
+threshold. Detection is defense in depth, not proof of compromise.
+
+Containment uses an explicit state machine:
+
+```text
+NORMAL_RW
+    -> SUSPECTED
+    -> WRITE_REVOKED
+    -> VM_QUARANTINED
+    -> RECOVERY_PENDING
+    -> RESTORED or FALSE_POSITIVE
+```
+
+Entering `WRITE_REVOKED` increments the grant generation, stops new writes,
+resolves in-flight operations by contract, invalidates Guest caches, and
+remounts or disconnects the share. Entering `VM_QUARANTINED` revokes Guest
+network and optional device grants without destroying evidence.
+
+Automatic policy may revoke writes, preserve evidence, and quarantine the VM.
+Restoring or discarding user data requires authenticated native secure UI
+unless an administrator has explicitly configured a tested unattended policy.
+Rollback restores Host user-data state; it does not restore Windows RAM, DWM,
+vCPU, dGPU, or open application state.
+
+Copy-on-write metadata switching may be fast, but the architecture promises no
+fixed one-second recovery. Drain, consistency checking, cache invalidation,
+mount recreation, application restart, data size, and hardware reset determine
+the measured recovery bound for each certified profile.
 
 ## 16. Windows Guest Components
 
 The Windows side is split into small replaceable components:
 
 ```text
-bridge device driver
-    -> virtual PCI/shared-memory transport and event signaling
+presentation bridge driver
+    -> native-surface virtual PCI/shared-memory transport
+
+virtual HID driver
+    -> Host-filtered keyboard and pointer events
+
+VirtIO-FS PCI driver + WinFsp + VirtIO-FS service
+    -> capability-backed Z: user-data mount
 
 Luna Guest Agent service
-    -> handshake, heartbeat, proxy lifecycle, file/clipboard brokers
+    -> versioned control plane, heartbeat, proxy lifecycle, clipboard broker
 
 Proxy Window Host
     -> HWND and D3D texture presentation for native windows
 
 LunaShell
-    -> optional desktop/taskbar/launcher integration and status UI
+    -> integrated desktop, taskbar, launcher, file UI, and runtime status
 ```
 
 The first supported configuration keeps Explorer and starts LunaShell as a
@@ -572,6 +810,13 @@ normal companion application. Full shell replacement is optional because
 official Windows Shell Launcher support depends on Windows edition and has
 deployment restrictions. OS64 must publish the exact supported editions and
 runtime profile instead of assuming every user ISO can replace Explorer.
+
+The final ordinary LunaShell home view presents `Z:`-backed OS64 user folders
+and a unified list of native and Windows applications. It does not present the
+VM container or `C:` as the user's primary workspace. Native administration,
+however, always exposes the actual runtime topology. LunaShell visual hiding is
+never treated as access control, attestation, or evidence that Windows is not
+running.
 
 Guest kernel drivers require an appropriate Windows signing and installation
 strategy. Development test signing is not a production distribution plan.
@@ -600,7 +845,9 @@ The first installer uses two virtual optical devices:
 CD 1: untouched user-supplied Windows ISO
 CD 2: OS64 Tools ISO
       ├─ autounattend.xml
-      ├─ signed virtual-device drivers
+      ├─ signed presentation, virtual HID, and VirtIO-FS drivers
+      ├─ compatible WinFsp installer or verified acquisition manifest
+      ├─ VirtIO-FS service
       ├─ Guest Agent installer
       ├─ Proxy Window Host
       ├─ optional LunaShell installer
@@ -610,6 +857,11 @@ CD 2: OS64 Tools ISO
 This is preferred over modifying `boot.wim` and `install.wim` in the first
 implementation. Image servicing remains an optional builder feature after the
 ordinary Tools ISO path is reliable.
+
+Third-party open components are bundled only when their licenses and release
+integrity permit redistribution. Otherwise the Runtime Builder records a
+version-pinned, hash-verified acquisition step and does not silently download
+or execute an unverified installer.
 
 ## 18. Runtime Images, Updates, And Snapshots
 
@@ -622,7 +874,7 @@ Logical layout:
 ```text
 windows-system-base.img       read-only validated base
 windows-system-overlay.img    system and update changes
-windows-data.img              applications and user data
+windows-data.img              Guest applications and Windows-private profile state
 ```
 
 Runtime compatibility metadata records:
@@ -631,8 +883,12 @@ Runtime compatibility metadata records:
 {
   "windows_build": "supported build range",
   "bridge_abi": 1,
+  "file_bridge_abi": 1,
   "agent_version": "...",
   "shell_version": "...",
+  "data_profile": "copy-portal or virtiofs-z",
+  "virtiofs_driver": "...",
+  "winfsp_version": "...",
   "virtual_hardware_profile": "...",
   "gpu_id": "...",
   "gpu_driver": "..."
@@ -649,6 +905,40 @@ Snapshots are storage and configuration checkpoints unless the active device
 profile explicitly supports live device-state capture. With an assigned GPU,
 the baseline uses Guest quiesce or shutdown, offline snapshot, restart, and
 bridge regeneration.
+
+Windows runtime snapshots and Host user-data snapshots are independent:
+
+```text
+Windows runtime checkpoint
+    -> private C: virtual disks, VM configuration, bridge compatibility
+
+OS64 user-data history
+    -> Host-owned Z: source objects and immutable recovery generations
+```
+
+A Windows rollback never silently rolls Host user files backward. A Host
+user-data rollback never claims to restore Windows process, registry, memory,
+or passed-through device state. Any coordinated recovery records both selected
+generations and requires an explicit policy decision.
+
+### Optional Bare-Metal Compatibility Fallback
+
+An independently installed bare-metal Windows boot may remain a last-resort
+compatibility profile for a licensed application or content service that
+rejects every supported VM profile. It is not part of the integrated Windows
+GUI Domain and provides none of its Host authority, native proxy windows,
+`fileportald`, secure-attention, or snapshot guarantees while Windows owns the
+machine.
+
+The fallback uses a separate boot entry and isolated Windows system storage.
+Encryption alone protects OS64 confidentiality, not integrity: bare-metal
+Windows with raw access to the same writable disk could still destroy encrypted
+partitions or metadata. A certified fallback therefore requires separate
+offline/removable storage or hardware/firmware-enforced write isolation for
+OS64 system and snapshot media. Data exchange uses an explicit bounded exchange
+volume or later OS64 import, not concurrent mounting of active OS64 system
+state. Boot selection is transparent to the user, and no project feature
+disguises virtualization merely to avoid using the fallback.
 
 ## 19. Development Sequence
 
@@ -683,6 +973,7 @@ unexplained Host resource drift.
 ### Stage 3: Windows On Virtual Devices
 
 - provide Guest UEFI, storage, networking, input, and a simple virtual display;
+- keep physical input at the Host and inject only through virtual HID;
 - install a user-supplied Windows image;
 - reach a stable Windows desktop inside one native OS64 window;
 - add vTPM/Secure Boot support for the chosen Windows profile.
@@ -736,7 +1027,30 @@ attempting circumvention.
 Exit gate: proxy and Guest restarts recreate visual replicas from Host state
 without killing native applications.
 
-### Stage 8: Productization
+### Stage 8: Shared Data And Containment
+
+- stabilize Host VFS object identity, directory capabilities, and immutable
+  user-data snapshots before enabling live sharing;
+- implement the sandboxed `fileportald` against a simulated hostile Guest;
+- install and supervise the signed Windows VirtIO-FS/WinFsp stack;
+- expose only selected user-data roots as `Z:` while retaining Windows system
+  and application state on `C:`;
+- negotiate VirtIO-FS notifications and prove bounded generation-based rescan
+  after unsupported notifications or overflow;
+- validate naming, ACL, locking, mapping, rename, delete, flush, cache, crash,
+  and unsupported-semantics behavior;
+- implement rate limits, immutable history, write revocation, VM quarantine,
+  native recovery approval, and false-positive recovery; and
+- fault the Guest driver, queues, `fileportald`, VFS, snapshot store, and
+  control plane without exposing Host system roots or reviving stale grants.
+
+Exit gate: a malicious or crashed Guest can damage only data covered by an
+active write grant; it cannot escape an export root, mutate immutable history,
+retain authority after revocation, or make recovery depend on Guest
+cooperation. No fixed recovery-time claim is published without measured
+evidence for the exact profile.
+
+### Stage 9: Productization
 
 - optional supported-edition shell replacement;
 - Windows Runtime Builder and Tools ISO automation;
@@ -745,7 +1059,11 @@ without killing native applications.
 - fault injection, resource accounting, long-duration soak, and hardware
   compatibility matrix;
 - publish a separate protected-media matrix by Windows build, player, service,
-  DRM level, GPU driver, display link, and achieved resolution.
+  DRM level, GPU driver, display link, and achieved resolution;
+- publish the Windows/private-disk and Host/shared-data compatibility matrix;
+  and
+- optionally qualify an isolated bare-metal fallback without treating it as an
+  integrated or hidden VM mode.
 
 Exit gate: installation and recovery are reproducible without distributing
 Windows or hiding virtualization.
@@ -763,6 +1081,9 @@ Existing OS64 work already supplies the beginning of this architecture:
 | input authority | Host input queue, `inputd`, and `windowd` focus routing |
 | display recovery generation | Phase 4H console/GUI handoff contract |
 | background execution | Phase 4H drive-free scheduler contract |
+| Host file namespace | current VFS; capability-rooted directory export remains future work |
+| file-service isolation | user service and permission model; `fileportald` remains future work |
+| Guest data transport | IPC/shared-object patterns; VirtIO-FS and vsock remain future work |
 | thread and CPU foundation | planned Phase 4.5 and Phase 4.6 |
 | Windows VM | post-roadmap hypervisor goal |
 
@@ -778,6 +1099,8 @@ true:
 - OS64 boots, diagnoses, updates, and recovers without Windows;
 - no Windows-rendered pixel is trusted as secure Host UI;
 - physical input and secure attention always terminate at the Host first;
+- the integrated profile never passes through the Host's last physical secure
+  recovery input;
 - native applications use one Window SDK regardless of presentation backend;
 - Host native window and surface state survives Guest restart;
 - a Guest owns no Host pointer, unrestricted DMA range, Host root filesystem,
@@ -788,6 +1111,20 @@ true:
 - protected media remains inside the Windows protected path and direct Guest
   output; OS64 neither reads back decrypted frames nor claims universal DRM
   service compatibility;
+- Windows compatibility state remains on private `C:` storage, and only
+  explicitly granted Host user-data roots appear through `Z:`;
+- `C:` hiding is UX only and native administration discloses the real runtime;
+- Guest filesystem protocol parsing stays in a sandboxed user service, while
+  the kernel exposes only bounded transport, memory, session, handle, and
+  permission mechanisms;
+- no Guest path string, symlink, reparse point, stale handle, stale completion,
+  vsock CID, or Guest process name grants Host authority by itself;
+- a read-write export is acknowledged as VM-wide authority over the granted
+  data and is protected by immutable Guest-inaccessible history;
+- automated ransomware response may revoke, preserve, and quarantine, but data
+  rollback follows native policy and has no unmeasured one-second guarantee;
+- Windows runtime rollback and Host user-data rollback remain separately
+  identified operations;
 - Windows and third-party proprietary components are supplied and licensed by
   the user;
 - virtualization is disclosed and no compatibility feature attempts detection
@@ -802,3 +1139,8 @@ true:
 - [Microsoft: adding drivers during Windows Setup](https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/add-device-drivers-to-windows-during-windows-setup?view=windows-11)
 - [Microsoft: Protected Media Path](https://learn.microsoft.com/en-us/windows/win32/medfound/protected-media-path)
 - [Microsoft: PlayReady DRM and output protection](https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/playready-client-sdk)
+- [Microsoft: cross-adapter resources in hybrid graphics](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/using-cross-adapter-resources-in-a-hybrid-system)
+- [Microsoft: Direct3D protected-resource sessions](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device4-createprotectedresourcesession)
+- [OASIS: VirtIO 1.2 file-system and socket devices](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html)
+- [VirtIO-FS: Windows Guest installation](https://virtio-fs.gitlab.io/howto-windows.html)
+- [VirtIO-FS: architecture and user-space backend](https://virtio-fs.gitlab.io/design.html)

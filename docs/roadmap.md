@@ -298,6 +298,9 @@ Planned foundation:
   either supported virtual devices or explicitly passed-through hardware
 - [ ] Integrate guest display, audio, input, clipboard, files, and networking
   with the native OS64 service boundaries
+- [ ] Keep physical keyboard and pointer ownership at OS64, reserve Host secure
+  attention before Guest delivery, and inject only generation-tagged virtual
+  HID events into the integrated Windows profile
 - [ ] Replicate individual OS64-native windows as generation-tagged proxy HWNDs
   so DWM can compose normal Windows and native application content together
 - [ ] Keep one Windows-presented desktop active across ordinary native and
@@ -305,9 +308,23 @@ Planned foundation:
   secure Host UI, administration, and recovery
 - [ ] Keep Explorer and run LunaShell as a companion first; make shell
   replacement an optional, edition-specific product profile
+- [ ] Keep Windows, Program Files, AppData, and exact NTFS-dependent state on
+  private `C:` storage while exposing only capability-granted OS64 user data as
+  the normal LunaShell `Z:` home namespace
+- [ ] Put VirtIO-FS/FUSE parsing in a sandboxed `fileportald`, negotiate native
+  notification support, use bounded rescan on overflow, and reserve vsock for
+  authenticated generation-tagged control messages
+- [ ] Protect live read-write shares with object-rooted lookup, VM-wide grant
+  accounting, immutable Guest-inaccessible history, rate limits, write
+  revocation, quarantine, and native-approved recovery without a fixed
+  one-second rollback promise
 - [ ] Add bounded failure recovery, resource accounting, offline snapshots,
   deterministic fault injection, and long-duration VM soak coverage; live
   suspend/resume remains profile-dependent when physical devices are assigned
+- [ ] Optionally qualify an isolated bare-metal Windows boot for applications
+  or services that reject every supported VM profile; keep it outside the
+  integrated security and recovery guarantees and require hardware-enforced or
+  physically separate OS64 snapshot storage
 
 Scope and distribution boundaries:
 
@@ -321,6 +338,11 @@ Scope and distribution boundaries:
   permissions, recovery, or other security-sensitive UI.
 - Physical input and secure-attention handling terminate at OS64 before any
   event is injected into the Guest.
+- A read-write Host user-data export grants the Windows VM real authority over
+  that data. Virtualization protects unexported state but does not prevent
+  ransomware from damaging writable shares.
+- Hiding the private Windows `C:` drive in LunaShell is UX abstraction, not a
+  security boundary; native administration always discloses the runtime.
 - OS64 does not distribute Windows images, product keys, proprietary firmware,
   game files, or third-party kernel drivers.
 - Users must supply valid licenses and follow the terms of Windows, applications,
