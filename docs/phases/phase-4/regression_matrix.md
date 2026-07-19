@@ -79,7 +79,8 @@ stability passed focused host and QEMU testing. P4-R08 through P4-R12 remain
 uncertified. Phase 4H will add the final tested
 commit, aggregate command results, durations, relevant counts, QEMU display
 evidence, and 60-second soak measurements. P4-R10 and P4-R11 entered active
-implementation on 2026-07-20; their focused targets pass, but they remain
+implementation on 2026-07-20 at implementation commit `31b681e`; their
+focused targets pass, but they remain
 uncertified until the implementation commit and Phase 4H-C closure evidence
 exist. The optional one-hour release soak
 remains separate from the ordinary Phase 4 closure run.

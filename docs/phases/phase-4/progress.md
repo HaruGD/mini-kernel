@@ -30,7 +30,7 @@ that records those immutable implementation commit hashes.
 | 4E: Multiwindow compositor | Complete | 2026-07-17 | 2026-07-17 | `4e0e296` | [record](#4e-multiwindow-compositor) |
 | 4F: Input routing and focus | Complete | 2026-07-17 | 2026-07-17 | `76cb52e` | [record](#4f-input-routing-and-focus) |
 | 4G: Window SDK and first GUI application | Complete | 2026-07-17 | 2026-07-17 | `4bafe1f` | [record](#4g-window-sdk-and-first-gui-application) |
-| 4H: Lifecycle, fault, regression, and closure | In progress | 2026-07-20 | - | pending | [working record](#4h-lifecycle-fault-regression-and-closure-working-record) |
+| 4H: Lifecycle, fault, regression, and closure | In progress | 2026-07-20 | - | `31b681e` (4H-A/B) | [working record](#4h-lifecycle-fault-regression-and-closure-working-record) |
 
 Current work: Phase 4H-A and 4H-B are implemented and under regression. Phase
 4H-C fault injection, failure recovery, GUI soak, aggregate closure, and final
@@ -577,7 +577,7 @@ notes or issue tracker until corrected.
 - Status: In progress
 - Started: 2026-07-20
 - Completed: not complete
-- Implementation commit: pending
+- Implementation commit: `31b681ec2582dd289c43a8f3ce45a73750baeaea`
 
 ### Delivered So Far
 
