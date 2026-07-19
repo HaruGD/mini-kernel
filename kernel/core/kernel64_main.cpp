@@ -18,6 +18,21 @@ static int remap_range_identity(uint64_t start, uint64_t end, uint64_t flags) {
     return vm_map_identity(start, end - start, flags);
 }
 
+static void drain_kernel_shell_input() {
+    if (display_session_gui_active() || current_process() != 0 ||
+        process_focused() != 0) {
+        return;
+    }
+    OsInputEvent event;
+    while (input_events_pop(&event)) {
+        if (event.type == OS_INPUT_EVENT_KEY &&
+            event.data.key.type == OS_KEY_EVENT_DOWN &&
+            event.data.key.character != 0) {
+            shell_input((char)event.data.key.character);
+        }
+    }
+}
+
 static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
     if (boot_info == 0 || boot_info->size < sizeof(BootInfo)) {
         return 0;
@@ -234,6 +249,16 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print(kernel_shell_prompt());
 
     while (1) {
-        __asm__ volatile("hlt");
+        __asm__ volatile("cli" : : : "memory");
+        drain_kernel_shell_input();
+        if (continue_ready_processes(0)) {
+            __asm__ volatile("sti" : : : "memory");
+            continue;
+        }
+        shell_publish_prompt_if_pending();
+        // The kernel shell is the single-CPU idle context. Interrupts wake
+        // this loop, which schedules any process made ready by timer, input,
+        // IPC, or child completion before sleeping again.
+        __asm__ volatile("sti; hlt" : : : "memory");
     }
 }

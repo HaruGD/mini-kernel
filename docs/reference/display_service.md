@@ -75,21 +75,23 @@ path to be tested reproducibly.
 
 ## Phase 4H Session Handoff
 
-The current owner token protects each individual GOP operation but does not yet
-reserve scanout for the duration of a GUI session. Phase 4H adds the persistent
-console/GUI state, retained console underlay, logging behavior, input transfer,
-last-window restoration, and stale-session recovery specified in
-`docs/architecture/console_gui_handoff.md`.
+Phase 4H-A now reserves scanout with a persistent generation-tagged GUI
+session. First-window acquisition snapshots the current console into an
+attenuated `READ | MAP` surface, normal windows compose above that immutable
+underlay, and ordinary terminal output updates retained state without touching
+GUI scanout. Last-window release, stale-owner cleanup, or owner-process exit
+redraws the current console and restores console input.
 
-Until that contract is implemented, kernel terminal output may obscure GUI
-pixels between accepted presents. This is a known transitional limitation, not
-the intended final display-service behavior.
+The session ABI and focused handoff tests are implemented. Phase 4H-C still
+must certify forced `windowd`/`displayd` failure, restart-limit fallback,
+resource pressure, repeated churn, and soak behavior before Phase 4 closes.
 
 ## Verification
 
 ```sh
 make test-display-contracts
 make test-display-present
+make test-display-handoff
 ```
 
 The host target checks transaction ordering, stale/duplicate/missing/oversized

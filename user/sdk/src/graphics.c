@@ -153,6 +153,30 @@ long os_gfx_present_surface(OsHandle surface, const OsRect* rects, uint32_t rect
                        rect_count);
 }
 
+long os_display_session_acquire(OsHandle console_snapshot,
+                                OsDisplaySessionInfo* info) {
+    if (console_snapshot == 0 || info == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall2(OS_SYS_DISPLAY_SESSION_ACQUIRE,
+                       (long)console_snapshot,
+                       (long)info);
+}
+
+long os_display_session_release(uint32_t generation) {
+    if (generation == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall1(OS_SYS_DISPLAY_SESSION_RELEASE, generation);
+}
+
+long os_display_session_get_info(OsDisplaySessionInfo* info) {
+    if (info == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall1(OS_SYS_DISPLAY_SESSION_GET_INFO, (long)info);
+}
+
 long os_gfx_draw_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color) {
     if (y0 == y1) {
         if (y0 < 0) {

@@ -23,6 +23,17 @@ uint32_t input_focus_pid = 0;
 static KernelSpinlock process_lock =
     KERNEL_SPINLOCK_INITIALIZER(KERNEL_LOCK_CLASS_PROCESS, "process_scheduler");
 
+extern "C" void display_session_process_cleanup(uint32_t pid,
+                                                uint32_t generation)
+    __attribute__((weak));
+
+static void recover_display_session_for_process(uint32_t pid,
+                                                uint32_t generation) {
+    if (display_session_process_cleanup != 0) {
+        display_session_process_cleanup(pid, generation);
+    }
+}
+
 static void scheduler_enqueue_unlocked(Process* process);
 static void scheduler_remove_unlocked(Process* process);
 
@@ -214,6 +225,19 @@ int process_wait_signal(Process* process, uint32_t reason, int32_t result) {
 
 int process_wait_cancel(Process* process, uint32_t reason, int32_t result) {
     return process_wait_signal(process, reason, result);
+}
+
+void process_notify_queued_ipc(Process* process) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    if (process != 0 && process->active &&
+        process->state == PROCESS_STATE_PAUSED && process->resumable &&
+        process->wait_reason == PROCESS_WAIT_NONE) {
+        scheduler_enqueue_unlocked(process);
+    }
+    kernel_spinlock_release(&process_lock, &token);
 }
 
 void process_wait_tick(uint32_t tick_now) {
@@ -443,7 +467,8 @@ int process_input_waiting(const Process* process) {
 }
 
 static int process_can_receive_focus(const Process* process) {
-    if (process == 0 || process->pid == 0 || !process->active) {
+    if (process == 0 || process->pid == 0 || !process->active ||
+        process->background) {
         return 0;
     }
     if (process->state == PROCESS_STATE_RETURNED || process->state == PROCESS_STATE_FAILED ||
@@ -501,6 +526,7 @@ void process_clear(Process* process) {
         return;
     }
 
+    recover_display_session_for_process(process->pid, process->generation);
     process_surface_unmap_all(process);
     service_unregister_owner(process->pid);
     process_clear_focus(process->pid);
@@ -703,6 +729,7 @@ static void process_finish(Process* process,
                            PROCESS_CHILD_RESULT_HISTORY_LIMIT);
     kernel_spinlock_release(&process_lock, &token);
 
+    recover_display_session_for_process(own_pid, own_generation);
     vfs_close_all_for_owner(own_pid);
     process_surface_unmap_all(process);
     kernel_object_release_table(&process->handle_table);
@@ -921,6 +948,20 @@ static Process* find_next_ready_process_unlocked(uint32_t exclude_pid) {
         if (process->scheduler_state != SCHED_STATE_READY) {
             continue;
         }
+        return process;
+    }
+
+    // The table is authoritative. Recover a ready process that is missing
+    // from the bounded queue so an IPC or timer wakeup cannot be lost.
+    for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        Process* process = &process_table[i];
+        if (process->pid == 0 || process->pid == exclude_pid ||
+            !process->active || !process->resumable ||
+            process->state != PROCESS_STATE_PAUSED ||
+            process->scheduler_state != SCHED_STATE_READY) {
+            continue;
+        }
+        scheduler_enqueue_unlocked(process);
         return process;
     }
     return 0;

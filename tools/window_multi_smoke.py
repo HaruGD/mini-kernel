@@ -62,29 +62,6 @@ def send_service_command(process: subprocess.Popen, command: str) -> str:
     return serial_bytes()[start:].decode(errors="replace")
 
 
-def drive_guest(process: subprocess.Popen, timeout: float = 30) -> None:
-    start = len(serial_bytes())
-    output = send_command(process, "run uyield_c.elf", timeout)
-    if "=== uyield_c.elf ===" not in output or "Returned from user program" not in output:
-        raise RuntimeError(f"guest scheduling drive failed: {output}")
-    wait_for("OS64>", timeout, start)
-
-
-def drive_until(process: subprocess.Popen,
-                marker: str,
-                offset: int,
-                timeout: float = 45) -> int:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        data = serial_bytes()
-        index = data.find(marker.encode("ascii"), offset)
-        if index >= 0:
-            return index + len(marker)
-        drive_guest(process)
-        time.sleep(0.05)
-    raise TimeoutError(f"timed out driving guest to {marker!r}")
-
-
 def send_resources(process: subprocess.Popen) -> tuple[int, ...]:
     output = send_command(process, "resources")
     matches = list(RESOURCE_RE.finditer(output))
@@ -240,32 +217,31 @@ def main() -> int:
         if "restricted multiwindow clients launched" not in output:
             raise RuntimeError(f"multiwindow clients did not launch: {output}")
 
-        back = drive_until(process, "[window-multi-back] visible", start)
-        overlap = drive_until(process, "[window-multi-front] overlap visible", back)
+        back = wait_for("[window-multi-back] visible", 45, start)
+        overlap = wait_for("[window-multi-front] overlap visible", 45, back)
         overlap_screen = screenshot(process, "overlap")
         require_color_count(overlap_screen, (36, 72, 164), 20_000, "back-only")
         require_color_count(overlap_screen, (184, 64, 48), 50_000,
                             "front-overlap")
 
-        hidden = drive_until(process,
-                             "[window-multi-front] hidden background revealed",
-                             overlap)
+        hidden = wait_for("[window-multi-front] hidden background revealed",
+                          45, overlap)
         hidden_screen = screenshot(process, "hidden")
         require_color_count(hidden_screen, (36, 72, 164), 10_000,
                             "hide reveal")
         require_color_max_region(hidden_screen, (184, 64, 48), 100,
                                  (260, 180, 620, 460), "hidden front")
 
-        shown = drive_until(process, "[window-multi-front] shown and raised", hidden)
-        moved = drive_until(process,
-                            "[window-multi-front] moved with edge clipping", shown)
+        shown = wait_for("[window-multi-front] shown and raised", 45, hidden)
+        moved = wait_for("[window-multi-front] moved with edge clipping", 45,
+                         shown)
         moved_screen = screenshot(process, "moved")
         require_color_count(moved_screen, (184, 64, 48), 30_000,
                             "left-clipped front")
 
-        resized = drive_until(process, "[window-multi-front] resized atomically", moved)
-        partial = drive_until(process, "[window-multi-front] partial damage visible",
-                              resized)
+        resized = wait_for("[window-multi-front] resized atomically", 45, moved)
+        partial = wait_for("[window-multi-front] partial damage visible", 45,
+                           resized)
         partial_screen = screenshot(process, "partial")
         require_color_count(partial_screen, (232, 72, 152), 8_000,
                             "partial damage")
@@ -274,11 +250,11 @@ def main() -> int:
         require_color_count(partial_screen, (48, 152, 92), 6_500,
                             "resized surface")
 
-        front_done = drive_until(process, "[window-multi-front] lifecycle OK", partial)
+        front_done = wait_for("[window-multi-front] lifecycle OK", 45, partial)
         back_marker = b"[window-multi-back] lifecycle OK"
         back_index = serial_bytes().find(back_marker, start)
         back_done = (back_index + len(back_marker)) if back_index >= 0 else \
-            drive_until(process, "[window-multi-back] lifecycle OK", front_done, 120)
+            wait_for("[window-multi-back] lifecycle OK", 120, front_done)
         complete = max(front_done, back_done)
         final = send_resources(process)
         require_stable(baseline, final)

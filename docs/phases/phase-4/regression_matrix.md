@@ -28,8 +28,8 @@ requires the existing full `make test-closure` suite.
 | P4-R07 | 4G | A normal application can use only the public SDK for its complete window lifecycle | `make test-window-sdk-contracts`; `make test-gui-app` | The demo creates, draws, receives input, damages, replaces its surface, resizes, and exits while raw `INPUT` and `DISPLAY` calls are denied. | Complete |
 | P4-R08 | 4H | Client and GUI-service failure paths recover or enter bounded fallback without leaks | fault-injection matrix; service restart QEMU smoke | Failure at every allocation/protocol boundary rolls back; restart limits hold; terminal fallback remains usable. | Planned |
 | P4-R09 | 4H | Repeated GUI lifecycle and service churn has no unexplained resource drift | 60-second Phase 4 soak | Warmed and final handle/page/region/object/process/service samples match after allowed caches stabilize. | Planned |
-| P4-R10 | 4H | Console and GUI have one persistent, generation-tagged visible display and input owner | console/GUI handoff host tests; first-window/last-window/failure QEMU smoke | Console pixels are retained below normal windows; GUI-time logging causes zero scanout changes; stale sessions fail; last-window close and GUI crashes restore current console contents and input without leaks. | Planned |
-| P4-R11 | 4H | Ready services, foreground IPC clients, and GUI applications progress while the kernel shell is idle | drive-free scheduler host tests; service-control and GUI/input QEMU smoke with no foreground helper | Timer preemption, idle selection, and timer/IPC/input/child wakeups work without `drive` or `udrive_c.elf`; bare `service` and repeated status requests return replies or bounded errors before shell/input restoration; the temporary command and helper are removed. | Planned |
+| P4-R10 | 4H | Console and GUI have one persistent, generation-tagged visible display and input owner | `make test-display-handoff`; first-window/last-window/failure QEMU smoke | Console pixels are retained below normal windows; GUI-time logging causes zero scanout changes; stale sessions fail; last-window close and GUI crashes restore current console contents and input without leaks. | In progress |
+| P4-R11 | 4H | Ready services, foreground IPC clients, and GUI applications progress while the kernel shell is idle | `make test-drive-free-scheduler`; `make test-gui-app`; `make test-window-input`; service-manager QEMU smoke | Timer preemption, idle selection, and timer/IPC/input/child wakeups work without `drive` or `udrive_c.elf`; bare `service` and repeated status requests return replies or bounded errors before shell/input restoration; the temporary command and helper are removed. | In progress |
 | P4-R12 | 4H | Phase 4 and all earlier contracts pass together from a clean tree | `make test-phase4`; `make test-closure`; clean parallel UEFI build and QEMU smoke | Every focused row and the full closure suite pass; docs contain exact commands, results, commits, and measured evidence. | Planned |
 
 ## Evidence Rules
@@ -78,5 +78,8 @@ resize, Escape teardown, temporal focus boundary, pixels, and active resource
 stability passed focused host and QEMU testing. P4-R08 through P4-R12 remain
 uncertified. Phase 4H will add the final tested
 commit, aggregate command results, durations, relevant counts, QEMU display
-evidence, and 60-second soak measurements. The optional one-hour release soak
+evidence, and 60-second soak measurements. P4-R10 and P4-R11 entered active
+implementation on 2026-07-20; their focused targets pass, but they remain
+uncertified until the implementation commit and Phase 4H-C closure evidence
+exist. The optional one-hour release soak
 remains separate from the ordinary Phase 4 closure run.

@@ -7,32 +7,35 @@ multiple execution contexts per process, and only then allow several CPUs to
 schedule concurrently.
 
 Phase 4H performs the persistent console/GUI display and input handoff in
-[Console And GUI Display Handoff](console_gui_handoff.md) before removing the
-foreground scheduler helper described here.
+[Console And GUI Display Handoff](console_gui_handoff.md) and removes the
+foreground scheduler helper described here. Phase 4H-A and 4H-B are implemented
+as of 2026-07-20; Phase 4H-C certification remains open.
 
-## Current Transitional Limitation
+## Implemented Phase 4H-B State
 
-The current kernel can save, preempt, wait, wake, and resume one user execution
-context per process. Background services and applications nevertheless still
-depend on a foreground user program entering the scheduler path while the
-kernel shell is active.
+The kernel still has one user execution context per process and one active CPU,
+but background progress no longer depends on a foreground helper. The kernel
+shell is the top-level idle context: it drains console input, selects ready
+processes, publishes a deferred prompt only after foreground completion, and
+then executes `sti; hlt`.
 
-The temporary `drive` shell command is an alias for:
+The former temporary command was:
 
 ```text
 run udrive_c.elf
 ```
 
-`udrive_c.elf` yields repeatedly for 100 timer ticks. This provides a foreground
-user context while background processes make progress. It does not initialize
-graphics, route input, or present frames. Its presence is evidence of an
-execution-model gap, not a supported application-launch mechanism.
+`drive` and `udrive_c.elf` have now been removed from the shell, user-program
+image, and GUI/input tests. Timer, IPC, input, child, and idle wakeups drive
+normal progress directly.
 
-Phase 4 must not be reported complete while GUI correctness or service
-liveness depends on `drive`, `udrive_c.elf`, or an equivalent foreground
-helper.
+The implementation also prevents resumed background children from blocking
+their parent service manager with a new child wait, and recovers scheduler
+readiness from the process table if the bounded queue misses a ready record.
+These changes close the helper dependency, but Phase 4 remains incomplete
+until Phase 4H-C fault, soak, aggregate regression, and evidence gates pass.
 
-### Reproduced Foreground IPC Stall
+### Historical Foreground IPC Stall
 
 The same execution-model gap affects ordinary service control. On 2026-07-17,
 the following sequence reproduced a deterministic stall after `windowd` and
@@ -51,8 +54,12 @@ The second command is a service-manager ping. PID 5 sends an IPC request and
 enters a blocking receive, but no reply or terminal process record is printed.
 The kernel shell prompt is exposed prematurely while foreground input ownership
 still belongs to the waiting client, so the prompt cannot accept commands.
-This is not a `windowd` deadlock and not a QEMU halt; it is an invalid
-foreground-wait/shell-return scheduling transition.
+This was not a `windowd` deadlock or QEMU halt. It was an invalid
+foreground-wait/shell-return transition compounded by background children
+re-arming `PROCESS_WAIT_CHILD` on `serviced`. The 4H-B implementation now waits
+for the exact foreground PID plus generation, defers the prompt, and applies
+child waits only to foreground children. Repeated bare `service` and
+`service status window` QEMU regression now pass without a helper.
 
 The plural `services` kernel command remains the service-registry diagnostic.
 The singular bare `service` command intentionally pings the service manager and
@@ -62,6 +69,9 @@ must also complete safely.
 
 Phase 4H retains one execution context per process and one active CPU. Its
 scheduler work is a correctness fix, not the threading or SMP expansion.
+
+The behavior below is implemented. Final certification still depends on the
+Phase 4H-C aggregate and soak gates.
 
 Required behavior:
 

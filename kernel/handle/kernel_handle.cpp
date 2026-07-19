@@ -162,6 +162,27 @@ int kernel_handle_resolve_copy(const KernelHandleTable* table,
     return entry != 0;
 }
 
+int kernel_handle_restrict_rights(KernelHandleTable* table,
+                                  uint64_t handle,
+                                  uint32_t rights) {
+    if (table == 0 || rights == 0) {
+        return 0;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&table->lock, &token)) {
+        return 0;
+    }
+    KernelHandle* entry = resolve_unlocked(table, handle,
+                                           KERNEL_HANDLE_TYPE_NONE, 0);
+    if (entry == 0 || (rights & ~entry->rights) != 0) {
+        kernel_spinlock_release(&table->lock, &token);
+        return 0;
+    }
+    entry->rights = rights;
+    kernel_spinlock_release(&table->lock, &token);
+    return 1;
+}
+
 int kernel_handle_close(KernelHandleTable* table, uint64_t handle, KernelHandle* closed_out) {
     if (table == 0) {
         return 0;

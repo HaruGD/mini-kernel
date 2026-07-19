@@ -48,6 +48,11 @@ static OsGraphicsInfo display_info;
 static OsHandle composite_surface;
 static uint32_t* composite_pixels;
 static OsGraphicsSurfaceHandleInfo composite_info;
+static OsHandle console_snapshot_surface;
+static const uint32_t* console_snapshot_pixels;
+static OsGraphicsSurfaceHandleInfo console_snapshot_info;
+static WindowCompositorSource console_underlay;
+static uint32_t gui_session_generation;
 static uint32_t next_frame_generation;
 static uint32_t pending_full_frame;
 
@@ -208,6 +213,20 @@ static void release_composite_surface(void) {
     composite_surface = 0;
 }
 
+static void drop_local_gui_session(void) {
+    if (console_snapshot_pixels != 0 && console_snapshot_surface != 0) {
+        os_surface_unmap(console_snapshot_surface,
+                         (void*)console_snapshot_pixels);
+    }
+    console_snapshot_pixels = 0;
+    close_handle(console_snapshot_surface);
+    console_snapshot_surface = 0;
+    os_memset(&console_snapshot_info, 0, sizeof(console_snapshot_info));
+    console_underlay.pixels = 0;
+    console_underlay.stride_pixels = 0;
+    gui_session_generation = 0;
+}
+
 static int query_display(OsProcessIdentity* identity, OsGraphicsInfo* info) {
     if (os_service_find_owner_identity("display", identity) < 0) {
         return 0;
@@ -263,18 +282,98 @@ static long refresh_display_owner(void) {
     return OS_SUCCESS;
 }
 
+static long acquire_gui_session(void) {
+    if (gui_session_generation != 0) {
+        return OS_SUCCESS;
+    }
+    OsHandle snapshot = os_surface_create(display_info.width,
+                                          display_info.height,
+                                          display_info.format);
+    if (snapshot == 0) {
+        return OS_ERR_NO_RESOURCES;
+    }
+    OsDisplaySessionInfo session;
+    long result = os_display_session_acquire(snapshot, &session);
+    if (result < 0) {
+        close_handle(snapshot);
+        return result;
+    }
+    const uint32_t* pixels = (const uint32_t*)os_surface_map(
+        snapshot, OS_SURFACE_MAP_READ);
+    if (pixels == 0 || os_surface_get_info(snapshot, &console_snapshot_info) < 0) {
+        if (pixels != 0) {
+            os_surface_unmap(snapshot, (void*)pixels);
+        }
+        os_display_session_release(session.generation);
+        close_handle(snapshot);
+        return OS_ERR_NOT_READY;
+    }
+    console_snapshot_surface = snapshot;
+    console_snapshot_pixels = pixels;
+    console_underlay.pixels = pixels;
+    console_underlay.stride_pixels = console_snapshot_info.stride_pixels;
+    gui_session_generation = session.generation;
+    window_compositor_copy_full(composite_pixels,
+                                composite_info.stride_pixels,
+                                console_snapshot_pixels,
+                                console_snapshot_info.stride_pixels,
+                                display_info.width,
+                                display_info.height);
+    window_damage_full(&screen_damage);
+    pending_full_frame = 1;
+    os_printf("[windowd] GUI session acquired generation=%u underlay=read-only\n",
+              gui_session_generation);
+    return OS_SUCCESS;
+}
+
+static long ensure_gui_session(void) {
+    if (refresh_display_owner() < 0) {
+        return OS_ERR_NOT_READY;
+    }
+    if (gui_session_generation != 0) {
+        OsDisplaySessionInfo current;
+        if (os_display_session_get_info(&current) == OS_SUCCESS &&
+            current.state == OS_DISPLAY_SESSION_GUI_ACTIVE &&
+            current.generation == gui_session_generation &&
+            identity_equal(display_owner,
+                           (OsProcessIdentity){current.display_pid,
+                                               current.display_generation})) {
+            return OS_SUCCESS;
+        }
+        drop_local_gui_session();
+    }
+    return acquire_gui_session();
+}
+
+static long release_gui_session(void) {
+    long result = OS_SUCCESS;
+    uint32_t generation = gui_session_generation;
+    if (generation != 0) {
+        result = os_display_session_release(generation);
+    }
+    drop_local_gui_session();
+    window_damage_reset(&screen_damage);
+    pending_full_frame = 0;
+    os_printf("[windowd] GUI session released generation=%u result=%ld\n",
+              generation, result);
+    return result;
+}
+
 static long compose_pending(void) {
     if (screen_damage.count == 0) {
         return OS_SUCCESS;
     }
-    return window_compositor_compose(composite_pixels,
-                                     composite_info.stride_pixels,
-                                     display_info.width,
-                                     display_info.height,
-                                     WINDOW_BACKGROUND_COLOR,
-                                     &window_table,
-                                     compositor_sources,
-                                     &screen_damage);
+    if (console_underlay.pixels == 0) {
+        return OS_ERR_NOT_READY;
+    }
+    return window_compositor_compose_underlay(composite_pixels,
+                                              composite_info.stride_pixels,
+                                              display_info.width,
+                                              display_info.height,
+                                              &console_underlay,
+                                              &window_table,
+                                              compositor_sources,
+                                              &screen_damage);
 }
 
 static long present_composite(void) {
@@ -313,7 +412,11 @@ static long present_composite(void) {
 }
 
 static long compose_and_present(void) {
-    long result = compose_pending();
+    long result = ensure_gui_session();
+    if (result < 0) {
+        return result;
+    }
+    result = compose_pending();
     return result < 0 ? result : present_composite();
 }
 
@@ -523,6 +626,9 @@ static void handle_create(const OsIpcMessageV2* message) {
         result = validate_surface(message->handles[0], width, height, stride,
                                   format, &candidate);
     }
+    if (result == OS_SUCCESS && window_table.count == 0) {
+        result = ensure_gui_session();
+    }
     WindowEntry* entry = 0;
     uint32_t slot = OS_WINDOW_MAX_WINDOWS;
     if (result == OS_SUCCESS) {
@@ -553,6 +659,9 @@ static void handle_create(const OsIpcMessageV2* message) {
         }
         if (!candidate_released) {
             close_handle(message->handles[0]);
+        }
+        if (window_table.count == 0 && gui_session_generation != 0) {
+            release_gui_session();
         }
         send_window_reply(sender, request_id, OS_WINDOW_CREATE,
                           (int32_t)result, 0, 0, 0);
@@ -1202,7 +1311,12 @@ static void handle_destroy(const OsIpcMessageV2* message) {
     uint32_t generation = entry != 0 ? entry->window_generation : 0;
     if (result == OS_SUCCESS) {
         destroy_entry(entry, 0);
-        if (compose_and_present() < 0) {
+        if (window_table.count == 0) {
+            long release_result = release_gui_session();
+            if (release_result < 0 && release_result != OS_ERR_NOT_READY) {
+                result = release_result;
+            }
+        } else if (compose_and_present() < 0) {
             pending_full_frame = 1;
         }
     }
@@ -1275,8 +1389,12 @@ static void cleanup_dead_owners(void) {
             removed++;
         }
     }
-    if (removed != 0 && compose_and_present() < 0) {
-        pending_full_frame = 1;
+    if (removed != 0) {
+        if (window_table.count == 0) {
+            release_gui_session();
+        } else if (compose_and_present() < 0) {
+            pending_full_frame = 1;
+        }
     }
     if (removed != 0) {
         reconcile_invalid_focus(os_time_ticks());
@@ -1289,6 +1407,10 @@ static void service_deadlines(void) {
         (uint32_t)(os_time_ticks() - damage_transaction.started_ticks) >=
             WINDOW_PRESENT_TIMEOUT_TICKS) {
         reject_active_damage(OS_ERR_TIMEOUT);
+    }
+    if (window_table.count != 0 && ensure_gui_session() < 0) {
+        pending_full_frame = 1;
+        return;
     }
     OsProcessIdentity previous = display_owner;
     if (refresh_display_owner() == OS_SUCCESS &&
@@ -1316,6 +1438,11 @@ int main(void) {
     input_owner.generation = 0;
     composite_surface = 0;
     composite_pixels = 0;
+    console_snapshot_surface = 0;
+    console_snapshot_pixels = 0;
+    gui_session_generation = 0;
+    console_underlay.pixels = 0;
+    console_underlay.stride_pixels = 0;
     next_frame_generation = (uint32_t)os_time_ticks() + 1u;
     pending_full_frame = 0;
 

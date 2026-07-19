@@ -4,14 +4,20 @@ This document defines the Phase 4H transition between the boot/kernel console
 and the graphical window stack. It is a prerequisite for a desktop shell, but
 it does not make the kernel console itself part of the desktop.
 
+Implementation status (2026-07-20): the 4H-A session state machine, retained
+read-only console underlay, exclusive scanout/input routing, last-window
+release, and process-exit recovery are implemented. Failure injection,
+restart-limit fallback, resource pressure, repeated churn, and soak evidence
+remain Phase 4H-C work, so this is not yet a Phase 4 completion claim.
+
 ## Problem
 
-The current display-owner token serializes individual framebuffer operations.
-It does not grant a persistent display mode to the graphical session. Kernel
-terminal output can therefore acquire the GOP owner between GUI presents and
-overwrite pixels already composed by `windowd`.
+Before 4H-A, the display-owner token serialized only individual framebuffer
+operations. It did not grant a persistent display mode to the graphical
+session, so kernel terminal output could acquire the GOP owner between GUI
+presents and overwrite pixels already composed by `windowd`.
 
-This is visible in current QEMU pixel tests: serial/status output can obscure a
+This was visible in the earlier QEMU pixel tests: serial/status output could obscure a
 portion of an otherwise valid window frame. Raising a window in z-order cannot
 solve the problem because the terminal renderer is outside the compositor.
 

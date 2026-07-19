@@ -24,6 +24,7 @@ extern "C" {
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/graphics/display_backend.h"
+#include "kernel/graphics/display_owner.h"
 #include "kernel/elf64.h"
 #include "kernel/ksh64.h"
 #include "kernel/kutil64.h"

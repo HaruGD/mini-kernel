@@ -202,7 +202,13 @@ int ipc_send_message(Process* sender, Process* target, const OsIpcMessage* messa
     if (!process_ipc_mailbox_push(target, &prepared)) {
         return IPC_ERR_QUEUE_FULL;
     }
-    process_wait_signal(target, PROCESS_WAIT_IPC, PROCESS_WAIT_OK);
+    int signaled = process_wait_signal(target, PROCESS_WAIT_IPC, PROCESS_WAIT_OK);
+    if (!signaled) {
+        // A message may arrive after a receiver was preempted or yielded but
+        // before it arms its next IPC wait. Ensure queued work makes that
+        // runnable state visible to the scheduler as well.
+        process_notify_queued_ipc(target);
+    }
     return IPC_OK;
 }
 
@@ -226,7 +232,9 @@ int ipc_send_message_v2(Process* sender, Process* target, const OsIpcMessageV2* 
         rollback_transferred_handles(target, prepared.handles, prepared.handle_count);
         return IPC_ERR_QUEUE_FULL;
     }
-    process_wait_signal(target, PROCESS_WAIT_IPC, PROCESS_WAIT_OK);
+    if (!process_wait_signal(target, PROCESS_WAIT_IPC, PROCESS_WAIT_OK)) {
+        process_notify_queued_ipc(target);
+    }
     return IPC_OK;
 }
 

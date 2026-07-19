@@ -28,7 +28,7 @@ class Terminal {
     uint8_t active;
 
     void update_cursor();
-    void scroll();
+    void scroll(int draw_output);
     void clear_text_buffer();
     void scroll_text_buffer();
     void put_text_cell(int cell, char c);
@@ -43,6 +43,7 @@ public:
     void init_from_boot_info(const BootInfo* boot_info);
     int is_active() const;
     void clear();
+    int redraw();
     void putchar(char c);
     void print(const char* str);
     void print_hex(uint32_t val);

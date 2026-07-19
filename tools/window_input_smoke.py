@@ -80,34 +80,10 @@ def send_command_async(process: subprocess.Popen, command: str) -> int:
 
 
 def service_command(process: subprocess.Popen, command: str, expected: str) -> str:
-    start = len(serial_bytes())
     output = send_command(process, command)
     if expected not in output:
-        end = drive_until(process, expected, start, 30)
-        output = serial_bytes()[start:end].decode(errors="replace")
-        monitor_line(process, "sendkey f12")
-        wait_for("OS64>", 30, end)
+        raise RuntimeError(f"service command failed: {output}")
     return output
-
-
-def drive_until(process: subprocess.Popen,
-                marker: str,
-                offset: int,
-                timeout: float = 45) -> int:
-    deadline = time.time() + timeout
-    prompt_offset = offset
-    needle = marker.encode("ascii")
-    while time.time() < deadline:
-        data = serial_bytes()
-        index = data.find(needle, offset)
-        if index >= 0:
-            return index + len(marker)
-        prompt = data.find(b"OS64>", prompt_offset)
-        if prompt >= 0:
-            send_command_async(process, "run udrive_c.elf")
-            prompt_offset = prompt + len("OS64>")
-        time.sleep(0.05)
-    raise TimeoutError(f"timed out driving guest to {marker!r}")
 
 
 def resources(process: subprocess.Popen) -> tuple[int, ...]:
@@ -157,32 +133,25 @@ def main() -> int:
         ready_b = wait_for("[window-input-b] background ready", 20, start)
         monitor_line(process, "sendkey f12")
         wait_for("OS64>", 10, ready_b)
-        focused_server = drive_until(process, "[windowd] focused id=", ready_b)
-        ready_a = drive_until(process, "[window-input-a] focused ready",
-                              focused_server)
+        focused_server = wait_for("[windowd] focused id=", 45, ready_b)
+        ready_a = wait_for("[window-input-a] focused ready", 45,
+                           focused_server)
 
-        wait_for("Returned from user program", 20, ready_a)
         key_a_start = len(serial_bytes())
         monitor_line(process, "sendkey f1")
-        first_drive = send_command_async(process, "run udrive_c.elf")
         got_a = wait_for("[window-input-a] key F1 received", 30, key_a_start)
         focused_b = wait_for("[window-input-b] fallback focused", 30, got_a)
         out_a = wait_for("[window-input-a] hidden focus-out", 30, got_a)
         done_a = wait_for("[window-input-a] lifecycle OK", 30, got_a)
-        wait_program_return("udrive_c.elf", 20, first_drive)
         key_b_start = len(serial_bytes())
         monitor_line(process, "sendkey f2")
-        second_drive = send_command_async(process, "run udrive_c.elf")
         got_b = wait_for("[window-input-b] key F2 received", 30, key_b_start)
         done_b = wait_for("[window-input-b] lifecycle OK", 30, got_b)
-        wait_program_return("udrive_c.elf", 20, second_drive)
         done = max(done_a, done_b)
         segment = serial_bytes()[start:done].decode(errors="replace")
         forbidden = ("background key leak", "hidden key leak", "sequence failure")
         if any(marker in segment for marker in forbidden):
             raise RuntimeError(f"focus isolation failure: {segment}")
-        wait_for("OS64>", 20, done)
-
         final = resources(process)
         require_stable(baseline, final)
         print("window input/focus QEMU test OK")

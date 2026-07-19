@@ -222,6 +222,26 @@ uint32_t GOPDriver::present_surface(const GraphicsSurface* source,
     return presented;
 }
 
+int GOPDriver::copy_scanout(GraphicsSurface* destination) const {
+    if (!ready_state || framebuffer == 0 ||
+        !gfx_surface_is_valid(destination) ||
+        destination->width != info_state.width ||
+        destination->height != info_state.height ||
+        destination->pixel_format != info_state.format) {
+        return 0;
+    }
+    for (uint32_t y = 0; y < info_state.height; y++) {
+        const volatile uint32_t* source_row = framebuffer +
+            (uint64_t)y * info_state.pixels_per_scanline;
+        uint32_t* destination_row = destination->pixels +
+            (uint64_t)y * destination->stride_pixels;
+        for (uint32_t x = 0; x < info_state.width; x++) {
+            destination_row[x] = source_row[x];
+        }
+    }
+    return 1;
+}
+
 void GOPDriver::putpixel(uint32_t x, uint32_t y, uint32_t color) {
     if (!ready_state || framebuffer == 0) {
         return;

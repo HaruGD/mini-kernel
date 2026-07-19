@@ -8,6 +8,12 @@
 
 #define OS64_DISPLAY_ABI_VERSION 1u
 
+#define OS_DISPLAY_SESSION_CONSOLE_ACTIVE 1u
+#define OS_DISPLAY_SESSION_GUI_ACQUIRING 2u
+#define OS_DISPLAY_SESSION_GUI_ACTIVE 3u
+#define OS_DISPLAY_SESSION_CONSOLE_RESTORING 4u
+#define OS_DISPLAY_SESSION_FALLBACK 5u
+
 #define OS_DISPLAY_PRESENT_BEGIN  0x445001u
 #define OS_DISPLAY_PRESENT_DAMAGE 0x445002u
 #define OS_DISPLAY_PRESENT_COMMIT 0x445003u
@@ -68,6 +74,19 @@ typedef struct OsDisplayPresentReply {
     uint32_t presented_rects;
 } OsDisplayPresentReply;
 
+typedef struct OsDisplaySessionInfo {
+    uint32_t size;
+    uint32_t abi_version;
+    uint32_t state;
+    uint32_t generation;
+    uint32_t window_pid;
+    uint32_t window_generation;
+    uint32_t display_pid;
+    uint32_t display_generation;
+    uint32_t width;
+    uint32_t height;
+} OsDisplaySessionInfo;
+
 #ifdef __cplusplus
 #define OS64_DISPLAY_STATIC_ASSERT(condition, message) static_assert((condition), message)
 #else
@@ -82,6 +101,8 @@ OS64_DISPLAY_STATIC_ASSERT(sizeof(OsDisplayPresentCommit) == 24,
                            "OsDisplayPresentCommit ABI changed");
 OS64_DISPLAY_STATIC_ASSERT(sizeof(OsDisplayPresentReply) == 32,
                            "OsDisplayPresentReply ABI changed");
+OS64_DISPLAY_STATIC_ASSERT(sizeof(OsDisplaySessionInfo) == 40,
+                           "OsDisplaySessionInfo ABI changed");
 OS64_DISPLAY_STATIC_ASSERT(offsetof(OsDisplayPresentDamage, rects) == 32,
                            "OsDisplayPresentDamage.rects offset changed");
 

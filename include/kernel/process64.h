@@ -109,6 +109,7 @@ int process_wait_begin(Process* process,
                        uint32_t tick_now);
 int process_wait_signal(Process* process, uint32_t reason, int32_t result);
 int process_wait_cancel(Process* process, uint32_t reason, int32_t result);
+void process_notify_queued_ipc(Process* process);
 void process_wait_tick(uint32_t tick_now);
 int process_wait_is_pending(const Process* process);
 const char* process_wait_reason_name(uint32_t reason);

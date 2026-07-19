@@ -1,5 +1,7 @@
 #include <os64/os64.h>
 
+#define SERVICE_MANAGER_REPLY_TIMEOUT_TICKS 2000u
+
 static uint32_t command_from_text(const char* text) {
     if (text == 0 || os_streq(text, "ping")) {
         return OS_SERVICE_MANAGER_CMD_PING;
@@ -134,7 +136,8 @@ int main(int argc, char** argv) {
     }
 
     OsIpcMessage raw_reply;
-    result = os_msg_wait(&raw_reply);
+    result = os_msg_wait_timeout(&raw_reply,
+                                 SERVICE_MANAGER_REPLY_TIMEOUT_TICKS);
     if (result < 0) {
         os_printf("[usvcctl] wait failed %ld\n", result);
         return 1;

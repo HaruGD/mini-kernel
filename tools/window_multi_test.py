@@ -151,9 +151,28 @@ int main(void) {
     WindowCompositorSource sources[OS_WINDOW_MAX_WINDOWS] = {0};
     sources[back->window_id - 1] = (WindowCompositorSource){back_pixels, 5};
     sources[front->window_id - 1] = (WindowCompositorSource){front_pixels, 4};
+    uint32_t underlay_pixels[48];
+    for (uint32_t i = 0; i < 48; i++) {
+        underlay_pixels[i] = 0x00010000u + i;
+    }
+    WindowCompositorSource underlay = {underlay_pixels, 8};
     WindowDamageAccumulator damage;
     window_damage_init(&damage, 8, 6);
     window_damage_full(&damage);
+    WindowTable empty;
+    window_state_init(&empty);
+    check(window_compositor_compose_underlay(screen, 8, 8, 6, &underlay,
+                                             &empty, sources, &damage) ==
+          OS_SUCCESS, "retained console underlay compose");
+    check(screen[0] == underlay_pixels[0] &&
+          screen[47] == underlay_pixels[47],
+          "empty GUI preserves console snapshot");
+    check(window_compositor_compose_underlay(screen, 8, 8, 6, &underlay,
+                                             &table, sources, &damage) ==
+          OS_SUCCESS, "windows compose above retained underlay");
+    check(screen[0] == underlay_pixels[0], "underlay remains below windows");
+    check(screen[1 + 1 * 8] == 0x001122CCu, "underlay back window pixel");
+    check(screen[3 + 2 * 8] == 0x00CC3311u, "underlay front window pixel");
     check(window_compositor_compose(screen, 8, 8, 6, 0x00010203u,
                                     &table, sources, &damage) == OS_SUCCESS,
           "full multiwindow compose");

@@ -74,13 +74,6 @@ def wait_program_return(name: str, timeout: float, offset: int) -> int:
     raise TimeoutError(f"timed out waiting for {name!r} to start")
 
 
-def drive_once(process: subprocess.Popen, marker: str, offset: int) -> int:
-    drive = send_command_async(process, "drive")
-    found = wait_for(marker, 35, offset)
-    wait_program_return("udrive_c.elf", 20, drive)
-    return found
-
-
 def resources(process: subprocess.Popen) -> tuple[int, ...]:
     output = send_command(process, "resources")
     matches = list(RESOURCE_RE.finditer(output))
@@ -185,32 +178,26 @@ def main() -> int:
         wait_for("[ugui-launch] restricted app", 20, start)
         permission = wait_for("[ugui] permission boundary OK", 20, start)
         wait_program_return("ugui_launch_c.elf", 20, start)
-        try:
-            ready = wait_for("[ugui] focused ready", 2, permission)
-        except TimeoutError:
-            ready = drive_once(process, "[ugui] focused ready", permission)
+        ready = wait_for("[ugui] focused ready", 20, permission)
         initial = screenshot(process, "initial")
         initial_base = require_color(initial, (24, 36, 61), 10_000)
         initial_accent = require_color(initial, (54, 211, 153), 500)
 
         key_start = len(serial_bytes())
         monitor_line(process, "sendkey f1")
-        redraw = drive_once(process, "[ugui] redraw key=F1 rects=6", key_start)
+        redraw = wait_for("[ugui] redraw key=F1 rects=6", 30, key_start)
         redrawn = screenshot(process, "redraw")
         redraw_accent = require_color(redrawn, (236, 72, 153), 500)
 
         key_start = len(serial_bytes())
         monitor_line(process, "sendkey f2")
-        resized = drive_once(process, "[ugui] resized 420x280", key_start)
+        resized = wait_for("[ugui] resized 420x280", 30, key_start)
         resized_screen = screenshot(process, "resized")
         require_pixel(resized_screen, 500, 130, (88, 45, 104))
 
         key_start = len(serial_bytes())
         monitor_line(process, "sendkey esc")
-        try:
-            done = wait_for("[ugui] lifecycle OK", 5, key_start)
-        except TimeoutError:
-            done = drive_once(process, "[ugui] lifecycle OK", key_start)
+        done = wait_for("[ugui] lifecycle OK", 30, key_start)
         segment = serial_bytes()[start:done].decode(errors="replace")
         forbidden = ("failed", "event failure", "sequence failure")
         if any(marker in segment for marker in forbidden):

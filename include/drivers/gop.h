@@ -58,6 +58,7 @@ public:
     uint32_t present_surface(const GraphicsSurface* source,
                              const OsRect* rects,
                              uint32_t rect_count);
+    int copy_scanout(GraphicsSurface* destination) const;
 
     void clear(uint32_t color);
     void putpixel(uint32_t x, uint32_t y, uint32_t color);

@@ -30,9 +30,11 @@ that records those immutable implementation commit hashes.
 | 4E: Multiwindow compositor | Complete | 2026-07-17 | 2026-07-17 | `4e0e296` | [record](#4e-multiwindow-compositor) |
 | 4F: Input routing and focus | Complete | 2026-07-17 | 2026-07-17 | `76cb52e` | [record](#4f-input-routing-and-focus) |
 | 4G: Window SDK and first GUI application | Complete | 2026-07-17 | 2026-07-17 | `4bafe1f` | [record](#4g-window-sdk-and-first-gui-application) |
-| 4H: Lifecycle, fault, regression, and closure | Planned | - | - | - | - |
+| 4H: Lifecycle, fault, regression, and closure | In progress | 2026-07-20 | - | pending | [working record](#4h-lifecycle-fault-regression-and-closure-working-record) |
 
-Current work: Phase 4G is complete. Phase 4H remains Planned.
+Current work: Phase 4H-A and 4H-B are implemented and under regression. Phase
+4H-C fault injection, failure recovery, GUI soak, aggregate closure, and final
+evidence remain open, so Phase 4H and Phase 4 are not complete.
 
 ## Recording Workflow
 
@@ -569,6 +571,61 @@ notes or issue tracker until corrected.
   clean-build and closure matrix before Phase 4 itself is complete;
 - widgets, desktop shell, decorations, alpha, and a separate compositor
   process remain deferred beyond Phase 4.
+
+## 4H: Lifecycle, Fault, Regression, And Closure (Working Record)
+
+- Status: In progress
+- Started: 2026-07-20
+- Completed: not complete
+- Implementation commit: pending
+
+### Delivered So Far
+
+- added a generation-tagged display-session state machine with exact
+  `windowd` and `displayd` identities, first-window acquisition, last-window
+  release, stale-owner rejection, process-exit recovery, and console fallback;
+- captured the live GOP framebuffer into a page-backed surface at acquisition,
+  attenuated the retained handle to `READ | MAP`, and composed that immutable
+  console snapshot below every normal window;
+- retained terminal text while GUI scanout is active, suppressed ordinary
+  terminal writes to physical scanout, and redrew the current console on
+  release or owner failure;
+- routed physical input to exactly one active mode, discarded boundary events,
+  and prevented `inputd` from consuming the console queue before GUI
+  acquisition;
+- made the kernel's top-level idle context drain shell input and schedule ready
+  processes without a foreground helper;
+- removed the `drive` command and `udrive_c.elf`, converted GUI/input tests to
+  real timer/IPC/input progress, bounded `usvcctl` replies, and deferred the
+  shell prompt until the exact foreground process reaches a terminal state;
+- removed nested scheduler idle loops, closed wait-arm/wakeup and ready-queue
+  recovery paths, and stopped resumed background children from re-arming
+  `PROCESS_WAIT_CHILD` on their service-manager parent.
+
+### Verification So Far
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make -j2 uefi` | PASS | Kernel, SDK, userland, drivers, FAT32 root image, and UEFI ESP rebuilt. |
+| `make test-display-handoff` | PASS | Display-session ABI, retained-console ownership, read-only underlay, stale generation, release, and recovery source contracts passed. |
+| `make test-input-queue` | PASS | Input queue, keyboard translation, and per-process event routing passed. |
+| `make test-drive-free-scheduler` | PASS | Idle scheduling contract and repeated bare `service`/`service status window` QEMU control completed without `drive`. |
+| `python3 tools/service_manager_smoke.py` | PASS | Supervision, permissions, status, health, restart, and bounded control remained operational. |
+| `python3 tools/gui_app_smoke.py` | PASS | First GUI application redraw, resize, focus, teardown, and stable active resource counts passed without a scheduler helper. |
+| `python3 tools/window_input_smoke.py` | PASS | Focused input routing and console/GUI ownership boundary passed without duplicate delivery. |
+| `python3 tools/window_single_smoke.py && python3 tools/window_multi_smoke.py` | PASS | Single-window lifecycle and multiwindow composition/pixel/resource regression passed with retained-console underlay. |
+
+### Remaining Before Completion
+
+- add deterministic client, `windowd`, and `displayd` crash/reconnection tests
+  for every display-session transition and prove current-console restoration;
+- add allocation, mapping, handle, IPC, composition, and present fault cases
+  required by P4-R08;
+- add and pass the 60-second GUI lifecycle/service-churn soak with zero
+  unexplained drift required by P4-R09;
+- add `make test-phase4`, run it and the full clean-build/`test-closure` matrix,
+  then record immutable implementation commits and mark P4-R08 through P4-R12
+  complete. The optional one-hour release soak remains separate.
 
 ## Phase Milestones
 

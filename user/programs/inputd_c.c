@@ -159,6 +159,8 @@ int main(void) {
         if (result == OS_SUCCESS) {
             forward_event(&event);
             os_yield();
+        } else if (result == OS_ERR_NOT_READY) {
+            os_sleep(1);
         } else if (result != OS_ERR_TIMEOUT && result != OS_ERR_WOULD_BLOCK &&
                    result != OS_ERR_CANCELLED) {
             os_printf("[inputd] input wait failed %ld\n", result);

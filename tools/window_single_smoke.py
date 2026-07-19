@@ -88,33 +88,6 @@ def send_service_command(process: subprocess.Popen,
     return serial_bytes()[start:end].decode(errors="replace")
 
 
-def drive_guest(process: subprocess.Popen, timeout: float = 30) -> None:
-    command = "run uyield_c.elf"
-    key_map = {" ": "spc", ".": "dot", "_": "shift-minus", "-": "minus"}
-    start = len(serial_bytes())
-    for char in command:
-        monitor_line(process, f"sendkey {key_map.get(char, char)}")
-    monitor_line(process, "sendkey ret")
-    body = wait_for("=== uyield_c.elf ===", timeout, start)
-    returned = wait_for("Returned from user program", timeout, body)
-    wait_for("OS64>", timeout, returned)
-
-
-def drive_until(process: subprocess.Popen,
-                marker: str,
-                offset: int,
-                timeout: float = 35) -> int:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        data = serial_bytes()
-        index = data.find(marker.encode("ascii"), offset)
-        if index >= 0:
-            return index + len(marker)
-        drive_guest(process)
-        time.sleep(0.1)
-    raise TimeoutError(f"timed out driving guest to {marker!r}")
-
-
 def parse_resources(text: str) -> tuple[int, ...]:
     matches = list(RESOURCE_RE.finditer(text))
     if not matches:
@@ -223,13 +196,13 @@ def main() -> int:
             raise RuntimeError(f"window pipeline did not start: {output}")
 
         warm = launch_demo(process, "exit")
-        drive_until(process, "[window-client] exiting without DESTROY", warm)
-        drive_until(process, "[windowd] owner exit cleanup", warm)
+        wait_for("[window-client] exiting without DESTROY", 35, warm)
+        wait_for("[windowd] owner exit cleanup", 35, warm)
         baseline = parse_resources(send_resources(process))
 
         happy = launch_demo(process, "present")
-        visible = drive_until(
-            process, "[window-client] deterministic frame visible", happy, 40
+        visible = wait_for(
+            "[window-client] deterministic frame visible", 40, happy
         )
         monitor_line(process, f"screendump {SCREEN}", 0.3)
         happy_counts = validate_colors(
@@ -237,7 +210,7 @@ def main() -> int:
             ((62, 80, 156), (232, 188, 72), (224, 112, 48)),
             12_000,
         )
-        complete = drive_until(process, "[window-client] lifecycle OK", visible)
+        complete = wait_for("[window-client] lifecycle OK", 35, visible)
         required_happy = (
             "[window-client] direct display denied",
             "[window-client] CREATE ACK",
@@ -259,8 +232,8 @@ def main() -> int:
         )
 
         leaked = launch_demo(process, "exit")
-        drive_until(process, "[window-client] exiting without DESTROY", leaked)
-        drive_until(process, "[windowd] owner exit cleanup", leaked)
+        wait_for("[window-client] exiting without DESTROY", 35, leaked)
+        wait_for("[windowd] owner exit cleanup", 35, leaked)
         require_window_resources_released(
             baseline,
             parse_resources(send_resources(process)),

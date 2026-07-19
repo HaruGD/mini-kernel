@@ -66,11 +66,20 @@ extern "C" void save_sleep_context64(uint64_t* frame, uint32_t sleep_ticks) {
 
 extern "C" void save_wait_context64(uint64_t* frame) {
     Process* process = current_process();
-    if (process == 0 || frame == 0 || !process_wait_is_pending(process)) {
+    if (process == 0 || frame == 0 ||
+        process->wait_reason == PROCESS_WAIT_NONE) {
         return;
     }
 
     save_paused_context64(frame, process, PROCESS_PAUSE_WAIT, 0);
+    // A timer, IPC sender, or input IRQ may complete the wait after the
+    // syscall arms it but before this interrupt-exit path saves the user
+    // context. In that case the signal could not enqueue a still-running
+    // process. Commit the saved context to READY here; duplicate enqueue is
+    // harmless and suppressed by the scheduler queue.
+    if (!process_wait_is_pending(process)) {
+        scheduler_enqueue(process);
+    }
 }
 
 static const char* current_process_shell_prompt() {
@@ -142,7 +151,6 @@ static void get_execution_slot_bases(uint32_t slot_index, uint64_t* code_base, u
 }
 
 static int resume_user_program_internal(Process* parent, Process* process, int print_banner);
-static int idle_until_ready_process();
 
 static int parent_should_resume_immediately(const Process* parent) {
     if (parent == 0 || !parent->active) {
@@ -197,13 +205,29 @@ int continue_background_processes(uint32_t exclude_pid) {
     return resume_user_program_internal(parent, next_ready, 0);
 }
 
-static int idle_until_ready_process() {
-    while (1) {
-        if (continue_ready_processes(0)) {
-            return 1;
-        }
-        __asm__ volatile("sti; hlt; cli");
+static int wait_for_terminal_process(Process* process) {
+    if (process == 0) {
+        return 0;
     }
+    uint32_t pid = process->pid;
+    uint32_t generation = process->generation;
+    while (process->pid == pid && process->generation == generation &&
+           process->state != PROCESS_STATE_RETURNED &&
+           process->state != PROCESS_STATE_FAILED) {
+        if (continue_ready_processes(0)) {
+            continue;
+        }
+        __asm__ volatile("sti; hlt; cli" : : : "memory");
+    }
+    // Let preempted reply producers reach their next wait boundary before the
+    // shell publishes a new prompt. The pass is bounded so a CPU-bound
+    // background process cannot indefinitely withhold console ownership.
+    for (uint32_t i = 0; i < USER_PROGRAM_SLOT_COUNT; i++) {
+        if (!continue_ready_processes(pid)) {
+            break;
+        }
+    }
+    return 1;
 }
 
 static void user_input_reset() {

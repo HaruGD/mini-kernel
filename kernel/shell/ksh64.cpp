@@ -39,9 +39,18 @@ static int history_count = 0;
 static int history_index = history_count;
 static char* notebook_ptr = 0;
 static uint32_t notebook_length = 0;
+static uint8_t shell_prompt_pending = 0;
 
 const char* kernel_shell_prompt() {
     return PROMPT;
+}
+
+void shell_publish_prompt_if_pending() {
+    if (!shell_prompt_pending) {
+        return;
+    }
+    shell_prompt_pending = 0;
+    print("\n" PROMPT);
 }
 
 static char* get_argument(char* input) {
@@ -236,7 +245,7 @@ static void command_help() {
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
-    print("\nrun, resume, drive, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
+    print("\nrun, resume, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
 }
 
 static void print_fault_injection_status() {
@@ -955,11 +964,6 @@ static void command_resume() {
     resume_user_program(0);
 }
 
-static void command_drive() {
-    char driver_program[] = "udrive_c.elf";
-    command_run(driver_program);
-}
-
 static void execute_command() {
     shell_buffer[buffer_index] = '\0';
     save_history();
@@ -1075,8 +1079,6 @@ static void execute_command() {
         command_service(arg);
     } else if (strcmp64(cmd, "resume") == 0) {
         command_resume();
-    } else if (strcmp64(cmd, "drive") == 0) {
-        command_drive();
     } else if (strcmp64(cmd, "pagefault") == 0) {
         volatile uint32_t* bad_ptr =
             (volatile uint32_t*)(uintptr_t)0x0000000800000000ULL;
@@ -1096,7 +1098,7 @@ static void execute_command() {
 
     buffer_index = 0;
     shell_buffer[0] = '\0';
-    print("\n" PROMPT);
+    shell_prompt_pending = 1;
 }
 
 extern "C" void shell_input(char ascii) {

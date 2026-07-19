@@ -3,6 +3,9 @@
 #include "kernel/boot_info.h"
 #include "kernel/graphics/display_owner.h"
 #include "kernel/graphics/graphics_font.h"
+#include "kernel/input/input_events.h"
+
+extern Terminal terminal;
 
 #define FB_FORMAT_RGB 0
 #define FB_FORMAT_BGR 1
@@ -198,12 +201,14 @@ void Terminal::framebuffer_scroll() {
     cursor = columns * (rows - 1);
 }
 
-void Terminal::scroll() {
+void Terminal::scroll(int draw_output) {
     scroll_text_buffer();
-    if (use_framebuffer) {
+    if (use_framebuffer && draw_output) {
         framebuffer_scroll();
-    } else {
+    } else if (!use_framebuffer && draw_output) {
         vga_scroll();
+    } else {
+        cursor = columns * (rows - 1);
     }
 }
 
@@ -211,29 +216,30 @@ void Terminal::clear() {
     if (!active) {
         return;
     }
+    clear_text_buffer();
+    cursor = 0;
     if (use_framebuffer) {
+        if (!display_session_terminal_scanout_allowed()) {
+            return;
+        }
         DisplayOwnerToken token;
         display_owner_begin(DISPLAY_OWNER_TERMINAL, &token);
         if (!token.acquired) {
             return;
         }
-        clear_text_buffer();
         for (uint32_t y = 0; y < fb_height; y++) {
             for (uint32_t x = 0; x < fb_width; x++) {
                 putpixel(x, y, bg_color);
             }
         }
-        cursor = 0;
         display_owner_end(&token);
         return;
     }
 
-    clear_text_buffer();
     for (int i = 0; i < 80 * 25; i++) {
         vga[i * 2]     = ' ';
         vga[i * 2 + 1] = color;
     }
-    cursor = 0;
     update_cursor();
 }
 
@@ -242,17 +248,19 @@ void Terminal::putchar(char c) {
         return;
     }
     DisplayOwnerToken token;
+    int draw_output = 1;
     if (use_framebuffer) {
-        display_owner_begin(DISPLAY_OWNER_TERMINAL, &token);
-        if (!token.acquired) {
-            return;
+        token.acquired = 0;
+        if (display_session_terminal_scanout_allowed()) {
+            display_owner_begin(DISPLAY_OWNER_TERMINAL, &token);
         }
+        draw_output = token.acquired != 0;
     } else {
         token.acquired = 0;
     }
 
     if (cursor >= columns * rows) {
-        scroll();
+        scroll(draw_output);
     }
 
     if (c == '\n') {
@@ -261,18 +269,18 @@ void Terminal::putchar(char c) {
         if (cursor > 0) {
             cursor--;
             put_text_cell(cursor, ' ');
-            if (use_framebuffer) {
+            if (use_framebuffer && draw_output) {
                 clear_framebuffer_cell(cursor);
-            } else {
+            } else if (!use_framebuffer) {
                 vga[cursor * 2]     = ' ';
                 vga[cursor * 2 + 1] = color;
             }
         }
     } else {
         put_text_cell(cursor, c);
-        if (use_framebuffer) {
+        if (use_framebuffer && draw_output) {
             draw_framebuffer_char(cursor, c);
-        } else {
+        } else if (!use_framebuffer) {
             vga[cursor * 2]     = c;
             vga[cursor * 2 + 1] = color;
         }
@@ -280,12 +288,43 @@ void Terminal::putchar(char c) {
     }
 
     if (cursor >= columns * rows) {
-        scroll();
+        scroll(draw_output);
     }
     update_cursor();
     if (token.acquired) {
         display_owner_end(&token);
     }
+}
+
+int Terminal::redraw() {
+    if (!active) {
+        return 0;
+    }
+    if (!use_framebuffer) {
+        for (int cell = 0; cell < columns * rows; cell++) {
+            vga[cell * 2] = text_buffer[cell];
+            vga[cell * 2 + 1] = color;
+        }
+        update_cursor();
+        return 1;
+    }
+    DisplayOwnerToken token;
+    display_owner_begin(DISPLAY_OWNER_TERMINAL, &token);
+    if (!token.acquired) {
+        return 0;
+    }
+    for (uint32_t y = 0; y < fb_height; y++) {
+        for (uint32_t x = 0; x < fb_width; x++) {
+            putpixel(x, y, bg_color);
+        }
+    }
+    for (int cell = 0; cell < columns * rows; cell++) {
+        if (text_buffer[cell] != ' ') {
+            draw_framebuffer_char(cell, text_buffer[cell]);
+        }
+    }
+    display_owner_end(&token);
+    return 1;
 }
 
 void Terminal::print(const char* str) {
@@ -305,4 +344,14 @@ void Terminal::print_hex(uint32_t n) {
     }
     buffer[10] = '\0';
     print(buffer);
+}
+
+extern "C" void display_session_process_cleanup(uint32_t pid,
+                                                uint32_t generation) {
+    if (!display_session_begin_recovery(pid, generation)) {
+        return;
+    }
+    input_events_discard_all();
+    terminal.redraw();
+    display_session_finish_restore();
 }

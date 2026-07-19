@@ -5,15 +5,15 @@ extern "C" void keyboard_handler64() {
 }
 
 extern "C" int user_input_active64() {
-    return process_focused() != 0;
+    return display_session_gui_active() || current_process() != 0 ||
+           process_focused() != 0;
 }
 
 extern "C" void keyboard_deliver_char64(char ascii) {
-    if (process_focused() != 0) {
-        return;
-    }
-
-    shell_input(ascii);
+    (void)ascii;
+    // Raw keyboard events are drained by the kernel idle context. Executing
+    // shell commands directly from an IRQ can accidentally make them children
+    // of whichever background user process the interrupt preempted.
 }
 
 const BootInfo* kernel_boot_info() {

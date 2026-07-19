@@ -19,6 +19,7 @@ uint64_t kernel_boot_tsc();
 uint32_t kernel_user_test_count();
 
 const char* kernel_shell_prompt();
+void shell_publish_prompt_if_pending();
 
 extern "C" void shell_recall_history(int direction);
 extern "C" void shell_input(char ascii);

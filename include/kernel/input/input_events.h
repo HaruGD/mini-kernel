@@ -19,6 +19,7 @@ extern "C" {
 void input_events_init();
 int input_events_push(const OsInputEvent* event);
 int input_events_pop(OsInputEvent* event);
+void input_events_discard_all();
 void input_events_get_stats(KernelInputStats* stats);
 
 #ifdef __cplusplus

@@ -42,6 +42,15 @@ long window_compositor_compose(uint32_t* destination,
                                const WindowTable* table,
                                const WindowCompositorSource* sources,
                                const WindowDamageAccumulator* damage);
+long window_compositor_compose_underlay(
+    uint32_t* destination,
+    uint32_t destination_stride,
+    uint32_t screen_width,
+    uint32_t screen_height,
+    const WindowCompositorSource* underlay,
+    const WindowTable* table,
+    const WindowCompositorSource* sources,
+    const WindowDamageAccumulator* damage);
 long window_compositor_copy_full(uint32_t* destination,
                                  uint32_t destination_stride,
                                  const uint32_t* source,

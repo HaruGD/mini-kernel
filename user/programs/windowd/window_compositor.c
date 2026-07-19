@@ -250,6 +250,79 @@ long window_compositor_compose(uint32_t* destination,
     return OS_SUCCESS;
 }
 
+long window_compositor_compose_underlay(
+    uint32_t* destination,
+    uint32_t destination_stride,
+    uint32_t screen_width,
+    uint32_t screen_height,
+    const WindowCompositorSource* underlay,
+    const WindowTable* table,
+    const WindowCompositorSource* sources,
+    const WindowDamageAccumulator* damage) {
+    if (destination == 0 || underlay == 0 || underlay->pixels == 0 ||
+        underlay->stride_pixels < screen_width || table == 0 || sources == 0 ||
+        damage == 0 || screen_width == 0 || screen_height == 0 ||
+        destination_stride < screen_width) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    for (uint32_t d = 0; d < damage->count; d++) {
+        OsRect dirty;
+        if (!rect_clip(damage->rects[d], 0, 0, screen_width, screen_height,
+                       &dirty)) {
+            continue;
+        }
+        for (int32_t y = 0; y < dirty.height; y++) {
+            uint32_t* destination_row = destination +
+                (uint32_t)(dirty.y + y) * destination_stride +
+                (uint32_t)dirty.x;
+            const uint32_t* underlay_row = underlay->pixels +
+                (uint32_t)(dirty.y + y) * underlay->stride_pixels +
+                (uint32_t)dirty.x;
+            for (int32_t x = 0; x < dirty.width; x++) {
+                destination_row[x] = underlay_row[x] & 0x00FFFFFFu;
+            }
+        }
+        for (uint32_t z = 0; z < table->count; z++) {
+            uint32_t slot = table->z_slots[z];
+            if (slot >= OS_WINDOW_MAX_WINDOWS) {
+                return OS_ERR_BAD_BUFFER;
+            }
+            const WindowEntry* window = &table->entries[slot];
+            const WindowCompositorSource* source = &sources[slot];
+            if (!window->active || !window->visible || source->pixels == 0 ||
+                source->stride_pixels < window->width) {
+                continue;
+            }
+            OsRect window_rect = window_state_screen_rect(window);
+            int64_t left = dirty.x > window_rect.x ? dirty.x : window_rect.x;
+            int64_t top = dirty.y > window_rect.y ? dirty.y : window_rect.y;
+            int64_t dirty_right = (int64_t)dirty.x + dirty.width;
+            int64_t dirty_bottom = (int64_t)dirty.y + dirty.height;
+            int64_t window_right = (int64_t)window_rect.x + window_rect.width;
+            int64_t window_bottom = (int64_t)window_rect.y + window_rect.height;
+            int64_t right = dirty_right < window_right ? dirty_right : window_right;
+            int64_t bottom = dirty_bottom < window_bottom ? dirty_bottom : window_bottom;
+            if (right <= left || bottom <= top) {
+                continue;
+            }
+            uint32_t source_x = (uint32_t)(left - window->x);
+            uint32_t source_y = (uint32_t)(top - window->y);
+            uint32_t copy_width = (uint32_t)(right - left);
+            uint32_t copy_height = (uint32_t)(bottom - top);
+            for (uint32_t y = 0; y < copy_height; y++) {
+                uint32_t* destination_row = destination +
+                    (uint32_t)(top + y) * destination_stride + (uint32_t)left;
+                const uint32_t* source_row = source->pixels +
+                    (source_y + y) * source->stride_pixels + source_x;
+                for (uint32_t x = 0; x < copy_width; x++) {
+                    destination_row[x] = source_row[x] & 0x00FFFFFFu;
+                }
+            }
+        }
+    }
+    return OS_SUCCESS;
+}
+
 long window_compositor_copy_full(uint32_t* destination,
                                  uint32_t destination_stride,
                                  const uint32_t* source,

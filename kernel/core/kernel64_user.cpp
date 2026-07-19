@@ -524,7 +524,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         return 0;
     }
     process->state = PROCESS_STATE_RUNNING;
-    if (parent != 0) {
+    if (parent != 0 && !process->background) {
         process_wait_begin(parent, PROCESS_WAIT_CHILD, 0, 0, 0);
     }
     scheduler_mark_running(process);
@@ -569,6 +569,9 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
                 return 1;
             }
         }
+        if (parent == 0 && !process->background) {
+            return wait_for_terminal_process(process);
+        }
         if (continue_ready_processes(process->pid)) {
             return 1;
         }
@@ -578,7 +581,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         if (parent == 0 &&
             (process->pause_reason == PROCESS_PAUSE_SLEEP ||
              process->pause_reason == PROCESS_PAUSE_WAIT)) {
-            return idle_until_ready_process();
+            return 1;
         }
         return 1;
     }
@@ -637,7 +640,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         focus_foreground_process(parent);
         return 1;
     }
-    return idle_until_ready_process();
+    return 1;
 }
 
 int run_user_program(const char* command_line) {
@@ -704,7 +707,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     address_space_activate(&process->address_space);
     complete_waiting_syscall64(process);
     kernel_user_resume_rax = process->saved_rax;
-    if (parent != 0 && parent->active) {
+    if (parent != 0 && parent->active && !process->background) {
         process_wait_begin(parent, PROCESS_WAIT_CHILD, 0, 0, 0);
     }
     scheduler_mark_running(process);
@@ -747,6 +750,9 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
                 return 1;
             }
         }
+        if (parent == 0 && !process->background) {
+            return wait_for_terminal_process(process);
+        }
         if (continue_ready_processes(process->pid)) {
             return 1;
         }
@@ -756,7 +762,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         if (parent == 0 &&
             (process->pause_reason == PROCESS_PAUSE_SLEEP ||
              process->pause_reason == PROCESS_PAUSE_WAIT)) {
-            return idle_until_ready_process();
+            return 1;
         }
         return 1;
     }
@@ -812,7 +818,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     if (nested_syscall_waiter_active(process)) {
         return 1;
     }
-    return idle_until_ready_process();
+    return 1;
 }
 
 int resume_user_program(uint32_t pid) {
