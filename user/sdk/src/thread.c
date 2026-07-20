@@ -63,3 +63,35 @@ long os_thread_yield(void) {
 long os_thread_sleep(uint32_t ticks) {
     return os_sleep(ticks);
 }
+
+long os_thread_tls_set(void* base) {
+    return os_syscall1(OS_SYS_THREAD_TLS_SET, (long)base);
+}
+
+long os_thread_tls_get(void** base) {
+    if (base == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall1(OS_SYS_THREAD_TLS_GET, (long)base);
+}
+
+long os_thread_get_info(OsThreadIdentity identity, OsThreadInfo* info) {
+    if (identity.tid == 0 || identity.generation == 0 || info == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall3(OS_SYS_THREAD_GET_INFO,
+                       identity.tid,
+                       identity.generation,
+                       (long)info);
+}
+
+long os_thread_set_priority(OsThreadIdentity identity, uint32_t priority) {
+    if (identity.tid == 0 || identity.generation == 0 ||
+        priority > OS_THREAD_PRIORITY_MAX) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall3(OS_SYS_THREAD_SET_PRIORITY,
+                       identity.tid,
+                       identity.generation,
+                       priority);
+}

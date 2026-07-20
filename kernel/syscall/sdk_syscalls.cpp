@@ -44,9 +44,16 @@ static_assert(sizeof(OsProcessIdentity) == 8, "OsProcessIdentity ABI changed");
 static_assert(sizeof(OsThreadIdentity) == 8, "OsThreadIdentity ABI changed");
 static_assert(sizeof(OsThreadCreateRequest) == 40,
               "OsThreadCreateRequest ABI changed");
+static_assert(sizeof(OsThreadInfo) == 96, "OsThreadInfo ABI changed");
 
 static uint64_t invalid_argument();
 static uint64_t bad_buffer();
+
+static void apply_user_fs_base(uint64_t base) {
+    uint32_t low = (uint32_t)base;
+    uint32_t high = (uint32_t)(base >> 32);
+    __asm__ volatile("wrmsr" : : "c"(0xC0000100u), "a"(low), "d"(high));
+}
 
 static uint64_t dispatch_thread_create(uint64_t user_request_address,
                                        uint64_t user_identity_address) {
@@ -1127,6 +1134,62 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_THREAD_JOIN) {
         *result = dispatch_thread_join(arg1, arg2, arg3);
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_TLS_SET) {
+        Thread* thread = current_thread();
+        if (thread == 0 || thread->context == 0) {
+            *result = (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+        } else if (arg1 != 0 &&
+                   !user_buffer_writable((uint8_t*)(uintptr_t)arg1,
+                                         sizeof(uint64_t))) {
+            *result = bad_buffer();
+        } else {
+            thread->context->tls_base = arg1;
+            apply_user_fs_base(arg1);
+            *result = 0;
+        }
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_TLS_GET) {
+        Thread* thread = current_thread();
+        uint64_t base = thread != 0 && thread->context != 0
+            ? thread->context->tls_base : 0;
+        *result = thread != 0 &&
+                  copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg1,
+                                             (const uint8_t*)&base,
+                                             sizeof(base))
+            ? 0 : bad_buffer();
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_GET_INFO) {
+        if (arg1 == 0 || arg1 > UINT32_MAX ||
+            arg2 == 0 || arg2 > UINT32_MAX ||
+            !user_buffer_writable((uint8_t*)(uintptr_t)arg3,
+                                  sizeof(OsThreadInfo))) {
+            *result = bad_buffer();
+            return true;
+        }
+        ThreadIdentity identity = {(uint32_t)arg1, (uint32_t)arg2};
+        OsThreadInfo info;
+        int info_result = thread_get_info(current_process(), identity, &info);
+        *result = info_result == 0 &&
+                  copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg3,
+                                             (const uint8_t*)&info,
+                                             sizeof(info))
+            ? 0 : (uint64_t)(int64_t)(info_result != 0
+                                      ? info_result : SYS_ERR_BAD_BUFFER);
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_SET_PRIORITY) {
+        if (arg1 == 0 || arg1 > UINT32_MAX || arg2 == 0 ||
+            arg2 > UINT32_MAX || arg3 > OS_THREAD_PRIORITY_MAX) {
+            *result = invalid_argument();
+        } else {
+            ThreadIdentity identity = {(uint32_t)arg1, (uint32_t)arg2};
+            *result = (uint64_t)(int64_t)thread_set_priority(
+                current_process(), identity, (uint32_t)arg3);
+        }
         return true;
     }
     if (syscall_no == SYS_MUTEX_CREATE) {

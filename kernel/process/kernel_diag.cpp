@@ -159,6 +159,20 @@ void print_process_table(uint32_t tick_now) {
         print_hex32(i);
         print("] ");
         print_process_summary_view(&snapshot.processes[i], tick_now);
+        if (snapshot.processes[i].pid != 0) {
+            print(" thread_ticks=");
+            print_hex64(snapshot.processes[i].thread_runtime_ticks);
+            print(" preempt=");
+            print_hex64(snapshot.processes[i].thread_preemption_count);
+            print(" yield=");
+            print_hex64(snapshot.processes[i].thread_yield_count);
+            print(" block=");
+            print_hex64(snapshot.processes[i].thread_block_count);
+            print(" wake=");
+            print_hex64(snapshot.processes[i].thread_wake_count);
+            print(" switch=");
+            print_hex64(snapshot.processes[i].thread_switch_count);
+        }
     }
     print("\n");
 }

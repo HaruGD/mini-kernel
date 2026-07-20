@@ -47,6 +47,16 @@ static void scheduler_remove_unlocked(Thread* thread);
 static void thread_wait_reset_unlocked(Thread* thread);
 static void thread_join_release_claim_unlocked(Thread* waiter);
 
+static uint32_t thread_quantum(const Thread* thread) {
+    if (thread != 0 && thread->priority == OS_THREAD_PRIORITY_LOW) {
+        return 4;
+    }
+    if (thread != 0 && thread->priority == OS_THREAD_PRIORITY_HIGH) {
+        return 8;
+    }
+    return SCHED_DEFAULT_TIMESLICE;
+}
+
 extern "C" void kernel_sync_thread_exit(Thread* thread) __attribute__((weak));
 extern "C" void kernel_sync_timeout_thread(Thread* thread) __attribute__((weak));
 
@@ -72,6 +82,7 @@ static void thread_record_zero(Thread* thread) {
     }
     thread->context = &thread->context_storage;
     thread_context_reset(thread->context);
+    thread->priority = OS_THREAD_PRIORITY_NORMAL;
 }
 
 void process_system_init() {
@@ -176,6 +187,24 @@ void process_get_diagnostic_snapshot(SchedulerDiagnosticSnapshot* snapshot) {
         out->thread_count = process->thread_count;
         out->main_tid = process->main_thread_identity.tid;
         out->main_thread_generation = process->main_thread_identity.generation;
+        out->thread_runtime_ticks = 0;
+        out->thread_preemption_count = 0;
+        out->thread_yield_count = 0;
+        out->thread_block_count = 0;
+        out->thread_wake_count = 0;
+        out->thread_switch_count = 0;
+        for (uint32_t t = 0; t < THREAD_TABLE_SIZE; t++) {
+            const Thread* thread = &thread_table[t];
+            if (thread->owner != process || thread->context == 0) {
+                continue;
+            }
+            out->thread_runtime_ticks += thread->context->runtime_ticks_total;
+            out->thread_preemption_count += thread->context->preemption_count;
+            out->thread_yield_count += thread->context->yield_count;
+            out->thread_block_count += thread->context->block_count;
+            out->thread_wake_count += thread->context->wake_count;
+            out->thread_switch_count += thread->context->switch_count;
+        }
         ipc_mailbox_get_stats(&process->ipc_mailbox, &out->mailbox);
     }
     kernel_spinlock_release(&process_lock, &token);
@@ -202,6 +231,15 @@ const char* process_wait_reason_name(uint32_t reason) {
     }
     if (reason == PROCESS_WAIT_THREAD_JOIN) {
         return "thread-join";
+    }
+    if (reason == PROCESS_WAIT_MUTEX) {
+        return "mutex";
+    }
+    if (reason == PROCESS_WAIT_SEMAPHORE) {
+        return "semaphore";
+    }
+    if (reason == PROCESS_WAIT_CONDITION) {
+        return "condition";
     }
     return "none";
 }
@@ -429,6 +467,7 @@ static int thread_wait_begin_unlocked(Thread* thread,
     context->wait_deadline = timeout_ticks != 0 ? tick_now + timeout_ticks : 0;
     context->wake_tick = context->wait_deadline;
     context->scheduler_state = SCHED_STATE_WAITING;
+    context->block_count++;
     return 1;
 }
 
@@ -483,10 +522,11 @@ static int thread_wait_signal_unlocked(Thread* thread, uint32_t reason, int32_t 
     context->wait_result = result;
     context->wait_deadline = 0;
     context->wake_tick = 0;
+    context->wake_count++;
     if (thread->active && thread->owner != 0 && thread->owner->active &&
         context->resumable) {
         context->scheduler_state = SCHED_STATE_READY;
-        context->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+        context->timeslice_ticks = thread_quantum(thread);
         scheduler_enqueue_unlocked(thread);
     }
     return 1;
@@ -1589,7 +1629,7 @@ static void scheduler_enqueue_unlocked(Thread* thread) {
     }
     if (scheduler_queue_contains(thread)) {
         thread->context->scheduler_state = SCHED_STATE_READY;
-        thread->context->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+        thread->context->timeslice_ticks = thread_quantum(thread);
         return;
     }
     if (sched_queue_count >= SCHED_QUEUE_SIZE) {
@@ -1600,7 +1640,7 @@ static void scheduler_enqueue_unlocked(Thread* thread) {
     sched_queue[index] = thread;
     sched_queue_count++;
     thread->context->scheduler_state = SCHED_STATE_READY;
-    thread->context->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    thread->context->timeslice_ticks = thread_quantum(thread);
 }
 
 void scheduler_enqueue_thread(Thread* thread) {
@@ -1668,9 +1708,10 @@ void scheduler_mark_thread_running(Thread* thread) {
     thread->context->scheduler_state = SCHED_STATE_RUNNING;
     thread->context->pause_reason = PROCESS_PAUSE_NONE;
     thread->context->wake_tick = 0;
-    thread->context->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    thread->context->timeslice_ticks = thread_quantum(thread);
     sched_last_pid = thread->owner_pid;
     sched_switch_count++;
+    thread->context->switch_count++;
     kernel_spinlock_release(&process_lock, &token);
 }
 
@@ -1738,8 +1779,9 @@ void scheduler_yield_current() {
         return;
     }
     sched_yield_count++;
+    thread->context->yield_count++;
     thread->context->scheduler_state = SCHED_STATE_READY;
-    thread->context->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    thread->context->timeslice_ticks = thread_quantum(thread);
     scheduler_remove_unlocked(thread);
     scheduler_enqueue_unlocked(thread);
     kernel_spinlock_release(&process_lock, &token);
@@ -1756,10 +1798,111 @@ void scheduler_on_tick() {
         return;
     }
     thread->context->runtime_ticks++;
+    thread->context->runtime_ticks_total++;
     if (thread->context->timeslice_ticks > 0) {
         thread->context->timeslice_ticks--;
     }
     kernel_spinlock_release(&process_lock, &token);
+}
+
+void scheduler_note_preemption(Thread* thread) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    if (thread != 0 && thread->context != 0) {
+        thread->context->preemption_count++;
+    }
+    kernel_spinlock_release(&process_lock, &token);
+}
+
+void scheduler_refresh_timeslice(Thread* thread) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    if (thread != 0 && thread->context != 0) {
+        thread->context->timeslice_ticks = thread_quantum(thread);
+    }
+    kernel_spinlock_release(&process_lock, &token);
+}
+
+int thread_get_info(const Process* requester,
+                    ThreadIdentity identity,
+                    OsThreadInfo* info) {
+    if (requester == 0 || info == 0) {
+        return SYS_ERR_INVALID_ARGUMENT;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return SYS_ERR_NOT_READY;
+    }
+    Thread* thread = 0;
+    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
+        if (thread_identity_matches(&thread_table[i], identity) &&
+            thread_table[i].owner == requester) {
+            thread = &thread_table[i];
+            break;
+        }
+    }
+    if (thread == 0 || thread->context == 0) {
+        kernel_spinlock_release(&process_lock, &token);
+        return SYS_ERR_NOT_FOUND;
+    }
+    ThreadContext* context = thread->context;
+    info->size = sizeof(OsThreadInfo);
+    info->scheduler_state = context->scheduler_state;
+    info->identity.tid = thread->tid;
+    info->identity.generation = thread->generation;
+    info->owner_pid = thread->owner_pid;
+    info->owner_generation = thread->owner_generation;
+    info->wait_reason = context->wait_reason;
+    info->priority = thread->priority;
+    info->timeslice_remaining = context->timeslice_ticks;
+    info->queue_position = 0xFFFFFFFFu;
+    for (uint32_t i = 0; i < sched_queue_count; i++) {
+        uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
+        if (sched_queue[index] == thread) {
+            info->queue_position = i;
+            break;
+        }
+    }
+    info->tls_base = context->tls_base;
+    info->runtime_ticks = context->runtime_ticks_total;
+    info->preemption_count = context->preemption_count;
+    info->yield_count = context->yield_count;
+    info->block_count = context->block_count;
+    info->wake_count = context->wake_count;
+    info->switch_count = context->switch_count;
+    kernel_spinlock_release(&process_lock, &token);
+    return 0;
+}
+
+int thread_set_priority(Process* requester,
+                        ThreadIdentity identity,
+                        uint32_t priority) {
+    if (requester == 0 || priority > OS_THREAD_PRIORITY_MAX) {
+        return SYS_ERR_INVALID_ARGUMENT;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return SYS_ERR_NOT_READY;
+    }
+    int result = SYS_ERR_NOT_FOUND;
+    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
+        Thread* thread = &thread_table[i];
+        if (thread_identity_matches(thread, identity) && thread->owner == requester) {
+            thread->priority = priority;
+            if (thread->context != 0 &&
+                thread->context->timeslice_ticks > thread_quantum(thread)) {
+                thread->context->timeslice_ticks = thread_quantum(thread);
+            }
+            result = 0;
+            break;
+        }
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return result;
 }
 
 void scheduler_wake_sleeping_processes(uint32_t tick_now) {

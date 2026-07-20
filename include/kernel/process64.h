@@ -39,6 +39,12 @@ struct ProcessDiagnosticSnapshot {
     uint32_t thread_count;
     uint32_t main_tid;
     uint32_t main_thread_generation;
+    uint64_t thread_runtime_ticks;
+    uint64_t thread_preemption_count;
+    uint64_t thread_yield_count;
+    uint64_t thread_block_count;
+    uint64_t thread_wake_count;
+    uint64_t thread_switch_count;
     KernelIpcMailboxStats mailbox;
     uint8_t active;
     uint8_t reaped;
@@ -193,6 +199,14 @@ void scheduler_mark_waiting(Process* process);
 void scheduler_mark_sleeping(Process* process, uint32_t wake_tick);
 void scheduler_mark_finished(Process* process);
 void scheduler_yield_current();
+void scheduler_note_preemption(Thread* thread);
+void scheduler_refresh_timeslice(Thread* thread);
+int thread_get_info(const Process* requester,
+                    ThreadIdentity identity,
+                    OsThreadInfo* info);
+int thread_set_priority(Process* requester,
+                        ThreadIdentity identity,
+                        uint32_t priority);
 void scheduler_on_tick();
 void scheduler_wake_sleeping_processes(uint32_t tick_now);
 int scheduler_should_preempt_current();

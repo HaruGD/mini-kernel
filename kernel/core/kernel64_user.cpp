@@ -1,3 +1,9 @@
+static void set_user_fs_base(uint64_t base) {
+    uint32_t low = (uint32_t)base;
+    uint32_t high = (uint32_t)(base >> 32);
+    __asm__ volatile("wrmsr" : : "c"(0xC0000100u), "a"(low), "d"(high));
+}
+
 static void focus_foreground_process(Process* process) {
     if (process != 0 && !process->background) {
         if (process_focused_pid() != process->pid) {
@@ -743,7 +749,9 @@ static int resume_user_thread_internal(Process* parent,
     focus_foreground_process(process);
     process->state = PROCESS_STATE_RUNNING;
     context->resumable = 0;
+    set_user_fs_base(context->tls_base);
     resume_user_mode();
+    set_user_fs_base(0);
     user_program_depth--;
     process_stack[stack_index] = 0;
     thread_stack[stack_index] = 0;

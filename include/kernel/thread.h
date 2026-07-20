@@ -12,6 +12,12 @@ struct Process;
     uint64_t stack_base; \
     uint64_t kernel_stack_base; \
     uint64_t tls_base; \
+    uint64_t runtime_ticks_total; \
+    uint64_t preemption_count; \
+    uint64_t yield_count; \
+    uint64_t block_count; \
+    uint64_t wake_count; \
+    uint64_t switch_count; \
     uint32_t stack_guard_page_count; \
     uint32_t stack_page_count; \
     uint32_t kernel_stack_page_count; \
@@ -110,6 +116,7 @@ struct Thread {
     uint32_t user_stack_slot;
     uint32_t join_owner_tid;
     uint32_t join_owner_generation;
+    uint32_t priority;
     uint8_t active;
     uint8_t is_main;
     uint8_t exited;

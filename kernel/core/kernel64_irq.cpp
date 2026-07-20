@@ -36,11 +36,12 @@ extern "C" uint64_t timer_handler64() {
     scheduler_on_tick();
     uint64_t result = 0;
     if (scheduler_should_preempt_current()) {
+        scheduler_note_preemption(current_thread());
         result = TIMER_PREEMPT_TO_KERNEL;
     }
     Thread* thread = current_thread();
     if (thread != 0 && thread->context->timeslice_ticks == 0) {
-        thread->context->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+        scheduler_refresh_timeslice(thread);
     }
     return result;
 }
