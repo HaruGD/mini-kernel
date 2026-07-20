@@ -191,6 +191,14 @@ void os_window_init(OsWindow* window) {
     window->abi_version = OS64_WINDOW_CLIENT_ABI_VERSION;
 }
 
+void os_window_abandon(OsWindow* window) {
+    if (window == 0) {
+        return;
+    }
+    release_surface(window->surface, window->pixels);
+    os_window_init(window);
+}
+
 long os_window_create(OsWindow* window,
                       int32_t x,
                       int32_t y,
@@ -273,8 +281,7 @@ long os_window_destroy(OsWindow* window) {
     if (result < 0) {
         return result;
     }
-    release_surface(window->surface, window->pixels);
-    os_window_init(window);
+    os_window_abandon(window);
     return OS_SUCCESS;
 }
 

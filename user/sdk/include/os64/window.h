@@ -45,6 +45,7 @@ typedef struct OsWindow {
 } OsWindow;
 
 void os_window_init(OsWindow* window);
+void os_window_abandon(OsWindow* window);
 long os_window_create(OsWindow* window,
                       int32_t x,
                       int32_t y,

@@ -57,7 +57,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -179,6 +179,10 @@ test-window-sdk-contracts:
 	python3 ./tools/window_sdk_test.py
 test-gui-app: uefi
 	python3 ./tools/gui_app_smoke.py
+test-gui-recovery: uefi
+	python3 ./tools/gui_recovery_smoke.py
+test-gui-soak: uefi
+	python3 ./tools/gui_soak.py --duration 60
 test-window-sdk: test-window-sdk-contracts test-gui-app
 test-input-queue:
 	python3 ./tools/input_event_queue_test.py
@@ -237,6 +241,8 @@ test-driver-regression: test-driver-build test-driver-boot test-uefi-smoke test-
 test-phase4-entry: test-driver-regression test-graphics-contracts test-concurrency
 	python3 ./tools/phase4_entry_test.py
 
+test-phase4: test-surface-backing test-surface-abi test-display-present test-display-handoff test-drive-free-scheduler test-window-single test-window-multi test-window-input test-window-sdk test-gui-recovery test-fault-injection test-gui-soak
+
 test-uefi-smoke: uefi
 	python3 ./tools/uefi_smoke.py
 
@@ -246,7 +252,7 @@ test-uefi-userland: uefi
 test-uefi-screen: uefi
 	python3 ./tools/uefi_screen_smoke.py
 
-test-closure: test-abi-freeze test-phase4-entry test-surface-abi test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-fault-injection test-soak
+test-closure: test-abi-freeze test-phase4-entry test-phase4 test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-soak
 
 test-service-registry:
 	python3 ./tools/service_registry_test.py

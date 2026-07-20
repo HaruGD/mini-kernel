@@ -398,6 +398,12 @@ int main(void) {
     check(os_window_focus(&window) == OS_SUCCESS, "focus");
     check(os_window_destroy(&window) == OS_SUCCESS && window.window_id == 0,
           "destroy cleanup");
+    check(os_window_create(&window, 5, 6, 40, 30) == OS_SUCCESS,
+          "create for local abandon");
+    before = sent_count;
+    os_window_abandon(&window);
+    check(window.window_id == 0 && window.surface == 0 &&
+          sent_count == before, "server-loss local abandon");
 
     uint32_t pixels[64 * 48];
     OsGraphicsSurfaceHandleInfo canvas_info;
