@@ -24,13 +24,14 @@ immutable implementation hash.
 | 4.5A: Thread object model | Complete | 2026-07-20 | 2026-07-20 | `63cb234` | Thread model host tests pass |
 | 4.5B: Main thread extraction | Complete | 2026-07-20 | 2026-07-20 | `63cb234` | Full Phase 4 suite passes |
 | 4.5C: Thread ABI and SDK | Complete | 2026-07-20 | 2026-07-20 | `63cb234` | SDK 2.2 QEMU lifecycle and reuse pass |
-| 4.5D: Thread-aware waiting | Planned | - | - | - | - |
-| 4.5E: Synchronization primitives | Planned | - | - | - | - |
-| 4.5F: TLS, accounting, and fairness | Planned | - | - | - | - |
+| 4.5D: Thread-aware waiting | Complete | 2026-07-20 | 2026-07-20 | `cdb92ca` | Wait model and QEMU input/IPC regressions pass |
+| 4.5E: Synchronization primitives | Complete | 2026-07-20 | 2026-07-20 | `2211643` | QEMU synchronization policy test passes |
+| 4.5F: TLS, accounting, and fairness | Complete | 2026-07-20 | 2026-07-20 | `1594f34` | QEMU TLS/accounting/fairness test passes |
 | 4.5G: Fault injection, soak, and closure | Planned | - | - | - | - |
 
-Current status: 4.5A through 4.5C are complete. The next task is 4.5D
-thread-aware waiting. Phase 4.6 and Phase 5 remain gated on Phase 4.5 closure.
+Current status: 4.5A through 4.5F are complete. The next task is 4.5G fault
+injection, soak, and closure. Phase 4.6 and Phase 5 remain gated on Phase 4.5
+closure.
 
 ## Recording Workflow
 
@@ -192,6 +193,85 @@ threads.
 
 ### Remaining
 
-4.5D must add and certify multiple eligible waiters per process. Current
-storage is per-thread, but IPC/input wake selection and timeout/cancel races
-still need the focused tests required by P45-R04.
+Completed by 4.5D through 4.5F. Phase 4.5G owns injected allocation failures,
+fatal sibling-fault cleanup, the required 60-second churn soak, and aggregate
+closure.
+
+## 4.5D: Thread-Aware Waiting
+
+- Status: Complete
+- Started: 2026-07-20
+- Completed: 2026-07-20
+- Implementation commit: `cdb92ca`
+
+### Delivered
+
+- Added generation-owned per-thread wait sequences and oldest-waiter
+  selection for process-wide IPC and input storage.
+- Defined one-item/one-waiter input wake priority and broadcast cancellation.
+- Closed IPC, input, key, and character check-to-wait races with a final queue
+  recheck after arming the caller's wait.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-thread-waits` | PASS | Host wait ordering/cancellation/timeouts passed; ten QEMU lifecycle runs retained an empty ready queue and the same warmed/final resource tuple. |
+| `make test-ipc-smoke` | PASS | Blocking IPC wake path passed. |
+| `make test-input-event-loop` | PASS | Blocking input delivery passed. |
+| `make test-window-input` | PASS | Focus routing and GUI input regression passed. |
+
+## 4.5E: Synchronization Primitives
+
+- Status: Complete
+- Started: 2026-07-20
+- Completed: 2026-07-20
+- Implementation commit: `2211643`
+
+### Delivered
+
+- Added bounded generation-tagged mutex, semaphore, and condition handle
+  objects plus User SDK APIs and blocking once initialization.
+- Enforced non-recursive mutex ownership, non-owner denial, semaphore maximum
+  counts, exact waiter wakes, condition mutex reacquisition, finite timeouts,
+  broadcast, close cancellation, and owner-exit recovery.
+- Kept wait queues in the scheduler wait core and removed every object owner
+  and waiter reference during close or process teardown.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-thread-sync` | PASS | QEMU reported `counter=120 once=1 failures=0`; mutex, semaphore, condition, owner-exit, timeout, overflow, broadcast, and close-cancel sections all reported zero failures. |
+| `make test-thread-waits test-spinlocks test-abi-freeze` | PASS | Earlier wait ordering, lock discipline, and frozen ABI checks remained green. |
+
+## 4.5F: TLS, Accounting, And Fairness
+
+- Status: Complete
+- Started: 2026-07-20
+- Completed: 2026-07-20
+- Implementation commit: `1594f34`
+
+### Delivered
+
+- Added validated per-thread TLS base setters/getters and applies IA32_FS_BASE
+  both on the setting syscall return and every later thread resume.
+- Added 64-bit runtime, preemption, yield, block, wake, and switch counters,
+  process aggregates derived from thread records, and public generation-safe
+  thread diagnostics.
+- Added low/normal/high FIFO priority quanta of 4/6/8 ticks while retaining a
+  bounded single-CPU ready queue and no busy-polling wait path.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-thread-readiness` | PASS | `%fs:0` stayed isolated; work counts were `26444/25868/26258`, preemptions `7/5/1`, and failures `0`. |
+| `make test-drive-free-scheduler` | PASS | Shell and supervised service control retained bounded progress without `drive`. |
+| `make test-thread-sync test-thread-waits test-abi-freeze` | PASS | Synchronization, wait lifecycle, and ABI regressions remained green. |
+
+### Remaining
+
+4.5G must add deterministic fault injection, fatal sibling-fault coverage, the
+minimum 60-second thread/synchronization soak, and the clean Phase 4.5
+aggregate closure run.

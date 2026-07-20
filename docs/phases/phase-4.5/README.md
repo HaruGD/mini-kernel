@@ -19,17 +19,16 @@ CPUs to execute kernel and user code concurrently.
 
 ## Current Status
 
-4.5A, 4.5B, and 4.5C completed on 2026-07-20 in implementation commit
-`63cb234`. The kernel now has bounded generation-tagged thread records, a
-thread-selecting single-CPU scheduler, an extracted main thread for every
-process, private user/kernel stacks, and User SDK 2.2 lifecycle APIs. The
-focused aggregate and the complete Phase 4 suite pass with zero warmed/final
-resource drift.
+4.5A through 4.5F completed on 2026-07-20. The kernel now has bounded
+generation-tagged thread records, per-thread waits, mutex/semaphore/condition
+objects, FS-based TLS, priority quanta, and attributable scheduling counters.
+User SDK 2.3 exposes lifecycle, synchronization, TLS, priority, and thread
+diagnostic APIs. Focused QEMU tests cover lifecycle reuse, exact wake policy,
+synchronization teardown, TLS isolation, and bounded CPU-sibling progress.
 
-The next implementation task is 4.5D. Existing wait state is now stored on a
-thread, but 4.5D must certify multiple same-process waiters, queue-specific
-wake policy, and timeout/signal/cancel races before thread-aware waiting is
-called complete.
+The next implementation task is 4.5G fault injection, soak, and closure.
+Phase 4.5 is not closed until that subphase runs the required 60-second soak
+and the clean aggregate regression suite.
 
 ## Scope Boundary
 

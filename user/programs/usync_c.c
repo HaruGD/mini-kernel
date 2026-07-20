@@ -8,6 +8,7 @@ static OsCondition condition;
 static volatile uint32_t condition_ready;
 static OsOnce once_control;
 static volatile uint32_t once_count;
+static volatile uint32_t once_attempts;
 
 static long counter_worker(void* argument) {
     (void)argument;
@@ -65,6 +66,10 @@ static long nonowner_unlock_worker(void* argument) {
 
 static long once_initializer(void* argument) {
     (void)argument;
+    once_attempts++;
+    if (once_attempts == 1) {
+        return OS_ERR_IO;
+    }
     once_count++;
     os_thread_yield();
     return OS_OK;
@@ -93,6 +98,19 @@ int main(void) {
         return 1;
     }
 
+    OsMutex exhausted[27];
+    for (uint32_t i = 0; i < 27; i++) {
+        if (os_mutex_create(&exhausted[i]) != OS_OK) failures++;
+    }
+    OsMutex overflow = 0;
+    if (os_mutex_create(&overflow) != OS_ERR_NO_RESOURCES) failures++;
+    for (uint32_t i = 0; i < 27; i++) {
+        if (os_mutex_destroy(exhausted[i]) != OS_OK) failures++;
+    }
+    if (os_mutex_create(&overflow) != OS_OK ||
+        os_mutex_destroy(overflow) != OS_OK) failures++;
+
+    if (os_once_run(&once_control, once_initializer, 0) != OS_ERR_IO) failures++;
     for (uint32_t i = 0; i < 3; i++) {
         if (os_thread_create(counter_worker, 0, OS_THREAD_STACK_DEFAULT,
                              &workers[i]) != OS_OK) {
@@ -174,7 +192,7 @@ int main(void) {
     for (uint32_t i = 0; i < 3; i++) {
         if (!join_ok(workers[i])) failures++;
     }
-    if (once_count != 1) failures++;
+    if (once_count != 1 || once_attempts != 2) failures++;
     os_printf("[SYNC] once failures=%u\n", failures);
 
     if (os_once_destroy(&once_control) != OS_OK ||
