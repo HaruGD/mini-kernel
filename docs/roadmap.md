@@ -181,8 +181,13 @@ failure gates pass.
 
 ## Phase 4.5: Threading Foundation
 
-Detailed contract:
+Detailed planning and live evidence:
 
+- [Phase 4.5 overview](phases/phase-4.5/README.md)
+- [Entry baseline](phases/phase-4.5/entry_baseline.md)
+- [Implementation plan](phases/phase-4.5/implementation_plan.md)
+- [Regression matrix](phases/phase-4.5/regression_matrix.md)
+- [Progress ledger](phases/phase-4.5/progress.md)
 - [Scheduler modernization plan](architecture/scheduler_modernization.md)
 
 Planned work:

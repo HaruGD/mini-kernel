@@ -123,6 +123,10 @@ state.
 Phase 4.5 separates a schedulable execution context from the process resource
 container. It remains valid to bring this up on one CPU first.
 
+The detailed entry baseline, subphase order, fixed lifecycle policies,
+regression matrix, and live evidence ledger are indexed in
+[Phase 4.5: Threading Foundation](../phases/phase-4.5/README.md).
+
 ### Object Model
 
 - A process owns its address space, handles, mappings, current directory,
