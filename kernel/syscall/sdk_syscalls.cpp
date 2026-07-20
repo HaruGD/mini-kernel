@@ -491,6 +491,9 @@ static uint64_t dispatch_ipc_v2_wait(uint64_t user_message_address,
     if (thread != 0) {
         thread->context->wait_reserved[0] = 1;
     }
+    if (process_ipc_mailbox_count(receiver) != 0) {
+        process_wait_signal(receiver, PROCESS_WAIT_IPC, PROCESS_WAIT_OK);
+    }
     return SYSCALL_WAIT_TO_KERNEL;
 }
 
@@ -544,6 +547,9 @@ static uint64_t dispatch_ipc_receive(uint64_t user_message_address,
                             timeout_ticks,
                             pit.get_tick())) {
         return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    if (process_ipc_mailbox_count(receiver) != 0) {
+        process_wait_signal(receiver, PROCESS_WAIT_IPC, PROCESS_WAIT_OK);
     }
     return SYSCALL_WAIT_TO_KERNEL;
 }
@@ -961,6 +967,9 @@ static uint64_t dispatch_keyboard(uint64_t user_event_address,
                             pit.get_tick())) {
         return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
     }
+    if (process_event_queue_has_key(process)) {
+        process_wait_signal(process, PROCESS_WAIT_KEY, PROCESS_WAIT_OK);
+    }
     return SYSCALL_WAIT_TO_KERNEL;
 }
 
@@ -1001,6 +1010,12 @@ static uint64_t dispatch_input_event(uint64_t user_event_address,
                             timeout_ticks,
                             pit.get_tick())) {
         return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    uint32_t queued = process_is_input_authority(process)
+        ? input_events_pending()
+        : process_event_queue_count(process);
+    if (queued != 0) {
+        process_wait_signal(process, PROCESS_WAIT_INPUT, PROCESS_WAIT_OK);
     }
     return SYSCALL_WAIT_TO_KERNEL;
 }

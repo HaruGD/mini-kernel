@@ -37,6 +37,8 @@ void input_event_queue_get_stats(const KernelInputEventQueue* queue,
                                  KernelInputEventQueueStats* stats);
 int input_event_queue_is_empty(const KernelInputEventQueue* queue);
 int input_event_queue_is_full(const KernelInputEventQueue* queue);
+int input_event_queue_has_key(const KernelInputEventQueue* queue);
+int input_event_queue_has_character(const KernelInputEventQueue* queue);
 int input_event_queue_push(KernelInputEventQueue* queue, const OsInputEvent* event);
 int input_event_queue_push_drop_oldest(KernelInputEventQueue* queue, const OsInputEvent* event);
 int input_event_queue_pop(KernelInputEventQueue* queue, OsInputEvent* event);

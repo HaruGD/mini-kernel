@@ -71,6 +71,7 @@ extern uint32_t next_pid;
 extern uint32_t next_process_generation;
 extern uint32_t next_tid;
 extern uint32_t next_thread_generation;
+extern uint64_t next_wait_sequence;
 extern Process process_table[PROCESS_TABLE_SIZE];
 extern Thread thread_table[THREAD_TABLE_SIZE];
 extern Process* process_stack[EXECUTION_STACK_SIZE];
@@ -126,6 +127,8 @@ int process_event_queue_pop(Process* process, OsInputEvent* event);
 uint32_t process_event_queue_count(const Process* process);
 uint32_t process_event_queue_delivered_count(const Process* process);
 uint32_t process_event_queue_dropped_count(const Process* process);
+int process_event_queue_has_key(const Process* process);
+int process_event_queue_has_character(const Process* process);
 void process_ipc_mailbox_reset(Process* process);
 int process_ipc_mailbox_push(Process* process, const OsIpcMessage* message);
 int process_ipc_mailbox_pop(Process* process, OsIpcMessage* message);
@@ -146,6 +149,15 @@ int process_wait_begin(Process* process,
                        uint64_t user_address,
                        uint32_t timeout_ticks,
                        uint32_t tick_now);
+int thread_wait_begin(Thread* thread,
+                      uint32_t reason,
+                      uint64_t user_address,
+                      uint32_t timeout_ticks,
+                      uint32_t tick_now);
+void thread_wait_reset(Thread* thread);
+int thread_wait_signal(Thread* thread, uint32_t reason, int32_t result);
+int thread_wait_is_pending(const Thread* thread);
+uint32_t process_wait_count(const Process* process, uint32_t reason);
 int process_wait_signal(Process* process, uint32_t reason, int32_t result);
 int process_wait_cancel(Process* process, uint32_t reason, int32_t result);
 void process_notify_queued_ipc(Process* process);

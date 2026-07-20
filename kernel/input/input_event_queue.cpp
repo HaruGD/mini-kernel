@@ -80,6 +80,51 @@ int input_event_queue_is_full(const KernelInputEventQueue* queue) {
     return input_event_queue_count(queue) == INPUT_EVENT_QUEUE_CAPACITY;
 }
 
+static int input_event_queue_has_key_unlocked(const KernelInputEventQueue* queue,
+                                              int character_only) {
+    for (uint32_t i = 0; i < queue->count; i++) {
+        uint32_t index = (queue->head + i) % INPUT_EVENT_QUEUE_CAPACITY;
+        const OsInputEvent* event = &queue->events[index];
+        if (event->type != OS_INPUT_EVENT_KEY) {
+            continue;
+        }
+        if (!character_only ||
+            (event->data.key.type == OS_KEY_EVENT_DOWN &&
+             event->data.key.character != 0)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int input_event_queue_has_key(const KernelInputEventQueue* queue) {
+    if (queue == 0) {
+        return 0;
+    }
+    KernelInputEventQueue* mutable_queue = (KernelInputEventQueue*)queue;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mutable_queue->lock, &token)) {
+        return 0;
+    }
+    int result = input_event_queue_has_key_unlocked(queue, 0);
+    kernel_spinlock_release(&mutable_queue->lock, &token);
+    return result;
+}
+
+int input_event_queue_has_character(const KernelInputEventQueue* queue) {
+    if (queue == 0) {
+        return 0;
+    }
+    KernelInputEventQueue* mutable_queue = (KernelInputEventQueue*)queue;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mutable_queue->lock, &token)) {
+        return 0;
+    }
+    int result = input_event_queue_has_key_unlocked(queue, 1);
+    kernel_spinlock_release(&mutable_queue->lock, &token);
+    return result;
+}
+
 static int push_unlocked(KernelInputEventQueue* queue, const OsInputEvent* event) {
     if (queue->count == INPUT_EVENT_QUEUE_CAPACITY) {
         return 0;

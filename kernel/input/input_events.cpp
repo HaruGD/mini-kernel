@@ -21,13 +21,18 @@ int input_events_push(const OsInputEvent* event) {
     Process* focused = gui_active ? 0 : process_focused();
     if (focused != 0) {
         process_event_queue_push(focused, event);
-        process_wait_signal(focused, PROCESS_WAIT_INPUT, PROCESS_WAIT_OK);
         if (event != 0 && event->type == OS_INPUT_EVENT_KEY) {
-            process_wait_signal(focused, PROCESS_WAIT_KEY, PROCESS_WAIT_OK);
             if (event->data.key.type == OS_KEY_EVENT_DOWN &&
-                event->data.key.character != 0) {
+                event->data.key.character != 0 &&
+                process_wait_count(focused, PROCESS_WAIT_CHAR) != 0) {
                 process_wait_signal(focused, PROCESS_WAIT_CHAR, PROCESS_WAIT_OK);
+            } else if (process_wait_count(focused, PROCESS_WAIT_KEY) != 0) {
+                process_wait_signal(focused, PROCESS_WAIT_KEY, PROCESS_WAIT_OK);
+            } else {
+                process_wait_signal(focused, PROCESS_WAIT_INPUT, PROCESS_WAIT_OK);
             }
+        } else {
+            process_wait_signal(focused, PROCESS_WAIT_INPUT, PROCESS_WAIT_OK);
         }
     }
     OsProcessIdentity input_owner;
@@ -44,6 +49,10 @@ int input_events_push(const OsInputEvent* event) {
 
 int input_events_pop(OsInputEvent* event) {
     return input_event_queue_pop(&input_queue, event);
+}
+
+uint32_t input_events_pending() {
+    return input_event_queue_count(&input_queue);
 }
 
 void input_events_discard_all() {

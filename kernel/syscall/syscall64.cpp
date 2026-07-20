@@ -135,6 +135,9 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         if (!process_wait_begin(process, PROCESS_WAIT_CHAR, 0, 0, pit.get_tick())) {
             return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
         }
+        if (process_event_queue_has_character(process)) {
+            process_wait_signal(process, PROCESS_WAIT_CHAR, PROCESS_WAIT_OK);
+        }
         return SYSCALL_WAIT_TO_KERNEL;
     }
 

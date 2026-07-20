@@ -57,7 +57,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-phase45-abc test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-phase45-abc test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -213,6 +213,9 @@ test-thread-main: test-thread-model test-process-lifecycle
 test-thread-abi: test-thread-main uefi
 	python3 ./tools/thread_smoke.py
 
+test-thread-waits: test-thread-abi
+	python3 ./tools/thread_wait_test.py
+
 test-phase45-abc: test-thread-abi test-user-sdk test-drive-free-scheduler
 
 test-spinlocks:
@@ -324,7 +327,7 @@ all32:
 ./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/thread.h ./include/os64/thread_types.h ./include/kernel/handle/kernel_handle.h ./include/kernel/handle/kernel_objects.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/process_surface64.o: ./kernel/process/process_surface.cpp ./include/kernel/process_surface.h ./include/kernel/process.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/address_space.h ./include/os64/surface_types.h
+./build/process_surface64.o: ./kernel/process/process_surface.cpp ./include/kernel/process_surface.h ./include/kernel/process.h ./include/kernel/thread.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/address_space.h ./include/os64/surface_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/kernel/userprog64.h

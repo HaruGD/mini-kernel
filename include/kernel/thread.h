@@ -27,6 +27,7 @@ struct Process;
     uint32_t wait_reason; \
     int32_t wait_result; \
     uint32_t wait_deadline; \
+    uint64_t wait_sequence; \
     uint64_t wait_user_address; \
     uint32_t wait_target_tid; \
     uint32_t wait_target_generation; \

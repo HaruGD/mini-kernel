@@ -16,6 +16,7 @@ uint32_t next_pid = 1;
 uint32_t next_process_generation = 1;
 uint32_t next_tid = 1;
 uint32_t next_thread_generation = 1;
+uint64_t next_wait_sequence = 1;
 Process process_table[PROCESS_TABLE_SIZE];
 Thread thread_table[THREAD_TABLE_SIZE];
 Process* process_stack[EXECUTION_STACK_SIZE];
@@ -76,6 +77,7 @@ void process_system_init() {
     next_process_generation = 1;
     next_tid = 1;
     next_thread_generation = 1;
+    next_wait_sequence = 1;
     sched_queue_count = 0;
     sched_queue_head = 0;
     sched_last_pid = 0;
@@ -361,6 +363,7 @@ static void thread_wait_reset_unlocked(Thread* thread) {
     context->wait_reason = PROCESS_WAIT_NONE;
     context->wait_result = PROCESS_WAIT_OK;
     context->wait_deadline = 0;
+    context->wait_sequence = 0;
     context->wait_user_address = 0;
     context->wait_target_tid = 0;
     context->wait_target_generation = 0;
@@ -380,6 +383,68 @@ void process_wait_reset(Process* process) {
     kernel_spinlock_release(&process_lock, &token);
 }
 
+void thread_wait_reset(Thread* thread) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    thread_wait_reset_unlocked(thread);
+    kernel_spinlock_release(&process_lock, &token);
+}
+
+static uint64_t wait_next_sequence_unlocked() {
+    uint64_t sequence = next_wait_sequence++;
+    if (next_wait_sequence == 0) {
+        next_wait_sequence = 1;
+    }
+    if (sequence == 0) {
+        sequence = next_wait_sequence++;
+    }
+    return sequence;
+}
+
+static int thread_wait_begin_unlocked(Thread* thread,
+                                      uint32_t reason,
+                                      uint64_t user_address,
+                                      uint32_t timeout_ticks,
+                                      uint32_t tick_now) {
+    if (thread == 0 || thread->context == 0 || thread->owner == 0 ||
+        !thread->active || !thread->owner->active || reason == PROCESS_WAIT_NONE ||
+        thread->context->wait_pending) {
+        return 0;
+    }
+    ThreadContext* context = thread->context;
+    scheduler_remove_unlocked(thread);
+    context->wait_pending = 1;
+    context->wait_reason = reason;
+    context->wait_result = PROCESS_WAIT_OK;
+    context->wait_sequence = wait_next_sequence_unlocked();
+    context->wait_user_address = user_address;
+    context->wait_has_deadline = timeout_ticks != 0 ? 1 : 0;
+    context->wait_deadline = timeout_ticks != 0 ? tick_now + timeout_ticks : 0;
+    context->wake_tick = context->wait_deadline;
+    context->scheduler_state = SCHED_STATE_WAITING;
+    return 1;
+}
+
+int thread_wait_begin(Thread* thread,
+                      uint32_t reason,
+                      uint64_t user_address,
+                      uint32_t timeout_ticks,
+                      uint32_t tick_now) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    int result = thread_wait_begin_unlocked(thread,
+                                            reason,
+                                            user_address,
+                                            timeout_ticks,
+                                            tick_now);
+    kernel_spinlock_release(&process_lock, &token);
+    return result;
+}
+
 int process_wait_begin(Process* process,
                        uint32_t reason,
                        uint64_t user_address,
@@ -389,25 +454,13 @@ int process_wait_begin(Process* process,
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
         return 0;
     }
-    Thread* thread = wait_thread_for_process(process);
-    if (thread == 0 || thread->context == 0 || reason == PROCESS_WAIT_NONE ||
-        thread->context->wait_pending) {
-        kernel_spinlock_release(&process_lock, &token);
-        return 0;
-    }
-
-    ThreadContext* context = thread->context;
-    scheduler_remove_unlocked(thread);
-    context->wait_pending = 1;
-    context->wait_reason = reason;
-    context->wait_result = PROCESS_WAIT_OK;
-    context->wait_user_address = user_address;
-    context->wait_has_deadline = timeout_ticks != 0 ? 1 : 0;
-    context->wait_deadline = timeout_ticks != 0 ? tick_now + timeout_ticks : 0;
-    context->wake_tick = context->wait_deadline;
-    context->scheduler_state = SCHED_STATE_WAITING;
+    int result = thread_wait_begin_unlocked(wait_thread_for_process(process),
+                                            reason,
+                                            user_address,
+                                            timeout_ticks,
+                                            tick_now);
     kernel_spinlock_release(&process_lock, &token);
-    return 1;
+    return result;
 }
 
 static int thread_wait_signal_unlocked(Thread* thread, uint32_t reason, int32_t result) {
@@ -434,26 +487,77 @@ static int thread_wait_signal_unlocked(Thread* thread, uint32_t reason, int32_t 
     return 1;
 }
 
+int thread_wait_signal(Thread* thread, uint32_t reason, int32_t result) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    int signaled = thread_wait_signal_unlocked(thread, reason, result);
+    kernel_spinlock_release(&process_lock, &token);
+    return signaled;
+}
+
+int thread_wait_is_pending(const Thread* thread) {
+    return thread != 0 && thread->context != 0 &&
+           thread->context->wait_pending != 0;
+}
+
+uint32_t process_wait_count(const Process* process, uint32_t reason) {
+    uint32_t count = 0;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    for (uint32_t i = 0; process != 0 && i < THREAD_TABLE_SIZE; i++) {
+        const Thread* thread = &thread_table[i];
+        if (thread->owner == process && thread->context != 0 &&
+            thread->context->wait_pending &&
+            (reason == PROCESS_WAIT_NONE || thread->context->wait_reason == reason)) {
+            count++;
+        }
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return count;
+}
+
 int process_wait_signal(Process* process, uint32_t reason, int32_t result) {
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
         return 0;
     }
-    int result_value = 0;
+    Thread* selected = 0;
     for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
         Thread* thread = &thread_table[i];
-        if (thread->owner == process &&
-            thread_wait_signal_unlocked(thread, reason, result)) {
-            result_value = 1;
-            break;
+        if (thread->owner != process || thread->context == 0 ||
+            !thread->context->wait_pending ||
+            thread->context->wait_reason != reason) {
+            continue;
+        }
+        if (selected == 0 ||
+            thread->context->wait_sequence < selected->context->wait_sequence) {
+            selected = thread;
         }
     }
+    int result_value = thread_wait_signal_unlocked(selected, reason, result);
     kernel_spinlock_release(&process_lock, &token);
     return result_value;
 }
 
 int process_wait_cancel(Process* process, uint32_t reason, int32_t result) {
-    return process_wait_signal(process, reason, result);
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    int cancelled = 0;
+    for (uint32_t i = 0; process != 0 && i < THREAD_TABLE_SIZE; i++) {
+        Thread* thread = &thread_table[i];
+        if (thread->owner == process &&
+            thread_wait_signal_unlocked(thread, reason, result)) {
+            cancelled++;
+        }
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return cancelled;
 }
 
 void process_notify_queued_ipc(Process* process) {
@@ -499,7 +603,7 @@ void process_wait_tick(uint32_t tick_now) {
 
 int process_wait_is_pending(const Process* process) {
     Thread* thread = wait_thread_for_process((Process*)process);
-    return thread != 0 && thread->context->wait_pending != 0;
+    return thread_wait_is_pending(thread);
 }
 
 static uint32_t process_next_generation() {
@@ -628,6 +732,14 @@ uint32_t process_event_queue_dropped_count(const Process* process) {
     return process == 0 ? 0 : input_event_queue_dropped_count(&process->event_queue);
 }
 
+int process_event_queue_has_key(const Process* process) {
+    return process != 0 && input_event_queue_has_key(&process->event_queue);
+}
+
+int process_event_queue_has_character(const Process* process) {
+    return process != 0 && input_event_queue_has_character(&process->event_queue);
+}
+
 int process_ipc_mailbox_push(Process* process, const OsIpcMessage* message) {
     if (process == 0) {
         return 0;
@@ -680,9 +792,7 @@ void process_ipc_wait_end(Process* process) {
 }
 
 int process_ipc_waiting(const Process* process) {
-    Thread* thread = wait_thread_for_process((Process*)process);
-    return thread != 0 && thread->context->wait_pending &&
-           thread->context->wait_reason == PROCESS_WAIT_IPC;
+    return process_wait_count(process, PROCESS_WAIT_IPC) != 0;
 }
 
 void process_input_wait_begin(Process* process) {
@@ -700,11 +810,9 @@ void process_input_wait_end(Process* process) {
 }
 
 int process_input_waiting(const Process* process) {
-    Thread* thread = wait_thread_for_process((Process*)process);
-    return thread != 0 && thread->context->wait_pending &&
-           (thread->context->wait_reason == PROCESS_WAIT_INPUT ||
-            thread->context->wait_reason == PROCESS_WAIT_KEY ||
-            thread->context->wait_reason == PROCESS_WAIT_CHAR);
+    return process_wait_count(process, PROCESS_WAIT_INPUT) != 0 ||
+           process_wait_count(process, PROCESS_WAIT_KEY) != 0 ||
+           process_wait_count(process, PROCESS_WAIT_CHAR) != 0;
 }
 
 static int process_can_receive_focus(const Process* process) {

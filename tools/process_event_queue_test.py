@@ -65,7 +65,7 @@ int main() {
     check(process_event_queue_count(&process) == INPUT_EVENT_QUEUE_CAPACITY);
     check(process_event_queue_dropped_count(&process) == 3);
 
-    process.pid = 42;
+    process_assign_identity(&process, 42, 0);
     process.parent_pid = 7;
     process.active = 1;
     process_mark_returned(&process, PROCESS_TERM_EXIT, 0);
@@ -102,10 +102,10 @@ int main() {
     Process* second = &process_table[1];
     process_clear(first);
     process_clear(second);
-    first->pid = 11;
+    process_assign_identity(first, 11, 0);
     first->active = 1;
     first->state = PROCESS_STATE_RUNNING;
-    second->pid = 12;
+    process_assign_identity(second, 12, 0);
     second->active = 1;
     second->state = PROCESS_STATE_PAUSED;
 
@@ -139,7 +139,7 @@ int main() {
     check(process_set_focus(11) == 0);
 
     process_clear(second);
-    second->pid = 13;
+    process_assign_identity(second, 13, 0);
     second->active = 1;
     second->state = PROCESS_STATE_LOADED;
     check(process_set_focus(13) == 1);
@@ -152,10 +152,10 @@ int main() {
     input_events_init();
     first = &process_table[0];
     second = &process_table[1];
-    first->pid = 21;
+    process_assign_identity(first, 21, 0);
     first->active = 1;
     first->state = PROCESS_STATE_RUNNING;
-    second->pid = 22;
+    process_assign_identity(second, 22, 0);
     second->active = 1;
     second->state = PROCESS_STATE_PAUSED;
 
