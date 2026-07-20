@@ -4,11 +4,11 @@ This document defines the Phase 4H transition between the boot/kernel console
 and the graphical window stack. It is a prerequisite for a desktop shell, but
 it does not make the kernel console itself part of the desktop.
 
-Implementation status (2026-07-20): the 4H-A session state machine, retained
-read-only console underlay, exclusive scanout/input routing, last-window
-release, and process-exit recovery are implemented. Failure injection,
-restart-limit fallback, resource pressure, repeated churn, and soak evidence
-remain Phase 4H-C work, so this is not yet a Phase 4 completion claim.
+Implementation status (2026-07-20): complete. The 4H-A session state machine,
+retained read-only console underlay, exclusive scanout/input routing,
+last-window release, process-exit recovery, active-session display/window
+crash recovery, fault matrix, and 60-second churn soak passed the aggregate
+Phase 4 and full closure suites.
 
 ## Problem
 

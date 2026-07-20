@@ -14,6 +14,7 @@ recorded state.
 | 2026-07-13 | [Phase 4 entry baseline](phase-4-entry/README.md) | `phase-4-entry` | `53053a6` | 155 | 365 | 50,092 |
 | 2026-07-15 | [First supervised window](first-window/README.md) | `first-window` | `231f27e` | 168 | 416 | 57,217 |
 | 2026-07-17 | [First public-SDK GUI application](first-gui-app/README.md) | `first-gui-app` | `4bafe1f` | 175 | 429 | 62,921 |
+| 2026-07-20 | [Phase 4 GUI foundation complete](phase-4/README.md) | `phase-4-complete` | `8d44929` | 186 | 440 | 66,615 |
 
 The documentation reorganization immediately after the Phase 4 entry baseline
 is commit `b553657` (`156` commits, `366` tracked files, and `50,139` total

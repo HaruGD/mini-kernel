@@ -172,7 +172,7 @@ Planned work:
 - [x] 4E: Bounded multiwindow z-order, damage, and composition
 - [x] 4F: `inputd` forwarding and keyboard focus routing
 - [x] 4G: Window SDK and first event-driven GUI application
-- [ ] 4H: Console/GUI display and input handoff, drive-free single-CPU
+- [x] 4H: Console/GUI display and input handoff, drive-free single-CPU
   scheduling, lifecycle, fault, soak, regression, and closure
 
 Widgets, the desktop shell, per-user session services, alpha composition, and a

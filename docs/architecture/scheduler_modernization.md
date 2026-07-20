@@ -8,8 +8,8 @@ schedule concurrently.
 
 Phase 4H performs the persistent console/GUI display and input handoff in
 [Console And GUI Display Handoff](console_gui_handoff.md) and removes the
-foreground scheduler helper described here. Phase 4H-A and 4H-B are implemented
-as of 2026-07-20; Phase 4H-C certification remains open.
+foreground scheduler helper described here. Phase 4H-A, 4H-B, and 4H-C were
+completed and certified on 2026-07-20.
 
 ## Implemented Phase 4H-B State
 
@@ -32,8 +32,8 @@ normal progress directly.
 The implementation also prevents resumed background children from blocking
 their parent service manager with a new child wait, and recovers scheduler
 readiness from the process table if the bounded queue misses a ready record.
-These changes close the helper dependency, but Phase 4 remains incomplete
-until Phase 4H-C fault, soak, aggregate regression, and evidence gates pass.
+These changes close the helper dependency. The Phase 4H-C fault, recovery,
+60-second soak, aggregate regression, and full closure gates also pass.
 
 ### Historical Foreground IPC Stall
 
@@ -70,8 +70,8 @@ must also complete safely.
 Phase 4H retains one execution context per process and one active CPU. Its
 scheduler work is a correctness fix, not the threading or SMP expansion.
 
-The behavior below is implemented. Final certification still depends on the
-Phase 4H-C aggregate and soak gates.
+The behavior below is implemented and certified by the Phase 4 aggregate and
+full closure suites.
 
 Required behavior:
 

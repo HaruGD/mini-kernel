@@ -30,11 +30,11 @@ that records those immutable implementation commit hashes.
 | 4E: Multiwindow compositor | Complete | 2026-07-17 | 2026-07-17 | `4e0e296` | [record](#4e-multiwindow-compositor) |
 | 4F: Input routing and focus | Complete | 2026-07-17 | 2026-07-17 | `76cb52e` | [record](#4f-input-routing-and-focus) |
 | 4G: Window SDK and first GUI application | Complete | 2026-07-17 | 2026-07-17 | `4bafe1f` | [record](#4g-window-sdk-and-first-gui-application) |
-| 4H: Lifecycle, fault, regression, and closure | In progress | 2026-07-20 | - | `31b681e` (4H-A/B) | [working record](#4h-lifecycle-fault-regression-and-closure-working-record) |
+| 4H: Lifecycle, fault, regression, and closure | Complete | 2026-07-20 | 2026-07-20 | `31b681e`, `8d44929` | [record](#4h-lifecycle-fault-regression-and-closure) |
 
-Current work: Phase 4H-A and 4H-B are implemented and under regression. Phase
-4H-C fault injection, failure recovery, GUI soak, aggregate closure, and final
-evidence remain open, so Phase 4H and Phase 4 are not complete.
+Current status: Phase 4 is complete. Phase 4.5 threading work is the next
+execution-model boundary; desktop-shell work remains after the threading and
+SMP sequence recorded in the scheduler modernization plan.
 
 ## Recording Workflow
 
@@ -572,14 +572,15 @@ notes or issue tracker until corrected.
 - widgets, desktop shell, decorations, alpha, and a separate compositor
   process remain deferred beyond Phase 4.
 
-## 4H: Lifecycle, Fault, Regression, And Closure (Working Record)
+## 4H: Lifecycle, Fault, Regression, And Closure
 
-- Status: In progress
+- Status: Complete
 - Started: 2026-07-20
-- Completed: not complete
-- Implementation commit: `31b681ec2582dd289c43a8f3ce45a73750baeaea`
+- Completed: 2026-07-20
+- Implementation commits: `31b681ec2582dd289c43a8f3ce45a73750baeaea`,
+  `8d449297255858038e95c74f4f9f0d74a57c77b7`
 
-### Delivered So Far
+### Delivered
 
 - added a generation-tagged display-session state machine with exact
   `windowd` and `displayd` identities, first-window acquisition, last-window
@@ -600,9 +601,21 @@ notes or issue tracker until corrected.
   shell prompt until the exact foreground process reaches a terminal state;
 - removed nested scheduler idle loops, closed wait-arm/wakeup and ready-queue
   recovery paths, and stopped resumed background children from re-arming
-  `PROCESS_WAIT_CHILD` on their service-manager parent.
+  `PROCESS_WAIT_CHILD` on their service-manager parent;
+- added `os_window_abandon` so clients can release local surfaces and mappings
+  after a server generation disappears without sending to a stale identity;
+- added an in-guest recovery application that crashes `displayd` and `windowd`
+  through the service manager while a window is active, observes immediate
+  console fallback, waits for bounded automatic restart, and reconnects using
+  new service and display-session generations;
+- added a GUI churn application and 60-second QEMU soak covering create, draw,
+  damage, move, hide/show, surface replacement, resize, destruction, service
+  health, and full window/display stack restart;
+- added `make test-phase4` and included it in the full closure target together
+  with the existing allocation, mapping, handle, IPC, service, concurrency,
+  and diagnostic fault-injection suites.
 
-### Verification So Far
+### Verification
 
 | Command | Result | Measured evidence |
 | --- | --- | --- |
@@ -614,18 +627,33 @@ notes or issue tracker until corrected.
 | `python3 tools/gui_app_smoke.py` | PASS | First GUI application redraw, resize, focus, teardown, and stable active resource counts passed without a scheduler helper. |
 | `python3 tools/window_input_smoke.py` | PASS | Focused input routing and console/GUI ownership boundary passed without duplicate delivery. |
 | `python3 tools/window_single_smoke.py && python3 tools/window_multi_smoke.py` | PASS | Single-window lifecycle and multiwindow composition/pixel/resource regression passed with retained-console underlay. |
+| `python3 tools/gui_recovery_smoke.py` | PASS | Active-session `displayd` and `windowd` crashes restored the console, restarted services, rejected stale generations, reacquired GUI sessions, and returned to the console with stable active resources. |
+| `python3 tools/gui_soak.py --duration 60` | PASS | 35 application cycles, 140 window lifecycles, and seven service-stack restarts completed with exact baseline/final resources. |
+| `make test-phase4` | PASS in 216.5 seconds | P4-R01 through P4-R12 focused host and QEMU targets, fault injection, recovery, and the 60-second GUI soak passed. |
+| `make clean && make -j2 uefi` | PASS | Clean parallel kernel, SDK, userland, drivers, FAT32 root image, and UEFI ESP build passed. |
+| `make test-closure` | PASS in 651.30 seconds | Full driver, boot, SDK 91/91, memory, graphics, input, IPC, service, concurrency, fault, Phase 4, GUI soak, and 42-cycle service-soak matrix passed. |
 
-### Remaining Before Completion
+### Resource Accounting
 
-- add deterministic client, `windowd`, and `displayd` crash/reconnection tests
-  for every display-session transition and prove current-console restoration;
-- add allocation, mapping, handle, IPC, composition, and present fault cases
-  required by P4-R08;
-- add and pass the 60-second GUI lifecycle/service-churn soak with zero
-  unexplained drift required by P4-R09;
-- add `make test-phase4`, run it and the full clean-build/`test-closure` matrix,
-  then record immutable implementation commits and mark P4-R08 through P4-R12
-  complete. The optional one-hour release soak remains separate.
+- recovery baseline:
+  `(4, 21, 1, 0, 4, 0, 1, 27211, 1944432, 1961984)`;
+- recovery final:
+  `(4, 21, 1, 0, 4, 0, 1, 27184, 1944432, 1961984)`;
+- recovery active processes, mappings, handles, mailboxes, services, shared
+  objects, surfaces, heap used, and heap mapped: exact match; PMM difference is
+  bounded returned-process history already allowed by the process contract;
+- warmed GUI-soak baseline and final:
+  `(4, 21, 1, 0, 4, 0, 1, 27173, 1944432, 1961984)`;
+- unexplained GUI-soak drift: zero;
+- lock-order, recursion, and release violations: zero.
+
+### Remaining
+
+- the optional one-hour soak remains a release-certification run and was not
+  required for this Phase 4 development closure;
+- process/thread separation belongs to Phase 4.5 and SMP belongs to Phase 4.6;
+- desktop shell, decorations, widgets, alpha composition, and a separately
+  deployable compositor remain later GUI work.
 
 ## Phase Milestones
 

@@ -318,6 +318,9 @@ draw, receive input, redraw damaged regions, resize, and close cleanly.
 
 ## Phase 4H: Lifecycle, Fault, Regression, And Closure
 
+Status: Complete on 2026-07-20 at implementation commits `31b681e` and
+`8d44929`; reproducible evidence is recorded in `progress.md`.
+
 Goal: certify the GUI stack under malformed input, resource pressure, process
 failure, and repeated lifecycle operations.
 

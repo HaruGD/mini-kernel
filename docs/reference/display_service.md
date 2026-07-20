@@ -82,9 +82,9 @@ underlay, and ordinary terminal output updates retained state without touching
 GUI scanout. Last-window release, stale-owner cleanup, or owner-process exit
 redraws the current console and restores console input.
 
-The session ABI and focused handoff tests are implemented. Phase 4H-C still
-must certify forced `windowd`/`displayd` failure, restart-limit fallback,
-resource pressure, repeated churn, and soak behavior before Phase 4 closes.
+The session ABI, focused handoff, forced `windowd`/`displayd` failure,
+generation-safe reconnection, resource-pressure matrix, repeated churn, and
+60-second soak behavior are certified by the completed Phase 4 suite.
 
 ## Verification
 
