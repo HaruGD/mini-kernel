@@ -29,6 +29,8 @@ struct Process;
     uint32_t wait_deadline; \
     uint64_t wait_sequence; \
     uint64_t wait_user_address; \
+    uint64_t wait_object_id; \
+    uint64_t wait_aux_object_id; \
     uint32_t wait_target_tid; \
     uint32_t wait_target_generation; \
     uint64_t saved_rax; \
@@ -84,6 +86,9 @@ enum ProcessWaitReason : uint32_t {
     PROCESS_WAIT_KEY = 5,
     PROCESS_WAIT_CHAR = 6,
     PROCESS_WAIT_THREAD_JOIN = 7,
+    PROCESS_WAIT_MUTEX = 8,
+    PROCESS_WAIT_SEMAPHORE = 9,
+    PROCESS_WAIT_CONDITION = 10,
 };
 
 enum ProcessWaitResult : int32_t {

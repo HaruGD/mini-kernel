@@ -15,6 +15,7 @@
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
+#include "kernel/sync/thread_sync.h"
 #include "os64/input_types.h"
 #include "os64/process_types.h"
 #include "os64/service_types.h"
@@ -317,7 +318,10 @@ static uint64_t dispatch_handle_close(uint64_t handle) {
                                     0,
                                     &resolved) ||
         (resolved.type != KERNEL_HANDLE_TYPE_SHARED_MEMORY &&
-         resolved.type != KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE)) {
+         resolved.type != KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE &&
+         resolved.type != KERNEL_HANDLE_TYPE_MUTEX &&
+         resolved.type != KERNEL_HANDLE_TYPE_SEMAPHORE &&
+         resolved.type != KERNEL_HANDLE_TYPE_CONDITION)) {
         return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
     }
     if (resolved.type == KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE) {
@@ -1123,6 +1127,54 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
     }
     if (syscall_no == SYS_THREAD_JOIN) {
         *result = dispatch_thread_join(arg1, arg2, arg3);
+        return true;
+    }
+    if (syscall_no == SYS_MUTEX_CREATE) {
+        uint64_t handle = kernel_mutex_create(current_process());
+        *result = handle != 0 ? handle : (uint64_t)(int64_t)SYS_ERR_NO_RESOURCES;
+        return true;
+    }
+    if (syscall_no == SYS_MUTEX_LOCK) {
+        *result = (uint64_t)kernel_mutex_lock(current_process(), current_thread(),
+                                             arg1, (uint32_t)arg2, pit.get_tick());
+        return true;
+    }
+    if (syscall_no == SYS_MUTEX_UNLOCK) {
+        *result = (uint64_t)(int64_t)kernel_mutex_unlock(current_process(),
+                                                           current_thread(), arg1);
+        return true;
+    }
+    if (syscall_no == SYS_SEMAPHORE_CREATE) {
+        uint64_t handle = kernel_semaphore_create(current_process(),
+                                                  (uint32_t)arg1, (uint32_t)arg2);
+        *result = handle != 0 ? handle : (uint64_t)(int64_t)SYS_ERR_NO_RESOURCES;
+        return true;
+    }
+    if (syscall_no == SYS_SEMAPHORE_WAIT) {
+        *result = (uint64_t)kernel_semaphore_wait(current_process(), current_thread(),
+                                                 arg1, (uint32_t)arg2, pit.get_tick());
+        return true;
+    }
+    if (syscall_no == SYS_SEMAPHORE_POST) {
+        *result = (uint64_t)(int64_t)kernel_semaphore_post(current_process(),
+                                                              arg1, (uint32_t)arg2);
+        return true;
+    }
+    if (syscall_no == SYS_CONDITION_CREATE) {
+        uint64_t handle = kernel_condition_create(current_process());
+        *result = handle != 0 ? handle : (uint64_t)(int64_t)SYS_ERR_NO_RESOURCES;
+        return true;
+    }
+    if (syscall_no == SYS_CONDITION_WAIT) {
+        *result = (uint64_t)kernel_condition_wait(current_process(), current_thread(),
+                                                 arg1, arg2, (uint32_t)arg3,
+                                                 pit.get_tick());
+        return true;
+    }
+    if (syscall_no == SYS_CONDITION_SIGNAL ||
+        syscall_no == SYS_CONDITION_BROADCAST) {
+        *result = (uint64_t)(int64_t)kernel_condition_signal(
+            current_process(), arg1, syscall_no == SYS_CONDITION_BROADCAST);
         return true;
     }
     if (syscall_no == SYS_TIME_TICKS) {

@@ -157,6 +157,21 @@ int thread_wait_begin(Thread* thread,
 void thread_wait_reset(Thread* thread);
 int thread_wait_signal(Thread* thread, uint32_t reason, int32_t result);
 int thread_wait_is_pending(const Thread* thread);
+Thread* thread_wait_find_oldest(Process* process,
+                                uint32_t reason,
+                                uint64_t object_id);
+int thread_wait_set_objects(Thread* thread,
+                            uint64_t object_id,
+                            uint64_t aux_object_id);
+int thread_wait_retarget(Thread* thread,
+                         uint32_t old_reason,
+                         uint32_t new_reason,
+                         uint64_t object_id,
+                         uint64_t aux_object_id,
+                         int32_t resume_result);
+int thread_wait_cancel_object(Process* process,
+                              uint64_t object_id,
+                              int32_t result);
 uint32_t process_wait_count(const Process* process, uint32_t reason);
 int process_wait_signal(Process* process, uint32_t reason, int32_t result);
 int process_wait_cancel(Process* process, uint32_t reason, int32_t result);

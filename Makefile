@@ -57,13 +57,14 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-phase45-abc test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-phase45-abc test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
 	./build/kernel64.o \
 	./build/fault_injection64.o \
 	./build/spinlock64.o \
+	./build/thread_sync64.o \
 	./build/kutil64.o \
 	./build/kernel_diag64.o \
 	./build/ipc_mailbox64.o \
@@ -216,6 +217,9 @@ test-thread-abi: test-thread-main uefi
 test-thread-waits: test-thread-abi
 	python3 ./tools/thread_wait_test.py
 
+test-thread-sync: uefi test-user-sdk
+	python3 ./tools/thread_sync_smoke.py
+
 test-phase45-abc: test-thread-abi test-user-sdk test-drive-free-scheduler
 
 test-spinlocks:
@@ -298,6 +302,9 @@ all32:
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/core/kernel64.cpp -o $@
 
 ./build/spinlock64.o: ./kernel/sync/spinlock.cpp ./include/kernel/spinlock.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/thread_sync64.o: ./kernel/sync/thread_sync.cpp ./include/kernel/sync/thread_sync.h ./include/kernel/process64.h ./include/kernel/handle/kernel_handle.h ./include/os64/sync_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/fault_injection64.o: ./kernel/debug/fault_injection.cpp ./include/kernel/fault_injection.h

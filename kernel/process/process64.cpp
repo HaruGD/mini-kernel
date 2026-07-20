@@ -47,6 +47,9 @@ static void scheduler_remove_unlocked(Thread* thread);
 static void thread_wait_reset_unlocked(Thread* thread);
 static void thread_join_release_claim_unlocked(Thread* waiter);
 
+extern "C" void kernel_sync_thread_exit(Thread* thread) __attribute__((weak));
+extern "C" void kernel_sync_timeout_thread(Thread* thread) __attribute__((weak));
+
 void thread_context_reset(ThreadContext* context) {
     if (context == 0) {
         return;
@@ -365,6 +368,8 @@ static void thread_wait_reset_unlocked(Thread* thread) {
     context->wait_deadline = 0;
     context->wait_sequence = 0;
     context->wait_user_address = 0;
+    context->wait_object_id = 0;
+    context->wait_aux_object_id = 0;
     context->wait_target_tid = 0;
     context->wait_target_generation = 0;
     context->wake_tick = 0;
@@ -502,6 +507,100 @@ int thread_wait_is_pending(const Thread* thread) {
            thread->context->wait_pending != 0;
 }
 
+Thread* thread_wait_find_oldest(Process* process,
+                                uint32_t reason,
+                                uint64_t object_id) {
+    Thread* selected = 0;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    for (uint32_t i = 0; process != 0 && i < THREAD_TABLE_SIZE; i++) {
+        Thread* thread = &thread_table[i];
+        if (thread->owner != process || thread->context == 0 ||
+            !thread->context->wait_pending ||
+            thread->context->wait_reason != reason ||
+            thread->context->wait_object_id != object_id) {
+            continue;
+        }
+        if (selected == 0 ||
+            thread->context->wait_sequence < selected->context->wait_sequence) {
+            selected = thread;
+        }
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return selected;
+}
+
+int thread_wait_set_objects(Thread* thread,
+                            uint64_t object_id,
+                            uint64_t aux_object_id) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    int result = thread != 0 && thread->context != 0 &&
+                 thread->context->wait_pending;
+    if (result) {
+        thread->context->wait_object_id = object_id;
+        thread->context->wait_aux_object_id = aux_object_id;
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return result;
+}
+
+int thread_wait_retarget(Thread* thread,
+                         uint32_t old_reason,
+                         uint32_t new_reason,
+                         uint64_t object_id,
+                         uint64_t aux_object_id,
+                         int32_t resume_result) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    int result = thread != 0 && thread->context != 0 &&
+                 thread->context->wait_pending &&
+                 thread->context->wait_reason == old_reason;
+    if (result) {
+        thread->context->wait_reason = new_reason;
+        thread->context->wait_object_id = object_id;
+        thread->context->wait_aux_object_id = aux_object_id;
+        thread->context->wait_result = resume_result;
+        thread->context->wait_has_deadline = 0;
+        thread->context->wait_deadline = 0;
+        thread->context->wake_tick = 0;
+        thread->context->wait_sequence = wait_next_sequence_unlocked();
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return result;
+}
+
+int thread_wait_cancel_object(Process* process,
+                              uint64_t object_id,
+                              int32_t result) {
+    int cancelled = 0;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    for (uint32_t i = 0; process != 0 && i < THREAD_TABLE_SIZE; i++) {
+        Thread* thread = &thread_table[i];
+        ThreadContext* context = thread->context;
+        if (thread->owner != process || context == 0 ||
+            !context->wait_pending ||
+            (context->wait_object_id != object_id &&
+             context->wait_aux_object_id != object_id)) {
+            continue;
+        }
+        if (thread_wait_signal_unlocked(thread, context->wait_reason, result)) {
+            cancelled++;
+        }
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return cancelled;
+}
+
 uint32_t process_wait_count(const Process* process, uint32_t reason) {
     uint32_t count = 0;
     KernelSpinlockToken token;
@@ -578,6 +677,8 @@ void process_notify_queued_ipc(Process* process) {
 }
 
 void process_wait_tick(uint32_t tick_now) {
+    Thread* sync_timeouts[THREAD_TABLE_SIZE];
+    uint32_t sync_timeout_count = 0;
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
         return;
@@ -593,12 +694,26 @@ void process_wait_tick(uint32_t tick_now) {
             continue;
         }
 
+        if (context->wait_reason == PROCESS_WAIT_MUTEX ||
+            context->wait_reason == PROCESS_WAIT_SEMAPHORE ||
+            context->wait_reason == PROCESS_WAIT_CONDITION) {
+            context->wait_has_deadline = 0;
+            context->wait_deadline = 0;
+            context->wake_tick = 0;
+            sync_timeouts[sync_timeout_count++] = thread;
+            continue;
+        }
         int32_t result = context->wait_reason == PROCESS_WAIT_TIMER
             ? PROCESS_WAIT_OK
             : PROCESS_WAIT_TIMEOUT;
         thread_wait_signal_unlocked(thread, context->wait_reason, result);
     }
     kernel_spinlock_release(&process_lock, &token);
+    if (kernel_sync_timeout_thread != 0) {
+        for (uint32_t i = 0; i < sync_timeout_count; i++) {
+            kernel_sync_timeout_thread(sync_timeouts[i]);
+        }
+    }
 }
 
 int process_wait_is_pending(const Process* process) {
@@ -1300,6 +1415,9 @@ void thread_mark_exited(Thread* thread, uint32_t exit_code) {
         return;
     }
     Process* owner = thread->owner;
+    if (kernel_sync_thread_exit != 0) {
+        kernel_sync_thread_exit(thread);
+    }
     int remaining = 0;
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&process_lock, &token)) {

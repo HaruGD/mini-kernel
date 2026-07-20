@@ -8,7 +8,12 @@ extern "C" {
 }
 
 #include "kernel/mm/vm.h"
+#include "kernel/sync/thread_sync.h"
 #include "os64/graphics_types.h"
+
+void kernel_sync_init() __attribute__((weak));
+int kernel_sync_release_handle_object(const KernelHandle* handle)
+    __attribute__((weak));
 
 struct SharedMemoryObject {
     uint8_t active;
@@ -172,6 +177,9 @@ void kernel_objects_init() {
         surface_objects[i].generation = 0;
     }
     kernel_graphics_surface_backing_init();
+    if (kernel_sync_init != 0) {
+        kernel_sync_init();
+    }
 }
 
 void kernel_object_get_stats(KernelObjectStats* stats) {
@@ -429,6 +437,10 @@ void kernel_object_release_handle_object(const KernelHandle* handle) {
         release_shared(shared_from_id(handle->object));
     } else if (handle->type == KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE) {
         release_surface(surface_from_id(handle->object));
+    } else {
+        if (kernel_sync_release_handle_object != 0) {
+            kernel_sync_release_handle_object(handle);
+        }
     }
 }
 

@@ -22,6 +22,7 @@
 #include "os64/surface.h"
 #include "os64/time.h"
 #include "os64/thread_types.h"
+#include "os64/sync_types.h"
 #include "os64/window_types.h"
 #include "os64/window.h"
 
@@ -129,4 +130,24 @@ void os_thread_exit(long code) __attribute__((noreturn));
 long os_thread_join(OsThreadIdentity identity, uint32_t* status);
 long os_thread_yield(void);
 long os_thread_sleep(uint32_t ticks);
+long os_mutex_create(OsMutex* mutex);
+long os_mutex_lock(OsMutex mutex, uint32_t timeout_ticks);
+long os_mutex_unlock(OsMutex mutex);
+long os_mutex_destroy(OsMutex mutex);
+long os_semaphore_create(uint32_t initial_count,
+                         uint32_t maximum_count,
+                         OsSemaphore* semaphore);
+long os_semaphore_wait(OsSemaphore semaphore, uint32_t timeout_ticks);
+long os_semaphore_post(OsSemaphore semaphore, uint32_t release_count);
+long os_semaphore_destroy(OsSemaphore semaphore);
+long os_condition_create(OsCondition* condition);
+long os_condition_wait(OsCondition condition,
+                       OsMutex mutex,
+                       uint32_t timeout_ticks);
+long os_condition_signal(OsCondition condition);
+long os_condition_broadcast(OsCondition condition);
+long os_condition_destroy(OsCondition condition);
+long os_once_init(OsOnce* once);
+long os_once_run(OsOnce* once, OsOnceInitializer initializer, void* context);
+long os_once_destroy(OsOnce* once);
 #endif
