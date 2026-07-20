@@ -190,15 +190,15 @@ Detailed planning and live evidence:
 - [Progress ledger](phases/phase-4.5/progress.md)
 - [Scheduler modernization plan](architecture/scheduler_modernization.md)
 
-Planned work:
+Progress:
 
-- [ ] Separate schedulable threads from process-owned address spaces and
+- [x] Separate schedulable threads from process-owned address spaces and
   resources
-- [ ] Give every thread its own saved context, kernel stack, user stack, wait
+- [x] Give every thread its own saved context, kernel stack, user stack, wait
   state, identity generation, and accounting
-- [ ] Add thread create, exit, join, yield, sleep, and thread-local storage
-  foundations
-- [ ] Move blocking waits from whole-process state to per-thread state
+- [x] Add thread create, self, exit, join, yield, and sleep foundations
+- [ ] Add validated thread-local storage foundations
+- [ ] Certify per-thread blocking waits with multiple waiters and wake races
 - [ ] Add mutex, semaphore, condition-variable, and once primitives
 - [ ] Certify multithreaded process exit, fault isolation, resource cleanup,
   fairness, and starvation bounds on one CPU

@@ -19,10 +19,17 @@ CPUs to execute kernel and user code concurrently.
 
 ## Current Status
 
-Planning baseline recorded on 2026-07-20. No Phase 4.5 implementation or test
-target is claimed complete. The next implementation task is 4.5A, which
-freezes the process/thread ownership model and adds the first bounded,
-generation-tagged thread records without changing user-visible scheduling.
+4.5A, 4.5B, and 4.5C completed on 2026-07-20 in implementation commit
+`63cb234`. The kernel now has bounded generation-tagged thread records, a
+thread-selecting single-CPU scheduler, an extracted main thread for every
+process, private user/kernel stacks, and User SDK 2.2 lifecycle APIs. The
+focused aggregate and the complete Phase 4 suite pass with zero warmed/final
+resource drift.
+
+The next implementation task is 4.5D. Existing wait state is now stored on a
+thread, but 4.5D must certify multiple same-process waiters, queue-specific
+wake policy, and timeout/signal/cancel races before thread-aware waiting is
+called complete.
 
 ## Scope Boundary
 

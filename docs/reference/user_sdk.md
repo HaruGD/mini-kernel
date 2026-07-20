@@ -26,6 +26,7 @@ permission mask.
 - Dynamic files: `os_read_file_alloc`, `os_read_text_file_alloc`
 - Directories and paths: cwd, directory iteration, create/remove/rename, normalization
 - Processes: pid, run, wait, yield, tick-based sleep, uptime, and child reaping
+- Threads: generation-tagged create/self/join, local exit, yield, and sleep
 - Memory: `os_malloc`, `os_calloc`, `os_realloc`, `os_free`, `os_strdup`
 - Results: stable negative error codes and `os_result_string`
 - Time: monotonic ticks, timer frequency, and milliseconds
@@ -40,7 +41,7 @@ permission mask.
 - Service manager protocol v2: lifecycle, health, failure, restart, and
   permission metadata for `serviced_c.elf`
 
-The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is approximately 960 KiB per process slot.
+The kernel reserves a separate heap range for each active process slot. The SDK allocator grows and shrinks this range through the `brk` syscall, uses 16-byte alignment, splits reusable blocks, and coalesces adjacent free blocks. The current heap limit is 900 KiB per process slot; the top 60 KiB of each 2 MiB slot is reserved for three guarded secondary-thread stack arenas.
 
 `os_read_file_alloc` and `os_read_text_file_alloc` allocate storage based on VFS file size and split transfers into chunks accepted by the kernel syscall ABI. Their practical file-size limit is the available user heap rather than a fixed stack buffer. The low-level `os_brk` API should not be mixed with SDK allocator calls in the same program.
 
@@ -112,6 +113,34 @@ event-driven GUI application:
 
 ```sh
 make test-window-sdk
+```
+
+Phase 4.5C adds thread ABI v1 and User SDK 2.2 lifecycle wrappers:
+
+```c
+static long worker(void* argument) {
+    os_thread_yield();
+    os_thread_sleep(1);
+    return (long)(uintptr_t)argument;
+}
+
+OsThreadIdentity thread;
+uint32_t status;
+if (os_thread_create(worker, (void*)64, OS_THREAD_STACK_DEFAULT, &thread) == OS_OK) {
+    os_thread_join(thread, &status);
+}
+```
+
+`os_thread_create` accepts a 4-16 KiB page-aligned stack request; zero selects
+the 16 KiB default. A process currently has at most four threads including its
+main thread. Created threads are joinable exactly once, share their process
+address space and handles, and have private guarded user stacks and private
+kernel-entry stacks. Use the complete `OsThreadIdentity`, never a bare TID.
+Returning from a secondary entry is equivalent to `os_thread_exit` with the
+returned value. Run the focused model, ABI, SDK, and scheduler regression with:
+
+```sh
+make test-phase45-abc
 ```
 
 Applications create a surface with `os_surface_create`, map it with

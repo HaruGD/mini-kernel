@@ -123,6 +123,12 @@ state.
 Phase 4.5 separates a schedulable execution context from the process resource
 container. It remains valid to bring this up on one CPU first.
 
+Subphases 4.5A through 4.5C completed on 2026-07-20. The object model, main
+thread extraction, thread-selecting scheduler, private stacks, and public
+thread lifecycle ABI are implemented. Per-thread waiter-set certification,
+synchronization primitives, TLS/fairness, and final fault/soak closure remain
+in 4.5D through 4.5G.
+
 The detailed entry baseline, subphase order, fixed lifecycle policies,
 regression matrix, and live evidence ledger are indexed in
 [Phase 4.5: Threading Foundation](../phases/phase-4.5/README.md).

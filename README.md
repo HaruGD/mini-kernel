@@ -42,12 +42,15 @@ What works on the active 64-bit UEFI path:
 - diagnostic-only kernel GP and runtime ACPI corruption fault injection
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
-- process table and scheduler prototype
+- bounded process and thread tables with a thread-selecting single-CPU scheduler
+- generation-tagged thread identities and up to four threads per process
+- extracted main-thread contexts plus private guarded user and kernel stacks
 - process identities with pid generation checks for lifecycle-sensitive paths
 - bounded child-result history (`PROCESS_CHILD_RESULT_HISTORY_LIMIT=3`)
 - cooperative `yield`
 - timer-based preemption
-- common wait/wakeup core for sleep, child wait, IPC, input, key, and character waits
+- per-thread wait-state foundation for sleep, child wait, IPC, input, key,
+  character, and join waits
 - interrupt-safe spinlocks with lock-order diagnostics and coherent
   process/IPC/service snapshots
 - PIT tick based sleep / wakeup (`PIT_DEFAULT_HZ=100`, about 10ms per tick)
@@ -56,7 +59,8 @@ What works on the active 64-bit UEFI path:
 - ELF user program loading
 - ELF link-address alias mapping for C globals, string pointers, and BSS data
 - C user programs with `main(void)` and `main(argc, argv)` support
-- User SDK v2 with console, string, path, file, directory, process, time, graphics, keyboard-event, IPC, timeout, and service-registry APIs
+- User SDK 2.2 with console, string, path, file, directory, process, thread,
+  time, graphics, keyboard-event, IPC, timeout, and service-registry APIs
 - SDK 2D helpers for user-space line drawing, bitmap blit, color-key blit, and bitmap-font text
 - User syscall buffers constrained to process-owned mappings and page permissions
 - process-owned address-space records with per-process page-table roots
@@ -146,6 +150,9 @@ What works on the active 64-bit UEFI path:
 - Phase 4 implementation plan: [docs/phases/phase-4/implementation_plan.md](docs/phases/phase-4/implementation_plan.md)
 - Phase 4 live progress: [docs/phases/phase-4/progress.md](docs/phases/phase-4/progress.md)
 - Phase 4 regression matrix: [docs/phases/phase-4/regression_matrix.md](docs/phases/phase-4/regression_matrix.md)
+- Phase 4.5 threading foundation: [docs/phases/phase-4.5/README.md](docs/phases/phase-4.5/README.md)
+- Phase 4.5 live progress: [docs/phases/phase-4.5/progress.md](docs/phases/phase-4.5/progress.md)
+- Phase 4.5 regression matrix: [docs/phases/phase-4.5/regression_matrix.md](docs/phases/phase-4.5/regression_matrix.md)
 - Phase 3.5 starting baseline: [docs/phases/phase-3.5/baseline.md](docs/phases/phase-3.5/baseline.md)
 - Process/scheduler invariants: [docs/architecture/process_scheduler_invariants.md](docs/architecture/process_scheduler_invariants.md)
 - Kernel context rules: [docs/architecture/kernel_context_rules.md](docs/architecture/kernel_context_rules.md)

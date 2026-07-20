@@ -1,9 +1,9 @@
 # Phase 4.5 Regression Matrix
 
 This matrix defines the evidence required to close the threading foundation.
-Every row is currently planned. Target names marked `reserved` are design
-names only: they must not be cited as executed evidence until the Makefile
-contains them and they pass.
+Rows P45-R01 through P45-R03 completed on 2026-07-20. Target names still marked
+`reserved` are design names only: they must not be cited as executed evidence
+until the Makefile contains them and they pass.
 
 The final aggregate target will be `make test-phase45`. It must not be added as
 an empty or documentation-only target.
@@ -12,9 +12,9 @@ an empty or documentation-only target.
 
 | ID | Subphase | Contract | Planned automated evidence | Pass condition | Status |
 | --- | --- | --- | --- | --- | --- |
-| P45-R01 | 4.5A | Thread records have bounded capacity, generation identities, legal transitions, and exactly-once cleanup. | Reserved: `make test-thread-model` | Capacity failure rolls back; stale identities fail; slot reuse changes generation; terminal threads cannot be queued or resumed. | Planned |
-| P45-R02 | 4.5B | Existing processes run through one extracted main thread with no duplicated execution-state authority. | Reserved: `make test-thread-main`; existing `make test-phase4` | Boot, shell, services, GUI, preemption, waits, faults, and cleanup remain compatible with one main thread per process. | Planned |
-| P45-R03 | 4.5C | Public create/current/exit/join/yield/sleep operations validate arguments and preserve stack and result lifetime. | Reserved: `make test-thread-abi`; `make test-user-sdk` | Multiple threads execute and join; invalid, stale, cross-process, exhausted, and double-join cases fail safely; stack guards and rollback pass. | Planned |
+| P45-R01 | 4.5A | Thread records have bounded capacity, generation identities, legal transitions, and exactly-once cleanup. | `make test-thread-model` | Capacity failure rolls back; stale identities fail; slot reuse changes generation; terminal threads cannot be queued or resumed. | Complete |
+| P45-R02 | 4.5B | Existing processes run through one extracted main thread with no duplicated execution-state authority. | `make test-thread-main`; `make test-phase4` | Boot, shell, services, GUI, preemption, waits, faults, and cleanup remain compatible with one main thread per process. | Complete |
+| P45-R03 | 4.5C | Public create/current/exit/join/yield/sleep operations validate arguments and preserve stack and result lifetime. | `make test-thread-abi`; `make test-user-sdk` | Multiple threads execute and join; invalid, stale, cross-process, exhausted, and double-join cases fail safely; stack guards and rollback pass. | Complete |
 | P45-R04 | 4.5D | Timer, child, IPC, input, key, character, and join waits block only the calling thread. | Reserved: `make test-thread-waits` | Siblings progress; signal/timeout/cancel/exit races complete once; no wake is lost or duplicated. | Planned |
 | P45-R05 | 4.5E | Mutex ownership and semaphore counts remain correct under contention and teardown. | Reserved: `make test-thread-sync` | Non-owner unlock and overflow fail; blocked contenders wake according to policy; owner exit/object close cannot leak or deadlock. | Planned |
 | P45-R06 | 4.5E | Condition variables and once initialization obey atomic wait and publication rules. | Reserved: `make test-thread-condition` | Signal and broadcast are exact; wait returns with the mutex reacquired; timeout/cancel races and once failure/retry are deterministic. | Planned |
