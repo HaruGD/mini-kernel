@@ -71,6 +71,11 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         return 0;
     }
     process_assign_identity(process, next_pid++, parent);
+    Thread* thread = process_main_thread(process);
+    if (process->pid == 0 || thread == 0) {
+        print("\nFailed to allocate the process main thread.");
+        return 0;
+    }
     process->permissions = permissions;
     process->slot_index = slot_index;
     process_copy_cwd(process, parent != 0 ? process_get_cwd(parent) : "/");
@@ -98,7 +103,10 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     process->heap_base = user_code_base + USER_HEAP_OFFSET;
     process->heap_break = process->heap_base;
     process->heap_mapped_end = process->heap_base;
-    process->heap_limit = user_code_base + USER_SLOT_SPAN;
+    const uint64_t secondary_stack_slot_span =
+        (uint64_t)(1U + (OS_THREAD_STACK_MAX / VM_PAGE_SIZE)) * VM_PAGE_SIZE;
+    process->heap_limit = user_code_base + USER_SLOT_SPAN -
+        (uint64_t)(THREADS_PER_PROCESS_MAX - 1) * secondary_stack_slot_span;
     process->heap_page_count = 0;
     process->stack_guard_page_count = USER_STACK_GUARD_PAGE_COUNT;
     process->stack_page_count = 0;
@@ -514,7 +522,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     print("]");
     print("\n");
     interrupt_controller_set_mask(1, 0);
-    gdt64_set_kernel_stack(current_rsp() - 8);
+    gdt64_set_kernel_stack(thread->context->kernel_stack_base + VM_PAGE_SIZE);
     if (!map_user_elf_alias(process)) {
         cleanup_user_process_mapping(process);
         process->code_page_count = 0;
@@ -530,12 +538,14 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     scheduler_mark_running(process);
     focus_foreground_process(process);
     process_stack[stack_index] = process;
+    thread_stack[stack_index] = thread;
     user_program_depth++;
     address_space_activate(&process->address_space);
     uint64_t initial_user_rsp = prepare_user_stack_with_argv(process, user_stack_top, &launch);
     enter_user_mode(process->entry_point, initial_user_rsp);
     user_program_depth--;
     process_stack[stack_index] = 0;
+    thread_stack[stack_index] = 0;
     Process* active_after_return = current_process();
     if (active_after_return != 0) {
         address_space_activate(&active_after_return->address_space);
@@ -572,11 +582,11 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         if (parent == 0 && !process->background) {
             return wait_for_terminal_process(process);
         }
-        if (continue_ready_processes(process->pid)) {
+        if (continue_ready_threads(thread_identity(thread))) {
             return 1;
         }
         if (parent == 0 && process->pause_reason == PROCESS_PAUSE_YIELD) {
-            return continue_ready_processes(0) ? 1 : 1;
+            return continue_ready_threads(thread_identity(thread)) ? 1 : 1;
         }
         if (parent == 0 &&
             (process->pause_reason == PROCESS_PAUSE_SLEEP ||
@@ -588,6 +598,9 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
 
     if (!process->background) {
         user_input_reset();
+    }
+    if (thread->exited) {
+        thread_release_runtime(thread);
     }
     cleanup_user_process_mapping(process);
     process->code_page_count = 0;
@@ -619,7 +632,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     print_hex32(process->status_code);
     print(".\n");
 
-    if (continue_ready_processes(process->pid)) {
+    if (continue_ready_threads(thread_identity(thread))) {
         return 1;
     }
 
@@ -655,9 +668,24 @@ int run_user_program_with_permissions(const char* command_line, uint32_t permiss
 }
 
 static int resume_user_program_internal(Process* parent, Process* process, int print_banner) {
-    if (process == 0) {
+    return resume_user_thread_internal(parent,
+                                       process,
+                                       process_main_thread(process),
+                                       print_banner);
+}
+
+static int resume_user_thread_internal(Process* parent,
+                                       Process* process,
+                                       Thread* thread,
+                                       int print_banner) {
+    if (process == 0 || thread == 0 || thread->context == 0 ||
+        thread->owner != process) {
         return 0;
     }
+    if (user_program_depth >= EXECUTION_STACK_SIZE) {
+        return 0;
+    }
+    ThreadContext* context = thread->context;
     uint32_t stack_index = user_program_depth;
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
@@ -676,26 +704,26 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         print("].\n");
     }
 
-    kernel_user_resume_rbx = process->saved_rbx;
-    kernel_user_resume_rcx = process->saved_rcx;
-    kernel_user_resume_rdx = process->saved_rdx;
-    kernel_user_resume_rbp = process->saved_rbp;
-    kernel_user_resume_rsi = process->saved_rsi;
-    kernel_user_resume_rdi = process->saved_rdi;
-    kernel_user_resume_r8 = process->saved_r8;
-    kernel_user_resume_r9 = process->saved_r9;
-    kernel_user_resume_r10 = process->saved_r10;
-    kernel_user_resume_r11 = process->saved_r11;
-    kernel_user_resume_r12 = process->saved_r12;
-    kernel_user_resume_r13 = process->saved_r13;
-    kernel_user_resume_r14 = process->saved_r14;
-    kernel_user_resume_r15 = process->saved_r15;
-    kernel_user_resume_rip = process->saved_rip;
-    kernel_user_resume_rsp = process->saved_rsp;
-    kernel_user_resume_rflags = process->saved_rflags;
+    kernel_user_resume_rbx = context->saved_rbx;
+    kernel_user_resume_rcx = context->saved_rcx;
+    kernel_user_resume_rdx = context->saved_rdx;
+    kernel_user_resume_rbp = context->saved_rbp;
+    kernel_user_resume_rsi = context->saved_rsi;
+    kernel_user_resume_rdi = context->saved_rdi;
+    kernel_user_resume_r8 = context->saved_r8;
+    kernel_user_resume_r9 = context->saved_r9;
+    kernel_user_resume_r10 = context->saved_r10;
+    kernel_user_resume_r11 = context->saved_r11;
+    kernel_user_resume_r12 = context->saved_r12;
+    kernel_user_resume_r13 = context->saved_r13;
+    kernel_user_resume_r14 = context->saved_r14;
+    kernel_user_resume_r15 = context->saved_r15;
+    kernel_user_resume_rip = context->saved_rip;
+    kernel_user_resume_rsp = context->saved_rsp;
+    kernel_user_resume_rflags = context->saved_rflags;
 
     interrupt_controller_set_mask(1, 0);
-    gdt64_set_kernel_stack(current_rsp() - 8);
+    gdt64_set_kernel_stack(context->kernel_stack_base + VM_PAGE_SIZE);
     if (!map_user_elf_alias(process)) {
         process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 9);
         scheduler_mark_finished(process);
@@ -703,20 +731,22 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         return 0;
     }
     process_stack[stack_index] = process;
+    thread_stack[stack_index] = thread;
     user_program_depth++;
     address_space_activate(&process->address_space);
-    complete_waiting_syscall64(process);
-    kernel_user_resume_rax = process->saved_rax;
+    complete_waiting_syscall64(thread);
+    kernel_user_resume_rax = context->saved_rax;
     if (parent != 0 && parent->active && !process->background) {
         process_wait_begin(parent, PROCESS_WAIT_CHILD, 0, 0, 0);
     }
-    scheduler_mark_running(process);
+    scheduler_mark_thread_running(thread);
     focus_foreground_process(process);
     process->state = PROCESS_STATE_RUNNING;
-    process->resumable = 0;
+    context->resumable = 0;
     resume_user_mode();
     user_program_depth--;
     process_stack[stack_index] = 0;
+    thread_stack[stack_index] = 0;
     Process* active_after_return = current_process();
     if (active_after_return != 0) {
         address_space_activate(&active_after_return->address_space);
@@ -734,7 +764,21 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     kernel_user_saved_r14 = saved_r14;
     kernel_user_saved_r15 = saved_r15;
 
-    if (process->state == PROCESS_STATE_PAUSED) {
+    if (thread->exited && process->active && !process->exiting) {
+        ThreadIdentity completed = thread_identity(thread);
+        thread_release_runtime(thread);
+        if (continue_ready_threads(completed)) {
+            return 1;
+        }
+        if (parent_should_resume_immediately(parent)) {
+            return resume_saved_parent(parent) ? 1 : 1;
+        }
+        return 1;
+    }
+
+    if (thread->active && context->resumable &&
+        (context->scheduler_state == SCHED_STATE_READY ||
+         context->scheduler_state == SCHED_STATE_WAITING)) {
         if (parent != 0 && parent->active) {
             if (parent_has_ready_context(parent)) {
                 return resume_saved_parent(parent);
@@ -753,15 +797,15 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
         if (parent == 0 && !process->background) {
             return wait_for_terminal_process(process);
         }
-        if (continue_ready_processes(process->pid)) {
+        if (continue_ready_threads(thread_identity(thread))) {
             return 1;
         }
-        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_YIELD) {
-            return continue_ready_processes(0) ? 1 : 1;
+        if (parent == 0 && context->pause_reason == PROCESS_PAUSE_YIELD) {
+            return continue_ready_threads(thread_identity(thread)) ? 1 : 1;
         }
         if (parent == 0 &&
-            (process->pause_reason == PROCESS_PAUSE_SLEEP ||
-             process->pause_reason == PROCESS_PAUSE_WAIT)) {
+            (context->pause_reason == PROCESS_PAUSE_SLEEP ||
+             context->pause_reason == PROCESS_PAUSE_WAIT)) {
             return 1;
         }
         return 1;
@@ -770,12 +814,15 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     if (!process->background) {
         user_input_reset();
     }
+    if (thread->exited) {
+        thread_release_runtime(thread);
+    }
     cleanup_user_process_mapping(process);
     process->code_page_count = 0;
     if (process->state != PROCESS_STATE_FAILED && process->state != PROCESS_STATE_RETURNED) {
         process_mark_returned(process, PROCESS_TERM_NONE, 0);
     }
-    process->resumable = 0;
+    context->resumable = 0;
     scheduler_mark_finished(process);
     if (parent_should_resume_immediately(parent)) {
         if (parent_has_ready_context(parent)) {
@@ -799,7 +846,7 @@ static int resume_user_program_internal(Process* parent, Process* process, int p
     print_hex32(process->status_code);
     print(".\n");
 
-    if (continue_ready_processes(process->pid)) {
+    if (continue_ready_threads(thread_identity(thread))) {
         return 1;
     }
 

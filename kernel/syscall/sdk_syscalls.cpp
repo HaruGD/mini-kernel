@@ -19,6 +19,7 @@
 #include "os64/process_types.h"
 #include "os64/service_types.h"
 #include "os64/surface_types.h"
+#include "os64/thread_types.h"
 
 extern Terminal terminal;
 
@@ -39,6 +40,110 @@ static_assert(sizeof(OsIpcMessageV2) == 152, "OsIpcMessageV2 ABI changed");
 static_assert(sizeof(OsIpcReceiveFilter) == 24, "OsIpcReceiveFilter ABI changed");
 static_assert(sizeof(OsServiceInfo) == 36, "OsServiceInfo ABI changed");
 static_assert(sizeof(OsProcessIdentity) == 8, "OsProcessIdentity ABI changed");
+static_assert(sizeof(OsThreadIdentity) == 8, "OsThreadIdentity ABI changed");
+static_assert(sizeof(OsThreadCreateRequest) == 40,
+              "OsThreadCreateRequest ABI changed");
+
+static uint64_t invalid_argument();
+static uint64_t bad_buffer();
+
+static uint64_t dispatch_thread_create(uint64_t user_request_address,
+                                       uint64_t user_identity_address) {
+    Process* process = current_process();
+    if (process == 0 ||
+        !user_buffer_writable((uint8_t*)(uintptr_t)user_identity_address,
+                              sizeof(OsThreadIdentity))) {
+        return bad_buffer();
+    }
+    OsThreadCreateRequest request;
+    if (!copy_user_buffer((const uint8_t*)(uintptr_t)user_request_address,
+                          (uint8_t*)&request,
+                          sizeof(request))) {
+        return bad_buffer();
+    }
+    if (request.size != sizeof(request) || request.reserved != 0 ||
+        request.flags != OS_THREAD_CREATE_FLAG_NONE) {
+        return invalid_argument();
+    }
+    ThreadIdentity identity;
+    int result = thread_create_user(process,
+                                    request.entry,
+                                    request.argument,
+                                    request.return_trampoline,
+                                    request.stack_size,
+                                    request.flags,
+                                    &identity);
+    if (result != 0) {
+        return (uint64_t)(int64_t)result;
+    }
+    OsThreadIdentity user_identity;
+    user_identity.tid = identity.tid;
+    user_identity.generation = identity.generation;
+    if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_identity_address,
+                                    (const uint8_t*)&user_identity,
+                                    sizeof(user_identity))) {
+        Thread* created = find_thread_by_identity(identity);
+        if (created != 0) {
+            thread_mark_exited(created, (uint32_t)SYS_ERR_BAD_BUFFER);
+            thread_release_runtime(created);
+        }
+        return bad_buffer();
+    }
+    return 0;
+}
+
+static uint64_t dispatch_thread_self(uint64_t user_identity_address) {
+    Thread* thread = current_thread();
+    if (thread == 0 ||
+        !user_buffer_writable((uint8_t*)(uintptr_t)user_identity_address,
+                              sizeof(OsThreadIdentity))) {
+        return bad_buffer();
+    }
+    OsThreadIdentity identity;
+    identity.tid = thread->tid;
+    identity.generation = thread->generation;
+    return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_identity_address,
+                                      (const uint8_t*)&identity,
+                                      sizeof(identity))
+        ? 0
+        : bad_buffer();
+}
+
+static uint64_t dispatch_thread_join(uint64_t tid,
+                                     uint64_t generation,
+                                     uint64_t user_status_address) {
+    if (tid > UINT32_MAX || generation > UINT32_MAX || tid == 0 || generation == 0) {
+        return invalid_argument();
+    }
+    if (user_status_address != 0 &&
+        !user_buffer_writable((uint8_t*)(uintptr_t)user_status_address,
+                              sizeof(uint32_t))) {
+        return bad_buffer();
+    }
+    ThreadIdentity identity;
+    identity.tid = (uint32_t)tid;
+    identity.generation = (uint32_t)generation;
+    uint32_t immediate_status = 0;
+    int result = thread_join_begin(current_thread(),
+                                   identity,
+                                   user_status_address,
+                                   0,
+                                   pit.get_tick(),
+                                   &immediate_status);
+    if (result < 0) {
+        return (uint64_t)(int64_t)result;
+    }
+    if (result == 0) {
+        return SYSCALL_WAIT_TO_KERNEL;
+    }
+    if (user_status_address != 0 &&
+        !copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)user_status_address,
+                                    (const uint8_t*)&immediate_status,
+                                    sizeof(immediate_status))) {
+        return bad_buffer();
+    }
+    return 0;
+}
 
 static uint64_t invalid_argument() {
     return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
@@ -382,7 +487,10 @@ static uint64_t dispatch_ipc_v2_wait(uint64_t user_message_address,
                             pit.get_tick())) {
         return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
     }
-    receiver->wait_reserved[0] = 1;
+    Thread* thread = current_thread();
+    if (thread != 0) {
+        thread->context->wait_reserved[0] = 1;
+    }
     return SYSCALL_WAIT_TO_KERNEL;
 }
 
@@ -897,19 +1005,23 @@ static uint64_t dispatch_input_event(uint64_t user_event_address,
     return SYSCALL_WAIT_TO_KERNEL;
 }
 
-void complete_waiting_syscall64(Process* process) {
-    if (process == 0 || process->wait_pending || process->wait_reason == PROCESS_WAIT_NONE) {
+void complete_waiting_syscall64(Thread* thread) {
+    if (thread == 0 || thread->owner == 0 || thread->context == 0 ||
+        thread->context->wait_pending ||
+        thread->context->wait_reason == PROCESS_WAIT_NONE) {
         return;
     }
+    Process* process = thread->owner;
+    ThreadContext* context = thread->context;
 
-    int32_t result = process->wait_result;
-    if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_IPC) {
-        if (process->wait_reserved[0] != 0) {
+    int32_t result = context->wait_result;
+    if (result == PROCESS_WAIT_OK && context->wait_reason == PROCESS_WAIT_IPC) {
+        if (context->wait_reserved[0] != 0) {
             OsIpcMessageV2 message;
             result = ipc_receive_message_v2(process, &message);
             if (result == IPC_OK) {
                 result = (int32_t)(int64_t)copy_ipc_message_v2_to_user(
-                    process->wait_user_address,
+                    context->wait_user_address,
                     &message);
             }
         } else {
@@ -917,11 +1029,11 @@ void complete_waiting_syscall64(Process* process) {
             result = ipc_receive_message(process, &message);
             if (result == IPC_OK) {
                 result = (int32_t)(int64_t)copy_ipc_message_to_user(
-                    process->wait_user_address,
+                    context->wait_user_address,
                     &message);
             }
         }
-    } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_INPUT) {
+    } else if (result == PROCESS_WAIT_OK && context->wait_reason == PROCESS_WAIT_INPUT) {
         OsInputEvent event;
         int has_event = process_is_input_authority(process)
             ? (display_session_gui_active() ? input_events_pop(&event) : 0)
@@ -929,31 +1041,42 @@ void complete_waiting_syscall64(Process* process) {
         if (!has_event) {
             result = SYS_ERR_NOT_READY;
         } else if (!copy_kernel_to_user_buffer(
-                       (uint8_t*)(uintptr_t)process->wait_user_address,
+                       (uint8_t*)(uintptr_t)context->wait_user_address,
                        (const uint8_t*)&event,
                        sizeof(event))) {
             result = SYS_ERR_BAD_BUFFER;
         }
-    } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_KEY) {
+    } else if (result == PROCESS_WAIT_OK && context->wait_reason == PROCESS_WAIT_KEY) {
         OsKeyEvent event;
         if (!pop_process_key_event(process, &event)) {
             result = SYS_ERR_NOT_READY;
         } else if (!copy_kernel_to_user_buffer(
-                       (uint8_t*)(uintptr_t)process->wait_user_address,
+                       (uint8_t*)(uintptr_t)context->wait_user_address,
                        (const uint8_t*)&event,
                        sizeof(event))) {
             result = SYS_ERR_BAD_BUFFER;
         }
-    } else if (result == PROCESS_WAIT_OK && process->wait_reason == PROCESS_WAIT_CHAR) {
+    } else if (result == PROCESS_WAIT_OK && context->wait_reason == PROCESS_WAIT_CHAR) {
         uint32_t character = 0;
         if (!pop_process_character(process, &character)) {
             result = SYS_ERR_NOT_READY;
         } else {
             result = (int32_t)character;
         }
+    } else if (result == PROCESS_WAIT_OK &&
+               context->wait_reason == PROCESS_WAIT_THREAD_JOIN) {
+        uint32_t status = 0;
+        result = thread_join_consume(thread, &status);
+        if (result == 0 && context->wait_user_address != 0 &&
+            !copy_kernel_to_user_buffer(
+                (uint8_t*)(uintptr_t)context->wait_user_address,
+                (const uint8_t*)&status,
+                sizeof(status))) {
+            result = SYS_ERR_BAD_BUFFER;
+        }
     }
 
-    process->saved_rax = (uint64_t)(int64_t)result;
+    context->saved_rax = (uint64_t)(int64_t)result;
     process_wait_reset(process);
 }
 
@@ -964,6 +1087,28 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
                             uint64_t* result) {
     if (result == 0) {
         return false;
+    }
+    if (syscall_no == SYS_THREAD_CREATE) {
+        *result = dispatch_thread_create(arg1, arg2);
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_SELF) {
+        *result = dispatch_thread_self(arg1);
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_EXIT) {
+        Thread* thread = current_thread();
+        if (thread == 0) {
+            *result = (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+        } else {
+            thread_mark_exited(thread, (uint32_t)arg1);
+            *result = SYSCALL_RETURN_TO_KERNEL;
+        }
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_JOIN) {
+        *result = dispatch_thread_join(arg1, arg2, arg3);
+        return true;
     }
     if (syscall_no == SYS_TIME_TICKS) {
         *result = pit.get_tick64();

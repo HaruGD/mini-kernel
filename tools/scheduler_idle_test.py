@@ -33,8 +33,8 @@ def main() -> int:
     process_core = (ROOT / "kernel/core/kernel64_process.cpp").read_text()
     if "wait could not enqueue" in process_core or \
             "if (!process_wait_is_pending(process))" not in process_core or \
-            "scheduler_enqueue(process);" not in process_core or \
-            "The table is authoritative" not in \
+            "scheduler_enqueue_thread(thread);" not in process_core or \
+            "The thread table is authoritative" not in \
             (ROOT / "kernel/process/process64.cpp").read_text():
         raise RuntimeError("wait-arm/wakeup race closure is missing")
     print("drive-free idle scheduler contract test OK")

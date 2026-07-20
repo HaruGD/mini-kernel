@@ -60,7 +60,7 @@ static OsIpcMessageV2 make_message_v2(uint32_t type, uint32_t sequence) {
 
 static void init_process(Process* process, uint32_t pid) {
     process_clear(process);
-    process->pid = pid;
+    process_assign_identity(process, pid, 0);
     process->active = 1;
     process->state = PROCESS_STATE_RUNNING;
 }

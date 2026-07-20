@@ -353,7 +353,21 @@ void cleanup_user_process_mapping(Process* process) {
 
     unmap_user_elf_alias(process);
     address_space_unmap_free_range(&process->address_space, process->code_base, process->code_page_count);
-    address_space_unmap_free_range(&process->address_space, process->stack_base, process->stack_page_count);
+    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
+        Thread* thread = &thread_table[i];
+        if (thread->owner != process || thread->context == 0 ||
+            thread->context->stack_base == 0 ||
+            thread->context->stack_page_count == 0) {
+            continue;
+        }
+        address_space_unmap_free_range(&process->address_space,
+                                       thread->context->stack_base,
+                                       thread->context->stack_page_count);
+        thread->context->stack_base = 0;
+        thread->context->stack_guard_base = 0;
+        thread->context->stack_page_count = 0;
+        thread->context->stack_guard_page_count = 0;
+    }
     address_space_unmap_free_range(&process->address_space, process->heap_base, process->heap_page_count);
     process->heap_page_count = 0;
     process->heap_break = process->heap_base;

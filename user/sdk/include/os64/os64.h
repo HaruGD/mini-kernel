@@ -21,11 +21,12 @@
 #include "os64/service_types.h"
 #include "os64/surface.h"
 #include "os64/time.h"
+#include "os64/thread_types.h"
 #include "os64/window_types.h"
 #include "os64/window.h"
 
 #define OS64_SDK_VERSION_MAJOR 2u
-#define OS64_SDK_VERSION_MINOR 1u
+#define OS64_SDK_VERSION_MINOR 2u
 #define OS_OK 0
 #define OS_ERROR (-1)
 #define OS_PATH_MAX 160u
@@ -119,4 +120,13 @@ long os_reap_children(void);
 long os_kill(uint32_t pid);
 long os_set_background(uint32_t pid, uint32_t enabled);
 long os_children_active(void);
+long os_thread_create(OsThreadEntry entry,
+                      void* argument,
+                      uint32_t stack_size,
+                      OsThreadIdentity* identity);
+long os_thread_self(OsThreadIdentity* identity);
+void os_thread_exit(long code) __attribute__((noreturn));
+long os_thread_join(OsThreadIdentity identity, uint32_t* status);
+long os_thread_yield(void);
+long os_thread_sleep(uint32_t ticks);
 #endif

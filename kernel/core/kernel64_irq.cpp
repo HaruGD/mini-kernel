@@ -38,9 +38,9 @@ extern "C" uint64_t timer_handler64() {
     if (scheduler_should_preempt_current()) {
         result = TIMER_PREEMPT_TO_KERNEL;
     }
-    Process* process = current_process();
-    if (process != 0 && process->timeslice_ticks == 0) {
-        process->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
+    Thread* thread = current_thread();
+    if (thread != 0 && thread->context->timeslice_ticks == 0) {
+        thread->context->timeslice_ticks = SCHED_DEFAULT_TIMESLICE;
     }
     return result;
 }

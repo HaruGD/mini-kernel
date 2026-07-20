@@ -447,7 +447,7 @@ void print_resource_info() {
     print("\n=================\n");
 }
 
-void print_scheduler_info(Process* const* sched_queue,
+void print_scheduler_info(Thread* const* sched_queue,
                           uint32_t sched_queue_count,
                           uint32_t sched_queue_head,
                           uint32_t sched_queue_capacity,
@@ -480,6 +480,8 @@ void print_scheduler_info(Process* const* sched_queue,
     print_hex32(snapshot.yield_count);
     print("\nInput focus PID: ");
     print_hex32(snapshot.focused_pid);
+    print("\nThread records: ");
+    print_hex32(snapshot.thread_count);
 
     for (uint32_t i = 0; i < snapshot.queue_count; i++) {
         uint32_t index = (snapshot.queue_head + i) % SCHED_QUEUE_SIZE;
@@ -488,6 +490,14 @@ void print_scheduler_info(Process* const* sched_queue,
         print_hex32(i);
         print("] pid=");
         print_hex32(pid);
+        print(" tid=");
+        print_hex32(snapshot.queue_tids[index]);
+        print(":");
+        print_hex32(snapshot.queue_thread_generations[index]);
+        print(" sched=");
+        print(scheduler_state_name(snapshot.queue_scheduler_states[index]));
+        print(" ticks=");
+        print_hex32(snapshot.queue_runtime_ticks[index]);
         for (uint32_t p = 0; p < snapshot.process_count; p++) {
             if (snapshot.processes[p].pid != pid) {
                 continue;
@@ -496,10 +506,8 @@ void print_scheduler_info(Process* const* sched_queue,
             print(snapshot.processes[p].name);
             print(" state=");
             print(process_state_name(snapshot.processes[p].state));
-            print(" sched=");
-            print(scheduler_state_name(snapshot.processes[p].scheduler_state));
-            print(" ticks=");
-            print_hex32(snapshot.processes[p].runtime_ticks);
+            print(" threads=");
+            print_hex32(snapshot.processes[p].thread_count);
             break;
         }
     }

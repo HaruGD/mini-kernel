@@ -8,6 +8,7 @@
 #include "kernel/input/input_event_queue.h"
 #include "kernel/mm/address_space.h"
 #include "os64/process_types.h"
+#include "kernel/thread.h"
 
 #define PROCESS_NAME_MAX 32
 #define PROCESS_ARG_MAX 8
@@ -53,39 +54,6 @@ enum ProcessTerminationReason : uint32_t {
     PROCESS_TERM_KILLED = 9,
 };
 
-enum SchedulerState : uint32_t {
-    SCHED_STATE_NONE = 0,
-    SCHED_STATE_READY = 1,
-    SCHED_STATE_RUNNING = 2,
-    SCHED_STATE_WAITING = 3,
-    SCHED_STATE_FINISHED = 4,
-};
-
-enum ProcessPauseReason : uint32_t {
-    PROCESS_PAUSE_NONE = 0,
-    PROCESS_PAUSE_YIELD = 1,
-    PROCESS_PAUSE_PREEMPT = 2,
-    PROCESS_PAUSE_SLEEP = 3,
-    PROCESS_PAUSE_WAIT = 4,
-};
-
-enum ProcessWaitReason : uint32_t {
-    PROCESS_WAIT_NONE = 0,
-    PROCESS_WAIT_TIMER = 1,
-    PROCESS_WAIT_CHILD = 2,
-    PROCESS_WAIT_IPC = 3,
-    PROCESS_WAIT_INPUT = 4,
-    PROCESS_WAIT_KEY = 5,
-    PROCESS_WAIT_CHAR = 6,
-};
-
-enum ProcessWaitResult : int32_t {
-    PROCESS_WAIT_OK = 0,
-    PROCESS_WAIT_NOT_READY = -1,
-    PROCESS_WAIT_TIMEOUT = -17,
-    PROCESS_WAIT_CANCELLED = -18,
-};
-
 enum ShellPromptKind : uint32_t {
     SHELL_PROMPT_NONE = 0,
     SHELL_PROMPT_USH = 1,
@@ -100,8 +68,6 @@ struct Process {
     char name[PROCESS_NAME_MAX];
     uint64_t code_base;
     uint64_t elf_link_base;
-    uint64_t stack_guard_base;
-    uint64_t stack_base;
     uint64_t heap_base;
     uint64_t heap_break;
     uint64_t heap_mapped_end;
@@ -110,52 +76,29 @@ struct Process {
     uint32_t image_size;
     uint32_t code_page_count;
     uint32_t elf_alias_page_count;
-    uint32_t stack_guard_page_count;
-    uint32_t stack_page_count;
     uint32_t heap_page_count;
     uint32_t state;
     uint32_t termination_reason;
     uint32_t status_code;
-    uint32_t scheduler_state;
-    uint32_t runtime_ticks;
-    uint32_t timeslice_ticks;
     uint32_t slot_index;
     uint32_t shell_prompt_kind;
     uint32_t argc;
     uint32_t permissions;
     uint8_t active;
     uint8_t reaped;
-    uint8_t resumable;
     uint8_t background;
-    uint8_t pause_reason;
-    uint8_t wait_pending;
-    uint8_t wait_has_deadline;
-    uint8_t wait_reserved[3];
-    uint32_t wait_reason;
-    int32_t wait_result;
-    uint32_t wait_deadline;
-    uint64_t wait_user_address;
-    uint32_t wake_tick;
+    uint8_t exiting;
+    uint8_t reserved_process;
+    uint32_t thread_count;
+    ThreadIdentity main_thread_identity;
     char cwd[PROCESS_CMDLINE_MAX];
     char command_line[PROCESS_CMDLINE_MAX];
-    uint64_t saved_rax;
-    uint64_t saved_rbx;
-    uint64_t saved_rcx;
-    uint64_t saved_rdx;
-    uint64_t saved_rbp;
-    uint64_t saved_rsi;
-    uint64_t saved_rdi;
-    uint64_t saved_r8;
-    uint64_t saved_r9;
-    uint64_t saved_r10;
-    uint64_t saved_r11;
-    uint64_t saved_r12;
-    uint64_t saved_r13;
-    uint64_t saved_r14;
-    uint64_t saved_r15;
-    uint64_t saved_rip;
-    uint64_t saved_rsp;
-    uint64_t saved_rflags;
+    union {
+        ThreadContext main_thread_context;
+        struct {
+            THREAD_CONTEXT_FIELDS;
+        };
+    };
     AddressSpace address_space;
     ProcessSurfaceMapping surface_mappings[PROCESS_SURFACE_MAPPING_MAX];
     uint32_t next_surface_mapping_generation;
@@ -164,5 +107,7 @@ struct Process {
     KernelInputEventQueue event_queue;
     KernelIpcMailbox ipc_mailbox;
 };
+
+#undef THREAD_CONTEXT_FIELDS
 
 #endif

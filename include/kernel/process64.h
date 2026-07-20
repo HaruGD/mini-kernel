@@ -8,7 +8,10 @@
 #define USER_PROGRAM_SLOT_COUNT 8
 #define PROCESS_TABLE_SIZE 8
 #define PROCESS_CHILD_RESULT_HISTORY_LIMIT 3
-#define SCHED_QUEUE_SIZE PROCESS_TABLE_SIZE
+#define THREADS_PER_PROCESS_MAX 4
+#define THREAD_TABLE_SIZE (PROCESS_TABLE_SIZE * THREADS_PER_PROCESS_MAX)
+#define EXECUTION_STACK_SIZE THREAD_TABLE_SIZE
+#define SCHED_QUEUE_SIZE THREAD_TABLE_SIZE
 #define SCHED_DEFAULT_TIMESLICE 6
 #define USER_SLOT_SPAN 0x00200000ULL
 #define USER_HEAP_OFFSET 0x00110000ULL
@@ -33,6 +36,9 @@ struct ProcessDiagnosticSnapshot {
     uint32_t wait_deadline;
     uint32_t mapping_count;
     uint32_t handle_count;
+    uint32_t thread_count;
+    uint32_t main_tid;
+    uint32_t main_thread_generation;
     KernelIpcMailboxStats mailbox;
     uint8_t active;
     uint8_t reaped;
@@ -51,16 +57,25 @@ struct SchedulerDiagnosticSnapshot {
     uint32_t switch_count;
     uint32_t yield_count;
     uint32_t focused_pid;
+    uint32_t thread_count;
     uint32_t queue_pids[SCHED_QUEUE_SIZE];
+    uint32_t queue_tids[SCHED_QUEUE_SIZE];
+    uint32_t queue_thread_generations[SCHED_QUEUE_SIZE];
+    uint32_t queue_scheduler_states[SCHED_QUEUE_SIZE];
+    uint32_t queue_runtime_ticks[SCHED_QUEUE_SIZE];
     ProcessDiagnosticSnapshot processes[PROCESS_TABLE_SIZE];
 };
 
 extern uint32_t user_program_depth;
 extern uint32_t next_pid;
 extern uint32_t next_process_generation;
+extern uint32_t next_tid;
+extern uint32_t next_thread_generation;
 extern Process process_table[PROCESS_TABLE_SIZE];
-extern Process* process_stack[USER_PROGRAM_SLOT_COUNT];
-extern Process* sched_queue[SCHED_QUEUE_SIZE];
+extern Thread thread_table[THREAD_TABLE_SIZE];
+extern Process* process_stack[EXECUTION_STACK_SIZE];
+extern Thread* thread_stack[EXECUTION_STACK_SIZE];
+extern Thread* sched_queue[SCHED_QUEUE_SIZE];
 extern uint32_t sched_queue_count;
 extern uint32_t sched_queue_head;
 extern uint32_t sched_last_pid;
@@ -69,6 +84,30 @@ extern uint32_t sched_yield_count;
 extern uint32_t input_focus_pid;
 
 Process* current_process();
+Thread* current_thread();
+Thread* process_main_thread(const Process* process);
+ThreadIdentity thread_identity(const Thread* thread);
+int thread_identity_matches(const Thread* thread, ThreadIdentity identity);
+Thread* find_thread_by_identity(ThreadIdentity identity);
+Thread* allocate_thread_record(Process* owner, int is_main);
+void thread_release_process_records(Process* owner);
+void thread_context_reset(ThreadContext* context);
+int thread_create_user(Process* owner,
+                       uint64_t entry,
+                       uint64_t argument,
+                       uint64_t return_trampoline,
+                       uint32_t stack_size,
+                       uint32_t flags,
+                       ThreadIdentity* identity_out);
+void thread_mark_exited(Thread* thread, uint32_t exit_code);
+void thread_release_runtime(Thread* thread);
+int thread_join_begin(Thread* caller,
+                      ThreadIdentity target,
+                      uint64_t user_status_address,
+                      uint32_t timeout_ticks,
+                      uint32_t tick_now,
+                      uint32_t* immediate_status);
+int thread_join_consume(Thread* caller, uint32_t* status_out);
 void process_system_init();
 void process_get_diagnostic_snapshot(SchedulerDiagnosticSnapshot* snapshot);
 
@@ -130,6 +169,11 @@ void scheduler_yield_current();
 void scheduler_on_tick();
 void scheduler_wake_sleeping_processes(uint32_t tick_now);
 int scheduler_should_preempt_current();
+void scheduler_enqueue_thread(Thread* thread);
+void scheduler_remove_thread(Thread* thread);
+void scheduler_mark_thread_running(Thread* thread);
+void scheduler_mark_thread_finished(Thread* thread);
+Thread* find_next_ready_thread(ThreadIdentity exclude);
 
 int process_record_is_active(const Process* process);
 Process* allocate_process_record();

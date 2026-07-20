@@ -87,12 +87,6 @@ extern "C" uint64_t kernel_user_resume_rip;
 extern "C" uint64_t kernel_user_resume_rsp;
 extern "C" uint64_t kernel_user_resume_rflags;
 
-static uint64_t current_rsp() {
-    uint64_t rsp;
-    __asm__ volatile("mov %%rsp, %0" : "=r"(rsp));
-    return rsp;
-}
-
 static void early_framebuffer_marker(const BootInfo* boot_info, uint32_t slot, uint32_t color) {
     if (boot_info == 0 ||
         boot_info->size < sizeof(BootInfo) ||
