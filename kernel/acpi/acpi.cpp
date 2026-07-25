@@ -1,4 +1,5 @@
 #include "kernel/acpi.h"
+#include "kernel/acpi_madt.h"
 #include "kernel/mm/vm.h"
 #include "kernel/klog.h"
 #include "kernel/kutil64.h"
@@ -123,6 +124,9 @@ static void parse_madt(const AcpiMadt* madt) {
     state.local_apic_address = madt->local_apic_address;
 
     uint32_t offset = sizeof(AcpiMadt);
+    acpi_madt_parse_cpu_entries((const uint8_t*)madt + offset,
+                                madt->header.length - offset,
+                                &state);
     while (offset + sizeof(MadtEntryHeader) <= madt->header.length) {
         const MadtEntryHeader* entry =
             (const MadtEntryHeader*)((const uint8_t*)madt + offset);
@@ -132,12 +136,7 @@ static void parse_madt(const AcpiMadt* madt) {
         }
 
         const uint8_t* data = (const uint8_t*)entry;
-        if (entry->type == 0 && entry->length >= 8) {
-            uint32_t flags = *(const uint32_t*)(const void*)(data + 4);
-            if (flags & 0x3u) {
-                state.cpu_count++;
-            }
-        } else if (entry->type == 1 && entry->length >= 12 &&
+        if (entry->type == 1 && entry->length >= 12 &&
                    state.ioapic_count < ACPI_MAX_IOAPICS) {
             AcpiIoApicInfo* ioapic = &state.ioapics[state.ioapic_count++];
             ioapic->id = data[2];
@@ -217,6 +216,8 @@ int acpi_init(uint64_t rsdp_address) {
 
     state.ready = state.madt_address != 0 &&
                   state.local_apic_address != 0 &&
+                  state.cpu_parse_valid &&
+                  state.cpu_count != 0 &&
                   state.ioapic_count != 0;
     klog_write(state.ready ? KLOG_INFO : KLOG_WARN,
                "acpi",
@@ -364,6 +365,16 @@ void acpi_print_summary() {
     print_hex32(state.revision);
     print(" cpus=");
     print_hex32(state.cpu_count);
+    print(" total=");
+    print_hex32(state.cpu_total_count);
+    print(" disabled=");
+    print_hex32(state.cpu_disabled_count);
+    print(" unsupported=");
+    print_hex32(state.cpu_unsupported_count);
+    print(" overflow=");
+    print_hex32(state.cpu_overflow_count);
+    print(" malformed=");
+    print_hex32(state.cpu_malformed_count);
     print("\nrsdp=");
     print_hex64(state.rsdp_address);
     print(" root=");
@@ -374,6 +385,20 @@ void acpi_print_summary() {
     print_hex64(state.fadt_address);
     print(" lapic=");
     print_hex64(state.local_apic_address);
+    for (uint32_t i = 0; i < state.cpu_count; i++) {
+        print("\nprocessor[");
+        print_hex32(i);
+        print("] acpi=");
+        print_hex32(state.cpus[i].acpi_id);
+        print(" apic=");
+        print_hex32(state.cpus[i].apic_id);
+        print(" type=");
+        print_hex32(state.cpus[i].entry_type);
+        print(" enabled=");
+        print_hex32(state.cpus[i].enabled);
+        print(" xapic=");
+        print_hex32(state.cpus[i].xapic_supported);
+    }
     for (uint32_t i = 0; i < state.ioapic_count; i++) {
         print("\nioapic[");
         print_hex32(i);

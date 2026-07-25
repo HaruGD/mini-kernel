@@ -16,6 +16,7 @@ extern "C" {
 #include "kernel/handle/kernel_handle.h"
 #include "kernel/handle/kernel_objects.h"
 #include "kernel/acpi.h"
+#include "kernel/cpu.h"
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/input/input_events.h"
@@ -244,7 +245,7 @@ static void command_help() {
     print("\nfree, dump, sched, input, ipc, services, locks, resources, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
-    print("\nklog [clear|stats], acpi, intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
+    print("\nklog [clear|stats], acpi, cpus, intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
     print("\nrun, resume, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
 }
 
@@ -1035,6 +1036,8 @@ static void execute_command() {
         command_klog(arg);
     } else if (strcmp64(cmd, "acpi") == 0) {
         acpi_print_summary();
+    } else if (strcmp64(cmd, "cpus") == 0) {
+        cpu_print_summary();
     } else if (strcmp64(cmd, "intctl") == 0) {
         interrupt_controller_print();
     } else if (strcmp64(cmd, "panic") == 0) {
