@@ -224,9 +224,8 @@ Progress:
   idle path
 - [x] 4.6D: Run distinct threads concurrently through a locked global queue
   and independently calibrated per-CPU Local APIC preemption
-- [ ] 4.6E: Add reschedule IPIs, remote wakeups, CPU affinity, and bounded
-  distribution (implementation present; full remote-wake regression gate
-  remains in progress)
+- [x] 4.6E: Add reschedule IPIs, remote wakeups, CPU affinity, and bounded
+  distribution
 - [ ] 4.6F: Implement generation-checked cross-CPU TLB shootdown before
   concurrent address-space mutation and page reuse, using quarantine and a
   lock-free `TLB_WAIT` acknowledgement boundary

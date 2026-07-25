@@ -24,19 +24,18 @@ a separate evidence commit.
 | 4.6A: CPU topology and SMP contracts | Complete | 2026-07-25 | 2026-07-25 | `fb7f67f` | P46-R01, P46-R02 |
 | 4.6B: Per-CPU state and entry infrastructure | Complete | 2026-07-25 | 2026-07-25 | `01a0408` | P46-R03 |
 | 4.6C: Application processor bring-up and idle | Complete | 2026-07-25 | 2026-07-25 | `d2c4694` | P46-R04 |
-| 4.6D: Multicore scheduler and local preemption | Complete | 2026-07-25 | 2026-07-25 | `d8d1787`, `4595489`, `02abf86`, `d17075e` | P46-R05, P46-R06 |
-| 4.6E: Reschedule IPI, remote wake, affinity, distribution | In progress | 2026-07-25 | - | `d8d1787`, `4595489` | P46-R07, P46-R08 partial |
+| 4.6D: Multicore scheduler and local preemption | Complete | 2026-07-25 | 2026-07-25 | `d8d1787`, `4595489`, `02abf86`, `d17075e`, `e60a306` | P46-R05, P46-R06 |
+| 4.6E: Reschedule IPI, remote wake, affinity, distribution | Complete | 2026-07-25 | 2026-07-26 | `d8d1787`, `4595489`, `0488c78`, `e60a306` | P46-R07, P46-R08 |
 | 4.6F: TLB shootdown and address-space safety | Planned | - | - | - | - |
 | 4.6G: Kernel-wide SMP audit and interrupt ownership | Planned | - | - | - | - |
 | 4.6H: Multicore fault injection, soak, and closure | Planned | - | - | - | - |
 
-Current status: 4.6A through 4.6D are complete. Four-vCPU QEMU runs three
+Current status: 4.6A through 4.6E are complete. Four-vCPU QEMU runs three
 distinct pinned user threads concurrently on AP1/AP2/AP3 with atomic
-single-CPU claims and calibrated CPU-local quantum accounting. 4.6E has its
-reschedule IPI, affinity ABI, distribution policy, diagnostics, and remote
-semaphore/join path implemented, but remains in progress until the complete
-condition/IPC/input/timer remote-wake gate is repeatable. Phase 5 remains
-gated on complete 4.6 closure.
+single-CPU claims and calibrated CPU-local quantum accounting. Bounded
+reschedule IPIs, every required remote-wake class, affinity rejection and
+pinning, and unpinned multi-CPU distribution have repeatable evidence. 4.6F
+is next; Phase 5 remains gated on complete 4.6 closure.
 
 ## Recording Workflow
 
@@ -274,7 +273,8 @@ violation.
 - Status: Complete
 - Started: 2026-07-25
 - Completed: 2026-07-25
-- Implementation commits: `d8d1787`, `4595489`, `02abf86`, `d17075e`
+- Implementation commits: `d8d1787`, `4595489`, `02abf86`, `d17075e`,
+  `e60a306`
 
 ### Delivered
 
@@ -294,14 +294,17 @@ violation.
 - Runnable notification never sends a self-IPI. This preserves the one-vCPU
   fallback and prevents needless nested local preemption during thread
   creation.
+- The priority-progress regression keeps each low/normal/high worker alive
+  through multiple timer boundaries, making the per-CPU preemption gate
+  deterministic instead of depending on host speed.
 
 ### Verification
 
 | Command | Result | Measured evidence |
 | --- | --- | --- |
 | `make test-smp-scheduler` | PASS | Host model rejects invalid affinity and a second claim while the first CPU owns the thread |
-| `make test-smp-timer` | PASS | QEMU `-cpu max -smp 1/2/4`: scheduler CPUs `1/2/4`, zero calibration failures, every error within 1500 bps; PIT comparison deltas `255/244/243` in the final clean run |
-| `make test-smp-preemption` | PASS | QEMU `-cpu max -smp 4`: low/normal/high workers observed CPU mask `0x0e`, maximum simultaneous workers `3`, Local APIC quantum expirations `4`, failures `0` |
+| `make test-smp-timer` | PASS | QEMU `-cpu max -smp 1/2/4`: scheduler CPUs `1/2/4`, zero calibration failures, every error within 1500 bps; PIT comparison deltas `243/246/243` in the final clean run |
+| `make test-smp-preemption` | PASS | QEMU `-cpu max -smp 4`: low/normal/high workers observed CPU mask `0x0e`, maximum simultaneous workers `3`, Local APIC quantum expirations `31` in the final clean run, failures `0` |
 | `make test-thread-abi` | PASS | One-vCPU `uthread_c.elf` passed 10 runs; queue remained empty and warmed/final PMM/heap/resource tuples were identical |
 | `make test-phase45-abc` | PASS | Process/thread ABI, 91 SDK contracts, and drive-free scheduler/service-control regression passed |
 | `make clean`; `make -j4 uefi-diagnostic`; `make test-smp-execution` | PASS | Clean image rebuilt; host ownership, 1/2/4 timer/topology, and four-vCPU concurrent execution all passed |
@@ -327,11 +330,12 @@ violation.
 
 ## 4.6E: Reschedule IPI, Remote Wakeup, Affinity, And Distribution
 
-- Status: In progress
+- Status: Complete
 - Started: 2026-07-25
-- Implementation commits: `d8d1787`, `4595489`
+- Completed: 2026-07-26
+- Implementation commits: `d8d1787`, `4595489`, `0488c78`, `e60a306`
 
-### Delivered So Far
+### Delivered
 
 - Fixed vector `0xF3` carries bounded, allocation-free reschedule requests.
   Runnable state is published under the scheduler lock before notification;
@@ -341,23 +345,41 @@ violation.
 - Thread ABI v2, syscall 107, and the SDK expose bounded affinity masks.
   Empty and offline-only masks fail; removing a running CPU requests a safe
   reschedule boundary.
-- The four-vCPU workload proves remote semaphore release, pinned AP
-  eligibility, idle wake, and join completion without a lost runnable thread.
+- Independent four-vCPU sessions prove remote semaphore/join, condition,
+  timer, separate-process IPC, and physical-input wake paths. Each pinned
+  waiter resumes exactly once on its required AP.
+- Three unpinned, semaphore-gated workers execute concurrently across multiple
+  eligible APs instead of becoming stranded on one CPU.
+- The bounded diagnostic `cpuresched <logical-id>` burst makes pending-bit
+  coalescing observable without allocation or unbounded shell work.
 
-### Verification So Far
+### Verification
 
 | Command | Result | Measured evidence |
 | --- | --- | --- |
-| `make test-smp-ipi` | PASS (partial gate) | AP1/AP2/AP3 receive reschedule IPIs and complete the semaphore-gated workload |
-| `make test-smp-affinity` | PASS (partial gate) | Invalid/empty/offline host masks fail; pinned workers execute only on CPU1/CPU2/CPU3 |
-| `make test-phase45-abc` | PASS | Existing single-CPU IPC and input blocking semantics remain green |
+| `make test-smp-ipi` | PASS | QEMU `-cpu max -smp 4`: condition CPU1, timer CPU2, child-to-parent IPC CPU3, QEMU-injected input CPU1, and semaphore/join remote wakes completed exactly once; a 256-request burst recorded `248` coalesced requests |
+| `make test-smp-affinity` | PASS | Empty/offline masks fail; pinned workers stay on CPU1/CPU2/CPU3; final unpinned run used mask `0x0e`, three CPUs, and maximum concurrency `3` |
+| `make test-smp-execution` | PASS | Clean 1/2/4-vCPU topology/timer run plus four-vCPU concurrent execution and all isolated remote-wake sessions passed; final pinned mask `0x0e`, maximum concurrency `3`, preemptions `31` |
+| `make test-input test-ipc test-thread-waits test-thread-sync` | PASS | Existing input queue/event loop, IPC mailbox/smoke, thread lifecycle/ABI/waits, 91 SDK contracts, and synchronization smoke all passed |
+| `make clean`; `make -j4 uefi-diagnostic`; `make test-smp-execution` | PASS | Clean diagnostic image and complete 4.6D/E aggregate rebuilt and passed |
 
-### Completion Blocker
+### Resource And CPU Accounting
 
-- The existing recursive user-context runner cannot yet execute one combined
-  repeated condition/IPC/input/timer remote-wake workload deterministically;
-  sequential thread reuse can exhaust the AP's nested 16 KiB execution stack.
-- 4.6E therefore remains `In progress`. It becomes complete only after a
-  non-recursive context-switch boundary or isolated repeatable remote-wake
-  sessions cover condition, IPC, input, timer, join, and unpinned
-  distribution without weakening P46-R07/P46-R08.
+- Every remote-wake mode used a fresh QEMU `-cpu max -smp 4` session. No
+  kernel fatal path appeared.
+- Exact pinned results were condition CPU1/mask `0x02`, timer CPU2/mask
+  `0x04`, IPC CPU3/mask `0x08`, and input CPU1/mask `0x02`.
+- The final unpinned session used CPU mask `0x0e`, three distinct CPUs, and
+  maximum simultaneous workers `3`; the contract accepts any eligible mask
+  spanning at least two CPUs.
+- The inherited one-vCPU thread lifecycle completed ten runs with unchanged
+  warmed/final tuple `(0,0,0,0,0,0,0,27186,4120432,4141056)` and scheduler
+  tuple `(0,8)`.
+
+### Remaining
+
+- Concurrent mapping mutation, teardown, and physical-page reuse remain
+  forbidden until generation-checked 4.6F TLB shootdown exists.
+- A non-recursive production context-switch boundary remains desirable, but
+  it does not block 4.6E: isolated repeatable sessions cover every required
+  wake class without nesting sequential contexts on an AP stack.

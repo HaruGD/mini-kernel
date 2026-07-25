@@ -40,10 +40,11 @@ then enter the released global scheduler only after their Local APIC timers
 are calibrated. Three pinned user workers execute concurrently on AP1/AP2/AP3,
 the PIT remains single-owner global time, and the one-vCPU fallback passes.
 
-Phase 4.6E is in progress. Reschedule IPIs, affinity, remote distribution,
-diagnostics, and the semaphore/join wake path exist, but the full
-condition/IPC/input/timer remote-wake and unpinned distribution exit gate is
-not yet repeatable. 4.6F does not begin until that gate closes.
+Phase 4.6E completed on 2026-07-26. Reschedule IPIs, affinity, pinned and
+unpinned distribution, and semaphore/join, condition, timer, IPC, and input
+remote wake paths pass in repeatable four-vCPU sessions. Phase 4.6F is next
+and owns generation-checked TLB shootdown before concurrent mapping mutation
+or page reuse can be enabled.
 
 ## Scope Boundary
 
