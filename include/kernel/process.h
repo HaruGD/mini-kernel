@@ -91,6 +91,7 @@ struct Process {
     uint8_t reserved_process;
     uint32_t thread_count;
     ThreadIdentity main_thread_identity;
+    ThreadIdentity fault_thread_identity;
     char cwd[PROCESS_CMDLINE_MAX];
     char command_line[PROCESS_CMDLINE_MAX];
     union {

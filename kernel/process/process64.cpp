@@ -187,6 +187,7 @@ void process_get_diagnostic_snapshot(SchedulerDiagnosticSnapshot* snapshot) {
         out->thread_count = process->thread_count;
         out->main_tid = process->main_thread_identity.tid;
         out->main_thread_generation = process->main_thread_identity.generation;
+        out->fault_thread_identity = process->fault_thread_identity;
         out->thread_runtime_ticks = 0;
         out->thread_preemption_count = 0;
         out->thread_yield_count = 0;
@@ -328,6 +329,9 @@ Thread* allocate_thread_record(Process* owner, int is_main) {
         owner->thread_count >= THREADS_PER_PROCESS_MAX || owner->exiting) {
         return 0;
     }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_THREAD_RECORD)) {
+        return 0;
+    }
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
         return 0;
@@ -359,7 +363,10 @@ Thread* allocate_thread_record(Process* owner, int is_main) {
     owner->thread_count++;
     kernel_spinlock_release(&process_lock, &token);
 
-    uint64_t kernel_stack = (uint64_t)(uintptr_t)pmm_alloc_block();
+    uint64_t kernel_stack =
+        kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_THREAD_KERNEL_STACK)
+            ? 0
+            : (uint64_t)(uintptr_t)pmm_alloc_block();
     if (kernel_stack == 0) {
         KernelSpinlockToken rollback_token;
         if (kernel_spinlock_acquire(&process_lock, &rollback_token)) {
@@ -454,6 +461,9 @@ static int thread_wait_begin_unlocked(Thread* thread,
     if (thread == 0 || thread->context == 0 || thread->owner == 0 ||
         !thread->active || !thread->owner->active || reason == PROCESS_WAIT_NONE ||
         thread->context->wait_pending) {
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_THREAD_WAIT)) {
         return 0;
     }
     ThreadContext* context = thread->context;
@@ -831,6 +841,8 @@ void process_assign_identity(Process* process, uint32_t pid, const Process* pare
     process->thread_count = 0;
     process->main_thread_identity.tid = 0;
     process->main_thread_identity.generation = 0;
+    process->fault_thread_identity.tid = 0;
+    process->fault_thread_identity.generation = 0;
     process->exiting = 0;
     kernel_spinlock_release(&process_lock, &token);
     if (allocate_thread_record(process, 1) == 0) {
@@ -1109,6 +1121,8 @@ void process_clear(Process* process) {
     process->thread_count = 0;
     process->main_thread_identity.tid = 0;
     process->main_thread_identity.generation = 0;
+    process->fault_thread_identity.tid = 0;
+    process->fault_thread_identity.generation = 0;
     process->cwd[0] = '/';
     process->cwd[1] = '\0';
     process->command_line[0] = '\0';
@@ -1217,6 +1231,7 @@ static void process_finish(Process* process,
         return;
     }
 
+    Thread* terminating_thread = current_thread();
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
         return;
@@ -1258,6 +1273,12 @@ static void process_finish(Process* process,
                            PROCESS_CHILD_RESULT_HISTORY_LIMIT);
     kernel_spinlock_release(&process_lock, &token);
 
+    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
+        Thread* thread = &thread_table[i];
+        if (thread->owner == process && thread != terminating_thread) {
+            thread_release_runtime(thread);
+        }
+    }
     recover_display_session_for_process(own_pid, own_generation);
     vfs_close_all_for_owner(own_pid);
     process_surface_unmap_all(process);
@@ -1377,8 +1398,12 @@ int thread_create_user(Process* owner,
     uint32_t mapped = 0;
 
     for (uint32_t page = 0; page < page_count; page++) {
-        uint64_t phys = (uint64_t)(uintptr_t)pmm_alloc_block();
+        uint64_t phys =
+            kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_THREAD_USER_STACK)
+                ? 0
+                : (uint64_t)(uintptr_t)pmm_alloc_block();
         if (phys == 0 ||
+            kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_THREAD_MAPPING) ||
             !address_space_map_page(&owner->address_space,
                                     stack_base + (uint64_t)page * VM_PAGE_SIZE,
                                     phys,

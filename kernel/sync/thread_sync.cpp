@@ -1,6 +1,7 @@
 #include "kernel/sync/thread_sync.h"
 
 #include "kernel/process64.h"
+#include "kernel/fault_injection.h"
 #include "kernel/spinlock.h"
 #include "kernel/syscall64.h"
 #include "os64/sync_types.h"
@@ -66,6 +67,9 @@ static uint64_t create_object(Process* process,
                               uint32_t initial_count,
                               uint32_t maximum_count) {
     if (process == 0) {
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_SYNC_OBJECT)) {
         return 0;
     }
     uint32_t index = KERNEL_SYNC_MAX_OBJECTS;

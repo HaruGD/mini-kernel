@@ -9,7 +9,9 @@ struct KernelFaultPointState {
 
 static KernelFaultPointState fault_points[KERNEL_FAULT_POINT_COUNT];
 static const char* fault_names[KERNEL_FAULT_POINT_COUNT] = {
-    "pmm", "heap", "process", "mailbox", "service", "handle", "shared"
+    "pmm", "heap", "process", "mailbox", "service", "handle", "shared",
+    "thread_record", "thread_user_stack", "thread_kernel_stack",
+    "thread_mapping", "thread_wait", "sync_object"
 };
 
 static int text_equal(const char* left, const char* right) {

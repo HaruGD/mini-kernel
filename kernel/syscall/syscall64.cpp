@@ -54,7 +54,16 @@ static int pop_keyboard_character_from_events(char* out_char) {
 }
 
 extern "C" void process_record_fault64(uint32_t reason, uint32_t status_code) {
-    process_mark_failed(current_process(), reason, status_code);
+    Thread* thread = current_thread();
+    Process* process = current_process();
+    if (process != 0 && thread != 0) {
+        process->fault_thread_identity = thread_identity(thread);
+        print("\nFaulting thread: tid=");
+        print_hex32(thread->tid);
+        print(" generation=");
+        print_hex32(thread->generation);
+    }
+    process_mark_failed(process, reason, status_code);
 }
 
 extern "C" uint64_t process_fault_returnable64() {

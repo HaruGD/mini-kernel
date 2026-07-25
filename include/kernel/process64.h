@@ -39,6 +39,7 @@ struct ProcessDiagnosticSnapshot {
     uint32_t thread_count;
     uint32_t main_tid;
     uint32_t main_thread_generation;
+    ThreadIdentity fault_thread_identity;
     uint64_t thread_runtime_ticks;
     uint64_t thread_preemption_count;
     uint64_t thread_yield_count;

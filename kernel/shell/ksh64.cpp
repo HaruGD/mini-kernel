@@ -289,7 +289,7 @@ static void command_faultinject(char* arg) {
 
     char* after_text = get_argument(arg);
     if (after_text == 0) {
-        print("\nUsage: faultinject pmm|heap|process|mailbox|service|handle|shared <successes-before-failure>");
+        print("\nUsage: faultinject <point> <successes-before-failure>; use faultinject status for point names");
         return;
     }
     after_text[-1] = '\0';

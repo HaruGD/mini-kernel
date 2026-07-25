@@ -115,6 +115,12 @@ static void print_process_summary_view(const ProcessView* process, uint32_t tick
     print(process_term_name(process->termination_reason));
     print(" code=");
     print_hex32(process->status_code);
+    if (process->fault_thread_identity.tid != 0) {
+        print(" fault_thread=");
+        print_hex32(process->fault_thread_identity.tid);
+        print(":");
+        print_hex32(process->fault_thread_identity.generation);
+    }
     print(" sched=");
     print(scheduler_state_name(process->scheduler_state));
     print(" pause=");

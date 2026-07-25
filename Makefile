@@ -57,7 +57,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-phase45-abc test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -223,7 +223,15 @@ test-thread-sync: uefi test-user-sdk
 test-thread-readiness: uefi test-user-sdk
 	python3 ./tools/thread_readiness_smoke.py
 
+test-thread-faults: uefi uefi-diagnostic test-fault-injection
+	python3 ./tools/thread_fault_injection_smoke.py
+
+test-thread-soak: uefi
+	python3 ./tools/thread_soak.py --duration 60
+
 test-phase45-abc: test-thread-abi test-user-sdk test-drive-free-scheduler
+
+test-phase45: test-phase45-abc test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak
 
 test-spinlocks:
 	python3 ./tools/spinlock_test.py
