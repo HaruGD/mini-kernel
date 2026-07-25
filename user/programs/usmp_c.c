@@ -6,6 +6,7 @@ static volatile uint32_t active_count;
 static volatile uint32_t maximum_active;
 static volatile uint32_t observed_cpu_mask;
 static volatile uint32_t worker_failures;
+static volatile uint32_t worker_failure_mask;
 static volatile uint64_t worker_preemptions;
 
 static void update_maximum(uint32_t value) {
@@ -29,6 +30,7 @@ static long smp_worker(void* argument) {
         os_thread_set_priority(self, index) != OS_SUCCESS ||
         os_thread_set_affinity(self, affinity) != OS_SUCCESS) {
         __atomic_add_fetch(&worker_failures, 1u, __ATOMIC_RELAXED);
+        __atomic_fetch_or(&worker_failure_mask, 1u << index, __ATOMIC_RELAXED);
         return 0xE0u + index;
     }
 
@@ -44,6 +46,9 @@ static long smp_worker(void* argument) {
         before.affinity_mask != affinity ||
         before.priority != index) {
         __atomic_add_fetch(&worker_failures, 1u, __ATOMIC_RELAXED);
+        __atomic_fetch_or(&worker_failure_mask,
+                          1u << (index + 4u),
+                          __ATOMIC_RELAXED);
     }
     if (before.running_cpu >= 0 && before.running_cpu < 8) {
         __atomic_fetch_or(&observed_cpu_mask,
@@ -54,7 +59,7 @@ static long smp_worker(void* argument) {
         __atomic_add_fetch(&active_count, 1u, __ATOMIC_ACQ_REL);
     update_maximum(active);
 
-    volatile uint32_t spin = 0x02000000u;
+    volatile uint32_t spin = 0x10000000u;
     while (spin-- != 0u) {
         __asm__ volatile("" : : : "memory");
     }
@@ -65,6 +70,9 @@ static long smp_worker(void* argument) {
         after.running_cpu != (int32_t)logical_cpu ||
         after.preemption_count == 0) {
         __atomic_add_fetch(&worker_failures, 1u, __ATOMIC_RELAXED);
+        __atomic_fetch_or(&worker_failure_mask,
+                          1u << (index + 8u),
+                          __ATOMIC_RELAXED);
     } else {
         __atomic_add_fetch(&worker_preemptions,
                            after.preemption_count,
@@ -111,11 +119,12 @@ int main(void) {
         __atomic_load_n(&maximum_active, __ATOMIC_ACQUIRE);
     const uint64_t preemptions =
         __atomic_load_n(&worker_preemptions, __ATOMIC_ACQUIRE);
-    os_printf("[SMPX] mask=%u max_active=%u preemptions=%u failures=%u\n",
+    os_printf("[SMPX] mask=%u max_active=%u preemptions=%u failures=%u detail=%u\n",
               cpu_mask,
               maximum,
               (uint32_t)preemptions,
-              failures);
+              failures,
+              (uint32_t)worker_failure_mask);
     if (failures == 0 && cpu_mask == 0x0Eu &&
         maximum >= 3u && preemptions >= 3u) {
         os_puts("[SMPX] PASS\n");
