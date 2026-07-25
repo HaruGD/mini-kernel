@@ -288,7 +288,8 @@ Implementation:
 - standardize interrupt-saving spinlock tokens, CPU-local preemption counts,
   owner/LIFO checks, and schedule/block/yield assertions;
 - migrate the BSP through the same initialization path that APs will use;
-- prepare but do not release the low-memory AP trampoline and startup mailbox.
+- prepare each AP's static CPU-local and startup-stack ownership, while leaving
+  the executable low-memory trampoline and startup mailbox to 4.6C.
 
 Exit gate: all Phase 4.5 and full closure tests pass on one CPU through the new
 CPU-local accessors. CPU-local host tests prove independent lock stacks,

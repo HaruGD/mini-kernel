@@ -217,8 +217,8 @@ Detailed planning and live evidence:
 
 Progress:
 
-- [ ] 4.6A: Retain bounded CPU topology, identity, lifecycle, and diagnostics
-- [ ] 4.6B: Establish per-CPU entry, current-thread, idle, TSS/stack, interrupt,
+- [x] 4.6A: Retain bounded CPU topology, identity, lifecycle, and diagnostics
+- [x] 4.6B: Establish per-CPU entry, current-thread, idle, TSS/stack, interrupt,
   preemption, lock tracking, and NMI/Double Fault emergency identity state
 - [ ] 4.6C: Start application processors and hold them in a validated local
   idle path

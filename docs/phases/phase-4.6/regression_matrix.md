@@ -1,9 +1,8 @@
 # Phase 4.6 Regression Matrix
 
 This matrix defines the evidence required to close SMP and multicore
-scheduling. Every row is currently planned. Target names marked `Reserved`
-are design names only and must not be cited as executed evidence until the
-Makefile contains them and they pass.
+scheduling. Rows marked `Reserved` are design names only and must not be cited
+as executed evidence until the Makefile contains them and they pass.
 
 The final aggregate target will be `make test-phase46`. It must invoke real
 focused targets and must not be added as an empty or documentation-only
@@ -13,10 +12,10 @@ target.
 
 | ID | Subphase | Contract | Planned automated evidence | Pass condition | Status |
 | --- | --- | --- | --- | --- | --- |
-| P46-R01 | 4.6A | MADT CPU topology has bounded capacity, stable logical/APIC identity, legal lifecycle transitions, and explicit unsupported/overflow handling. | Reserved: `make test-cpu-topology` | Valid 1/2/4-CPU tables map exactly; malformed, duplicate, disabled, overflow, and unsupported x2APIC entries cannot become runnable CPUs. | Planned |
-| P46-R02 | 4.6A | QEMU topology discovery matches requested vCPU counts without changing BSP-only execution. | Reserved: `make test-smp-topology` | `-smp 1`, `-smp 2`, and `-smp 4` report the expected BSP/AP identities and no false online AP. | Planned |
-| P46-R03 | 4.6B | Current thread, entry nesting, interrupt/preemption depth, lock stack, TSS/IST, and idle state are CPU-local; NMI/Double Fault can recover CPU identity without trusting only interrupted GS. | Reserved: `make test-percpu`; `make test-smp-emergency-entry` | Independent CPU records cannot overwrite one another; permanent kernel GS cannot be redirected by user state; controlled BSP/AP NMI and diagnostic Double Fault select the correct static IST/header or enter the minimal emergency halt path without ordinary locks. | Planned |
-| P46-R04 | 4.6C | AP startup publishes `ONLINE` only after valid stack, CR3, descriptor, interrupt, APIC, and idle state. | Reserved: `make test-ap-bringup` | Requested 1/2/4-vCPU boots have exact online counts, idle entry, and repeated startup-ping acknowledgements; forced timeout leaves a clean failed/offline record. | Planned |
+| P46-R01 | 4.6A | MADT CPU topology has bounded capacity, stable logical/APIC identity, legal lifecycle transitions, and explicit unsupported/overflow handling. | `make test-cpu-topology` | Valid 1/2/4-CPU tables map exactly; malformed, duplicate, disabled, overflow, and unsupported x2APIC entries cannot become runnable CPUs. | Complete |
+| P46-R02 | 4.6A | QEMU topology discovery matches requested vCPU counts without changing BSP-only execution. | `make test-smp-topology` | `-smp 1`, `-smp 2`, and `-smp 4` report the expected BSP/AP identities and no false online AP. | Complete |
+| P46-R03 | 4.6B | Current thread, entry nesting, interrupt/preemption depth, lock stack, TSS/IST, and idle state are CPU-local; NMI/Double Fault can recover CPU identity without trusting only interrupted GS. | `make test-percpu`; `make test-smp-emergency-entry` | Independent CPU records cannot overwrite one another; permanent kernel GS cannot be redirected by user state; controlled BSP NMI and diagnostic Double Fault select the correct static IST/header or enter the minimal emergency halt path without ordinary locks. | Complete |
+| P46-R04 | 4.6C | AP startup publishes `ONLINE` only after valid stack, CR3, descriptor, interrupt, APIC, and idle state. | Reserved: `make test-ap-bringup` | Requested 1/2/4-vCPU boots have exact online counts, idle entry, controlled AP NMI identity, and repeated startup-ping acknowledgements; forced timeout leaves a clean failed/offline record. | Planned |
 | P46-R05 | 4.6D | A runnable thread is queued or running on exactly one CPU and never executes concurrently with itself. | Reserved: `make test-smp-scheduler` | Two or more CPUs run distinct eligible threads; atomic ready/running/wait/terminal transitions reject double claim, stale selection, and queued-running state. | Planned |
 | P46-R06 | 4.6D | Per-CPU Local APIC calibration/preemption preserves priority, runtime attribution, bounded drift, and single-owner wall time. | Reserved: `make test-smp-timer`; `make test-smp-preemption` | Each CPU self-calibrates against the published invariant-TSC or PIT reference and records frequency/error within tolerance before scheduler release; every scheduler CPU preempts locally; global time does not scale with CPU count; low/normal/high progress stays bounded. | Planned |
 | P46-R07 | 4.6E | Remote wake and reschedule IPIs publish work before notification and cannot lose or duplicate a wake. | Reserved: `make test-smp-ipi` | Idle/busy remote CPUs receive bounded reschedule requests; coalesced/duplicate IPIs are harmless; semaphore, condition, IPC, input, timer, and join wakeups complete once. | Planned |
@@ -66,8 +65,9 @@ Focused targets must cover, where applicable:
 - Host tests close parsers and isolated state machines, but cannot alone close
   AP startup, interrupt entry, concurrent scheduling, IPI, TLB, or end-to-end
   resource rows.
-- Emergency-entry evidence includes controlled QEMU NMI on BSP and AP plus a
-  diagnostic Double Fault path; source inspection or a normal IRQ is not a
+- 4.6B emergency-entry evidence includes controlled QEMU NMI on the BSP and a
+  diagnostic Double Fault path. Controlled AP NMI becomes mandatory in 4.6C
+  after AP execution exists; source inspection or a normal IRQ is not a
   substitute.
 - Timer evidence records calibration source, per-CPU measured frequency/error,
   tolerance, and one/two/four-vCPU global elapsed-time comparison.
