@@ -26,6 +26,7 @@ static long smp_worker(void* argument) {
     const uint32_t affinity = 1u << logical_cpu;
     OsThreadIdentity self;
     if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_priority(self, index) != OS_SUCCESS ||
         os_thread_set_affinity(self, affinity) != OS_SUCCESS) {
         __atomic_add_fetch(&worker_failures, 1u, __ATOMIC_RELAXED);
         return 0xE0u + index;
@@ -40,7 +41,8 @@ static long smp_worker(void* argument) {
     OsThreadInfo before;
     if (os_thread_get_info(self, &before) != OS_SUCCESS ||
         before.running_cpu != (int32_t)logical_cpu ||
-        before.affinity_mask != affinity) {
+        before.affinity_mask != affinity ||
+        before.priority != index) {
         __atomic_add_fetch(&worker_failures, 1u, __ATOMIC_RELAXED);
     }
     if (before.running_cpu >= 0 && before.running_cpu < 8) {
