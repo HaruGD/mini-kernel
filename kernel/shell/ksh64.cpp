@@ -248,7 +248,7 @@ static void command_help() {
     print("\nfree, dump, sched, input, ipc, services, locks, resources, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
-    print("\nklog [clear|stats], acpi, cpus, cpunmi [ap], intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
+    print("\nklog [clear|stats], acpi, cpus, cpunmi [ap], cpuresched [ap], intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
     print("\nrun, resume, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
 }
 
@@ -262,6 +262,23 @@ static void command_cpunmi(const char* arg) {
     print_hex32(logical_id);
     print(" result=");
     print_hex32(smp_debug_send_nmi(logical_id));
+}
+
+static void command_cpuresched(const char* arg) {
+    if (arg == 0 || *arg < '0' || *arg > '9') {
+        print("\nUsage: cpuresched <online-ap-logical-id>");
+        return;
+    }
+    const uint32_t logical_id = parse_uint32(arg);
+    const uint32_t request_count = 256;
+    const uint64_t coalesced =
+        smp_debug_reschedule_burst(logical_id, request_count);
+    print("\nReschedule burst logical=");
+    print_hex32(logical_id);
+    print(" requested=");
+    print_hex32(request_count);
+    print(" coalesced=");
+    print_hex64(coalesced);
 }
 
 static void print_fault_injection_status() {
@@ -1060,6 +1077,8 @@ static void execute_command() {
         smp_print_summary();
     } else if (strcmp64(cmd, "cpunmi") == 0) {
         command_cpunmi(arg);
+    } else if (strcmp64(cmd, "cpuresched") == 0) {
+        command_cpuresched(arg);
     } else if (strcmp64(cmd, "intctl") == 0) {
         interrupt_controller_print();
     } else if (strcmp64(cmd, "panic") == 0) {

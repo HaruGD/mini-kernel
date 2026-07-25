@@ -515,6 +515,32 @@ int smp_debug_send_nmi(uint32_t logical_id) {
 #endif
 }
 
+uint64_t smp_debug_reschedule_burst(uint32_t logical_id, uint32_t count) {
+#ifdef OS64_HOST_TEST
+    (void)logical_id;
+    (void)count;
+    return 0;
+#else
+    CpuLocal* target = cpu_local_by_id(logical_id);
+    const CpuRecord* record = cpu_record(logical_id);
+    CpuLocal* current = cpu_local_current();
+    if (target == 0 || record == 0 || current == 0 ||
+        logical_id == current->logical_id || count == 0 ||
+        record->lifecycle != CPU_STATE_ONLINE ||
+        !__atomic_load_n(&target->scheduler_enabled, __ATOMIC_ACQUIRE)) {
+        return 0;
+    }
+    const uint64_t before =
+        __atomic_load_n(&target->reschedule_coalesced_count, __ATOMIC_ACQUIRE);
+    for (uint32_t i = 0; i < count; i++) {
+        smp_request_reschedule(logical_id);
+    }
+    const uint64_t after =
+        __atomic_load_n(&target->reschedule_coalesced_count, __ATOMIC_ACQUIRE);
+    return after - before;
+#endif
+}
+
 const SmpStartupStats* smp_startup_stats() {
     return &startup_stats;
 }

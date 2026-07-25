@@ -41,6 +41,7 @@ struct SmpExecutionStats {
 int smp_start_application_processors();
 void smp_startup_ping_handler();
 int smp_debug_send_nmi(uint32_t logical_id);
+uint64_t smp_debug_reschedule_burst(uint32_t logical_id, uint32_t count);
 int smp_release_scheduler_execution();
 int smp_scheduler_execution_released();
 void smp_notify_runnable(uint32_t affinity_mask);
