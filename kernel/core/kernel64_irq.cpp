@@ -1,7 +1,12 @@
 extern "C" void keyboard_handler64() {
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) local->interrupt_depth++;
     interrupt_controller_eoi(1);
     keyboard.handle();
     driver_irq_dispatch(1);
+    if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+        local->interrupt_depth--;
+    }
 }
 
 extern "C" int user_input_active64() {
@@ -29,6 +34,11 @@ uint32_t kernel_user_test_count() {
 }
 
 extern "C" uint64_t timer_handler64() {
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) {
+        local->interrupt_depth++;
+        local->timer_interrupt_count++;
+    }
     pit.handle();
     interrupt_controller_eoi(0);
     driver_irq_dispatch(0);
@@ -42,6 +52,9 @@ extern "C" uint64_t timer_handler64() {
     Thread* thread = current_thread();
     if (thread != 0 && thread->context->timeslice_ticks == 0) {
         scheduler_refresh_timeslice(thread);
+    }
+    if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+        local->interrupt_depth--;
     }
     return result;
 }

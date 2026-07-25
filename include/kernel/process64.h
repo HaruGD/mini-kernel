@@ -73,7 +73,6 @@ struct SchedulerDiagnosticSnapshot {
     ProcessDiagnosticSnapshot processes[PROCESS_TABLE_SIZE];
 };
 
-extern uint32_t user_program_depth;
 extern uint32_t next_pid;
 extern uint32_t next_process_generation;
 extern uint32_t next_tid;
@@ -81,8 +80,6 @@ extern uint32_t next_thread_generation;
 extern uint64_t next_wait_sequence;
 extern Process process_table[PROCESS_TABLE_SIZE];
 extern Thread thread_table[THREAD_TABLE_SIZE];
-extern Process* process_stack[EXECUTION_STACK_SIZE];
-extern Thread* thread_stack[EXECUTION_STACK_SIZE];
 extern Thread* sched_queue[SCHED_QUEUE_SIZE];
 extern uint32_t sched_queue_count;
 extern uint32_t sched_queue_head;
@@ -93,6 +90,14 @@ extern uint32_t input_focus_pid;
 
 Process* current_process();
 Thread* current_thread();
+uint32_t process_execution_depth();
+void process_execution_reset();
+int process_execution_push(Process* process,
+                           Thread* thread,
+                           uint32_t* stack_index);
+int process_execution_pop(uint32_t stack_index,
+                          Process* process,
+                          Thread* thread);
 Thread* process_main_thread(const Process* process);
 ThreadIdentity thread_identity(const Thread* thread);
 int thread_identity_matches(const Thread* thread, ThreadIdentity identity);

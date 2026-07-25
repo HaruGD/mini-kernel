@@ -2,6 +2,7 @@
 #include "kernel/klog.h"
 #include "kernel/panic.h"
 #include "kernel/driver/driver_manager.h"
+#include "kernel/cpu_local.h"
 
 extern "C" {
     #include "arch/x86_64/io.h"
@@ -24,6 +25,7 @@ static uint32_t pic_spurious7 = 0;
 static uint32_t pic_spurious15 = 0;
 
 extern "C" void isr_default_asm();
+extern "C" void isr_nmi_asm();
 extern "C" void isr_page_fault_asm();
 extern "C" void isr_gp_fault_asm();
 extern "C" void isr_double_fault_asm();
@@ -79,6 +81,8 @@ extern "C" void idt64_init() {
         set_idt64_gate(i, (uint64_t)isr_default_asm);
     }
 
+    set_idt64_gate(2, (uint64_t)isr_nmi_asm);
+    idt64[2].ist = 2;
     set_idt64_gate(8, (uint64_t)isr_double_fault_asm);
     idt64[8].ist = 1;
     set_idt64_gate(13, (uint64_t)isr_gp_fault_asm);
@@ -158,10 +162,46 @@ extern "C" uint64_t gp_fault_handler64(uint64_t error_code, uint64_t* frame) {
     return process_fault_returnable64();
 }
 
-extern "C" uint64_t double_fault_handler64(uint64_t error_code, uint64_t* frame) {
-    PanicInterruptInfo info = fault_info(frame, error_code, 0);
-    process_record_fault64(PROCESS_TERM_DOUBLE_FAULT, (uint32_t)error_code);
-    kernel_panic("double fault", &info);
+extern "C" void nmi_handler64(uint64_t stack_pointer, uint64_t* frame) {
+    (void)frame;
+    CpuLocal* local =
+        cpu_local_emergency_enter(stack_pointer, CPU_EMERGENCY_NMI);
+    if (local == 0) {
+        debug_print64("\nCPU EMERGENCY FAILURE: NMI identity\n");
+        while (1) __asm__ volatile("cli; hlt");
+    }
+    cpu_local_emergency_leave(local, CPU_EMERGENCY_NMI);
+}
+
+extern "C" uint64_t double_fault_handler64(uint64_t error_code,
+                                           uint64_t* frame,
+                                           uint64_t stack_pointer) {
+    (void)error_code;
+    (void)frame;
+    CpuLocal* local =
+        cpu_local_emergency_enter(stack_pointer, CPU_EMERGENCY_DOUBLE_FAULT);
+    debug_print64("\n=== CPU EMERGENCY DOUBLE FAULT ===");
+    if (local != 0) {
+        debug_print64("\nlogical=");
+        debug_print_hex64(local->logical_id);
+        debug_print64(" apic=");
+        debug_print_hex64(local->apic_id);
+    } else {
+        debug_print64("\nidentity=invalid");
+    }
+    debug_print64("\nSystem halted.\n");
+    while (1) __asm__ volatile("cli; hlt");
+}
+
+extern "C" void idt64_debug_force_double_fault() {
+    volatile idt64_entry* page_fault_gate = &idt64[14];
+    page_fault_gate->type_attr =
+        (uint8_t)(page_fault_gate->type_attr & (uint8_t)~0x80u);
+    const uint64_t invalid_address = 0xFFFFFFFFFFFFF000ULL;
+    __asm__ volatile("movq (%0), %%rax"
+                     :
+                     : "r"(invalid_address)
+                     : "rax", "memory");
 }
 
 extern "C" void spurious_interrupt_handler64() {

@@ -49,7 +49,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         return 0;
     }
 
-    if (user_program_depth >= USER_PROGRAM_SLOT_COUNT) {
+    if (process_execution_depth() >= USER_PROGRAM_SLOT_COUNT) {
         print("\nUser program nesting limit reached.");
         return 0;
     }
@@ -59,7 +59,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         print("\nNo free execution slot. Resume or finish paused programs first.");
         return 0;
     }
-    uint32_t stack_index = user_program_depth;
+    uint32_t stack_index = process_execution_depth();
     uint64_t user_code_base = 0;
     uint64_t user_stack_guard_base = 0;
     get_execution_slot_bases(slot_index, &user_code_base, &user_stack_guard_base);
@@ -543,15 +543,15 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     }
     scheduler_mark_running(process);
     focus_foreground_process(process);
-    process_stack[stack_index] = process;
-    thread_stack[stack_index] = thread;
-    user_program_depth++;
+    if (!process_execution_push(process, thread, &stack_index)) {
+        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 10);
+        scheduler_mark_finished(process);
+        return 0;
+    }
     address_space_activate(&process->address_space);
     uint64_t initial_user_rsp = prepare_user_stack_with_argv(process, user_stack_top, &launch);
     enter_user_mode(process->entry_point, initial_user_rsp);
-    user_program_depth--;
-    process_stack[stack_index] = 0;
-    thread_stack[stack_index] = 0;
+    process_execution_pop(stack_index, process, thread);
     Process* active_after_return = current_process();
     if (active_after_return != 0) {
         address_space_activate(&active_after_return->address_space);
@@ -688,11 +688,11 @@ static int resume_user_thread_internal(Process* parent,
         thread->owner != process) {
         return 0;
     }
-    if (user_program_depth >= EXECUTION_STACK_SIZE) {
+    if (process_execution_depth() >= EXECUTION_STACK_SIZE) {
         return 0;
     }
     ThreadContext* context = thread->context;
-    uint32_t stack_index = user_program_depth;
+    uint32_t stack_index = process_execution_depth();
 
     uint64_t saved_rsp0 = gdt64_get_kernel_stack();
     int saved_keyboard_mask = interrupt_controller_irq_masked(1);
@@ -736,9 +736,11 @@ static int resume_user_thread_internal(Process* parent,
         print("\nFailed to map user ELF link-address alias.");
         return 0;
     }
-    process_stack[stack_index] = process;
-    thread_stack[stack_index] = thread;
-    user_program_depth++;
+    if (!process_execution_push(process, thread, &stack_index)) {
+        process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 10);
+        scheduler_mark_finished(process);
+        return 0;
+    }
     address_space_activate(&process->address_space);
     complete_waiting_syscall64(thread);
     kernel_user_resume_rax = context->saved_rax;
@@ -752,9 +754,7 @@ static int resume_user_thread_internal(Process* parent,
     set_user_fs_base(context->tls_base);
     resume_user_mode();
     set_user_fs_base(0);
-    user_program_depth--;
-    process_stack[stack_index] = 0;
-    thread_stack[stack_index] = 0;
+    process_execution_pop(stack_index, process, thread);
     Process* active_after_return = current_process();
     if (active_after_return != 0) {
         address_space_activate(&active_after_return->address_space);
@@ -900,7 +900,7 @@ int resume_user_program(uint32_t pid) {
         print("\nProcess is not paused.\n");
         return 0;
     }
-    if (user_program_depth >= USER_PROGRAM_SLOT_COUNT) {
+    if (process_execution_depth() >= USER_PROGRAM_SLOT_COUNT) {
         print("\nUser program nesting limit reached.");
         return 0;
     }

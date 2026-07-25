@@ -10,8 +10,10 @@
 #include "kernel/syscall64.h"
 #include "kernel/mm/pmm.h"
 #include "kernel/mm/vm.h"
+#ifndef OS64_HOST_TEST
+#include "kernel/cpu_local.h"
+#endif
 
-uint32_t user_program_depth = 0;
 uint32_t next_pid = 1;
 uint32_t next_process_generation = 1;
 uint32_t next_tid = 1;
@@ -19,8 +21,11 @@ uint32_t next_thread_generation = 1;
 uint64_t next_wait_sequence = 1;
 Process process_table[PROCESS_TABLE_SIZE];
 Thread thread_table[THREAD_TABLE_SIZE];
-Process* process_stack[EXECUTION_STACK_SIZE];
-Thread* thread_stack[EXECUTION_STACK_SIZE];
+#ifdef OS64_HOST_TEST
+static uint32_t host_execution_depth = 0;
+static Process* host_process_stack[EXECUTION_STACK_SIZE];
+static Thread* host_thread_stack[EXECUTION_STACK_SIZE];
+#endif
 Thread* sched_queue[SCHED_QUEUE_SIZE];
 uint32_t sched_queue_count = 0;
 uint32_t sched_queue_head = 0;
@@ -86,7 +91,7 @@ static void thread_record_zero(Thread* thread) {
 }
 
 void process_system_init() {
-    user_program_depth = 0;
+    process_execution_reset();
     next_pid = 1;
     next_process_generation = 1;
     next_tid = 1;
@@ -98,10 +103,6 @@ void process_system_init() {
     sched_switch_count = 0;
     sched_yield_count = 0;
     input_focus_pid = 0;
-    for (uint32_t i = 0; i < EXECUTION_STACK_SIZE; i++) {
-        process_stack[i] = 0;
-        thread_stack[i] = 0;
-    }
     for (uint32_t i = 0; i < SCHED_QUEUE_SIZE; i++) {
         sched_queue[i] = 0;
     }
@@ -307,10 +308,16 @@ Thread* process_main_thread(const Process* process) {
 }
 
 Thread* current_thread() {
-    if (user_program_depth == 0 || user_program_depth > EXECUTION_STACK_SIZE) {
+    uint32_t depth = process_execution_depth();
+    if (depth == 0 || depth > EXECUTION_STACK_SIZE) {
         return 0;
     }
-    return thread_stack[user_program_depth - 1];
+#ifdef OS64_HOST_TEST
+    return host_thread_stack[depth - 1];
+#else
+    CpuLocal* local = cpu_local_current();
+    return cpu_local_validate(local) ? local->thread_stack[depth - 1] : 0;
+#endif
 }
 
 Process* current_process() {
@@ -318,10 +325,92 @@ Process* current_process() {
     if (thread != 0) {
         return thread->owner;
     }
-    if (user_program_depth == 0 || user_program_depth > EXECUTION_STACK_SIZE) {
+    uint32_t depth = process_execution_depth();
+    if (depth == 0 || depth > EXECUTION_STACK_SIZE) {
         return 0;
     }
-    return process_stack[user_program_depth - 1];
+#ifdef OS64_HOST_TEST
+    return host_process_stack[depth - 1];
+#else
+    CpuLocal* local = cpu_local_current();
+    return cpu_local_validate(local) ? local->process_stack[depth - 1] : 0;
+#endif
+}
+
+uint32_t process_execution_depth() {
+#ifdef OS64_HOST_TEST
+    return host_execution_depth;
+#else
+    CpuLocal* local = cpu_local_current();
+    return cpu_local_validate(local) ? local->execution_depth : 0;
+#endif
+}
+
+void process_execution_reset() {
+#ifdef OS64_HOST_TEST
+    host_execution_depth = 0;
+    for (uint32_t i = 0; i < EXECUTION_STACK_SIZE; i++) {
+        host_process_stack[i] = 0;
+        host_thread_stack[i] = 0;
+    }
+#else
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local)) return;
+    local->execution_depth = 0;
+    local->current_thread = 0;
+    for (uint32_t i = 0; i < EXECUTION_STACK_SIZE; i++) {
+        local->process_stack[i] = 0;
+        local->thread_stack[i] = 0;
+    }
+#endif
+}
+
+int process_execution_push(Process* process,
+                           Thread* thread,
+                           uint32_t* stack_index) {
+    uint32_t depth = process_execution_depth();
+    if (process == 0 || thread == 0 || depth >= EXECUTION_STACK_SIZE) return 0;
+#ifdef OS64_HOST_TEST
+    host_process_stack[depth] = process;
+    host_thread_stack[depth] = thread;
+    host_execution_depth = depth + 1;
+#else
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local)) return 0;
+    local->process_stack[depth] = process;
+    local->thread_stack[depth] = thread;
+    local->current_thread = thread;
+    local->execution_depth = depth + 1;
+    local->entry_depth++;
+#endif
+    if (stack_index != 0) *stack_index = depth;
+    return 1;
+}
+
+int process_execution_pop(uint32_t stack_index,
+                          Process* process,
+                          Thread* thread) {
+    uint32_t depth = process_execution_depth();
+    if (depth == 0 || stack_index != depth - 1) return 0;
+#ifdef OS64_HOST_TEST
+    if (host_process_stack[stack_index] != process ||
+        host_thread_stack[stack_index] != thread) return 0;
+    host_process_stack[stack_index] = 0;
+    host_thread_stack[stack_index] = 0;
+    host_execution_depth--;
+#else
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local) ||
+        local->process_stack[stack_index] != process ||
+        local->thread_stack[stack_index] != thread) return 0;
+    local->process_stack[stack_index] = 0;
+    local->thread_stack[stack_index] = 0;
+    local->execution_depth--;
+    if (local->entry_depth != 0) local->entry_depth--;
+    local->current_thread = local->execution_depth != 0
+        ? local->thread_stack[local->execution_depth - 1] : 0;
+#endif
+    return 1;
 }
 
 Thread* allocate_thread_record(Process* owner, int is_main) {
@@ -1794,6 +1883,9 @@ void scheduler_mark_finished(Process* process) {
 }
 
 void scheduler_yield_current() {
+    if (!kernel_spinlock_assert_can_schedule()) {
+        return;
+    }
     Thread* thread = current_thread();
     if (thread == 0 || thread->context == 0) {
         return;
@@ -2057,8 +2149,14 @@ int process_record_is_active(const Process* process) {
         return 0;
     }
 
-    for (uint32_t i = 0; i < EXECUTION_STACK_SIZE; i++) {
-        if (process_stack[i] == process) {
+    const uint32_t depth = process_execution_depth();
+    for (uint32_t i = 0; i < depth; i++) {
+#ifdef OS64_HOST_TEST
+        if (host_process_stack[i] == process) {
+#else
+        CpuLocal* local = cpu_local_current();
+        if (cpu_local_validate(local) && local->process_stack[i] == process) {
+#endif
             return 1;
         }
     }

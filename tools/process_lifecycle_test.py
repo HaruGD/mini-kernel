@@ -28,7 +28,7 @@ static void clear_all() {
     next_process_generation = 1;
     next_tid = 1;
     next_thread_generation = 1;
-    user_program_depth = 0;
+    process_execution_reset();
     sched_queue_count = 0;
     sched_queue_head = 0;
     sched_last_pid = 0;
@@ -36,10 +36,6 @@ static void clear_all() {
     sched_yield_count = 0;
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         process_clear(&process_table[i]);
-    }
-    for (uint32_t i = 0; i < EXECUTION_STACK_SIZE; i++) {
-        process_stack[i] = 0;
-        thread_stack[i] = 0;
     }
     for (uint32_t i = 0; i < SCHED_QUEUE_SIZE; i++) {
         sched_queue[i] = 0;

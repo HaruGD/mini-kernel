@@ -1,13 +1,27 @@
 #include "arch/x86_64/gdt64.h"
+#include "kernel/cpu.h"
+#include "kernel/cpu_local.h"
 
-static uint64_t gdt64_table[8];
-static struct gdtr64 gdtr64_desc;
-static struct tss64 kernel_tss64;
-static uint8_t kernel_rsp0_stack[16384] __attribute__((aligned(16)));
-static uint8_t double_fault_stack[16384] __attribute__((aligned(16)));
+struct Gdt64CpuState {
+    uint64_t table[8];
+    struct gdtr64 gdtr;
+    struct tss64 tss;
+};
 
-static void set_tss64_descriptor(int index, uint64_t base, uint32_t limit) {
-    struct gdt64_system_descriptor* desc = (struct gdt64_system_descriptor*)&gdt64_table[index];
+static Gdt64CpuState cpu_gdt[CPU_MAX_COUNT];
+
+static Gdt64CpuState* current_state() {
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local)) return 0;
+    return &cpu_gdt[local->logical_id];
+}
+
+static void set_tss64_descriptor(uint64_t* table,
+                                 int index,
+                                 uint64_t base,
+                                 uint32_t limit) {
+    struct gdt64_system_descriptor* desc =
+        (struct gdt64_system_descriptor*)&table[index];
     desc->limit_low = limit & 0xFFFF;
     desc->base_low = base & 0xFFFF;
     desc->base_mid = (base >> 16) & 0xFF;
@@ -19,11 +33,13 @@ static void set_tss64_descriptor(int index, uint64_t base, uint32_t limit) {
 }
 
 extern "C" void gdt64_set_kernel_stack(uint64_t rsp0) {
-    kernel_tss64.rsp0 = rsp0;
+    Gdt64CpuState* state = current_state();
+    if (state != 0) state->tss.rsp0 = rsp0;
 }
 
 extern "C" uint64_t gdt64_get_kernel_stack() {
-    return kernel_tss64.rsp0;
+    Gdt64CpuState* state = current_state();
+    return state != 0 ? state->tss.rsp0 : 0;
 }
 
 extern "C" uint16_t gdt64_get_tss_selector() {
@@ -31,29 +47,36 @@ extern "C" uint16_t gdt64_get_tss_selector() {
 }
 
 extern "C" void gdt64_init() {
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local)) return;
+    Gdt64CpuState* state = &cpu_gdt[local->logical_id];
     for (int i = 0; i < 8; i++) {
-        gdt64_table[i] = 0;
+        state->table[i] = 0;
     }
 
-    gdt64_table[1] = 0x00CF9A000000FFFFULL;
-    gdt64_table[2] = 0x00CF92000000FFFFULL;
-    gdt64_table[3] = 0x00AF9A000000FFFFULL;
-    gdt64_table[4] = 0x00CFF2000000FFFFULL;
-    gdt64_table[5] = 0x00AFFA000000FFFFULL;
+    state->table[1] = 0x00CF9A000000FFFFULL;
+    state->table[2] = 0x00CF92000000FFFFULL;
+    state->table[3] = 0x00AF9A000000FFFFULL;
+    state->table[4] = 0x00CFF2000000FFFFULL;
+    state->table[5] = 0x00AFFA000000FFFFULL;
 
-    for (unsigned int i = 0; i < sizeof(kernel_tss64); i++) {
-        ((volatile uint8_t*)&kernel_tss64)[i] = 0;
+    for (unsigned int i = 0; i < sizeof(state->tss); i++) {
+        ((volatile uint8_t*)&state->tss)[i] = 0;
     }
 
-    kernel_tss64.rsp0 = (uint64_t)(uintptr_t)(kernel_rsp0_stack + sizeof(kernel_rsp0_stack));
-    kernel_tss64.ist1 = (uint64_t)(uintptr_t)(double_fault_stack + sizeof(double_fault_stack));
-    kernel_tss64.io_map_base = sizeof(kernel_tss64);
+    state->tss.rsp0 = local->kernel_stack_top;
+    state->tss.ist1 = local->double_fault_stack_top;
+    state->tss.ist2 = local->nmi_stack_top;
+    state->tss.io_map_base = sizeof(state->tss);
 
-    set_tss64_descriptor(6, (uint64_t)(uintptr_t)&kernel_tss64, sizeof(kernel_tss64) - 1);
+    set_tss64_descriptor(state->table,
+                         6,
+                         (uint64_t)(uintptr_t)&state->tss,
+                         sizeof(state->tss) - 1);
 
-    gdtr64_desc.limit = sizeof(gdt64_table) - 1;
-    gdtr64_desc.base = (uint64_t)(uintptr_t)gdt64_table;
+    state->gdtr.limit = sizeof(state->table) - 1;
+    state->gdtr.base = (uint64_t)(uintptr_t)state->table;
 
-    gdt64_load(&gdtr64_desc);
+    gdt64_load(&state->gdtr);
     tss64_load(GDT64_TSS_SEL);
 }

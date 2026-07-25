@@ -2,6 +2,7 @@
 #include "kernel/handle/kernel_objects.h"
 #include "kernel/input/input_events.h"
 #include "kernel/cpu.h"
+#include "kernel/cpu_local.h"
 
 extern "C" uint8_t __kernel_text_start[];
 extern "C" uint8_t __kernel_text_end[];
@@ -155,6 +156,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     int acpi_ready = acpi_init(acpi_rsdp);
     int cpu_topology_ready =
         cpu_topology_init(acpi_state(), cpu_arch_bootstrap_apic_id());
+    int cpu_local_ready = cpu_topology_ready && cpu_local_system_init();
     int nx_policy_applied = apply_kernel_nx_policy(g_boot_info);
     int framebuffer_mapped = map_boot_framebuffer(g_boot_info);
     if (framebuffer_mapped) {
@@ -236,6 +238,8 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print_hex32((uint32_t)acpi_ready);
     print("\nCPU topology ready: ");
     print_hex32((uint32_t)cpu_topology_ready);
+    print("\nCPU local ready: ");
+    print_hex32((uint32_t)cpu_local_ready);
     print("\nInterrupt controller: ");
     print(interrupt_controller_name());
     print(" ready=");
@@ -246,6 +250,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     klog_write(KLOG_INFO, "boot", "kernel initialization complete");
     if (diagnostic_mode) {
         cpu_print_summary();
+        cpu_local_print_summary();
         klog_write(KLOG_INFO, "boot", "diagnostic report follows");
         print_boot_info();
         acpi_print_summary();

@@ -14,7 +14,8 @@ gdt64_reload_cs:
     mov ds, ax
     mov es, ax
     mov fs, ax
-    mov gs, ax
+    ; IA32_GS_BASE permanently owns CpuLocal. Reloading GS here would replace
+    ; that base with the flat descriptor base and break IRQ/NMI CPU identity.
     mov ss, ax
     ret
 

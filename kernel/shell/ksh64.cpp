@@ -7,6 +7,7 @@ extern "C" {
 
 #include "kernel/mm/vm.h"
 #include "arch/x86_64/apic.h"
+#include "arch/x86_64/idt64.h"
 #include "kernel/mm/pmm.h"
 #include "drivers/gop.h"
 #include "drivers/terminal.h"
@@ -17,6 +18,7 @@ extern "C" {
 #include "kernel/handle/kernel_objects.h"
 #include "kernel/acpi.h"
 #include "kernel/cpu.h"
+#include "kernel/cpu_local.h"
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/input/input_events.h"
@@ -508,7 +510,7 @@ static void command_debugfault(char* arg) {
         return;
     }
     if (arg == 0) {
-        print("\nUsage: debugfault gp|acpi_rsdp_checksum|acpi_madt_entry_len|acpi_no_ioapic");
+        print("\nUsage: debugfault gp|df|acpi_rsdp_checksum|acpi_madt_entry_len|acpi_no_ioapic");
         return;
     }
     if (strcmp64(arg, "gp") == 0) {
@@ -520,7 +522,10 @@ static void command_debugfault(char* arg) {
     }
 
     int injected = 0;
-    if (strcmp64(arg, "acpi_rsdp_checksum") == 0) {
+    if (strcmp64(arg, "df") == 0) {
+        idt64_debug_force_double_fault();
+        return;
+    } else if (strcmp64(arg, "acpi_rsdp_checksum") == 0) {
         injected = acpi_debug_corrupt_rsdp_checksum();
     } else if (strcmp64(arg, "acpi_madt_entry_len") == 0) {
         injected = acpi_debug_corrupt_madt_entry_length();
@@ -1038,6 +1043,7 @@ static void execute_command() {
         acpi_print_summary();
     } else if (strcmp64(cmd, "cpus") == 0) {
         cpu_print_summary();
+        cpu_local_print_summary();
     } else if (strcmp64(cmd, "intctl") == 0) {
         interrupt_controller_print();
     } else if (strcmp64(cmd, "panic") == 0) {

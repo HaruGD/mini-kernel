@@ -10,6 +10,7 @@
 
 global idt64_load
 global isr_default_asm
+global isr_nmi_asm
 global isr_page_fault_asm
 global isr_gp_fault_asm
 global isr_double_fault_asm
@@ -23,6 +24,7 @@ global user_exit_asm
 global syscall_asm
 
 extern default_interrupt_handler64
+extern nmi_handler64
 extern page_fault_handler64
 extern gp_fault_handler64
 extern double_fault_handler64
@@ -96,6 +98,16 @@ isr_default_asm:
     hlt
     jmp .hang_default
 
+isr_nmi_asm:
+    PUSH_GPRS
+    mov rdi, rsp
+    lea rsi, [rsp]
+    sub rsp, 8
+    call nmi_handler64
+    add rsp, 8
+    POP_GPRS
+    iretq
+
 isr_page_fault_asm:
     cli
     mov rax, cr2
@@ -131,10 +143,9 @@ isr_double_fault_asm:
     PUSH_GPRS
     mov rdi, [rsp + 120]
     lea rsi, [rsp]
+    mov rdx, rsp
     sub rsp, 8
     call double_fault_handler64
-    cmp rax, FAULT_RETURN_TO_KERNEL
-    je fault_exit_asm
 .hang_df:
     cli
     hlt

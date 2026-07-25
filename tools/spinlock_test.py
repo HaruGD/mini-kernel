@@ -43,9 +43,20 @@ int main() {
     KernelSpinlockToken outer;
     KernelSpinlockToken recursive;
     check(kernel_spinlock_acquire(&process_lock, &outer) == 1);
-    check(kernel_spinlock_acquire(&process_lock, &recursive) == 1);
-    kernel_spinlock_release(&process_lock, &recursive);
+    check(kernel_spinlock_acquire(&process_lock, &recursive) == 0);
     kernel_spinlock_release(&process_lock, &outer);
+
+    KernelSpinlock wrong_cpu_lock;
+    kernel_spinlock_init(&wrong_cpu_lock, KERNEL_LOCK_CLASS_PROCESS, "wrong_cpu");
+    KernelSpinlockToken owner_token;
+    check(kernel_spinlock_acquire(&wrong_cpu_lock, &owner_token) == 1);
+    std::thread wrong_releaser([&]() {
+        kernel_host_set_interrupts_enabled(1);
+        kernel_spinlock_release(&wrong_cpu_lock, &owner_token);
+    });
+    wrong_releaser.join();
+    check(wrong_cpu_lock.locked == 1);
+    kernel_spinlock_release(&wrong_cpu_lock, &owner_token);
 
     KernelSpinlock contention_lock;
     kernel_spinlock_init(&contention_lock, KERNEL_LOCK_CLASS_PROCESS, "contention");
@@ -68,10 +79,13 @@ int main() {
 
     KernelSpinlockStats stats;
     kernel_spinlock_get_stats(&stats);
-    check(stats.acquisitions >= 40003);
+    check(stats.acquisitions >= 40004);
     check(stats.order_violations == 1);
     check(stats.recursion_violations == 1);
-    check(stats.release_violations == 0);
+    check(stats.release_violations == 1);
+    check(stats.wrong_cpu_violations == 1);
+    check(stats.schedule_violations == 0);
+    check(stats.preemption_disable_depth == 0);
     check(stats.maximum_depth >= 2);
     check(stats.current_depth == 0);
     return failures == 0 ? 0 : 1;

@@ -390,12 +390,18 @@ void print_concurrency_info() {
     print_hex64(stats.recursion_violations);
     print(" release_violations=");
     print_hex64(stats.release_violations);
+    print(" wrong_cpu_violations=");
+    print_hex64(stats.wrong_cpu_violations);
+    print(" schedule_violations=");
+    print_hex64(stats.schedule_violations);
     print("\ndepth=");
     print_hex32(stats.current_depth);
     print(" max_depth=");
     print_hex32(stats.maximum_depth);
     print(" class=");
     print_hex32(stats.current_class);
+    print(" preempt=");
+    print_hex32(stats.preemption_disable_depth);
     print(" interrupts=");
     print(stats.interrupts_enabled ? "enabled" : "disabled");
     print("\nlast_violation=");

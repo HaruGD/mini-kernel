@@ -19,6 +19,7 @@ extern "C" {
 #include "fs/vfs.h"
 #include "kernel/boot_info.h"
 #include "kernel/acpi.h"
+#include "kernel/cpu_local.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/driver_manager.h"
 #include "kernel/pci.h"
