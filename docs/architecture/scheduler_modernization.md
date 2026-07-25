@@ -171,6 +171,12 @@ Phase 4.6 permits multiple CPUs to run kernel and user threads concurrently.
 It begins only after the single-CPU thread model and synchronization tests are
 stable.
 
+The entry baseline, fixed policies, ordered 4.6A through 4.6H implementation
+plan, regression matrix, and live evidence ledger are indexed in
+[Phase 4.6: SMP And Multicore Scheduling](../phases/phase-4.6/README.md).
+The first scheduler remains a locked global queue; per-CPU queues and work
+stealing are explicitly deferred until that model is measured and certified.
+
 ### CPU Bring-Up And State
 
 - enumerate and start application processors through the architecture backend;

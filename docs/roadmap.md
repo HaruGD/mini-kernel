@@ -207,17 +207,31 @@ Progress:
 
 ## Phase 4.6: SMP And Multicore Scheduling
 
-Planned work:
+Detailed planning and live evidence:
 
-- [ ] Start application processors and establish per-CPU scheduler, interrupt,
-  current-thread, kernel-stack, and idle state
-- [ ] Add an initially simple synchronized run-queue policy, reschedule IPIs,
-  remote wakeups, CPU affinity, and bounded load balancing
-- [ ] Implement cross-CPU TLB shootdown before concurrent address-space changes
-- [ ] Define interrupt routing and CPU ownership for timer and device work
-- [ ] Audit kernel subsystems for SMP-safe lock ordering and memory ordering
-- [ ] Pass concurrent lifecycle, VM, IPC, service, VFS, and graphics stress on
-  at least two virtual CPUs before enabling SMP by default
+- [Phase 4.6 overview](phases/phase-4.6/README.md)
+- [Entry baseline](phases/phase-4.6/entry_baseline.md)
+- [Implementation plan](phases/phase-4.6/implementation_plan.md)
+- [Regression matrix](phases/phase-4.6/regression_matrix.md)
+- [Progress ledger](phases/phase-4.6/progress.md)
+
+Progress:
+
+- [ ] 4.6A: Retain bounded CPU topology, identity, lifecycle, and diagnostics
+- [ ] 4.6B: Establish per-CPU entry, current-thread, idle, TSS/stack, interrupt,
+  preemption, and lock-tracking state
+- [ ] 4.6C: Start application processors and hold them in a validated local
+  idle path
+- [ ] 4.6D: Run distinct threads concurrently through a locked global queue
+  and per-CPU Local APIC preemption
+- [ ] 4.6E: Add reschedule IPIs, remote wakeups, CPU affinity, and bounded
+  distribution
+- [ ] 4.6F: Implement generation-checked cross-CPU TLB shootdown before
+  concurrent address-space mutation and page reuse
+- [ ] 4.6G: Audit kernel subsystems for SMP-safe locking, atomics, blocking,
+  and interrupt ownership
+- [ ] 4.6H: Pass deterministic SMP fault injection, the required multicore
+  soak, clean Phase 4.6 aggregate, and full project closure
 
 ## Phase 5: Desktop Foundation
 
