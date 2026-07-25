@@ -197,11 +197,13 @@ Progress:
 - [x] Give every thread its own saved context, kernel stack, user stack, wait
   state, identity generation, and accounting
 - [x] Add thread create, self, exit, join, yield, and sleep foundations
-- [ ] Add validated thread-local storage foundations
-- [ ] Certify per-thread blocking waits with multiple waiters and wake races
-- [ ] Add mutex, semaphore, condition-variable, and once primitives
-- [ ] Certify multithreaded process exit, fault isolation, resource cleanup,
-  fairness, and starvation bounds on one CPU
+- [x] Add validated thread-local storage foundations
+- [x] Certify per-thread blocking waits with multiple waiters and wake races
+- [x] Add mutex, semaphore, condition-variable, and once primitives
+- [x] Certify multithreaded process exit, fatal-fault attribution and cleanup,
+  resource rollback, fairness, and starvation bounds on one CPU
+- [x] Pass deterministic fault injection, the 60-second thread/GUI/service
+  churn soak, clean Phase 4.5 aggregate, and full project closure
 
 ## Phase 4.6: SMP And Multicore Scheduling
 

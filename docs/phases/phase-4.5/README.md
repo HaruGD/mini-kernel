@@ -19,16 +19,17 @@ CPUs to execute kernel and user code concurrently.
 
 ## Current Status
 
-4.5A through 4.5F completed on 2026-07-20. The kernel now has bounded
+Phase 4.5 completed on 2026-07-25. The kernel now has bounded
 generation-tagged thread records, per-thread waits, mutex/semaphore/condition
-objects, FS-based TLS, priority quanta, and attributable scheduling counters.
-User SDK 2.3 exposes lifecycle, synchronization, TLS, priority, and thread
-diagnostic APIs. Focused QEMU tests cover lifecycle reuse, exact wake policy,
-synchronization teardown, TLS isolation, and bounded CPU-sibling progress.
+objects, FS-based TLS, priority quanta, attributable scheduling counters, and
+deterministic thread-allocation fault injection. User SDK 2.3 exposes
+lifecycle, synchronization, TLS, priority, and thread diagnostic APIs.
 
-The next implementation task is 4.5G fault injection, soak, and closure.
-Phase 4.5 is not closed until that subphase runs the required 60-second soak
-and the clean aggregate regression suite.
+Focused QEMU tests cover lifecycle reuse, exact wake policy, synchronization
+teardown, TLS isolation, bounded CPU-sibling progress, fatal sibling-fault
+attribution, and exact rollback at six thread-specific failure points. The
+required 60-second thread/GUI/service churn soak, clean `make test-phase45`,
+and full `make test-closure` all pass. Phase 4.6 SMP work may now begin.
 
 ## Scope Boundary
 

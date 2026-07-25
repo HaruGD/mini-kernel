@@ -27,11 +27,10 @@ immutable implementation hash.
 | 4.5D: Thread-aware waiting | Complete | 2026-07-20 | 2026-07-20 | `cdb92ca` | Wait model and QEMU input/IPC regressions pass |
 | 4.5E: Synchronization primitives | Complete | 2026-07-20 | 2026-07-20 | `2211643` | QEMU synchronization policy test passes |
 | 4.5F: TLS, accounting, and fairness | Complete | 2026-07-20 | 2026-07-20 | `1594f34` | QEMU TLS/accounting/fairness test passes |
-| 4.5G: Fault injection, soak, and closure | Planned | - | - | - | - |
+| 4.5G: Fault injection, soak, and closure | Complete | 2026-07-25 | 2026-07-25 | `9acb245` | Six injected failure paths, fatal sibling fault, 60-second soak, aggregate and full closure pass |
 
-Current status: 4.5A through 4.5F are complete. The next task is 4.5G fault
-injection, soak, and closure. Phase 4.6 and Phase 5 remain gated on Phase 4.5
-closure.
+Current status: Phase 4.5 is complete. All eleven matrix rows pass from the
+immutable implementation commit `9acb245`; Phase 4.6 SMP work may begin.
 
 ## Recording Workflow
 
@@ -272,6 +271,56 @@ closure.
 
 ### Remaining
 
-4.5G must add deterministic fault injection, fatal sibling-fault coverage, the
-minimum 60-second thread/synchronization soak, and the clean Phase 4.5
-aggregate closure run.
+Completed by 4.5G. Phase 4.6 owns application-processor startup, per-CPU state,
+cross-CPU scheduling, IPIs, TLB shootdown, and the SMP lock audit.
+
+## 4.5G: Fault Injection, Soak, And Closure
+
+- Status: Complete
+- Started: 2026-07-25
+- Completed: 2026-07-25
+- Implementation commit: `9acb245`
+
+### Delivered
+
+- Added deterministic `thread_record`, `thread_user_stack`,
+  `thread_kernel_stack`, `thread_mapping`, `thread_wait`, and `sync_object`
+  failure points. Each injected failure is consumed once and rolls back to the
+  same warmed process, mapping, handle, mailbox, service, shared-object,
+  surface, PMM, and heap snapshot.
+- Added a multithreaded fatal-fault application whose first sibling remains
+  blocked while a second sibling triggers a user page fault. Diagnostics retain
+  the faulting TID and generation, the shared-address-space policy terminates
+  the process, and no sibling returns to user mode.
+- Fixed process-wide termination to release every non-current sibling runtime
+  stack exactly once. The new fault test found the original four-page drift
+  before the fix and proves zero drift afterward.
+- Added the required thread/synchronization/GUI/service churn soak and the real
+  `make test-phase45` aggregate target.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-thread-faults` | PASS | Six thread-specific injected failures fired exactly once; fatal sibling page fault reported its thread identity; scheduler ready queue and all lock-violation counters ended at zero. |
+| `make test-thread-soak` | PASS | 60 seconds, 14 composite cycles, 42 thread programs, and 56 GUI window lifecycles. |
+| `make clean` followed by `make -j2 uefi uefi-diagnostic` | PASS | Both normal and diagnostic UEFI images rebuilt from an empty build/output state. |
+| `make test-phase45` | PASS | Thread model, ABI/SDK 91/91, drive-free scheduling, waits, synchronization, readiness, both fault suites, and the required 60-second soak passed together. |
+| `make test-closure` | PASS | All earlier driver, UEFI, userland, graphics, input, IPC, service, concurrency, fault, and Phase 4 suites passed; GUI soak completed 35 cycles/140 windows/7 restarts and service soak completed 42 cycles. |
+
+### Resource Accounting
+
+The thread fault run recorded identical warmed and final tuples:
+`(0,0,0,0,0,0,0,27226,4096000,4116480)`. The tuple is processes, mappings,
+handles, mailboxes, services, shared objects, surfaces, free PMM pages, heap
+bytes used, and heap bytes mapped.
+
+The required 60-second combined soak recorded identical warmed and final
+tuples: `(4,21,1,0,4,0,1,27183,1944432,1961984)`. It also ended with no ready
+thread, stale terminal queue entry, kernel panic, double fault, or spinlock
+order/recursion/release violation. Unexplained drift is zero.
+
+### Remaining
+
+Phase 4.5 has no open exit-gate item. The optional one-hour release soak
+remains useful release evidence but is not required for Phase 4.6 entry.

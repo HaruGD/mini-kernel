@@ -123,11 +123,12 @@ state.
 Phase 4.5 separates a schedulable execution context from the process resource
 container. It remains valid to bring this up on one CPU first.
 
-Subphases 4.5A through 4.5F completed on 2026-07-20. The object model, main
-thread extraction, thread-selecting scheduler, private stacks, public thread
-lifecycle ABI, per-thread waits, synchronization objects, TLS, accounting,
-and single-CPU fairness policy are implemented. Final fault injection, soak,
-and closure remain in 4.5G.
+Phase 4.5 completed on 2026-07-25. The object model, main-thread extraction,
+thread-selecting scheduler, private stacks, public thread lifecycle ABI,
+per-thread waits, synchronization objects, TLS, accounting, single-CPU
+fairness, deterministic fault injection, fatal-fault cleanup, and 60-second
+churn certification are implemented. The clean Phase 4.5 aggregate and full
+project closure suites pass; Phase 4.6 is now the active scheduler milestone.
 
 The detailed entry baseline, subphase order, fixed lifecycle policies,
 regression matrix, and live evidence ledger are indexed in
