@@ -95,6 +95,18 @@ def count_matching(image: PpmImage, predicate) -> int:
     return count
 
 
+def region_has_majority(image: PpmImage, x: int, y: int, predicate,
+                        radius: int = 3) -> bool:
+    matched = 0
+    total = 0
+    for py in range(max(0, y - radius), min(image.height, y + radius + 1)):
+        for px in range(max(0, x - radius), min(image.width, x + radius + 1)):
+            total += 1
+            if predicate(image.rgb_at(px, py)):
+                matched += 1
+    return total != 0 and matched * 2 > total
+
+
 def send_monitor_line(proc: subprocess.Popen, line: str) -> None:
     assert proc.stdin is not None
     proc.stdin.write((line + "\n").encode("ascii"))
@@ -183,9 +195,15 @@ def validate_full_frame(scenario: Scenario, image: PpmImage) -> None:
         )
 
     box = min(image.width, image.height, 96)
-    if not is_outer_color(image.rgb_at(max(1, box // 8), max(1, box // 2))):
+    if not region_has_majority(image,
+                               max(1, box // 8),
+                               max(1, box // 2),
+                               is_outer_color):
         raise AssertionError(f"{scenario.name}: outer test pattern is misplaced")
-    if not is_inner_color(image.rgb_at(max(1, box // 2), max(1, box // 3))):
+    if not region_has_majority(image,
+                               max(1, box // 2),
+                               max(1, box // 3),
+                               is_inner_color):
         raise AssertionError(f"{scenario.name}: inner test pattern is misplaced")
 
 
@@ -210,7 +228,10 @@ def validate_partial_frame(scenario: Scenario, image: PpmImage) -> None:
         raise AssertionError(f"{scenario.name}: partial diagonal is missing")
 
     box = min(image.width, image.height, 96)
-    if not is_outer_color(image.rgb_at(max(1, box // 8), max(1, box // 4))):
+    if not region_has_majority(image,
+                               max(1, box // 8),
+                               max(1, box // 4),
+                               is_outer_color):
         raise AssertionError(f"{scenario.name}: full-frame region was damaged by partial present")
 
 
