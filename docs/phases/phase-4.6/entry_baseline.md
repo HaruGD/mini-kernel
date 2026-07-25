@@ -106,16 +106,30 @@ SMP adds the following invariants without weakening those rules:
   or general kernel work.
 - Move lock tracking and interrupt-entry state to per-CPU storage before APs
   acquire ordinary kernel locks.
+- Reserve GS for kernel `CpuLocal` in the first SMP implementation, keep user
+  TLS in FS, and do not enable user GS/FSGSBASE or a `SWAPGS`-dependent entry
+  path until a separate NMI-safe protocol exists.
+- Give NMI and Double Fault distinct per-CPU IST stacks whose static range,
+  header, magic, logical ID, APIC ID, and self pointer can recover and validate
+  CPU identity without trusting only the interrupted GS state.
+- Standardize interrupt-saving spinlocks before AP release: acquisition
+  disables local preemption and records owner CPU; blocking/yield/schedule is
+  forbidden while preemption or lock depth is nonzero.
 - Begin with one locked global ready queue. Optimization is not an entry
   requirement.
 - Keep external device interrupts on the BSP until an explicit owner and
   migration policy is tested.
 - Keep PIT-based global timekeeping single-owner. Per-CPU Local APIC timer
   ticks drive local preemption and must not multiply wall-clock time.
+- Make each CPU calibrate its own Local APIC timer against the common
+  invariant-TSC/PIT reference and reject scheduler participation when its
+  frequency or drift is outside the documented tolerance.
 - Before 4.6F, concurrent execution may use only mappings held stable for the
   whole run. Do not permit concurrent mapping mutation, unmap, teardown, or
   page reuse until shootdown and acknowledgement are implemented.
-- Never wait for another CPU while holding a lock that its IPI handler needs.
+- Serialize each address-space shootdown, quarantine retired pages, release
+  every ordinary subsystem spinlock, and only then enter the `TLB_WAIT`
+  acknowledgement barrier. Never wait for another CPU while holding a lock.
 - Do not expose public affinity or topology ABI until sizes, flags, and denial
   behavior are frozen.
 - Every subphase must keep the one-CPU Phase 4.5 and full closure suites green.

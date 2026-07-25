@@ -79,7 +79,10 @@ Append one section per completed subphase:
 
 - QEMU CPU model and `-smp` count;
 - discovered/prepared/online/failed CPU counts;
-- per-CPU timer, scheduler, IPI, TLB, and idle progress;
+- per-CPU timer calibration source/frequency/error, scheduler, IPI, TLB, and
+  idle progress;
+- NMI/Double Fault CPU identity and emergency-entry result;
+- spinlock IF/preemption/owner violations and `TLB_WAIT` lock-depth result;
 - warmed and final process/thread/page/heap/resource tuple;
 - unexplained drift or stalled CPU: zero, or a documented blocker.
 

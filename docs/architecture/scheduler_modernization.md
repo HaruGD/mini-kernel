@@ -176,6 +176,11 @@ plan, regression matrix, and live evidence ledger are indexed in
 [Phase 4.6: SMP And Multicore Scheduling](../phases/phase-4.6/README.md).
 The first scheduler remains a locked global queue; per-CPU queues and work
 stealing are explicitly deferred until that model is measured and certified.
+The same plan reserves kernel GS for validated CPU-local state, gives
+NMI/Double Fault independent emergency IST recovery, requires each CPU to
+self-calibrate its Local APIC timer, standardizes irqsave/preemption spinlock
+ownership, and places every TLB acknowledgement wait after ordinary locks have
+been released.
 
 ### CPU Bring-Up And State
 

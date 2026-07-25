@@ -219,17 +219,18 @@ Progress:
 
 - [ ] 4.6A: Retain bounded CPU topology, identity, lifecycle, and diagnostics
 - [ ] 4.6B: Establish per-CPU entry, current-thread, idle, TSS/stack, interrupt,
-  preemption, and lock-tracking state
+  preemption, lock tracking, and NMI/Double Fault emergency identity state
 - [ ] 4.6C: Start application processors and hold them in a validated local
   idle path
 - [ ] 4.6D: Run distinct threads concurrently through a locked global queue
-  and per-CPU Local APIC preemption
+  and independently calibrated per-CPU Local APIC preemption
 - [ ] 4.6E: Add reschedule IPIs, remote wakeups, CPU affinity, and bounded
   distribution
 - [ ] 4.6F: Implement generation-checked cross-CPU TLB shootdown before
-  concurrent address-space mutation and page reuse
-- [ ] 4.6G: Audit kernel subsystems for SMP-safe locking, atomics, blocking,
-  and interrupt ownership
+  concurrent address-space mutation and page reuse, using quarantine and a
+  lock-free `TLB_WAIT` acknowledgement boundary
+- [ ] 4.6G: Audit kernel subsystems for SMP-safe irqsave/preemption locking,
+  atomics, blocking, lock ordering, and interrupt ownership
 - [ ] 4.6H: Pass deterministic SMP fault injection, the required multicore
   soak, clean Phase 4.6 aggregate, and full project closure
 

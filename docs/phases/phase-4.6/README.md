@@ -41,11 +41,13 @@ Phase 4.6 includes:
 - bounded CPU topology and stable logical CPU identities;
 - per-CPU current thread, idle context, kernel entry state, interrupt depth,
   preemption state, lock tracking, GDT/TSS, and diagnostic counters;
+- NMI/Double Fault-safe CPU-local recovery with per-CPU emergency IST stacks;
 - x86_64 INIT/SIPI application-processor startup with bounded failure;
 - simultaneous scheduling of user threads on at least two CPUs;
-- Local APIC timer preemption, reschedule IPIs, remote wakeups, affinity, and
-  bounded distribution;
-- cross-CPU TLB invalidation and safe address-space teardown;
+- calibrated Local APIC timer preemption, reschedule IPIs, remote wakeups,
+  affinity, and bounded distribution;
+- lock-safe three-phase cross-CPU TLB invalidation, quarantine, and safe
+  address-space teardown;
 - kernel-wide SMP lock and interrupt-ownership audits;
 - deterministic fault injection and multicore soak closure.
 

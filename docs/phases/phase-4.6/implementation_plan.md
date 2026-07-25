@@ -70,9 +70,29 @@ Every online CPU has one authoritative `CpuLocal` record containing:
 - pending reschedule and TLB-shootdown state.
 
 The BSP migrates to the same `CpuLocal` access path before any AP is started.
-Architecture code may use a kernel-reserved GS base or another constant-time
-CPU-local mechanism, but user TLS remains FS-based and no user-controlled
-state may redirect kernel CPU-local access.
+The first x86_64 SMP implementation reserves `IA32_GS_BASE` permanently for
+the kernel `CpuLocal` pointer. User TLS remains FS-based, CR4.FSGSBASE remains
+disabled, no public operation may change GS, and ordinary user/kernel entry
+does not use `SWAPGS`. This makes GS state unambiguous even when an NMI arrives
+between arbitrary instructions. A future user-GS feature requires a separate
+paranoid entry protocol and is not an implicit extension of this phase.
+
+Every `CpuLocal` begins with a fixed validation header containing a magic,
+logical CPU ID, APIC ID, and self pointer. NMI and Double Fault use distinct
+per-CPU IST stacks allocated from static aligned, fixed-stride arrays. Their
+assembly entry derives a candidate CPU index from the emergency-stack range
+and validates the header, self pointer, and APIC identity before using normal
+CPU-local state. A mismatch enters a minimal emergency panic record and halt
+path; it never continues through the ordinary scheduler or fault path.
+
+NMI and Double Fault handlers never acquire ordinary spinlocks, allocate,
+copy user memory, schedule, or wait for another CPU. The Double Fault IST is
+usable before the CPU publishes `ONLINE`. The initial NMI/Double Fault path
+therefore does not rely solely on a valid interrupted GS base. NMI entry sets
+a CPU-local emergency-active guard before ordinary diagnostics; unexpected
+reentry is a non-returning emergency failure, and the handler never executes
+an instruction that deliberately unblocks NMI before `iretq`. Double Fault is
+always non-returning.
 
 ### AP Startup And Failure
 
@@ -115,6 +135,17 @@ state may redirect kernel CPU-local access.
   advancement until a later time-source project replaces it.
 - Per-CPU Local APIC timers account runtime and expire the local scheduling
   quantum. They do not independently increment global wall-clock ticks.
+- The BSP detects invariant TSC and CPUID leaves `0x15`/`0x16` and publishes a
+  common frequency reference. If that information is unavailable, the
+  BSP-owned PIT epoch is the fallback reference.
+- Each CPU measures its own Local APIC decrement rate against that common
+  reference. The BSP does not pretend to read a remote CPU's Local APIC timer.
+- Every CPU records calibration source, measured frequency, reload value,
+  sample window, and error. A CPU outside the frozen tolerance remains online
+  for diagnostics but is not released into scheduler participation.
+- Timer regression compares one-, two-, and four-vCPU global time and
+  per-CPU quantum duration so CPU count cannot multiply wall time or silently
+  skew scheduling.
 - Keyboard and other external device interrupts remain routed to the BSP
   until 4.6G assigns a tested owner.
 - Reschedule and TLB shootdown use separate fixed IPI vectors with distinct
@@ -132,25 +163,79 @@ state may redirect kernel CPU-local access.
   complex shared state.
 - Every address space records a TLB generation and the CPUs on which it may
   currently have cached translations.
+- Every CPU records its loaded address-space identity and observed TLB
+  generation. Context switch compares that generation and performs a local
+  flush before user execution when it is stale.
 - A mapping mutation publishes invalidation work before sending shootdown
   IPIs. Required targets acknowledge the matching address-space identity and
   generation.
-- Physical pages, page-table pages, and reusable address-space identities are
-  retained until all required acknowledgements complete or the target CPU is
-  proven offline through a separate failure path.
+- One address space has at most one serialized shootdown transaction. Its
+  operation token prevents a released/reacquired VM lock from accepting an
+  acknowledgement for an older mutation.
+- Mapping removal first clears the PTE under the address-space/VM lock and
+  moves physical pages, page-table pages, virtual ranges, and address-space
+  identities to a quarantine list. None can be freed or reused yet.
+- After publishing the request and target mask, the initiator releases every
+  ordinary subsystem spinlock. It then sends IPIs and waits with local
+  preemption disabled but maskable interrupts enabled. Entry to this path
+  asserts that the caller arrived from an interrupt-enabled thread context.
+- The initiating CPU performs its own required invalidation synchronously.
+  The remaining target mask is captured under scheduler/address-space
+  coordination; a CPU that begins running the address space afterward must
+  observe the new generation and flush before entering user mode.
+- The IPI handler reads only its bounded CPU-local mailbox, performs `invlpg`
+  or a full local address-space flush, publishes the matching acknowledgement,
+  and sends EOI. It takes no VM/heap/process lock and performs no allocation.
+- Only after every required acknowledgement may the initiator reacquire the
+  VM lock, revalidate the operation token, and retire quarantined state.
+- A timeout never counts as acknowledgement. Unless the target is already
+  proven offline by a separate CPU-failure protocol, pages remain quarantined
+  and the first correctness implementation enters a controlled fatal
+  diagnostic rather than risk stale translation or page reuse.
 - A full address-space flush is the correctness fallback when a bounded
   per-page invalidation request cannot represent the change.
-- No caller waits for shootdown acknowledgement while holding a lock required
-  by the IPI handler or target CPU exit path.
+
+The lock graph contains an explicit `TLB_WAIT` barrier:
+
+```text
+process/scheduler
+  -> address-space/VM
+  -> handle
+  -> IPC/service
+  -> VFS/device
+  -> release every ordinary subsystem spinlock
+  -> TLB_WAIT
+  -> reacquire only after all acknowledgements
+```
+
+`TLB_WAIT` is not a lock class and cannot be nested inside one. Runtime
+assertions require ordinary lock depth zero on entry and reject VM/process
+lock acquisition from the shootdown IPI handler.
 
 ### Locking And Diagnostics
 
 - Disabling interrupts affects only the local CPU; it is not mutual exclusion
   against another CPU.
+- `spin_lock_irqsave()`/`spin_unlock_irqrestore()` is the default ordinary
+  kernel spinlock contract. Acquire saves local IF, increments the CPU-local
+  preemption-disable count, atomically claims the lock, and records owner CPU
+  plus LIFO lock-stack position. Release verifies owner and LIFO order,
+  publishes unlock, decrements preemption disable, and restores the matching
+  saved IF state.
+- Recursive acquisition, unlock by another CPU, out-of-order release, and
+  token reuse are hard diagnostic failures; recursive acquisition never
+  returns success as though a second lock were obtained.
+- A plain or raw spinlock variant is allowed only for named low-level paths
+  whose interrupt/preemption state is already controlled. NMI/Double Fault
+  cannot acquire ordinary locks; IPI handlers use only bounded CPU-local
+  atomics or an explicitly audited raw primitive.
 - Spinlock recursion/order tracking moves to CPU-local storage before APs use
   ordinary kernel locks.
 - Sleeping, user copy, allocation, and unbounded scans remain forbidden while
   a spinlock is held.
+- Yield, wait, block, ordinary schedule, and context switch assert that
+  ordinary lock depth and preemption-disable count are zero. The scheduler's
+  internal handoff releases its lock before switching contexts.
 - Process, scheduler, VM, handle, IPC/service, VFS/device, input, and graphics
   lock order is documented and tested as the audit progresses.
 - Diagnostics expose logical CPU, APIC identity, lifecycle, current
@@ -194,15 +279,23 @@ Implementation:
 - make `current_thread()` and `current_process()` derive from the current
   CPU's authoritative thread;
 - create per-CPU kernel entry stacks, GDT/TSS records, Ring 0 stack selection,
-  and exception IST storage;
+  and distinct NMI/Double Fault IST storage from static fixed-stride arrays;
 - make syscall, IRQ, exception, and context-switch entry preserve the CPU-local
   base and select the current thread's Ring 0 stack;
+- reserve kernel GS permanently, keep FSGSBASE/user GS unavailable, validate
+  normal entry against the `CpuLocal` header, and add emergency IST-based
+  identity recovery that does not trust only GS;
+- standardize interrupt-saving spinlock tokens, CPU-local preemption counts,
+  owner/LIFO checks, and schedule/block/yield assertions;
 - migrate the BSP through the same initialization path that APs will use;
 - prepare but do not release the low-memory AP trampoline and startup mailbox.
 
 Exit gate: all Phase 4.5 and full closure tests pass on one CPU through the new
 CPU-local accessors. CPU-local host tests prove independent lock stacks,
-interrupt nesting, current-thread state, and TSS/stack ownership.
+interrupt nesting, current-thread state, TSS/stack ownership, owner-CPU
+spinlock checks, and emergency-stack identity recovery. Controlled QEMU NMI
+and diagnostic Double Fault paths identify the correct BSP CPU without an
+ordinary lock or scheduler dependency.
 
 ## 4.6C: Application Processor Bring-Up And Idle
 
@@ -216,6 +309,8 @@ Implementation:
   startup mailbox;
 - give each AP its startup stack, CR3, CPU-local base, GDT/TSS/IST, IDT, and
   Local APIC setup before online publication;
+- detect and publish invariant-TSC/CPUID time capabilities plus the BSP
+  PIT-based fallback epoch that every CPU may use for later self-calibration;
 - use release/acquire startup and online handshakes with bounded timeouts;
 - install a bounded allocation-free AP startup-ping IPI so the BSP can verify
   that each AP still accepts interrupts after publishing online;
@@ -242,7 +337,9 @@ Implementation:
   running threads, and terminal selection;
 - let each online CPU select from the global ready queue or enter its local
   idle context;
-- initialize and calibrate a Local APIC timer on every scheduler CPU;
+- make every CPU independently calibrate its Local APIC timer against the
+  published invariant-TSC or PIT epoch, record the measured rate/error, and
+  reject scheduler release when calibration is missing or outside tolerance;
 - keep PIT global timekeeping single-owner while Local APIC timers perform
   local runtime accounting and quantum expiration;
 - switch per-CPU TSS `RSP0`, address space, FS TLS, and current-thread state on
@@ -254,7 +351,9 @@ Implementation:
 Exit gate: at least two QEMU CPUs execute different user threads concurrently
 for repeated quanta. No thread is observed on two CPUs, no running thread is
 queued, every CPU retains a valid current/idle state, and single-CPU
-regressions remain green.
+regressions remain green. All scheduler CPUs pass the same calibration
+tolerance, and measured global time remains constant rather than scaling with
+the `-smp` count.
 
 ## 4.6E: Reschedule IPI, Remote Wakeup, Affinity, And Distribution
 
@@ -286,18 +385,24 @@ Implementation:
   monotonic TLB generation;
 - add bounded per-CPU invalidation mailboxes and a dedicated shootdown vector;
 - support local page invalidation and full-address-space flush fallback;
-- publish request, target mask, generation, and acknowledgement ordering;
-- wait only at a lock-safe boundary and apply a bounded timeout/fatal policy
-  for an online CPU that does not acknowledge;
-- delay physical/page-table page release and address-space reuse until all
-  required acknowledgements complete;
+- serialize one operation token per address space and publish request, target
+  mask, generation, and acknowledgement ordering;
+- implement the three phases explicitly: mutate and quarantine under VM lock;
+  release all ordinary locks and enter `TLB_WAIT`; then reacquire, revalidate,
+  and retire only after every acknowledgement;
+- assert zero ordinary lock depth at `TLB_WAIT`, keep interrupts enabled and
+  local preemption disabled while waiting, and make the IPI handler lock-free
+  and allocation-free;
+- apply the bounded timeout policy without false acknowledgement or premature
+  release;
 - cover map, unmap, heap growth/shrink, surface mapping, process exit, and
   shared-process thread races.
 
 Exit gate: two or more CPUs repeatedly access and mutate the same address
 space without stale translations, cross-generation acknowledgement, premature
 page reuse, deadlock, or drift. Injected delayed and duplicate acknowledgements
-remain deterministic.
+remain deterministic. Runtime lock-graph assertions prove every TLB wait
+occurs after ordinary subsystem locks are released.
 
 ## 4.6G: Kernel-Wide SMP Audit And Interrupt Ownership
 
@@ -310,9 +415,14 @@ Implementation:
   VFS/filesystems/drivers, input, surfaces, display, and window state;
 - split or extend locks only when a measured correctness need exists and
   preserve a documented global order;
+- include the non-lock `TLB_WAIT` barrier in the ordering graph and verify that
+  no subsystem carries an ordinary lock across it;
 - replace unsynchronized shared counters/flags with lock-protected or explicit
   atomic operations;
 - keep blocking and allocation out of spinlock and IPI/IRQ contexts;
+- audit every spinlock call site for irqsave/raw context, owner CPU,
+  preemption-disable balance, recursive acquisition, LIFO release, and illegal
+  schedule/block/yield while atomic;
 - define one tested CPU owner for each external interrupt source and safe
   handoff rules before changing IOAPIC destinations;
 - make process exit, service restart, GUI teardown, and device activity safe
@@ -332,6 +442,10 @@ Implementation and verification:
 
 - inject AP-stack, CPU-local, trampoline/mailbox, Local APIC timer, IPI queue,
   scheduler claim, and TLB-request failures;
+- in a diagnostic build, inject an invalid CPU-local header/emergency-stack
+  candidate, timer-calibration rejection, wrong-CPU spinlock release,
+  recursive acquisition, schedule-while-atomic attempt, and TLB wait with a
+  held ordinary lock;
 - force AP startup timeout, remote wake/exit races, delayed shootdown
   acknowledgement, concurrent process fault, and service/GUI restart;
 - run single-, dual-, and four-vCPU focused suites;
