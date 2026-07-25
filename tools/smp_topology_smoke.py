@@ -6,7 +6,37 @@ import time
 from pathlib import Path
 
 
-def run(cpu_count: int) -> str:
+def serial_bytes(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return b""
+
+
+def wait_for(path: Path, marker: bytes, count: int, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if serial_bytes(path).count(marker) >= count:
+            return
+        time.sleep(0.05)
+    raise TimeoutError(f"timed out waiting for {marker!r}")
+
+
+def monitor(process: subprocess.Popen, command: str) -> None:
+    assert process.stdin is not None
+    process.stdin.write((command + "\n").encode("ascii"))
+    process.stdin.flush()
+    time.sleep(0.03)
+
+
+def shell_command(process: subprocess.Popen, command: str) -> None:
+    key_map = {" ": "spc", ".": "dot", "_": "shift-minus", "-": "minus"}
+    for character in command:
+        monitor(process, f"sendkey {key_map.get(character, character)}")
+    monitor(process, "sendkey ret")
+
+
+def run(cpu_count: int) -> tuple[str, int]:
     log = Path(f"logs/serial_smp_topology_{cpu_count}.log")
     image = Path(f"bin/uefi_diag_smp_{cpu_count}.img")
     variables = Path(f"bin/OVMF_VARS_4M.smp_{cpu_count}.fd")
@@ -22,23 +52,45 @@ def run(cpu_count: int) -> str:
         "-drive", f"if=none,id=esp,format=raw,file={image}",
         "-device", "virtio-blk-pci,drive=esp,bootindex=1",
         "-boot", "menu=off", "-display", "none",
-        "-serial", f"file:{log}", "-monitor", "none", "-no-reboot",
+        "-serial", f"file:{log}", "-monitor", "stdio", "-no-reboot",
     ]
-    process = subprocess.Popen(command)
+    process = subprocess.Popen(command,
+                               stdin=subprocess.PIPE,
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.STDOUT)
     try:
-        time.sleep(8)
+        wait_for(log, b"OS64>", 1, 20)
+        shell_command(process, "uptime")
+        wait_for(log, b"Tick: ", 1, 5)
+        time.sleep(1)
+        shell_command(process, "uptime")
+        wait_for(log, b"Tick: ", 2, 5)
     finally:
-        process.kill()
-        process.wait(timeout=3)
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+        if process.stdin is not None:
+            process.stdin.close()
         image.unlink(missing_ok=True)
         variables.unlink(missing_ok=True)
-    return log.read_text(errors="replace")
+    text = log.read_text(errors="replace")
+    ticks = [
+        int(value, 16)
+        for value in re.findall(r"Tick: 0x([0-9A-Fa-f]{8})", text)
+    ]
+    return text, ticks[-1] - ticks[-2] if len(ticks) >= 2 else -1
 
 
 def main() -> int:
     failures: list[str] = []
+    wall_time_deltas: dict[int, int] = {}
     for count in (1, 2, 4):
-        text = run(count)
+        text, wall_delta = run(count)
+        wall_time_deltas[count] = wall_delta
         expected = f"records=0x{count:08X} online=0x{count:08X}"
         if expected not in text:
             failures.append(f"-smp {count}: missing {expected}")
@@ -94,11 +146,26 @@ def main() -> int:
                 )
         if "OS64 KERNEL PANIC" in text:
             failures.append(f"-smp {count}: kernel panic")
+        if wall_delta <= 0 or wall_delta > 1000:
+            failures.append(
+                f"-smp {count}: PIT comparison interval invalid ({wall_delta})"
+            )
+    valid_deltas = [delta for delta in wall_time_deltas.values() if delta >= 0]
+    if (valid_deltas and
+            max(valid_deltas) - min(valid_deltas) >
+            max(5, max(valid_deltas) // 10)):
+        failures.append(
+            "PIT wall-time delta changes with CPU count: "
+            f"{wall_time_deltas}"
+        )
     if failures:
         print("SMP topology smoke failures:")
         print("\n".join(failures))
         return 1
-    print("SMP topology smoke OK (1/2/4 vCPUs, exact online + 3 pings/AP)")
+    print(
+        "SMP topology smoke OK "
+        f"(1/2/4 vCPUs, exact online + 3 pings/AP, PIT deltas={wall_time_deltas})"
+    )
     return 0
 
 
