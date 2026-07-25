@@ -23,17 +23,17 @@ a separate evidence commit.
 | --- | --- | --- | --- | --- | --- |
 | 4.6A: CPU topology and SMP contracts | Complete | 2026-07-25 | 2026-07-25 | `fb7f67f` | P46-R01, P46-R02 |
 | 4.6B: Per-CPU state and entry infrastructure | Complete | 2026-07-25 | 2026-07-25 | `01a0408` | P46-R03 |
-| 4.6C: Application processor bring-up and idle | In progress | 2026-07-25 | - | - | P46-R04 pending |
+| 4.6C: Application processor bring-up and idle | Complete | 2026-07-25 | 2026-07-25 | `d2c4694` | P46-R04 |
 | 4.6D: Multicore scheduler and local preemption | Planned | - | - | - | - |
 | 4.6E: Reschedule IPI, remote wake, affinity, distribution | Planned | - | - | - | - |
 | 4.6F: TLB shootdown and address-space safety | Planned | - | - | - | - |
 | 4.6G: Kernel-wide SMP audit and interrupt ownership | Planned | - | - | - | - |
 | 4.6H: Multicore fault injection, soak, and closure | Planned | - | - | - | - |
 
-Current status: the SMP foundation bundle, 4.6A and 4.6B, is complete. 4.6C
-implementation is in progress: AP startup and local idle have been added, but
-the immutable implementation/evidence commits and full exit-gate record are
-not yet published. Phase 5 remains gated on complete 4.6 closure.
+Current status: 4.6A through 4.6C are complete. Requested APs now reach a
+validated online state and remain in CPU-local idle without participating in
+the scheduler. 4.6D multicore scheduling and per-CPU timer calibration is
+next. Phase 5 remains gated on complete 4.6 closure.
 
 ## Recording Workflow
 
@@ -205,3 +205,63 @@ violation.
   stack on each AP before publishing it online.
 - AP scheduling, Local APIC timer calibration, reschedule IPIs, and TLB
   shootdown remain later subphases.
+
+## 4.6C: Application Processor Bring-Up And Idle
+
+- Status: Complete
+- Started: 2026-07-25
+- Completed: 2026-07-25
+- Implementation commit: `d2c4694`
+
+### Delivered
+
+- The BSP installs a 256-byte low-memory trampoline and bounded mailbox, then
+  starts each prepared xAPIC processor sequentially with INIT assert/deassert
+  and two SIPIs.
+- The trampoline establishes protected mode, PAE, NXE, long mode, the shared
+  CR3, and the AP's prepared kernel stack before entering C.
+- Each AP validates its logical/APIC identity, activates permanent kernel GS,
+  installs its per-CPU GDT/TSS/Ring 0/NMI/Double Fault stacks, loads the IDT,
+  enables its Local APIC, and only then publishes `ONLINE` with release
+  ordering.
+- Online APs acknowledge three allocation-free fixed IPIs apiece and remain
+  in `sti; hlt` CPU-local idle. Scheduler participation remains disabled until
+  4.6D.
+- BSP diagnostics expose attempted/online/failed APs, ping counts, idle wake
+  counts, and the invariant-TSC/CPUID or PIT-fallback time reference without
+  exposing kernel addresses.
+- A diagnostic `cpunmi <logical-id>` path sends an actual Local APIC NMI to a
+  selected online AP and waits for its per-CPU IST acknowledgement.
+- Startup timeout/state tests prove that a missing AP remains offline in a
+  named `FAILED` state, cannot publish late online, and retains its statically
+  owned startup stack without allocation drift.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-ap-bringup` | PASS | QEMU `-cpu max -smp 4`: four CPUs online; APs acknowledged 3 pings each; AP1 handled NMI on its own IST; BSP shell remained responsive |
+| `make test-smp-topology` | PASS | QEMU `-cpu max -smp 1/2/4`: exact online totals `1/2/4`; AP attempted/online `0/0`, `1/1`, `3/3`; ping sent/ack `0/0`, `3/3`, `9/9`; zero failures |
+| `make test-ap-startup-state` | PASS | Forced AP timeout: `PREPARED -> STARTING -> FAILED`, BSP-only online count `1`, false/late online rejected, stack ownership unchanged |
+| `make test-phase46-foundation test-ap-bringup` | PASS | 4.6A/B host contracts, irqsave spinlocks, BSP emergency paths, exact AP topology, AP interrupt/idle path, and negative startup state all passed |
+| `make test-phase45` | PASS | Required 60-second inherited soak: 14 cycles, 42 thread programs, 56 GUI windows; warmed/final tuple identical `(4,21,1,0,4,0,1,27183,1944432,1961984)` |
+| `make clean`; `make uefi-diagnostic -j4` | PASS | Clean parallel diagnostic UEFI image build with the embedded trampoline |
+
+### Resource And CPU Accounting
+
+- QEMU used `-cpu max` with `-smp 1`, `2`, and `4`. Every discovered record
+  became online in the positive sessions; failed AP count was zero.
+- The four-vCPU AP-NMI session recorded AP1 NMI count `1`, AP ping count `3`,
+  all four lifecycle records online, and a responsive BSP shell afterward.
+- QEMU did not expose usable CPUID `0x15`/`0x16` TSC frequency data in these
+  sessions, so diagnostics selected the explicit PIT-epoch fallback source.
+- The deterministic timeout model kept the AP offline and left the BSP online;
+  startup storage is static, so no allocation or release drift occurred.
+- The inherited Phase 4.5 resource tuple had zero warmed-to-final drift.
+
+### Remaining
+
+- APs deliberately run only their CPU-local idle loop; 4.6D owns scheduler
+  release, Local APIC timer self-calibration, and concurrent thread execution.
+- Reschedule IPI, affinity, TLB shootdown, subsystem-wide SMP auditing, and
+  multicore soak remain 4.6E through 4.6H.

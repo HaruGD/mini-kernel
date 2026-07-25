@@ -35,8 +35,10 @@ topology, the BSP uses logical CPU 0 through the same permanent-kernel-GS
 Fault stacks are established. That closure left AP records prepared and
 offline; 4.6C now implements their bounded startup and validation.
 
-The active task is 4.6C application-processor startup and CPU-local idle. No AP
-may enter the global scheduler until 4.6D.
+Phase 4.6C is complete: requested APs validate and publish online, acknowledge
+startup IPIs and targeted NMI, and remain in CPU-local idle. The next task is
+4.6D multicore scheduling and Local APIC timer calibration; no AP enters the
+global scheduler before that release gate.
 
 ## Scope Boundary
 
