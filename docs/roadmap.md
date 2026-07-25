@@ -222,10 +222,11 @@ Progress:
   preemption, lock tracking, and NMI/Double Fault emergency identity state
 - [x] 4.6C: Start application processors and hold them in a validated local
   idle path
-- [ ] 4.6D: Run distinct threads concurrently through a locked global queue
+- [x] 4.6D: Run distinct threads concurrently through a locked global queue
   and independently calibrated per-CPU Local APIC preemption
 - [ ] 4.6E: Add reschedule IPIs, remote wakeups, CPU affinity, and bounded
-  distribution
+  distribution (implementation present; full remote-wake regression gate
+  remains in progress)
 - [ ] 4.6F: Implement generation-checked cross-CPU TLB shootdown before
   concurrent address-space mutation and page reuse, using quarantine and a
   lock-free `TLB_WAIT` acknowledgement boundary

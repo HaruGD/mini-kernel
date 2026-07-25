@@ -24,16 +24,19 @@ a separate evidence commit.
 | 4.6A: CPU topology and SMP contracts | Complete | 2026-07-25 | 2026-07-25 | `fb7f67f` | P46-R01, P46-R02 |
 | 4.6B: Per-CPU state and entry infrastructure | Complete | 2026-07-25 | 2026-07-25 | `01a0408` | P46-R03 |
 | 4.6C: Application processor bring-up and idle | Complete | 2026-07-25 | 2026-07-25 | `d2c4694` | P46-R04 |
-| 4.6D: Multicore scheduler and local preemption | Planned | - | - | - | - |
-| 4.6E: Reschedule IPI, remote wake, affinity, distribution | Planned | - | - | - | - |
+| 4.6D: Multicore scheduler and local preemption | Complete | 2026-07-25 | 2026-07-25 | `d8d1787`, `4595489`, `02abf86`, `d17075e` | P46-R05, P46-R06 |
+| 4.6E: Reschedule IPI, remote wake, affinity, distribution | In progress | 2026-07-25 | - | `d8d1787`, `4595489` | P46-R07, P46-R08 partial |
 | 4.6F: TLB shootdown and address-space safety | Planned | - | - | - | - |
 | 4.6G: Kernel-wide SMP audit and interrupt ownership | Planned | - | - | - | - |
 | 4.6H: Multicore fault injection, soak, and closure | Planned | - | - | - | - |
 
-Current status: 4.6A through 4.6C are complete. Requested APs now reach a
-validated online state and remain in CPU-local idle without participating in
-the scheduler. 4.6D multicore scheduling and per-CPU timer calibration is
-next. Phase 5 remains gated on complete 4.6 closure.
+Current status: 4.6A through 4.6D are complete. Four-vCPU QEMU runs three
+distinct pinned user threads concurrently on AP1/AP2/AP3 with atomic
+single-CPU claims and calibrated CPU-local quantum accounting. 4.6E has its
+reschedule IPI, affinity ABI, distribution policy, diagnostics, and remote
+semaphore/join path implemented, but remains in progress until the complete
+condition/IPC/input/timer remote-wake gate is repeatable. Phase 5 remains
+gated on complete 4.6 closure.
 
 ## Recording Workflow
 
@@ -265,3 +268,96 @@ violation.
   release, Local APIC timer self-calibration, and concurrent thread execution.
 - Reschedule IPI, affinity, TLB shootdown, subsystem-wide SMP auditing, and
   multicore soak remain 4.6E through 4.6H.
+
+## 4.6D: Multicore Scheduler And Local Preemption
+
+- Status: Complete
+- Started: 2026-07-25
+- Completed: 2026-07-25
+- Implementation commits: `d8d1787`, `4595489`, `02abf86`, `d17075e`
+
+### Delivered
+
+- The locked global ready queue now atomically removes and claims one eligible
+  thread for exactly one logical CPU. `running_cpu`, `last_cpu`, affinity, and
+  migration accounting make queued/running duplication and double claim
+  observable and rejectable.
+- AP idle loops enter the scheduler only after the release gate. Three
+  shared-process workers can remain pinned to AP1/AP2/AP3 and execute
+  concurrently while their existing mappings remain frozen.
+- User entry/return state, saved FPU/SIMD state, current-thread selection,
+  kernel return stack, FS TLS, and TSS `RSP0` are CPU/thread-local on every
+  scheduler CPU.
+- Every scheduler CPU calibrates a periodic Local APIC timer against the
+  BSP-published TSC/PIT reference before release. Local timers own runtime and
+  quantum accounting; PIT IRQ0 remains the only global time/timeout owner.
+- Runnable notification never sends a self-IPI. This preserves the one-vCPU
+  fallback and prevents needless nested local preemption during thread
+  creation.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-smp-scheduler` | PASS | Host model rejects invalid affinity and a second claim while the first CPU owns the thread |
+| `make test-smp-timer` | PASS | QEMU `-cpu max -smp 1/2/4`: scheduler CPUs `1/2/4`, zero calibration failures, every error within 1500 bps; PIT comparison deltas `255/244/243` in the final clean run |
+| `make test-smp-preemption` | PASS | QEMU `-cpu max -smp 4`: low/normal/high workers observed CPU mask `0x0e`, maximum simultaneous workers `3`, Local APIC quantum expirations `4`, failures `0` |
+| `make test-thread-abi` | PASS | One-vCPU `uthread_c.elf` passed 10 runs; queue remained empty and warmed/final PMM/heap/resource tuples were identical |
+| `make test-phase45-abc` | PASS | Process/thread ABI, 91 SDK contracts, and drive-free scheduler/service-control regression passed |
+| `make clean`; `make -j4 uefi-diagnostic`; `make test-smp-execution` | PASS | Clean image rebuilt; host ownership, 1/2/4 timer/topology, and four-vCPU concurrent execution all passed |
+
+### Resource And CPU Accounting
+
+- QEMU used `-cpu max` with `-smp 1`, `2`, and `4`. Every requested CPU was
+  online and scheduler-enabled; calibration failure count was zero.
+- The final four-vCPU workload recorded AP claims, user entries, Local APIC
+  ticks, and received reschedule IPIs on AP1/AP2/AP3. No kernel fatal path was
+  present.
+- The one-vCPU lifecycle run completed ten thread-program cycles with
+  identical warmed/final tuple
+  `(0,0,0,0,0,0,0,27186,4120432,4141056)` and scheduler tuple `(0,8)`.
+- The same host interval produced comparable PIT deltas for one, two, and four
+  vCPUs rather than a CPU-count multiplier.
+
+### Remaining
+
+- 4.6E must close every remote wake class and unpinned distribution gate.
+- Concurrent mapping mutation, teardown, and physical-page reuse remain
+  forbidden until generation-checked 4.6F TLB shootdown exists.
+
+## 4.6E: Reschedule IPI, Remote Wakeup, Affinity, And Distribution
+
+- Status: In progress
+- Started: 2026-07-25
+- Implementation commits: `d8d1787`, `4595489`
+
+### Delivered So Far
+
+- Fixed vector `0xF3` carries bounded, allocation-free reschedule requests.
+  Runnable state is published under the scheduler lock before notification;
+  each CPU has pending, sent, received, coalesced, and ignored accounting.
+- Round-robin notification selects an online eligible remote CPU and skips the
+  sender. Duplicate pending requests coalesce.
+- Thread ABI v2, syscall 107, and the SDK expose bounded affinity masks.
+  Empty and offline-only masks fail; removing a running CPU requests a safe
+  reschedule boundary.
+- The four-vCPU workload proves remote semaphore release, pinned AP
+  eligibility, idle wake, and join completion without a lost runnable thread.
+
+### Verification So Far
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-smp-ipi` | PASS (partial gate) | AP1/AP2/AP3 receive reschedule IPIs and complete the semaphore-gated workload |
+| `make test-smp-affinity` | PASS (partial gate) | Invalid/empty/offline host masks fail; pinned workers execute only on CPU1/CPU2/CPU3 |
+| `make test-phase45-abc` | PASS | Existing single-CPU IPC and input blocking semantics remain green |
+
+### Completion Blocker
+
+- The existing recursive user-context runner cannot yet execute one combined
+  repeated condition/IPC/input/timer remote-wake workload deterministically;
+  sequential thread reuse can exhaust the AP's nested 16 KiB execution stack.
+- 4.6E therefore remains `In progress`. It becomes complete only after a
+  non-recursive context-switch boundary or isolated repeatable remote-wake
+  sessions cover condition, IPC, input, timer, join, and unpinned
+  distribution without weakening P46-R07/P46-R08.

@@ -35,10 +35,15 @@ topology, the BSP uses logical CPU 0 through the same permanent-kernel-GS
 Fault stacks are established. That closure left AP records prepared and
 offline; 4.6C now implements their bounded startup and validation.
 
-Phase 4.6C is complete: requested APs validate and publish online, acknowledge
-startup IPIs and targeted NMI, and remain in CPU-local idle. The next task is
-4.6D multicore scheduling and Local APIC timer calibration; no AP enters the
-global scheduler before that release gate.
+Phase 4.6C and 4.6D are complete: requested APs validate and publish online,
+then enter the released global scheduler only after their Local APIC timers
+are calibrated. Three pinned user workers execute concurrently on AP1/AP2/AP3,
+the PIT remains single-owner global time, and the one-vCPU fallback passes.
+
+Phase 4.6E is in progress. Reschedule IPIs, affinity, remote distribution,
+diagnostics, and the semaphore/join wake path exist, but the full
+condition/IPC/input/timer remote-wake and unpinned distribution exit gate is
+not yet repeatable. 4.6F does not begin until that gate closes.
 
 ## Scope Boundary
 
