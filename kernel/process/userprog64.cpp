@@ -272,6 +272,41 @@ int map_user_elf_alias(Process* process) {
         process->elf_alias_page_count == 0) {
         return 1;
     }
+    if (__atomic_load_n(&process->elf_alias_ready, __ATOMIC_ACQUIRE)) {
+        return 1;
+    }
+
+    /*
+     * The alias is process-wide, not thread-local. Once the loader has
+     * established it, every thread in the process must treat the mapping as
+     * immutable until the address-space/TLB protocol in Phase 4.6F can
+     * coordinate mutations across CPUs. Rebuilding the same alias on every
+     * resume races another CPU executing from it.
+     */
+    int alias_complete = 1;
+    for (uint32_t i = 0; i < process->elf_alias_page_count; i++) {
+        const uint64_t slot_virt =
+            process->code_base + ((uint64_t)i * VM_PAGE_SIZE);
+        const uint64_t alias_virt =
+            process->elf_link_base + ((uint64_t)i * VM_PAGE_SIZE);
+        const uint64_t slot_phys =
+            address_space_get_phys(&process->address_space, slot_virt) &
+            0x000FFFFFFFFFF000ULL;
+        const uint64_t alias_phys =
+            address_space_get_phys(&process->address_space, alias_virt) &
+            0x000FFFFFFFFFF000ULL;
+        const uint64_t alias_flags =
+            address_space_get_flags(&process->address_space, alias_virt);
+        if (slot_phys == 0 || alias_phys != slot_phys ||
+            (alias_flags & VM_FLAG_PRESENT) == 0) {
+            alias_complete = 0;
+            break;
+        }
+    }
+    if (alias_complete) {
+        __atomic_store_n(&process->elf_alias_ready, 1u, __ATOMIC_RELEASE);
+        return 1;
+    }
 
     address_space_remove_region(&process->address_space,
                                 process->elf_link_base,
@@ -299,6 +334,7 @@ int map_user_elf_alias(Process* process) {
         }
     }
 
+    __atomic_store_n(&process->elf_alias_ready, 1u, __ATOMIC_RELEASE);
     return 1;
 }
 
@@ -306,6 +342,7 @@ void unmap_user_elf_alias(Process* process) {
     if (process == 0 || process->pid == 0) {
         return;
     }
+    __atomic_store_n(&process->elf_alias_ready, 0u, __ATOMIC_RELEASE);
     if (process->elf_link_base != 0 && process->elf_alias_page_count != 0) {
         for (uint32_t i = 0; i < process->elf_alias_page_count; i++) {
             address_space_unmap_page(&process->address_space,

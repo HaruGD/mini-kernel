@@ -13,6 +13,37 @@ struct KernelSpinlock;
 #define CPU_LOCAL_EXECUTION_STACK_MAX 32u
 #define CPU_LOCAL_LOCK_STACK_MAX 8u
 #define CPU_LOCAL_STACK_SIZE 16384u
+#define CPU_LOCAL_USER_STATE_OFFSET 32u
+
+struct CpuUserState {
+    uint64_t return_rsp;
+    uint64_t saved_rbx;
+    uint64_t saved_rbp;
+    uint64_t saved_r12;
+    uint64_t saved_r13;
+    uint64_t saved_r14;
+    uint64_t saved_r15;
+    uint64_t resume_rax;
+    uint64_t resume_rbx;
+    uint64_t resume_rcx;
+    uint64_t resume_rdx;
+    uint64_t resume_rbp;
+    uint64_t resume_rsi;
+    uint64_t resume_rdi;
+    uint64_t resume_r8;
+    uint64_t resume_r9;
+    uint64_t resume_r10;
+    uint64_t resume_r11;
+    uint64_t resume_r12;
+    uint64_t resume_r13;
+    uint64_t resume_r14;
+    uint64_t resume_r15;
+    uint64_t resume_rip;
+    uint64_t resume_rsp;
+    uint64_t resume_rflags;
+    uint32_t return_reason;
+    uint32_t reserved;
+};
 
 enum CpuEmergencyKind : uint32_t {
     CPU_EMERGENCY_NMI = 1,
@@ -29,6 +60,7 @@ struct CpuLocal {
     uint8_t emergency_active;
     uint8_t reserved0;
 
+    CpuUserState user_state;
     Thread* current_thread;
     void* idle_context;
     uint32_t execution_depth;
@@ -56,6 +88,22 @@ struct CpuLocal {
     uint64_t idle_wake_count;
     uint64_t startup_ping_count;
     uint64_t online_generation;
+    uint64_t local_timer_hz;
+    uint64_t local_timer_sample_tsc;
+    uint32_t local_timer_reload;
+    uint32_t local_timer_error_bps;
+    uint32_t local_timer_source;
+    uint8_t local_timer_calibrated;
+    uint8_t timer_calibration_attempted;
+    uint8_t scheduler_enabled;
+    uint8_t reserved1;
+    uint64_t local_timer_interrupt_count;
+    uint64_t scheduler_claim_count;
+    uint64_t scheduler_user_entry_count;
+    uint64_t reschedule_sent_count;
+    uint64_t reschedule_received_count;
+    uint64_t reschedule_coalesced_count;
+    uint64_t reschedule_ignored_count;
 };
 
 int cpu_local_system_init();

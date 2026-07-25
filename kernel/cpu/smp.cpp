@@ -3,8 +3,11 @@
 #include "arch/x86_64/apic.h"
 #include "arch/x86_64/gdt64.h"
 #include "arch/x86_64/idt64.h"
+#include "drivers/pit.h"
 #include "kernel/cpu.h"
 #include "kernel/cpu_local.h"
+#include "kernel/process64.h"
+#include "kernel/userprog64.h"
 
 #ifndef OS64_HOST_TEST
 #include "kernel/klog.h"
@@ -26,8 +29,12 @@ struct __attribute__((packed)) SmpStartupMailbox {
 
 static SmpStartupStats startup_stats;
 static SmpTimeReference time_reference;
+static SmpExecutionStats execution_stats;
+static volatile uint32_t scheduler_release_generation = 0;
+static volatile uint64_t reference_lapic_hz = 0;
 
 #ifndef OS64_HOST_TEST
+extern PIT pit;
 extern "C" uint8_t _binary_bin_ap_trampoline_bin_start[];
 extern "C" uint8_t _binary_bin_ap_trampoline_bin_end[];
 extern "C" void smp_ap_entry(uint32_t logical_id);
@@ -82,8 +89,85 @@ static void detect_time_reference() {
     }
     if (time_reference.tsc_hz == 0) {
         time_reference.source = 3;
-        time_reference.pit_epoch = 0;
+        uint64_t flags = 0;
+        __asm__ volatile("pushfq; pop %0" : "=r"(flags));
+        const uint64_t initial_tick = pit.get_tick64();
+        __asm__ volatile("sti" : : : "memory");
+        uint64_t spin_limit = 200000000ULL;
+        while (pit.get_tick64() == initial_tick && spin_limit-- != 0) {
+            __asm__ volatile("pause");
+        }
+        const uint64_t start_tick = pit.get_tick64();
+        const uint64_t start_tsc = smp_read_tsc();
+        const uint64_t target_tick = start_tick + 4u;
+        spin_limit = 400000000ULL;
+        while (pit.get_tick64() < target_tick && spin_limit-- != 0) {
+            __asm__ volatile("pause");
+        }
+        const uint64_t end_tick = pit.get_tick64();
+        const uint64_t end_tsc = smp_read_tsc();
+        if ((flags & (1ULL << 9)) == 0) {
+            __asm__ volatile("cli" : : : "memory");
+        }
+        time_reference.pit_epoch = end_tick;
+        if (end_tick > start_tick && end_tsc > start_tsc) {
+            time_reference.tsc_hz =
+                ((end_tsc - start_tsc) * PIT_DEFAULT_HZ) /
+                (end_tick - start_tick);
+        } else {
+            time_reference.tsc_hz = 1000000000ULL;
+        }
     }
+}
+
+static int configure_local_scheduler_cpu(CpuLocal* local) {
+    if (!cpu_local_validate(local) ||
+        __atomic_exchange_n(&local->timer_calibration_attempted,
+                            1u,
+                            __ATOMIC_ACQ_REL)) {
+        return __atomic_load_n(&local->scheduler_enabled,
+                               __ATOMIC_ACQUIRE) != 0;
+    }
+    LocalApicTimerCalibration calibration = {};
+    if (!interrupt_controller_calibrate_local_timer(
+            time_reference.tsc_hz,
+            PIT_DEFAULT_HZ,
+            SMP_LOCAL_TIMER_VECTOR,
+            &calibration)) {
+        __atomic_add_fetch(&execution_stats.calibration_failed,
+                           1u,
+                           __ATOMIC_RELAXED);
+        return 0;
+    }
+
+    uint64_t expected =
+        __atomic_load_n(&reference_lapic_hz, __ATOMIC_ACQUIRE);
+    if (local->logical_id == 0 || expected == 0) {
+        expected = calibration.timer_hz;
+        __atomic_store_n(&reference_lapic_hz, expected, __ATOMIC_RELEASE);
+    }
+    const uint64_t difference = calibration.timer_hz > expected
+        ? calibration.timer_hz - expected : expected - calibration.timer_hz;
+    const uint32_t error_bps = expected != 0
+        ? (uint32_t)((difference * 10000ULL) / expected) : 10000u;
+    local->local_timer_hz = calibration.timer_hz;
+    local->local_timer_sample_tsc = calibration.sample_tsc_ticks;
+    local->local_timer_reload = calibration.reload;
+    local->local_timer_error_bps = error_bps;
+    local->local_timer_source = time_reference.source;
+    if (error_bps > 1500u) {
+        interrupt_controller_stop_local_timer();
+        __atomic_add_fetch(&execution_stats.calibration_failed,
+                           1u,
+                           __ATOMIC_RELAXED);
+        return 0;
+    }
+    local->local_timer_calibrated = 1;
+    __atomic_store_n(&local->scheduler_enabled, 1u, __ATOMIC_RELEASE);
+    __atomic_add_fetch(&execution_stats.scheduler_cpus,
+                       1u,
+                       __ATOMIC_RELAXED);
+    return 1;
 }
 
 static uint64_t startup_timeout_ticks() {
@@ -169,6 +253,21 @@ extern "C" void smp_ap_entry(uint32_t logical_id) {
     __atomic_store_n(&local->online, 1u, __ATOMIC_RELEASE);
 
     while (1) {
+        if (__atomic_load_n(&scheduler_release_generation,
+                            __ATOMIC_ACQUIRE) != 0 &&
+            !local->timer_calibration_attempted) {
+            configure_local_scheduler_cpu(local);
+        }
+        if (__atomic_load_n(&local->scheduler_enabled, __ATOMIC_ACQUIRE)) {
+            ThreadIdentity none = {0, 0};
+            Thread* thread =
+                scheduler_claim_ready_thread(none, 0, 0, 0);
+            if (thread != 0) {
+                local->scheduler_user_entry_count++;
+                scheduler_execute_claimed_thread(thread);
+                continue;
+            }
+        }
         __asm__ volatile("sti; hlt");
         local->idle_wake_count++;
     }
@@ -177,6 +276,9 @@ extern "C" void smp_ap_entry(uint32_t logical_id) {
 
 int smp_start_application_processors() {
     startup_stats = {};
+    execution_stats = {};
+    scheduler_release_generation = 0;
+    reference_lapic_hz = 0;
     startup_stats.last_failed_logical_id = CPU_LOGICAL_ID_INVALID;
 #ifdef OS64_HOST_TEST
     return 1;
@@ -241,6 +343,141 @@ int smp_start_application_processors() {
 #endif
 }
 
+int smp_release_scheduler_execution() {
+#ifdef OS64_HOST_TEST
+    scheduler_release_generation = 1;
+    execution_stats.release_generation = 1;
+    execution_stats.scheduler_cpus = 1;
+    return 1;
+#else
+    CpuLocal* bsp = cpu_local_current();
+    if (!cpu_local_validate(bsp) || bsp->logical_id != 0 ||
+        interrupt_controller_mode() != INTERRUPT_CONTROLLER_APIC ||
+        !configure_local_scheduler_cpu(bsp)) {
+        return 0;
+    }
+    execution_stats.release_generation = 1;
+    __atomic_store_n(&scheduler_release_generation, 1u, __ATOMIC_RELEASE);
+    const CpuTopologyStats* topology = cpu_topology_stats();
+    for (uint32_t i = 1; topology != 0 && i < topology->record_count; i++) {
+        smp_request_reschedule(i);
+    }
+    const uint64_t deadline = smp_read_tsc() + startup_timeout_ticks();
+    while ((int64_t)(smp_read_tsc() - deadline) < 0) {
+        uint32_t ready = 0;
+        for (uint32_t i = 0; i < topology->record_count; i++) {
+            CpuLocal* local = cpu_local_by_id(i);
+            if (local != 0 &&
+                __atomic_load_n(&local->scheduler_enabled,
+                                __ATOMIC_ACQUIRE)) {
+                ready++;
+            }
+        }
+        if (ready == topology->online_count) return 1;
+        __asm__ volatile("pause");
+    }
+    return execution_stats.scheduler_cpus != 0;
+#endif
+}
+
+int smp_scheduler_execution_released() {
+    return __atomic_load_n(&scheduler_release_generation,
+                           __ATOMIC_ACQUIRE) != 0;
+}
+
+int smp_request_reschedule(uint32_t logical_id) {
+#ifdef OS64_HOST_TEST
+    (void)logical_id;
+    return 0;
+#else
+    CpuLocal* target = cpu_local_by_id(logical_id);
+    const CpuRecord* record = cpu_record(logical_id);
+    if (target == 0 || record == 0 ||
+        record->lifecycle != CPU_STATE_ONLINE ||
+        !__atomic_load_n(&target->online, __ATOMIC_ACQUIRE)) {
+        return 0;
+    }
+    uint32_t expected = 0;
+    if (!__atomic_compare_exchange_n(&target->pending_reschedule,
+                                     &expected,
+                                     1u,
+                                     0,
+                                     __ATOMIC_RELEASE,
+                                     __ATOMIC_RELAXED)) {
+        __atomic_add_fetch(&target->reschedule_coalesced_count,
+                           1u,
+                           __ATOMIC_RELAXED);
+        __atomic_add_fetch(&execution_stats.reschedule_coalesced,
+                           1u,
+                           __ATOMIC_RELAXED);
+        return 1;
+    }
+    CpuLocal* sender = cpu_local_current();
+    if (cpu_local_validate(sender)) sender->reschedule_sent_count++;
+    if (!interrupt_controller_send_ipi(record->apic_id,
+                                       SMP_RESCHEDULE_VECTOR)) {
+        __atomic_store_n(&target->pending_reschedule, 0u, __ATOMIC_RELEASE);
+        target->reschedule_ignored_count++;
+        return 0;
+    }
+    __atomic_add_fetch(&execution_stats.reschedule_ipis,
+                       1u,
+                       __ATOMIC_RELAXED);
+    return 1;
+#endif
+}
+
+void smp_notify_runnable(uint32_t affinity_mask) {
+#ifndef OS64_HOST_TEST
+    if (!smp_scheduler_execution_released()) return;
+    __atomic_add_fetch(&execution_stats.runnable_notifications,
+                       1u,
+                       __ATOMIC_RELAXED);
+    const CpuTopologyStats* topology = cpu_topology_stats();
+    if (topology == 0 || topology->record_count == 0) return;
+    const uint32_t cursor =
+        __atomic_fetch_add(&execution_stats.notify_cursor,
+                           1u,
+                           __ATOMIC_RELAXED);
+    CpuLocal* current = cpu_local_current();
+    for (uint32_t offset = 0; offset < topology->record_count; offset++) {
+        const uint32_t logical_id =
+            (cursor + offset) % topology->record_count;
+        CpuLocal* target = cpu_local_by_id(logical_id);
+        if ((affinity_mask & (1u << logical_id)) == 0 || target == 0 ||
+            !__atomic_load_n(&target->scheduler_enabled, __ATOMIC_ACQUIRE) ||
+            (current != 0 && logical_id == current->logical_id &&
+             topology->record_count > 1)) {
+            continue;
+        }
+        smp_request_reschedule(logical_id);
+        return;
+    }
+#else
+    (void)affinity_mask;
+#endif
+}
+
+int smp_reschedule_handler() {
+#ifdef OS64_HOST_TEST
+    return 0;
+#else
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local)) {
+        interrupt_controller_eoi(0);
+        return 0;
+    }
+    const uint32_t pending =
+        __atomic_exchange_n(&local->pending_reschedule,
+                            0u,
+                            __ATOMIC_ACQ_REL);
+    if (pending) local->reschedule_received_count++;
+    else local->reschedule_ignored_count++;
+    interrupt_controller_eoi(0);
+    return pending && scheduler_should_reschedule_current();
+#endif
+}
+
 void smp_startup_ping_handler() {
 #ifndef OS64_HOST_TEST
     CpuLocal* local = cpu_local_current();
@@ -287,6 +524,10 @@ const SmpTimeReference* smp_time_reference() {
     return &time_reference;
 }
 
+const SmpExecutionStats* smp_execution_stats() {
+    return &execution_stats;
+}
+
 void smp_print_summary() {
 #ifndef OS64_HOST_TEST
     print("\n=== SMP STARTUP ===");
@@ -308,6 +549,18 @@ void smp_print_summary() {
     print_hex32(time_reference.source);
     print(" tsc_hz=");
     print_hex64(time_reference.tsc_hz);
+    print("\nrelease=");
+    print_hex32(execution_stats.release_generation);
+    print(" scheduler_cpus=");
+    print_hex32(execution_stats.scheduler_cpus);
+    print(" calibration_failed=");
+    print_hex32(execution_stats.calibration_failed);
+    print(" notifications=");
+    print_hex64(execution_stats.runnable_notifications);
+    print(" resched_ipi=");
+    print_hex64(execution_stats.reschedule_ipis);
+    print(" coalesced=");
+    print_hex64(execution_stats.reschedule_coalesced);
     print("\n===================\n");
 #endif
 }

@@ -6,6 +6,11 @@ static void save_paused_context64(uint64_t* frame,
         return;
     }
     ThreadContext* context = thread->context;
+    __asm__ volatile("fxsave64 %0"
+                     : "=m"(context->fx_state)
+                     :
+                     : "memory");
+    context->fx_initialized = 1;
 
     // Frame layout comes from PUSH_GPRS in idt64.asm:
     // [0]=r15 ... [13]=rbx [14]=rax [15]=rip [16]=cs [17]=rflags [18]=rsp [19]=ss
@@ -29,9 +34,28 @@ static void save_paused_context64(uint64_t* frame,
     context->saved_rsp = frame[18];
     context->resumable = 1;
     context->pause_reason = (uint8_t)pause_reason;
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) {
+        local->user_state.return_reason = pause_reason;
+    }
     if (thread->is_main && thread->owner != 0) {
         thread->owner->state = PROCESS_STATE_PAUSED;
     }
+}
+
+static void restore_thread_fx_state64(Thread* thread) {
+    if (thread == 0 || thread->context == 0) {
+        return;
+    }
+    ThreadContext* context = thread->context;
+    if (context->fx_initialized) {
+        __asm__ volatile("fxrstor64 %0"
+                         :
+                         : "m"(context->fx_state)
+                         : "memory");
+        return;
+    }
+    __asm__ volatile("fninit" : : : "memory");
 }
 
 extern "C" void save_yield_context64(uint64_t* frame) {
@@ -164,23 +188,9 @@ static int resume_user_thread_internal(Process* parent,
                                        Thread* thread,
                                        int print_banner);
 
-static Thread* ready_thread_for_process(Process* process) {
-    if (process == 0) {
-        return 0;
-    }
-    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
-        Thread* thread = &thread_table[i];
-        if (thread->owner == process && thread->active &&
-            thread->context->resumable &&
-            thread->context->scheduler_state == SCHED_STATE_READY) {
-            return thread;
-        }
-    }
-    return 0;
-}
-
 static int continue_ready_threads(ThreadIdentity exclude) {
-    Thread* next_ready = find_next_ready_thread(exclude);
+    Thread* next_ready =
+        scheduler_claim_ready_thread(exclude, 0, 0, 0);
     if (next_ready == 0 || next_ready->owner == 0) {
         return 0;
     }
@@ -212,38 +222,42 @@ static int nested_syscall_waiter_active(const Process* completed) {
 }
 
 int continue_ready_processes(uint32_t exclude_pid) {
-    Process* next_ready = find_next_ready_process(exclude_pid);
-    if (next_ready == 0) {
+    ThreadIdentity none = {0, 0};
+    Thread* thread =
+        scheduler_claim_ready_thread(none, exclude_pid, 0, 0);
+    if (thread == 0 || thread->owner == 0) {
         return 0;
     }
-
-    Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
-    Thread* thread = ready_thread_for_process(next_ready);
-    return thread != 0 ? resume_user_thread_internal(parent, next_ready, thread, 0) : 0;
+    Process* process = thread->owner;
+    Process* parent = process->parent_pid != 0
+        ? find_process_by_pid(process->parent_pid) : 0;
+    return resume_user_thread_internal(parent, process, thread, 0);
 }
 
 int continue_woken_processes(uint32_t exclude_pid) {
-    Process* next_ready = find_next_woken_process(exclude_pid);
-    if (next_ready == 0) {
+    ThreadIdentity none = {0, 0};
+    Thread* thread =
+        scheduler_claim_ready_thread(none, exclude_pid, 0, 1);
+    if (thread == 0 || thread->owner == 0) {
         return 0;
     }
-
-    Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
-
-    Thread* thread = ready_thread_for_process(next_ready);
-    return thread != 0 ? resume_user_thread_internal(parent, next_ready, thread, 0) : 0;
+    Process* process = thread->owner;
+    Process* parent = process->parent_pid != 0
+        ? find_process_by_pid(process->parent_pid) : 0;
+    return resume_user_thread_internal(parent, process, thread, 0);
 }
 
 int continue_background_processes(uint32_t exclude_pid) {
-    Process* next_ready = find_next_background_ready_process(exclude_pid);
-    if (next_ready == 0) {
+    ThreadIdentity none = {0, 0};
+    Thread* thread =
+        scheduler_claim_ready_thread(none, exclude_pid, 1, 0);
+    if (thread == 0 || thread->owner == 0) {
         return 0;
     }
-
-    Process* parent = next_ready->parent_pid != 0 ? find_process_by_pid(next_ready->parent_pid) : 0;
-
-    Thread* thread = ready_thread_for_process(next_ready);
-    return thread != 0 ? resume_user_thread_internal(parent, next_ready, thread, 0) : 0;
+    Process* process = thread->owner;
+    Process* parent = process->parent_pid != 0
+        ? find_process_by_pid(process->parent_pid) : 0;
+    return resume_user_thread_internal(parent, process, thread, 0);
 }
 
 static int wait_for_terminal_process(Process* process) {

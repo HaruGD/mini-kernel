@@ -95,3 +95,13 @@ long os_thread_set_priority(OsThreadIdentity identity, uint32_t priority) {
                        identity.generation,
                        priority);
 }
+
+long os_thread_set_affinity(OsThreadIdentity identity, uint32_t affinity_mask) {
+    if (identity.tid == 0 || identity.generation == 0 || affinity_mask == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall3(OS_SYS_THREAD_SET_AFFINITY,
+                       identity.tid,
+                       identity.generation,
+                       affinity_mask);
+}

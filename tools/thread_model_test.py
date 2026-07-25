@@ -35,6 +35,12 @@ int main() {
     check(process->thread_count == 1);
     check(thread_identity_matches(main_thread, process->main_thread_identity));
     check(main_thread->context->kernel_stack_base != 0);
+    check(thread_set_affinity(process, thread_identity(main_thread), 0) ==
+          SYS_ERR_INVALID_ARGUMENT);
+    check(thread_set_affinity(process, thread_identity(main_thread), 2) ==
+          SYS_ERR_INVALID_ARGUMENT);
+    check(thread_set_affinity(process, thread_identity(main_thread), 1) == 0);
+    check(main_thread->affinity_mask == 1);
 
     process->runtime_ticks = 17;
     check(main_thread->context->runtime_ticks == 17);
@@ -82,8 +88,13 @@ int main() {
     check(sched_queue[0] == extra[0]);
     scheduler_enqueue_thread(extra[0]);
     check(sched_queue_count == 1);
-    scheduler_remove_thread(extra[0]);
+    ThreadIdentity no_exclusion = {0, 0};
+    check(scheduler_claim_ready_thread(no_exclusion, 0, 0, 0) == extra[0]);
     check(sched_queue_count == 0);
+    check(extra[0]->running_cpu == 0);
+    check(extra[0]->context->scheduler_state == SCHED_STATE_RUNNING);
+    check(scheduler_claim_ready_thread(no_exclusion, 0, 0, 0) == 0);
+    extra[0]->running_cpu = THREAD_CPU_INVALID;
 
     process_clear(process);
     check(find_thread_by_identity(old_identity) == 0);

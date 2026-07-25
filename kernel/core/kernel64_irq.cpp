@@ -43,13 +43,46 @@ extern "C" uint64_t timer_handler64() {
     interrupt_controller_eoi(0);
     driver_irq_dispatch(0);
     scheduler_wake_sleeping_processes(pit.get_tick());
+    if (!cpu_local_validate(local) || !local->scheduler_enabled) {
+        scheduler_on_tick();
+    }
+    uint64_t result = 0;
+    if (!cpu_local_validate(local) || !local->scheduler_enabled) {
+        if (scheduler_should_preempt_current()) {
+            scheduler_note_preemption(current_thread());
+            result = TIMER_PREEMPT_TO_KERNEL;
+        }
+        Thread* thread = current_thread();
+        if (thread != 0 && thread->context->timeslice_ticks == 0) {
+            scheduler_refresh_timeslice(thread);
+        }
+    }
+    if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+        local->interrupt_depth--;
+    }
+    return result;
+}
+
+extern "C" uint64_t local_timer_handler64() {
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) {
+        local->interrupt_depth++;
+        local->local_timer_interrupt_count++;
+        local->scheduler_tick_count++;
+    }
+    interrupt_controller_eoi(0);
     scheduler_on_tick();
     uint64_t result = 0;
-    if (scheduler_should_preempt_current()) {
-        scheduler_note_preemption(current_thread());
+    Thread* thread = current_thread();
+    const int quantum_expired =
+        thread != 0 && thread->context != 0 &&
+        thread->context->timeslice_ticks == 0;
+    if (quantum_expired) {
+        scheduler_note_preemption(thread);
+    }
+    if (quantum_expired && scheduler_should_preempt_current()) {
         result = TIMER_PREEMPT_TO_KERNEL;
     }
-    Thread* thread = current_thread();
     if (thread != 0 && thread->context->timeslice_ticks == 0) {
         scheduler_refresh_timeslice(thread);
     }

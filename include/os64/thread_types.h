@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define OS64_THREAD_ABI_VERSION 1u
+#define OS64_THREAD_ABI_VERSION 2u
 #define OS_THREAD_CREATE_FLAG_NONE 0u
 #define OS_THREAD_CREATE_VALID_FLAGS OS_THREAD_CREATE_FLAG_NONE
 #define OS_THREAD_STACK_DEFAULT 16384u
@@ -49,6 +49,10 @@ typedef struct OsThreadInfo {
     uint64_t block_count;
     uint64_t wake_count;
     uint64_t switch_count;
+    uint32_t affinity_mask;
+    int32_t running_cpu;
+    int32_t last_cpu;
+    uint32_t migration_count;
 } OsThreadInfo;
 
 #ifdef __cplusplus
@@ -69,7 +73,7 @@ OS64_THREAD_STATIC_ASSERT(offsetof(OsThreadCreateRequest, entry) == 16,
                           "OsThreadCreateRequest.entry offset changed");
 OS64_THREAD_STATIC_ASSERT(offsetof(OsThreadCreateRequest, return_trampoline) == 32,
                           "OsThreadCreateRequest.return_trampoline offset changed");
-OS64_THREAD_STATIC_ASSERT(sizeof(OsThreadInfo) == 96,
+OS64_THREAD_STATIC_ASSERT(sizeof(OsThreadInfo) == 112,
                           "OsThreadInfo ABI changed");
 OS64_THREAD_STATIC_ASSERT(offsetof(OsThreadInfo, tls_base) == 40,
                           "OsThreadInfo.tls_base offset changed");

@@ -44,7 +44,7 @@ static_assert(sizeof(OsProcessIdentity) == 8, "OsProcessIdentity ABI changed");
 static_assert(sizeof(OsThreadIdentity) == 8, "OsThreadIdentity ABI changed");
 static_assert(sizeof(OsThreadCreateRequest) == 40,
               "OsThreadCreateRequest ABI changed");
-static_assert(sizeof(OsThreadInfo) == 96, "OsThreadInfo ABI changed");
+static_assert(sizeof(OsThreadInfo) == 112, "OsThreadInfo ABI changed");
 
 static uint64_t invalid_argument();
 static uint64_t bad_buffer();
@@ -1188,6 +1188,17 @@ bool dispatch_sdk_syscall64(uint64_t syscall_no,
         } else {
             ThreadIdentity identity = {(uint32_t)arg1, (uint32_t)arg2};
             *result = (uint64_t)(int64_t)thread_set_priority(
+                current_process(), identity, (uint32_t)arg3);
+        }
+        return true;
+    }
+    if (syscall_no == SYS_THREAD_SET_AFFINITY) {
+        if (arg1 == 0 || arg1 > UINT32_MAX || arg2 == 0 ||
+            arg2 > UINT32_MAX || arg3 == 0 || arg3 > UINT32_MAX) {
+            *result = invalid_argument();
+        } else {
+            ThreadIdentity identity = {(uint32_t)arg1, (uint32_t)arg2};
+            *result = (uint64_t)(int64_t)thread_set_affinity(
                 current_process(), identity, (uint32_t)arg3);
         }
         return true;

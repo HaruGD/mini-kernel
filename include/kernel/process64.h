@@ -213,14 +213,23 @@ int thread_get_info(const Process* requester,
 int thread_set_priority(Process* requester,
                         ThreadIdentity identity,
                         uint32_t priority);
+int thread_set_affinity(Process* requester,
+                        ThreadIdentity identity,
+                        uint32_t affinity_mask);
+uint32_t scheduler_online_cpu_mask();
 void scheduler_on_tick();
 void scheduler_wake_sleeping_processes(uint32_t tick_now);
 int scheduler_should_preempt_current();
+int scheduler_should_reschedule_current();
 void scheduler_enqueue_thread(Thread* thread);
 void scheduler_remove_thread(Thread* thread);
 void scheduler_mark_thread_running(Thread* thread);
 void scheduler_mark_thread_finished(Thread* thread);
 Thread* find_next_ready_thread(ThreadIdentity exclude);
+Thread* scheduler_claim_ready_thread(ThreadIdentity exclude,
+                                     uint32_t exclude_pid,
+                                     int background_only,
+                                     int sleeping_only);
 
 int process_record_is_active(const Process* process);
 Process* allocate_process_record();

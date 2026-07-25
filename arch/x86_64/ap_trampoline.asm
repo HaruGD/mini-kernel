@@ -33,7 +33,10 @@ protected_entry:
     mov cr3, eax
 
     mov eax, cr4
-    or eax, 1 << 5
+    ; Match the BSP's architectural execution environment before entering
+    ; compiler-generated C/C++ code. GCC may use SSE for ordinary structure
+    ; copies, so every AP must enable OSFXSR/OSXMMEXCPT as well as PAE.
+    or eax, (1 << 5) | (1 << 9) | (1 << 10)
     mov cr4, eax
 
     mov ecx, 0xC0000080
@@ -42,12 +45,15 @@ protected_entry:
     wrmsr
 
     mov eax, cr0
+    and eax, ~((1 << 2) | (1 << 3))
+    or eax, 1 << 1
     or eax, 1 << 31
     mov cr0, eax
     jmp 0x18:long_mode_entry
 
 [BITS 64]
 long_mode_entry:
+    fninit
     mov ax, 0x10
     mov ds, ax
     mov es, ax

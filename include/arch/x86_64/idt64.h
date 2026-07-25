@@ -37,11 +37,13 @@ void idt64_debug_force_double_fault();
 void spurious_interrupt_handler64();
 void pic_spurious_interrupt_handler64(uint64_t irq);
 void smp_startup_ping_interrupt_handler64();
+uint64_t smp_reschedule_interrupt_handler64();
 uint32_t pic_spurious_irq7_count();
 uint32_t pic_spurious_irq15_count();
 
 void keyboard_handler64();
 uint64_t timer_handler64();
+uint64_t local_timer_handler64();
 void user_test_interrupt_handler64();
 void user_exit_interrupt_handler64();
 uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t arg3);

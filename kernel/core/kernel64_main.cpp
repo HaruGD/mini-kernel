@@ -214,6 +214,8 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     uint32_t runtime_packaged_drivers = diagnostic_mode
         ? 0
         : driver_manager_activate_packaged_runtime();
+    int smp_execution_ready =
+        smp_ready && smp_release_scheduler_execution();
     uint32_t autoloaded_drivers = boot_packaged_drivers +
         kernel_packaged_drivers + runtime_packaged_drivers;
 
@@ -247,6 +249,8 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print_hex32((uint32_t)apic_ready);
     print("\nSMP startup ready: ");
     print_hex32((uint32_t)smp_ready);
+    print("\nSMP execution ready: ");
+    print_hex32((uint32_t)smp_execution_ready);
     print("\n");
     print("GDT/TSS ready\n");
     print("Interrupts ready\n");

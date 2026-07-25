@@ -130,7 +130,6 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     process->termination_reason = PROCESS_TERM_NONE;
     process->status_code = 0;
     process->active = 1;
-    scheduler_enqueue(process);
 
     VFSFileInfo file_info;
     if (vfs_get_file_info(filename, &file_info) != VFS_OK) {
@@ -152,6 +151,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     }
     process->image_size = file_info.size;
     process->elf_alias_page_count = 0;
+    process->elf_alias_ready = 0;
 
     uint32_t program_buffer_size = file_info.size;
     if (program_buffer_size < 512) {
@@ -550,7 +550,11 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     }
     address_space_activate(&process->address_space);
     uint64_t initial_user_rsp = prepare_user_stack_with_argv(process, user_stack_top, &launch);
+    restore_thread_fx_state64(thread);
+    cpu_local_current()->user_state.return_reason = PROCESS_PAUSE_NONE;
     enter_user_mode(process->entry_point, initial_user_rsp);
+    const uint32_t initial_return_reason =
+        cpu_local_current()->user_state.return_reason;
     process_execution_pop(stack_index, process, thread);
     Process* active_after_return = current_process();
     if (active_after_return != 0) {
@@ -569,7 +573,13 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     kernel_user_saved_r14 = saved_r14;
     kernel_user_saved_r15 = saved_r15;
 
-    if (process->state == PROCESS_STATE_PAUSED) {
+    /*
+     * Process::state is a compatibility summary and another thread may
+     * legitimately change it while the main thread is returning from a local
+     * preemption. The execution decision belongs to the returning CPU's
+     * fixed return reason.
+     */
+    if (initial_return_reason != PROCESS_PAUSE_NONE) {
         if (parent != 0 && parent->active) {
             if (parent_has_ready_context(parent)) {
                 return resume_saved_parent(parent);
@@ -591,12 +601,13 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
         if (continue_ready_threads(thread_identity(thread))) {
             return 1;
         }
-        if (parent == 0 && process->pause_reason == PROCESS_PAUSE_YIELD) {
+        if (parent == 0 &&
+            initial_return_reason == PROCESS_PAUSE_YIELD) {
             return continue_ready_threads(thread_identity(thread)) ? 1 : 1;
         }
         if (parent == 0 &&
-            (process->pause_reason == PROCESS_PAUSE_SLEEP ||
-             process->pause_reason == PROCESS_PAUSE_WAIT)) {
+            (initial_return_reason == PROCESS_PAUSE_SLEEP ||
+             initial_return_reason == PROCESS_PAUSE_WAIT)) {
             return 1;
         }
         return 1;
@@ -752,7 +763,11 @@ static int resume_user_thread_internal(Process* parent,
     process->state = PROCESS_STATE_RUNNING;
     context->resumable = 0;
     set_user_fs_base(context->tls_base);
+    restore_thread_fx_state64(thread);
+    cpu_local_current()->user_state.return_reason = PROCESS_PAUSE_NONE;
     resume_user_mode();
+    const uint32_t return_reason =
+        cpu_local_current()->user_state.return_reason;
     set_user_fs_base(0);
     process_execution_pop(stack_index, process, thread);
     Process* active_after_return = current_process();
@@ -784,9 +799,7 @@ static int resume_user_thread_internal(Process* parent,
         return 1;
     }
 
-    if (thread->active && context->resumable &&
-        (context->scheduler_state == SCHED_STATE_READY ||
-         context->scheduler_state == SCHED_STATE_WAITING)) {
+    if (return_reason != PROCESS_PAUSE_NONE) {
         if (parent != 0 && parent->active) {
             if (parent_has_ready_context(parent)) {
                 return resume_saved_parent(parent);
@@ -808,12 +821,12 @@ static int resume_user_thread_internal(Process* parent,
         if (continue_ready_threads(thread_identity(thread))) {
             return 1;
         }
-        if (parent == 0 && context->pause_reason == PROCESS_PAUSE_YIELD) {
+        if (parent == 0 && return_reason == PROCESS_PAUSE_YIELD) {
             return continue_ready_threads(thread_identity(thread)) ? 1 : 1;
         }
         if (parent == 0 &&
-            (context->pause_reason == PROCESS_PAUSE_SLEEP ||
-             context->pause_reason == PROCESS_PAUSE_WAIT)) {
+            (return_reason == PROCESS_PAUSE_SLEEP ||
+             return_reason == PROCESS_PAUSE_WAIT)) {
             return 1;
         }
         return 1;
@@ -874,6 +887,19 @@ static int resume_user_thread_internal(Process* parent,
         return 1;
     }
     return 1;
+}
+
+int scheduler_execute_claimed_thread(Thread* thread) {
+    if (thread == 0 || thread->owner == 0 ||
+        thread->running_cpu == THREAD_CPU_INVALID ||
+        thread->context == 0 ||
+        thread->context->scheduler_state != SCHED_STATE_RUNNING) {
+        return 0;
+    }
+    Process* process = thread->owner;
+    Process* parent = process->parent_pid != 0
+        ? find_process_by_pid(process->parent_pid) : 0;
+    return resume_user_thread_internal(parent, process, thread, 0);
 }
 
 int resume_user_program(uint32_t pid) {

@@ -10,9 +10,16 @@
 #include "kernel/syscall64.h"
 #include "kernel/mm/pmm.h"
 #include "kernel/mm/vm.h"
+#include "kernel/cpu.h"
 #ifndef OS64_HOST_TEST
 #include "kernel/cpu_local.h"
+#include "kernel/smp.h"
 #endif
+
+static_assert(alignof(ThreadContext) >= 16,
+              "thread extended state requires 16-byte alignment");
+static_assert((offsetof(ThreadContext, fx_state) & 15u) == 0,
+              "FXSAVE area must remain 16-byte aligned");
 
 uint32_t next_pid = 1;
 uint32_t next_process_generation = 1;
@@ -88,6 +95,70 @@ static void thread_record_zero(Thread* thread) {
     thread->context = &thread->context_storage;
     thread_context_reset(thread->context);
     thread->priority = OS_THREAD_PRIORITY_NORMAL;
+    thread->running_cpu = THREAD_CPU_INVALID;
+    thread->last_cpu = THREAD_CPU_INVALID;
+    thread->affinity_mask = THREAD_AFFINITY_ALL;
+    thread->migration_count = 0;
+}
+
+static uint32_t scheduler_current_cpu() {
+#ifdef OS64_HOST_TEST
+    return 0;
+#else
+    CpuLocal* local = cpu_local_current();
+    return cpu_local_validate(local) ? local->logical_id : 0;
+#endif
+}
+
+uint32_t scheduler_online_cpu_mask() {
+#ifdef OS64_HOST_TEST
+    return 1u;
+#else
+    const CpuTopologyStats* topology = cpu_topology_stats();
+    uint32_t mask = 0;
+    for (uint32_t i = 0; topology != 0 && i < topology->record_count; i++) {
+        const CpuRecord* record = cpu_record(i);
+        if (record != 0 && record->lifecycle == CPU_STATE_ONLINE) {
+            mask |= 1u << i;
+        }
+    }
+    return mask;
+#endif
+}
+
+static int thread_cpu_eligible(const Thread* thread, uint32_t logical_id) {
+    return thread != 0 && logical_id < CPU_MAX_COUNT &&
+           (thread->affinity_mask & (1u << logical_id)) != 0;
+}
+
+static void thread_release_cpu_unlocked(Thread* thread) {
+    if (thread != 0) thread->running_cpu = THREAD_CPU_INVALID;
+}
+
+static int thread_claim_cpu_unlocked(Thread* thread, uint32_t logical_id) {
+    if (thread == 0 || thread->context == 0 ||
+        thread->running_cpu != THREAD_CPU_INVALID ||
+        !thread_cpu_eligible(thread, logical_id)) {
+        return 0;
+    }
+    if (thread->last_cpu != THREAD_CPU_INVALID &&
+        thread->last_cpu != (int32_t)logical_id) {
+        thread->migration_count++;
+    }
+    thread->running_cpu = (int32_t)logical_id;
+    thread->last_cpu = (int32_t)logical_id;
+    thread->context->scheduler_state = SCHED_STATE_RUNNING;
+    thread->context->pause_reason = PROCESS_PAUSE_NONE;
+    thread->context->wake_tick = 0;
+    thread->context->timeslice_ticks = thread_quantum(thread);
+    sched_last_pid = thread->owner_pid;
+    sched_switch_count++;
+    thread->context->switch_count++;
+#ifndef OS64_HOST_TEST
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) local->scheduler_claim_count++;
+#endif
+    return 1;
 }
 
 void process_system_init() {
@@ -567,6 +638,7 @@ static int thread_wait_begin_unlocked(Thread* thread,
     context->wake_tick = context->wait_deadline;
     context->scheduler_state = SCHED_STATE_WAITING;
     context->block_count++;
+    thread_release_cpu_unlocked(thread);
     return 1;
 }
 
@@ -624,6 +696,7 @@ static int thread_wait_signal_unlocked(Thread* thread, uint32_t reason, int32_t 
     context->wake_count++;
     if (thread->active && thread->owner != 0 && thread->owner->active &&
         context->resumable) {
+        thread_release_cpu_unlocked(thread);
         context->scheduler_state = SCHED_STATE_READY;
         context->timeslice_ticks = thread_quantum(thread);
         scheduler_enqueue_unlocked(thread);
@@ -1207,6 +1280,7 @@ void process_clear(Process* process) {
     process->background = 0;
     process->exiting = 0;
     process->reserved_process = 0;
+    process->elf_alias_ready = 0;
     process->thread_count = 0;
     process->main_thread_identity.tid = 0;
     process->main_thread_identity.generation = 0;
@@ -1341,6 +1415,7 @@ static void process_finish(Process* process,
         thread->exited = 1;
         thread->exit_code = status_code;
         thread->context->scheduler_state = SCHED_STATE_FINISHED;
+        thread_release_cpu_unlocked(thread);
         thread->context->pause_reason = PROCESS_PAUSE_NONE;
         thread->context->resumable = 0;
         thread_wait_reset_unlocked(thread);
@@ -1539,6 +1614,7 @@ int thread_create_user(Process* owner,
     context->resumable = 1;
     context->pause_reason = PROCESS_PAUSE_YIELD;
     context->scheduler_state = SCHED_STATE_READY;
+    thread_release_cpu_unlocked(thread);
     scheduler_enqueue_thread(thread);
     *identity_out = thread_identity(thread);
     return 0;
@@ -1586,6 +1662,7 @@ void thread_mark_exited(Thread* thread, uint32_t exit_code) {
     thread->exited = 1;
     thread->exit_code = exit_code;
     thread->context->scheduler_state = SCHED_STATE_FINISHED;
+    thread_release_cpu_unlocked(thread);
     thread->context->resumable = 0;
     thread->context->pause_reason = PROCESS_PAUSE_NONE;
     thread_wait_reset_unlocked(thread);
@@ -1688,6 +1765,7 @@ int thread_join_begin(Thread* caller,
     context->wait_target_tid = target_identity.tid;
     context->wait_target_generation = target_identity.generation;
     context->scheduler_state = SCHED_STATE_WAITING;
+    thread_release_cpu_unlocked(caller);
     kernel_spinlock_release(&process_lock, &token);
     return 0;
 }
@@ -1742,11 +1820,14 @@ static void scheduler_enqueue_unlocked(Thread* thread) {
         return;
     }
     if (scheduler_queue_contains(thread)) {
-        thread->context->scheduler_state = SCHED_STATE_READY;
-        thread->context->timeslice_ticks = thread_quantum(thread);
+        if (thread->context->scheduler_state == SCHED_STATE_READY &&
+            thread->running_cpu == THREAD_CPU_INVALID) {
+            thread->context->timeslice_ticks = thread_quantum(thread);
+        }
         return;
     }
-    if (sched_queue_count >= SCHED_QUEUE_SIZE) {
+    if (sched_queue_count >= SCHED_QUEUE_SIZE ||
+        thread->running_cpu != THREAD_CPU_INVALID) {
         return;
     }
 
@@ -1755,6 +1836,10 @@ static void scheduler_enqueue_unlocked(Thread* thread) {
     sched_queue_count++;
     thread->context->scheduler_state = SCHED_STATE_READY;
     thread->context->timeslice_ticks = thread_quantum(thread);
+#ifndef OS64_HOST_TEST
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    smp_notify_runnable(thread->affinity_mask);
+#endif
 }
 
 void scheduler_enqueue_thread(Thread* thread) {
@@ -1816,16 +1901,22 @@ void scheduler_mark_thread_running(Thread* thread) {
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
         return;
     }
+    const uint32_t logical_id = scheduler_current_cpu();
+    if (thread->running_cpu == (int32_t)logical_id &&
+        thread->context->scheduler_state == SCHED_STATE_RUNNING) {
+        kernel_spinlock_release(&process_lock, &token);
+        return;
+    }
+    if (thread->running_cpu != THREAD_CPU_INVALID ||
+        !thread_cpu_eligible(thread, logical_id)) {
+        kernel_spinlock_release(&process_lock, &token);
+        return;
+    }
     if (thread->context->wait_reason == PROCESS_WAIT_CHILD) {
         thread_wait_reset_unlocked(thread);
     }
-    thread->context->scheduler_state = SCHED_STATE_RUNNING;
-    thread->context->pause_reason = PROCESS_PAUSE_NONE;
-    thread->context->wake_tick = 0;
-    thread->context->timeslice_ticks = thread_quantum(thread);
-    sched_last_pid = thread->owner_pid;
-    sched_switch_count++;
-    thread->context->switch_count++;
+    scheduler_remove_unlocked(thread);
+    thread_claim_cpu_unlocked(thread, logical_id);
     kernel_spinlock_release(&process_lock, &token);
 }
 
@@ -1844,6 +1935,7 @@ void scheduler_mark_waiting(Process* process) {
         return;
     }
     thread->context->scheduler_state = SCHED_STATE_WAITING;
+    thread_release_cpu_unlocked(thread);
     kernel_spinlock_release(&process_lock, &token);
 }
 
@@ -1859,6 +1951,7 @@ void scheduler_mark_sleeping(Process* process, uint32_t wake_tick) {
     }
     scheduler_remove_unlocked(thread);
     thread->context->scheduler_state = SCHED_STATE_WAITING;
+    thread_release_cpu_unlocked(thread);
     thread->context->wake_tick = wake_tick;
     kernel_spinlock_release(&process_lock, &token);
 }
@@ -1875,6 +1968,7 @@ void scheduler_mark_thread_finished(Thread* thread) {
     scheduler_remove_unlocked(thread);
     thread->context->scheduler_state = SCHED_STATE_FINISHED;
     thread->context->timeslice_ticks = 0;
+    thread_release_cpu_unlocked(thread);
     kernel_spinlock_release(&process_lock, &token);
 }
 
@@ -1897,6 +1991,7 @@ void scheduler_yield_current() {
     }
     sched_yield_count++;
     thread->context->yield_count++;
+    thread_release_cpu_unlocked(thread);
     thread->context->scheduler_state = SCHED_STATE_READY;
     thread->context->timeslice_ticks = thread_quantum(thread);
     scheduler_remove_unlocked(thread);
@@ -1991,6 +2086,10 @@ int thread_get_info(const Process* requester,
     info->block_count = context->block_count;
     info->wake_count = context->wake_count;
     info->switch_count = context->switch_count;
+    info->affinity_mask = thread->affinity_mask;
+    info->running_cpu = thread->running_cpu;
+    info->last_cpu = thread->last_cpu;
+    info->migration_count = thread->migration_count;
     kernel_spinlock_release(&process_lock, &token);
     return 0;
 }
@@ -2022,6 +2121,44 @@ int thread_set_priority(Process* requester,
     return result;
 }
 
+int thread_set_affinity(Process* requester,
+                        ThreadIdentity identity,
+                        uint32_t affinity_mask) {
+    const uint32_t valid_mask = scheduler_online_cpu_mask();
+    if (requester == 0 || affinity_mask == 0 ||
+        (affinity_mask & ~((1u << CPU_MAX_COUNT) - 1u)) != 0 ||
+        (affinity_mask & valid_mask) == 0) {
+        return SYS_ERR_INVALID_ARGUMENT;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return SYS_ERR_NOT_READY;
+    }
+    int result = SYS_ERR_NOT_FOUND;
+    int32_t running_cpu = THREAD_CPU_INVALID;
+    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
+        Thread* thread = &thread_table[i];
+        if (!thread_identity_matches(thread, identity) ||
+            thread->owner != requester) {
+            continue;
+        }
+        thread->affinity_mask = affinity_mask;
+        running_cpu = thread->running_cpu;
+        result = 0;
+        break;
+    }
+    kernel_spinlock_release(&process_lock, &token);
+#ifndef OS64_HOST_TEST
+    if (result == 0 && running_cpu != THREAD_CPU_INVALID &&
+        (affinity_mask & (1u << (uint32_t)running_cpu)) == 0) {
+        smp_request_reschedule((uint32_t)running_cpu);
+    }
+#else
+    (void)running_cpu;
+#endif
+    return result;
+}
+
 void scheduler_wake_sleeping_processes(uint32_t tick_now) {
     process_wait_tick(tick_now);
 }
@@ -2030,6 +2167,7 @@ static Thread* find_next_ready_thread_unlocked(ThreadIdentity exclude,
                                                 uint32_t exclude_pid,
                                                 int background_only,
                                                 int sleeping_only) {
+    const uint32_t logical_id = scheduler_current_cpu();
     for (uint32_t i = 0; i < sched_queue_count; i++) {
         uint32_t index = (sched_queue_head + i) % SCHED_QUEUE_SIZE;
         Thread* thread = sched_queue[index];
@@ -2045,6 +2183,10 @@ static Thread* find_next_ready_thread_unlocked(ThreadIdentity exclude,
             continue;
         }
         if (thread->context->scheduler_state != SCHED_STATE_READY) {
+            continue;
+        }
+        if (thread->running_cpu != THREAD_CPU_INVALID ||
+            !thread_cpu_eligible(thread, logical_id)) {
             continue;
         }
         if (background_only && !thread->owner->background) {
@@ -2066,6 +2208,8 @@ static Thread* find_next_ready_thread_unlocked(ThreadIdentity exclude,
             !thread->active || !thread->owner->active ||
             !thread->context->resumable ||
             thread->context->scheduler_state != SCHED_STATE_READY ||
+            thread->running_cpu != THREAD_CPU_INVALID ||
+            !thread_cpu_eligible(thread, logical_id) ||
             (background_only && !thread->owner->background) ||
             (sleeping_only && thread->context->pause_reason != PROCESS_PAUSE_SLEEP)) {
             continue;
@@ -2074,6 +2218,28 @@ static Thread* find_next_ready_thread_unlocked(ThreadIdentity exclude,
         return thread;
     }
     return 0;
+}
+
+Thread* scheduler_claim_ready_thread(ThreadIdentity exclude,
+                                     uint32_t exclude_pid,
+                                     int background_only,
+                                     int sleeping_only) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    Thread* thread = find_next_ready_thread_unlocked(exclude,
+                                                     exclude_pid,
+                                                     background_only,
+                                                     sleeping_only);
+    if (thread != 0) {
+        scheduler_remove_unlocked(thread);
+        if (!thread_claim_cpu_unlocked(thread, scheduler_current_cpu())) {
+            thread = 0;
+        }
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return thread;
 }
 
 Thread* find_next_ready_thread(ThreadIdentity exclude) {
@@ -2140,6 +2306,27 @@ int scheduler_should_preempt_current() {
         return 0;
     }
     int result = find_next_ready_thread_unlocked(thread_identity(thread), 0, 0, 0) != 0;
+    kernel_spinlock_release(&process_lock, &token);
+    return result;
+}
+
+int scheduler_should_reschedule_current() {
+    Thread* thread = current_thread();
+    if (thread == 0 || thread->context == 0) {
+        return 0;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 0;
+    }
+    const uint32_t logical_id = scheduler_current_cpu();
+    int result =
+        thread->context->scheduler_state == SCHED_STATE_RUNNING &&
+        (!thread_cpu_eligible(thread, logical_id) ||
+         find_next_ready_thread_unlocked(thread_identity(thread),
+                                         0,
+                                         0,
+                                         0) != 0);
     kernel_spinlock_release(&process_lock, &token);
     return result;
 }

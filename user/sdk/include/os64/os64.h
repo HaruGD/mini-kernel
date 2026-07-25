@@ -27,7 +27,7 @@
 #include "os64/window.h"
 
 #define OS64_SDK_VERSION_MAJOR 2u
-#define OS64_SDK_VERSION_MINOR 3u
+#define OS64_SDK_VERSION_MINOR 4u
 #define OS_OK 0
 #define OS_ERROR (-1)
 #define OS_PATH_MAX 160u
@@ -134,6 +134,7 @@ long os_thread_tls_set(void* base);
 long os_thread_tls_get(void** base);
 long os_thread_get_info(OsThreadIdentity identity, OsThreadInfo* info);
 long os_thread_set_priority(OsThreadIdentity identity, uint32_t priority);
+long os_thread_set_affinity(OsThreadIdentity identity, uint32_t affinity_mask);
 long os_mutex_create(OsMutex* mutex);
 long os_mutex_lock(OsMutex mutex, uint32_t timeout_ticks);
 long os_mutex_unlock(OsMutex mutex);

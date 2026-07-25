@@ -63,31 +63,32 @@ static uint64_t boot_tsc = 0;
 static uint32_t user_test_count = 0;
 extern "C" void enter_user_mode(uint64_t rip, uint64_t rsp);
 extern "C" void resume_user_mode();
-extern "C" uint64_t kernel_user_return_rsp;
-extern "C" uint64_t kernel_user_saved_rbx;
-extern "C" uint64_t kernel_user_saved_rbp;
-extern "C" uint64_t kernel_user_saved_r12;
-extern "C" uint64_t kernel_user_saved_r13;
-extern "C" uint64_t kernel_user_saved_r14;
-extern "C" uint64_t kernel_user_saved_r15;
-extern "C" uint64_t kernel_user_resume_rax;
-extern "C" uint64_t kernel_user_resume_rbx;
-extern "C" uint64_t kernel_user_resume_rcx;
-extern "C" uint64_t kernel_user_resume_rdx;
-extern "C" uint64_t kernel_user_resume_rbp;
-extern "C" uint64_t kernel_user_resume_rsi;
-extern "C" uint64_t kernel_user_resume_rdi;
-extern "C" uint64_t kernel_user_resume_r8;
-extern "C" uint64_t kernel_user_resume_r9;
-extern "C" uint64_t kernel_user_resume_r10;
-extern "C" uint64_t kernel_user_resume_r11;
-extern "C" uint64_t kernel_user_resume_r12;
-extern "C" uint64_t kernel_user_resume_r13;
-extern "C" uint64_t kernel_user_resume_r14;
-extern "C" uint64_t kernel_user_resume_r15;
-extern "C" uint64_t kernel_user_resume_rip;
-extern "C" uint64_t kernel_user_resume_rsp;
-extern "C" uint64_t kernel_user_resume_rflags;
+
+#define kernel_user_return_rsp (cpu_local_current()->user_state.return_rsp)
+#define kernel_user_saved_rbx (cpu_local_current()->user_state.saved_rbx)
+#define kernel_user_saved_rbp (cpu_local_current()->user_state.saved_rbp)
+#define kernel_user_saved_r12 (cpu_local_current()->user_state.saved_r12)
+#define kernel_user_saved_r13 (cpu_local_current()->user_state.saved_r13)
+#define kernel_user_saved_r14 (cpu_local_current()->user_state.saved_r14)
+#define kernel_user_saved_r15 (cpu_local_current()->user_state.saved_r15)
+#define kernel_user_resume_rax (cpu_local_current()->user_state.resume_rax)
+#define kernel_user_resume_rbx (cpu_local_current()->user_state.resume_rbx)
+#define kernel_user_resume_rcx (cpu_local_current()->user_state.resume_rcx)
+#define kernel_user_resume_rdx (cpu_local_current()->user_state.resume_rdx)
+#define kernel_user_resume_rbp (cpu_local_current()->user_state.resume_rbp)
+#define kernel_user_resume_rsi (cpu_local_current()->user_state.resume_rsi)
+#define kernel_user_resume_rdi (cpu_local_current()->user_state.resume_rdi)
+#define kernel_user_resume_r8 (cpu_local_current()->user_state.resume_r8)
+#define kernel_user_resume_r9 (cpu_local_current()->user_state.resume_r9)
+#define kernel_user_resume_r10 (cpu_local_current()->user_state.resume_r10)
+#define kernel_user_resume_r11 (cpu_local_current()->user_state.resume_r11)
+#define kernel_user_resume_r12 (cpu_local_current()->user_state.resume_r12)
+#define kernel_user_resume_r13 (cpu_local_current()->user_state.resume_r13)
+#define kernel_user_resume_r14 (cpu_local_current()->user_state.resume_r14)
+#define kernel_user_resume_r15 (cpu_local_current()->user_state.resume_r15)
+#define kernel_user_resume_rip (cpu_local_current()->user_state.resume_rip)
+#define kernel_user_resume_rsp (cpu_local_current()->user_state.resume_rsp)
+#define kernel_user_resume_rflags (cpu_local_current()->user_state.resume_rflags)
 
 static void early_framebuffer_marker(const BootInfo* boot_info, uint32_t slot, uint32_t color) {
     if (boot_info == 0 ||

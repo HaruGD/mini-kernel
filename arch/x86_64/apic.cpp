@@ -18,12 +18,19 @@ extern "C" {
 #define LAPIC_SOFTWARE_ENABLE 0x100u
 #define LAPIC_ICR_LOW 0x300u
 #define LAPIC_ICR_HIGH 0x310u
+#define LAPIC_LVT_TIMER 0x320u
+#define LAPIC_TIMER_INITIAL 0x380u
+#define LAPIC_TIMER_CURRENT 0x390u
+#define LAPIC_TIMER_DIVIDE 0x3E0u
 #define LAPIC_ICR_DELIVERY_PENDING (1u << 12)
 #define LAPIC_ICR_LEVEL_ASSERT (1u << 14)
 #define LAPIC_ICR_TRIGGER_LEVEL (1u << 15)
 #define LAPIC_DELIVERY_NMI (4u << 8)
 #define LAPIC_DELIVERY_INIT (5u << 8)
 #define LAPIC_DELIVERY_STARTUP (6u << 8)
+#define LAPIC_LVT_MASKED (1u << 16)
+#define LAPIC_LVT_TIMER_PERIODIC (1u << 17)
+#define LAPIC_TIMER_DIVIDE_BY_16 0x3u
 
 static uint32_t controller_mode = INTERRUPT_CONTROLLER_PIC;
 static volatile uint32_t* lapic = 0;
@@ -288,6 +295,53 @@ int interrupt_controller_start_ap(uint32_t apic_id, uint8_t startup_vector) {
     }
     apic_delay_us(200);
     return 1;
+}
+
+int interrupt_controller_calibrate_local_timer(
+    uint64_t reference_tsc_hz,
+    uint32_t target_hz,
+    uint8_t vector,
+    LocalApicTimerCalibration* calibration) {
+    if (controller_mode != INTERRUPT_CONTROLLER_APIC || lapic == 0 ||
+        reference_tsc_hz < 1000 || target_hz == 0 || vector < 32 ||
+        calibration == 0) {
+        return 0;
+    }
+
+    lapic_write(LAPIC_LVT_TIMER, LAPIC_LVT_MASKED | vector);
+    lapic_write(LAPIC_TIMER_DIVIDE, LAPIC_TIMER_DIVIDE_BY_16);
+    lapic_write(LAPIC_TIMER_INITIAL, 0xFFFFFFFFu);
+    const uint64_t sample_tsc = reference_tsc_hz / 100u;
+    const uint64_t start = apic_read_tsc();
+    const uint64_t deadline = start + sample_tsc;
+    while ((int64_t)(apic_read_tsc() - deadline) < 0) {
+        __asm__ volatile("pause");
+    }
+    const uint32_t current = lapic_read(LAPIC_TIMER_CURRENT);
+    lapic_write(LAPIC_TIMER_INITIAL, 0);
+    const uint64_t elapsed = 0xFFFFFFFFULL - (uint64_t)current;
+    const uint64_t timer_hz = elapsed * 100ULL;
+    const uint64_t reload = timer_hz / target_hz;
+    if (elapsed == 0 || timer_hz == 0 || reload == 0 ||
+        reload > 0xFFFFFFFFULL) {
+        lapic_write(LAPIC_LVT_TIMER, LAPIC_LVT_MASKED | vector);
+        return 0;
+    }
+
+    calibration->timer_hz = timer_hz;
+    calibration->sample_tsc_ticks = sample_tsc;
+    calibration->reload = (uint32_t)reload;
+    lapic_write(LAPIC_LVT_TIMER, LAPIC_LVT_TIMER_PERIODIC | vector);
+    lapic_write(LAPIC_TIMER_INITIAL, calibration->reload);
+    return 1;
+}
+
+void interrupt_controller_stop_local_timer() {
+    if (controller_mode == INTERRUPT_CONTROLLER_APIC && lapic != 0) {
+        lapic_write(LAPIC_LVT_TIMER,
+                    LAPIC_LVT_MASKED);
+        lapic_write(LAPIC_TIMER_INITIAL, 0);
+    }
 }
 
 void interrupt_controller_eoi(uint8_t irq) {

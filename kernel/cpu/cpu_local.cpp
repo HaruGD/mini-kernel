@@ -1,5 +1,7 @@
 #include "kernel/cpu_local.h"
 
+#include <stddef.h>
+
 #ifndef OS64_HOST_TEST
 #include "kernel/kutil64.h"
 #endif
@@ -8,6 +10,11 @@ static CpuLocal cpu_locals[CPU_MAX_COUNT];
 alignas(4096) static uint8_t kernel_stacks[CPU_MAX_COUNT][CPU_LOCAL_STACK_SIZE];
 alignas(4096) static uint8_t nmi_stacks[CPU_MAX_COUNT][CPU_LOCAL_STACK_SIZE];
 alignas(4096) static uint8_t double_fault_stacks[CPU_MAX_COUNT][CPU_LOCAL_STACK_SIZE];
+
+static_assert(offsetof(CpuLocal, user_state) == CPU_LOCAL_USER_STATE_OFFSET,
+              "CpuLocal user-state assembly offset changed");
+static_assert(offsetof(CpuLocal, user_state.resume_rflags) == 224,
+              "CpuLocal resume-rflags assembly offset changed");
 
 #ifdef OS64_HOST_TEST
 static thread_local CpuLocal* selected_local = 0;
@@ -188,6 +195,28 @@ void cpu_local_print_summary() {
         print_hex64(local->idle_wake_count);
         print(" ping=");
         print_hex64(local->startup_ping_count);
+        print(" sched=");
+        print_hex32(local->scheduler_enabled);
+        print(" timer_ok=");
+        print_hex32(local->local_timer_calibrated);
+        print(" timer_hz=");
+        print_hex64(local->local_timer_hz);
+        print(" reload=");
+        print_hex32(local->local_timer_reload);
+        print(" error_bps=");
+        print_hex32(local->local_timer_error_bps);
+        print(" local_ticks=");
+        print_hex64(local->local_timer_interrupt_count);
+        print(" claims=");
+        print_hex64(local->scheduler_claim_count);
+        print(" user_entries=");
+        print_hex64(local->scheduler_user_entry_count);
+        print(" rs_sent=");
+        print_hex64(local->reschedule_sent_count);
+        print(" rs_recv=");
+        print_hex64(local->reschedule_received_count);
+        print(" rs_coal=");
+        print_hex64(local->reschedule_coalesced_count);
     }
     print("\n=================\n");
 #endif

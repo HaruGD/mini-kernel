@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 import shutil
 import subprocess
 import time
@@ -69,6 +70,28 @@ def main() -> int:
                 )
         if "CPU topology ready: 0x00000001" not in text:
             failures.append(f"-smp {count}: topology was not accepted")
+        if "SMP execution ready: 0x00000001" not in text:
+            failures.append(f"-smp {count}: scheduler execution was not released")
+        execution = (
+            f"release=0x00000001 scheduler_cpus=0x{count:08X} "
+            "calibration_failed=0x00000000"
+        )
+        if execution not in text:
+            failures.append(f"-smp {count}: local timer calibration summary invalid")
+        for logical in range(count):
+            local_marker = f"cpu[0x{logical:08X}] valid=0x00000001"
+            offset = text.find(local_marker)
+            record = text[offset:offset + 900] if offset >= 0 else ""
+            if ("sched=0x00000001" not in record or
+                    "timer_ok=0x00000001" not in record):
+                failures.append(
+                    f"-smp {count}: CPU {logical} scheduler timer not enabled"
+                )
+            match = re.search(r"error_bps=0x([0-9A-Fa-f]{8})", record)
+            if match is None or int(match.group(1), 16) > 1500:
+                failures.append(
+                    f"-smp {count}: CPU {logical} calibration error out of bounds"
+                )
         if "OS64 KERNEL PANIC" in text:
             failures.append(f"-smp {count}: kernel panic")
     if failures:

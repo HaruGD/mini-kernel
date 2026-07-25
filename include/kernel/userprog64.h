@@ -31,6 +31,7 @@ void copy_process_name(char* dest, const char* src);
 uint32_t infer_shell_prompt_kind(const char* filename);
 
 void cleanup_user_process_mapping(Process* process);
+int scheduler_execute_claimed_thread(Thread* thread);
 uint64_t resize_user_process_heap(Process* process, uint64_t requested_break);
 int write_user_byte_phys(Process* process, uint64_t virt, uint8_t value);
 int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len);

@@ -8,6 +8,8 @@
 #define SMP_MAILBOX_ADDRESS 0x00007800u
 #define SMP_STARTUP_PING_VECTOR 0xF1u
 #define SMP_STARTUP_PING_ROUNDS 3u
+#define SMP_LOCAL_TIMER_VECTOR 0xF2u
+#define SMP_RESCHEDULE_VECTOR 0xF3u
 
 struct SmpStartupStats {
     uint32_t attempted;
@@ -26,11 +28,27 @@ struct SmpTimeReference {
     uint8_t reserved[3];
 };
 
+struct SmpExecutionStats {
+    uint32_t release_generation;
+    uint32_t scheduler_cpus;
+    uint32_t calibration_failed;
+    uint32_t notify_cursor;
+    uint64_t runnable_notifications;
+    uint64_t reschedule_ipis;
+    uint64_t reschedule_coalesced;
+};
+
 int smp_start_application_processors();
 void smp_startup_ping_handler();
 int smp_debug_send_nmi(uint32_t logical_id);
+int smp_release_scheduler_execution();
+int smp_scheduler_execution_released();
+void smp_notify_runnable(uint32_t affinity_mask);
+int smp_request_reschedule(uint32_t logical_id);
+int smp_reschedule_handler();
 const SmpStartupStats* smp_startup_stats();
 const SmpTimeReference* smp_time_reference();
+const SmpExecutionStats* smp_execution_stats();
 void smp_print_summary();
 
 #ifdef OS64_HOST_TEST

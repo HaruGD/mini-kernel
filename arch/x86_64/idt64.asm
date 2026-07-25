@@ -1,5 +1,15 @@
 [BITS 64]
 
+%include "include/arch/x86_64/cpu_local_offsets.inc"
+
+%define kernel_user_return_rsp gs:CPU_LOCAL_USER_RETURN_RSP
+%define kernel_user_saved_rbx  gs:CPU_LOCAL_USER_SAVED_RBX
+%define kernel_user_saved_rbp  gs:CPU_LOCAL_USER_SAVED_RBP
+%define kernel_user_saved_r12  gs:CPU_LOCAL_USER_SAVED_R12
+%define kernel_user_saved_r13  gs:CPU_LOCAL_USER_SAVED_R13
+%define kernel_user_saved_r14  gs:CPU_LOCAL_USER_SAVED_R14
+%define kernel_user_saved_r15  gs:CPU_LOCAL_USER_SAVED_R15
+
 ; Internal control tokens must never overlap sign-extended user error codes.
 %define SYSCALL_RETURN_TO_KERNEL 0xFFFFFFFF80005301
 %define SYSCALL_YIELD_TO_KERNEL  0xFFFFFFFF80005302
@@ -18,6 +28,8 @@ global irq_keyboard_asm
 global irq_timer_asm
 global irq_spurious_asm
 global irq_smp_startup_ping_asm
+global irq_smp_local_timer_asm
+global irq_smp_reschedule_asm
 global irq_pic_spurious7_asm
 global irq_pic_spurious15_asm
 global user_test_asm
@@ -33,16 +45,11 @@ extern keyboard_handler64
 extern timer_handler64
 extern spurious_interrupt_handler64
 extern smp_startup_ping_interrupt_handler64
+extern smp_reschedule_interrupt_handler64
+extern local_timer_handler64
 extern pic_spurious_interrupt_handler64
 extern user_test_interrupt_handler64
 extern user_exit_interrupt_handler64
-extern kernel_user_return_rsp
-extern kernel_user_saved_rbx
-extern kernel_user_saved_rbp
-extern kernel_user_saved_r12
-extern kernel_user_saved_r13
-extern kernel_user_saved_r14
-extern kernel_user_saved_r15
 extern syscall_dispatch64
 extern save_yield_context64
 extern save_preempt_context64
@@ -198,6 +205,56 @@ irq_smp_startup_ping_asm:
     PUSH_GPRS
     sub rsp, 8
     call smp_startup_ping_interrupt_handler64
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+irq_smp_local_timer_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    call local_timer_handler64
+    cmp rax, TIMER_PREEMPT_TO_KERNEL
+    jne .local_timer_iret
+    mov rax, [rsp + 136]
+    test al, 0x3
+    jz .local_timer_iret
+    lea rdi, [rsp + 8]
+    call save_preempt_context64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+.local_timer_iret:
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+irq_smp_reschedule_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    call smp_reschedule_interrupt_handler64
+    test rax, rax
+    jz .reschedule_iret
+    mov rax, [rsp + 136]
+    test al, 0x3
+    jz .reschedule_iret
+    lea rdi, [rsp + 8]
+    call save_preempt_context64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+.reschedule_iret:
     add rsp, 8
     POP_GPRS
     iretq

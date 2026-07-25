@@ -89,6 +89,7 @@ struct Process {
     uint8_t background;
     uint8_t exiting;
     uint8_t reserved_process;
+    uint8_t elf_alias_ready;
     uint32_t thread_count;
     ThreadIdentity main_thread_identity;
     ThreadIdentity fault_thread_identity;

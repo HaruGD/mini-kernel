@@ -7,6 +7,9 @@
 
 struct Process;
 
+#define THREAD_CPU_INVALID (-1)
+#define THREAD_AFFINITY_ALL 0x000000FFu
+
 #define THREAD_CONTEXT_FIELDS \
     uint64_t stack_guard_base; \
     uint64_t stack_base; \
@@ -56,9 +59,12 @@ struct Process;
     uint64_t saved_r15; \
     uint64_t saved_rip; \
     uint64_t saved_rsp; \
-    uint64_t saved_rflags
+    uint64_t saved_rflags; \
+    alignas(16) uint8_t fx_state[512]; \
+    uint8_t fx_initialized; \
+    uint8_t fx_reserved[15]
 
-struct ThreadContext {
+struct alignas(16) ThreadContext {
     THREAD_CONTEXT_FIELDS;
 };
 
@@ -117,6 +123,10 @@ struct Thread {
     uint32_t join_owner_tid;
     uint32_t join_owner_generation;
     uint32_t priority;
+    int32_t running_cpu;
+    int32_t last_cpu;
+    uint32_t affinity_mask;
+    uint32_t migration_count;
     uint8_t active;
     uint8_t is_main;
     uint8_t exited;
