@@ -57,10 +57,11 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-phase46-foundation test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
+	./build/ap_trampoline_blob.o \
 	./build/kernel64.o \
 	./build/fault_injection64.o \
 	./build/spinlock64.o \
@@ -85,6 +86,7 @@ KERNEL64_OBJECTS = \
 	./build/acpi_power64.o \
 	./build/cpu64.o \
 	./build/cpu_local64.o \
+	./build/smp64.o \
 	./build/apic64.o \
 	./build/ksh64.o \
 	./build/driver_manager64.o \
@@ -139,6 +141,10 @@ test-percpu:
 	python3 ./tools/percpu_test.py
 test-smp-emergency-entry: uefi-diagnostic
 	python3 ./tools/smp_emergency_entry_smoke.py
+test-ap-startup-state:
+	python3 ./tools/ap_startup_state_test.py
+test-ap-bringup: uefi-diagnostic test-ap-startup-state
+	python3 ./tools/ap_bringup_smoke.py
 test-phase46-foundation: test-cpu-topology test-percpu test-spinlocks test-smp-topology test-smp-emergency-entry
 test-phase1: uefi uefi-diagnostic
 	python3 ./tools/phase1_smoke.py
@@ -393,6 +399,15 @@ all32:
 ./build/cpu_local64.o: ./kernel/cpu/cpu_local.cpp ./include/kernel/cpu_local.h ./include/kernel/cpu.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
+./build/smp64.o: ./kernel/cpu/smp.cpp ./include/kernel/smp.h ./include/kernel/cpu.h ./include/kernel/cpu_local.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./bin/ap_trampoline.bin: ./arch/x86_64/ap_trampoline.asm
+	$(AS) -f bin $< -o $@
+
+./build/ap_trampoline_blob.o: ./bin/ap_trampoline.bin ./arch/x86_64/ap_trampoline_blob.asm
+	$(AS) -f elf64 ./arch/x86_64/ap_trampoline_blob.asm -o $@
+
 ./build/apic64.o: ./arch/x86_64/apic.cpp ./include/arch/x86_64/apic.h ./include/kernel/acpi.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
@@ -623,6 +638,7 @@ $(USER_C_ELFS): ./bin/%.elf: ./build/user_c_%.o ./build/user_crt0.o $(USER_SDK_L
 	python3 ./tools/driver_builder/sign_drv.py --input $< --output $@ --algorithm local-test
 
 clean:
+	rm -rf ./bin/ap_trampoline.bin
 	rm -rf ./bin/os64.bin
 	rm -rf ./bin/kernel64.bin
 	rm -rf ./bin/kernel64.elf

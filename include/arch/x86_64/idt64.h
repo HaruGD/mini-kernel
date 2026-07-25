@@ -23,6 +23,7 @@ extern "C" {
 #endif
 
 void idt64_init();
+void idt64_load_current();
 void idt64_load(struct idtr64* idtr);
 
 void default_interrupt_handler64(uint64_t* frame);
@@ -35,6 +36,7 @@ uint64_t double_fault_handler64(uint64_t error_code,
 void idt64_debug_force_double_fault();
 void spurious_interrupt_handler64();
 void pic_spurious_interrupt_handler64(uint64_t irq);
+void smp_startup_ping_interrupt_handler64();
 uint32_t pic_spurious_irq7_count();
 uint32_t pic_spurious_irq15_count();
 

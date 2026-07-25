@@ -207,6 +207,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     input_events_init();
     keyboard.init();
     pit.init();
+    int smp_ready = apic_ready && smp_start_application_processors();
     driver_manager_activate_linked_kernel();
     __asm__ volatile("sti");
     driver_manager_activate_linked_runtime();
@@ -244,6 +245,8 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print(interrupt_controller_name());
     print(" ready=");
     print_hex32((uint32_t)apic_ready);
+    print("\nSMP startup ready: ");
+    print_hex32((uint32_t)smp_ready);
     print("\n");
     print("GDT/TSS ready\n");
     print("Interrupts ready\n");
@@ -251,6 +254,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     if (diagnostic_mode) {
         cpu_print_summary();
         cpu_local_print_summary();
+        smp_print_summary();
         klog_write(KLOG_INFO, "boot", "diagnostic report follows");
         print_boot_info();
         acpi_print_summary();

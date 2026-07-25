@@ -3,6 +3,7 @@
 #include "kernel/panic.h"
 #include "kernel/driver/driver_manager.h"
 #include "kernel/cpu_local.h"
+#include "kernel/smp.h"
 
 extern "C" {
     #include "arch/x86_64/io.h"
@@ -32,6 +33,7 @@ extern "C" void isr_double_fault_asm();
 extern "C" void irq_keyboard_asm();
 extern "C" void irq_timer_asm();
 extern "C" void irq_spurious_asm();
+extern "C" void irq_smp_startup_ping_asm();
 extern "C" void irq_pic_spurious7_asm();
 extern "C" void irq_pic_spurious15_asm();
 extern "C" void user_test_asm();
@@ -92,12 +94,22 @@ extern "C" void idt64_init() {
     set_idt64_gate(39, (uint64_t)irq_pic_spurious7_asm);
     set_idt64_gate(47, (uint64_t)irq_pic_spurious15_asm);
     set_idt64_gate(255, (uint64_t)irq_spurious_asm);
+    set_idt64_gate(SMP_STARTUP_PING_VECTOR,
+                   (uint64_t)irq_smp_startup_ping_asm);
     set_idt64_gate_dpl(0x81, (uint64_t)user_test_asm, 3);
     set_idt64_gate_dpl(0x82, (uint64_t)user_exit_asm, 3);
     set_idt64_gate_dpl(0x80, (uint64_t)syscall_asm, 3);
 
     pic_remap();
     idt64_load(&idtr);
+}
+
+extern "C" void idt64_load_current() {
+    idt64_load(&idtr);
+}
+
+extern "C" void smp_startup_ping_interrupt_handler64() {
+    smp_startup_ping_handler();
 }
 
 extern "C" void default_interrupt_handler64(uint64_t* frame) {

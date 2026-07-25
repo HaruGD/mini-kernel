@@ -53,9 +53,13 @@ struct CpuLocal {
     uint64_t emergency_failure_count;
     uint64_t scheduler_tick_count;
     uint64_t timer_interrupt_count;
+    uint64_t idle_wake_count;
+    uint64_t startup_ping_count;
+    uint64_t online_generation;
 };
 
 int cpu_local_system_init();
+int cpu_local_activate(uint32_t logical_id);
 CpuLocal* cpu_local_current();
 CpuLocal* cpu_local_by_id(uint32_t logical_id);
 int cpu_local_validate(const CpuLocal* local);

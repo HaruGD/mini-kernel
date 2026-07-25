@@ -32,9 +32,10 @@ closure pass.
 Phase 4.6A and 4.6B completed on 2026-07-25. ACPI now retains a bounded CPU
 topology, the BSP uses logical CPU 0 through the same permanent-kernel-GS
 `CpuLocal` path prepared for APs, and per-CPU GDT/TSS, Ring 0, NMI, and Double
-Fault stacks are established. AP records are prepared but remain offline.
+Fault stacks are established. That closure left AP records prepared and
+offline; 4.6C now implements their bounded startup and validation.
 
-The next task is 4.6C application-processor startup and CPU-local idle. No AP
+The active task is 4.6C application-processor startup and CPU-local idle. No AP
 may enter the global scheduler until 4.6D.
 
 ## Scope Boundary

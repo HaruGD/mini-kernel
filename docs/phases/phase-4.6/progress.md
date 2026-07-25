@@ -23,16 +23,17 @@ a separate evidence commit.
 | --- | --- | --- | --- | --- | --- |
 | 4.6A: CPU topology and SMP contracts | Complete | 2026-07-25 | 2026-07-25 | `fb7f67f` | P46-R01, P46-R02 |
 | 4.6B: Per-CPU state and entry infrastructure | Complete | 2026-07-25 | 2026-07-25 | `01a0408` | P46-R03 |
-| 4.6C: Application processor bring-up and idle | Planned | - | - | - | - |
+| 4.6C: Application processor bring-up and idle | In progress | 2026-07-25 | - | - | P46-R04 pending |
 | 4.6D: Multicore scheduler and local preemption | Planned | - | - | - | - |
 | 4.6E: Reschedule IPI, remote wake, affinity, distribution | Planned | - | - | - | - |
 | 4.6F: TLB shootdown and address-space safety | Planned | - | - | - | - |
 | 4.6G: Kernel-wide SMP audit and interrupt ownership | Planned | - | - | - | - |
 | 4.6H: Multicore fault injection, soak, and closure | Planned | - | - | - | - |
 
-Current status: the SMP foundation bundle, 4.6A and 4.6B, is complete. AP
-records are prepared but remain offline. 4.6C AP bring-up and CPU-local idle
-is next. Phase 5 remains gated on complete 4.6 closure.
+Current status: the SMP foundation bundle, 4.6A and 4.6B, is complete. 4.6C
+implementation is in progress: AP startup and local idle have been added, but
+the immutable implementation/evidence commits and full exit-gate record are
+not yet published. Phase 5 remains gated on complete 4.6 closure.
 
 ## Recording Workflow
 

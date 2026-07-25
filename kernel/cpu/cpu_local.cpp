@@ -80,6 +80,21 @@ int cpu_local_system_init() {
     return cpu_local_validate(cpu_local_current());
 }
 
+int cpu_local_activate(uint32_t logical_id) {
+    CpuLocal* local = cpu_local_by_id(logical_id);
+    const CpuRecord* record = cpu_record(logical_id);
+    if (local == 0 || record == 0 || !cpu_local_validate(local) ||
+        local->apic_id != cpu_arch_bootstrap_apic_id()) {
+        return 0;
+    }
+#ifdef OS64_HOST_TEST
+    selected_local = local;
+#else
+    install_kernel_gs(local);
+#endif
+    return cpu_local_current() == local && cpu_local_validate(local);
+}
+
 CpuLocal* cpu_local_current() {
 #ifdef OS64_HOST_TEST
     return selected_local;
@@ -169,6 +184,10 @@ void cpu_local_print_summary() {
         print_hex64(local->nmi_count);
         print(" df=");
         print_hex64(local->double_fault_count);
+        print(" idle_wake=");
+        print_hex64(local->idle_wake_count);
+        print(" ping=");
+        print_hex64(local->startup_ping_count);
     }
     print("\n=================\n");
 #endif

@@ -16,6 +16,14 @@ extern "C" {
 #define LAPIC_EOI 0x0B0u
 #define LAPIC_SPURIOUS 0x0F0u
 #define LAPIC_SOFTWARE_ENABLE 0x100u
+#define LAPIC_ICR_LOW 0x300u
+#define LAPIC_ICR_HIGH 0x310u
+#define LAPIC_ICR_DELIVERY_PENDING (1u << 12)
+#define LAPIC_ICR_LEVEL_ASSERT (1u << 14)
+#define LAPIC_ICR_TRIGGER_LEVEL (1u << 15)
+#define LAPIC_DELIVERY_NMI (4u << 8)
+#define LAPIC_DELIVERY_INIT (5u << 8)
+#define LAPIC_DELIVERY_STARTUP (6u << 8)
 
 static uint32_t controller_mode = INTERRUPT_CONTROLLER_PIC;
 static volatile uint32_t* lapic = 0;
@@ -52,6 +60,63 @@ static uint32_t lapic_read(uint32_t offset) {
 static void lapic_write(uint32_t offset, uint32_t value) {
     lapic[offset / sizeof(uint32_t)] = value;
     (void)lapic_read(LAPIC_ID);
+}
+
+static uint64_t apic_read_tsc() {
+    uint32_t low = 0;
+    uint32_t high = 0;
+    __asm__ volatile("rdtsc" : "=a"(low), "=d"(high));
+    return ((uint64_t)high << 32) | low;
+}
+
+static uint64_t tsc_hz_hint() {
+    uint32_t maximum_leaf = 0;
+    uint32_t ebx = 0;
+    uint32_t ecx = 0;
+    uint32_t edx = 0;
+    __asm__ volatile("cpuid"
+                     : "=a"(maximum_leaf), "=b"(ebx),
+                       "=c"(ecx), "=d"(edx)
+                     : "a"(0));
+    if (maximum_leaf >= 0x16u) {
+        uint32_t mhz = 0;
+        __asm__ volatile("cpuid"
+                         : "=a"(mhz), "=b"(ebx),
+                           "=c"(ecx), "=d"(edx)
+                         : "a"(0x16u));
+        if (mhz != 0) return (uint64_t)mhz * 1000000ULL;
+    }
+    return 1000000000ULL;
+}
+
+static void apic_delay_us(uint32_t microseconds) {
+    const uint64_t ticks =
+        (tsc_hz_hint() / 1000000ULL) * microseconds;
+    const uint64_t deadline = apic_read_tsc() + ticks;
+    while ((int64_t)(apic_read_tsc() - deadline) < 0) {
+        __asm__ volatile("pause");
+    }
+}
+
+static int lapic_wait_delivery(uint32_t limit) {
+    while (limit-- != 0) {
+        if ((lapic_read(LAPIC_ICR_LOW) &
+             LAPIC_ICR_DELIVERY_PENDING) == 0) {
+            return 1;
+        }
+        __asm__ volatile("pause");
+    }
+    return 0;
+}
+
+static int lapic_send(uint32_t apic_id, uint32_t low) {
+    if (controller_mode != INTERRUPT_CONTROLLER_APIC || lapic == 0 ||
+        apic_id > 0xFFu || !lapic_wait_delivery(1000000u)) {
+        return 0;
+    }
+    lapic_write(LAPIC_ICR_HIGH, apic_id << 24);
+    lapic_write(LAPIC_ICR_LOW, low);
+    return lapic_wait_delivery(1000000u);
 }
 
 static uint32_t ioapic_read(uint8_t reg) {
@@ -174,6 +239,54 @@ int interrupt_controller_init(const AcpiState* acpi) {
     disable_legacy_pic();
     controller_mode = INTERRUPT_CONTROLLER_APIC;
     klog_write(KLOG_INFO, "interrupt", "Local APIC and IOAPIC enabled");
+    return 1;
+}
+
+int interrupt_controller_init_local_cpu() {
+    if (controller_mode != INTERRUPT_CONTROLLER_APIC || lapic == 0 ||
+        !cpu_has_apic()) {
+        return 0;
+    }
+    uint64_t apic_base = read_msr(IA32_APIC_BASE_MSR);
+    write_msr(IA32_APIC_BASE_MSR, apic_base | IA32_APIC_BASE_ENABLE);
+    lapic_write(LAPIC_SPURIOUS,
+                (lapic_read(LAPIC_SPURIOUS) & 0xFFFFFF00u) |
+                LAPIC_SOFTWARE_ENABLE |
+                0xFFu);
+    return 1;
+}
+
+int interrupt_controller_send_ipi(uint32_t apic_id, uint8_t vector) {
+    return vector >= 32u && lapic_send(apic_id, vector);
+}
+
+int interrupt_controller_send_nmi(uint32_t apic_id) {
+    return lapic_send(apic_id, LAPIC_DELIVERY_NMI);
+}
+
+int interrupt_controller_start_ap(uint32_t apic_id, uint8_t startup_vector) {
+    if (startup_vector > 0xFFu ||
+        !lapic_send(apic_id,
+                    LAPIC_DELIVERY_INIT |
+                    LAPIC_ICR_LEVEL_ASSERT |
+                    LAPIC_ICR_TRIGGER_LEVEL)) {
+        return 0;
+    }
+    apic_delay_us(200);
+    if (!lapic_send(apic_id,
+                    LAPIC_DELIVERY_INIT |
+                    LAPIC_ICR_TRIGGER_LEVEL)) {
+        return 0;
+    }
+    apic_delay_us(10000);
+    if (!lapic_send(apic_id, LAPIC_DELIVERY_STARTUP | startup_vector)) {
+        return 0;
+    }
+    apic_delay_us(200);
+    if (!lapic_send(apic_id, LAPIC_DELIVERY_STARTUP | startup_vector)) {
+        return 0;
+    }
+    apic_delay_us(200);
     return 1;
 }
 

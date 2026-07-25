@@ -19,6 +19,7 @@ extern "C" {
 #include "kernel/acpi.h"
 #include "kernel/cpu.h"
 #include "kernel/cpu_local.h"
+#include "kernel/smp.h"
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/input/input_events.h"
@@ -247,8 +248,20 @@ static void command_help() {
     print("\nfree, dump, sched, input, ipc, services, locks, resources, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
-    print("\nklog [clear|stats], acpi, cpus, intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
+    print("\nklog [clear|stats], acpi, cpus, cpunmi [ap], intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
     print("\nrun, resume, service [cmd] [name], surfacetest, usertest, ushell, ushellc");
+}
+
+static void command_cpunmi(const char* arg) {
+    if (arg == 0 || *arg < '0' || *arg > '9') {
+        print("\nUsage: cpunmi <online-ap-logical-id>");
+        return;
+    }
+    const uint32_t logical_id = parse_uint32(arg);
+    print("\nAP NMI logical=");
+    print_hex32(logical_id);
+    print(" result=");
+    print_hex32(smp_debug_send_nmi(logical_id));
 }
 
 static void print_fault_injection_status() {
@@ -1044,6 +1057,9 @@ static void execute_command() {
     } else if (strcmp64(cmd, "cpus") == 0) {
         cpu_print_summary();
         cpu_local_print_summary();
+        smp_print_summary();
+    } else if (strcmp64(cmd, "cpunmi") == 0) {
+        command_cpunmi(arg);
     } else if (strcmp64(cmd, "intctl") == 0) {
         interrupt_controller_print();
     } else if (strcmp64(cmd, "panic") == 0) {

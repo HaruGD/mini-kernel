@@ -38,13 +38,35 @@ def main() -> int:
     failures: list[str] = []
     for count in (1, 2, 4):
         text = run(count)
-        expected = f"records=0x{count:08X} online=0x00000001"
+        expected = f"records=0x{count:08X} online=0x{count:08X}"
         if expected not in text:
             failures.append(f"-smp {count}: missing {expected}")
         for logical in range(count):
             marker = f"cpu[0x{logical:08X}] logical=0x{logical:08X}"
-            if marker not in text:
+            offset = text.find(marker)
+            if offset < 0:
                 failures.append(f"-smp {count}: missing logical CPU {logical}")
+            elif "state=online" not in text[offset:offset + 180]:
+                failures.append(f"-smp {count}: logical CPU {logical} not online")
+        ap_count = count - 1
+        expected_startup = (
+            f"attempted=0x{ap_count:08X} online=0x{ap_count:08X} "
+            f"failed=0x00000000 "
+            f"ping_sent=0x{ap_count * 3:08X} "
+            f"ping_ack=0x{ap_count * 3:08X}"
+        )
+        if expected_startup not in text:
+            failures.append(f"-smp {count}: missing startup counters")
+        for logical in range(1, count):
+            local_marker = f"cpu[0x{logical:08X}] valid=0x00000001"
+            offset = text.find(local_marker)
+            record = text[offset:offset + 420] if offset >= 0 else ""
+            if "online=0x00000001" not in record:
+                failures.append(f"-smp {count}: AP {logical} local state not online")
+            if f"ping=0x{3:016X}" not in record:
+                failures.append(
+                    f"-smp {count}: AP {logical} did not acknowledge 3 pings"
+                )
         if "CPU topology ready: 0x00000001" not in text:
             failures.append(f"-smp {count}: topology was not accepted")
         if "OS64 KERNEL PANIC" in text:
@@ -53,7 +75,7 @@ def main() -> int:
         print("SMP topology smoke failures:")
         print("\n".join(failures))
         return 1
-    print("SMP topology smoke OK (1/2/4 vCPUs, BSP-only online)")
+    print("SMP topology smoke OK (1/2/4 vCPUs, exact online + 3 pings/AP)")
     return 0
 
 
