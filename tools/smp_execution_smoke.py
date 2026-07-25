@@ -67,6 +67,24 @@ def shell_command(process: subprocess.Popen, command: str,
     raise TimeoutError(f"timed out waiting for command {command}")
 
 
+def shell_command_until(process: subprocess.Popen, command: str,
+                        marker: str, timeout: float = 60) -> str:
+    key_map = {" ": "spc", ".": "dot", "_": "shift-minus", "-": "minus"}
+    start = len(serial_bytes())
+    for character in command:
+        monitor(process, f"sendkey {key_map.get(character, character)}")
+    monitor(process, "sendkey ret")
+    deadline = time.monotonic() + timeout
+    encoded_marker = marker.encode("ascii")
+    while time.monotonic() < deadline:
+        output = serial_bytes()[start:]
+        if encoded_marker in output:
+            time.sleep(1)
+            return serial_bytes()[start:].decode(errors="replace")
+        time.sleep(0.1)
+    raise TimeoutError(f"timed out waiting for {marker} from {command}")
+
+
 def main() -> int:
     SERIAL.unlink(missing_ok=True)
     run_id = int(time.time() * 1000)
@@ -91,7 +109,9 @@ def main() -> int:
        stderr=subprocess.STDOUT)
     try:
         wait_for("OS64>", 25)
-        output = shell_command(process, "run usmp_c.elf", 75)
+        output = shell_command_until(
+            process, "run usmp_c.elf", "[SMPX] mask=", 75
+        )
         cpu_output = shell_command(process, "cpus", 20)
     finally:
         if process.poll() is None:
@@ -119,7 +139,6 @@ def main() -> int:
                 f"unexpected workload result mask={mask:#x} max={maximum} "
                 f"preemptions={preemptions} failures={user_failures}"
             )
-
     records = {
         int(match.group(1), 16): tuple(
             int(match.group(index), 16) for index in range(2, 10)

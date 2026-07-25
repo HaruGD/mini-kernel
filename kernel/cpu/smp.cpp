@@ -446,8 +446,7 @@ void smp_notify_runnable(uint32_t affinity_mask) {
         CpuLocal* target = cpu_local_by_id(logical_id);
         if ((affinity_mask & (1u << logical_id)) == 0 || target == 0 ||
             !__atomic_load_n(&target->scheduler_enabled, __ATOMIC_ACQUIRE) ||
-            (current != 0 && logical_id == current->logical_id &&
-             topology->record_count > 1)) {
+            (current != 0 && logical_id == current->logical_id)) {
             continue;
         }
         smp_request_reschedule(logical_id);
