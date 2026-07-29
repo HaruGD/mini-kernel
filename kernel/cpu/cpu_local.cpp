@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 
+#include "kernel/fault_injection.h"
 #ifndef OS64_HOST_TEST
 #include "kernel/kutil64.h"
 #endif
@@ -69,6 +70,9 @@ static void install_kernel_gs(CpuLocal* local) {
 #endif
 
 int cpu_local_system_init() {
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_CPU_LOCAL)) {
+        return 0;
+    }
     const CpuTopologyStats* topology = cpu_topology_stats();
     if (topology == 0 || !topology->topology_valid ||
         topology->record_count == 0) {

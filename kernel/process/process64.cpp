@@ -58,6 +58,7 @@ static void scheduler_enqueue_unlocked(Thread* thread);
 static void scheduler_remove_unlocked(Thread* thread);
 static void thread_wait_reset_unlocked(Thread* thread);
 static void thread_join_release_claim_unlocked(Thread* waiter);
+static void thread_join_signal_owner_unlocked(Thread* target);
 
 static uint32_t thread_quantum(const Thread* thread) {
     if (thread != 0 && thread->priority == OS_THREAD_PRIORITY_LOW) {
@@ -1465,6 +1466,9 @@ static void thread_discard_record(Thread* thread) {
     uint64_t kernel_stack = thread->context != 0
         ? thread->context->kernel_stack_base
         : 0;
+    uint32_t kernel_stack_pages = thread->context != 0
+        ? thread->context->kernel_stack_page_count
+        : 0;
     KernelSpinlockToken token;
     if (kernel_spinlock_acquire(&process_lock, &token)) {
         scheduler_remove_unlocked(thread);
@@ -1478,8 +1482,8 @@ static void thread_discard_record(Thread* thread) {
         thread_record_zero(thread);
         kernel_spinlock_release(&process_lock, &token);
     }
-    if (kernel_stack != 0) {
-        pmm_free_block((void*)(uintptr_t)kernel_stack);
+    if (kernel_stack != 0 && kernel_stack_pages != 0) {
+        pmm_free_blocks((void*)(uintptr_t)kernel_stack, kernel_stack_pages);
     }
 }
 
@@ -1626,6 +1630,23 @@ static void thread_join_release_claim_unlocked(Thread* waiter) {
     }
 }
 
+static void thread_join_signal_owner_unlocked(Thread* target) {
+    if (target == 0 || !target->exited || !target->runtime_released ||
+        target->join_owner_tid == 0) {
+        return;
+    }
+    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
+        Thread* candidate = &thread_table[i];
+        if (candidate->tid == target->join_owner_tid &&
+            candidate->generation == target->join_owner_generation) {
+            thread_wait_signal_unlocked(candidate,
+                                        PROCESS_WAIT_THREAD_JOIN,
+                                        PROCESS_WAIT_OK);
+            return;
+        }
+    }
+}
+
 void thread_mark_exited(Thread* thread, uint32_t exit_code) {
     if (thread == 0 || thread->owner == 0) {
         return;
@@ -1656,12 +1677,6 @@ void thread_mark_exited(Thread* thread, uint32_t exit_code) {
         Thread* candidate = &thread_table[i];
         if (candidate->owner == owner && candidate->active) {
             remaining++;
-        }
-        if (candidate->tid == thread->join_owner_tid &&
-            candidate->generation == thread->join_owner_generation) {
-            thread_wait_signal_unlocked(candidate,
-                                        PROCESS_WAIT_THREAD_JOIN,
-                                        PROCESS_WAIT_OK);
         }
     }
     kernel_spinlock_release(&process_lock, &token);
@@ -1734,8 +1749,10 @@ void thread_release_runtime(Thread* thread) {
         context->kernel_stack_page_count = 0;
     }
     __atomic_store_n(&thread->runtime_released, 1u, __ATOMIC_RELEASE);
-    if (thread->join_consumed && !thread->is_main) {
-        thread_discard_record(thread);
+    KernelSpinlockToken token;
+    if (kernel_spinlock_acquire(&process_lock, &token)) {
+        thread_join_signal_owner_unlocked(thread);
+        kernel_spinlock_release(&process_lock, &token);
     }
 }
 
@@ -1765,13 +1782,17 @@ int thread_join_begin(Thread* caller,
         kernel_spinlock_release(&process_lock, &token);
         return SYS_ERR_NOT_FOUND;
     }
-    if (target->join_consumed || target->join_owner_tid != 0) {
+    if (target->join_consumed) {
+        kernel_spinlock_release(&process_lock, &token);
+        return SYS_ERR_NOT_FOUND;
+    }
+    if (target->join_owner_tid != 0) {
         kernel_spinlock_release(&process_lock, &token);
         return SYS_ERR_ALREADY_EXISTS;
     }
     target->join_owner_tid = caller->tid;
     target->join_owner_generation = caller->generation;
-    if (target->exited) {
+    if (target->exited && target->runtime_released) {
         *immediate_status = target->exit_code;
         target->join_consumed = 1;
         kernel_spinlock_release(&process_lock, &token);
@@ -1815,7 +1836,7 @@ int thread_join_consume(Thread* caller, uint32_t* status_out) {
             break;
         }
     }
-    if (target == 0 || !target->exited ||
+    if (target == 0 || !target->exited || !target->runtime_released ||
         target->join_owner_tid != caller->tid ||
         target->join_owner_generation != caller->generation) {
         kernel_spinlock_release(&process_lock, &token);
@@ -2273,6 +2294,10 @@ Thread* scheduler_claim_ready_thread(ThreadIdentity exclude,
                                      uint32_t exclude_pid,
                                      int background_only,
                                      int sleeping_only) {
+    if (kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_SCHEDULER_CLAIM)) {
+        return 0;
+    }
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
         return 0;
@@ -2385,17 +2410,35 @@ int process_record_is_active(const Process* process) {
         return 0;
     }
 
+#ifdef OS64_HOST_TEST
     const uint32_t depth = process_execution_depth();
     for (uint32_t i = 0; i < depth; i++) {
-#ifdef OS64_HOST_TEST
         if (host_process_stack[i] == process) {
-#else
-        CpuLocal* local = cpu_local_current();
-        if (cpu_local_validate(local) && local->process_stack[i] == process) {
-#endif
             return 1;
         }
     }
+#else
+    const CpuTopologyStats* topology = cpu_topology_stats();
+    for (uint32_t logical_id = 0;
+         topology != 0 && logical_id < topology->record_count;
+         logical_id++) {
+        CpuLocal* local = cpu_local_by_id(logical_id);
+        if (!cpu_local_validate(local)) {
+            continue;
+        }
+        uint32_t depth =
+            __atomic_load_n(&local->execution_depth, __ATOMIC_ACQUIRE);
+        if (depth > CPU_LOCAL_EXECUTION_STACK_MAX) {
+            depth = CPU_LOCAL_EXECUTION_STACK_MAX;
+        }
+        for (uint32_t i = 0; i < depth; i++) {
+            if (__atomic_load_n(&local->process_stack[i],
+                                __ATOMIC_ACQUIRE) == process) {
+                return 1;
+            }
+        }
+    }
+#endif
     return 0;
 }
 
@@ -2432,6 +2475,7 @@ Process* allocate_process_record() {
 
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
         if (!process_record_is_active(&process_table[i]) &&
+            !process_has_running_threads(&process_table[i]) &&
             !process_table[i].active &&
             process_table[i].reaped) {
             process_clear(&process_table[i]);

@@ -1,4 +1,5 @@
 #include "kernel/smp.h"
+#include "kernel/fault_injection.h"
 
 #include "arch/x86_64/apic.h"
 #include "arch/x86_64/gdt64.h"
@@ -129,6 +130,12 @@ static int configure_local_scheduler_cpu(CpuLocal* local) {
                             __ATOMIC_ACQ_REL)) {
         return __atomic_load_n(&local->scheduler_enabled,
                                __ATOMIC_ACQUIRE) != 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_LOCAL_TIMER)) {
+        __atomic_add_fetch(&execution_stats.calibration_failed,
+                           1u,
+                           __ATOMIC_RELAXED);
+        return 0;
     }
     LocalApicTimerCalibration calibration = {};
     if (!interrupt_controller_calibrate_local_timer(
@@ -303,6 +310,8 @@ int smp_start_application_processors() {
         CpuLocal* local = cpu_local_by_id(logical_id);
         const CpuRecord* record = cpu_record(logical_id);
         if (local == 0 || record == 0 ||
+            kernel_fault_injection_should_fail(
+                KERNEL_FAULT_POINT_AP_STARTUP) ||
             !cpu_transition(logical_id, CPU_STATE_STARTING)) {
             startup_stats.failed++;
             startup_stats.last_failed_logical_id = logical_id;
@@ -475,6 +484,16 @@ int smp_reschedule_handler() {
     if (pending) local->reschedule_received_count++;
     else local->reschedule_ignored_count++;
     interrupt_controller_eoi(0);
+    /*
+     * TLB acknowledgement waits deliberately run with interrupts enabled.
+     * A reschedule IPI received in that window must be deferred just like a
+     * timer tick: scheduler locks are forbidden until the wait phase ends.
+     * The interrupted kernel/user return or the next local tick will perform
+     * the ordinary ready-thread check.
+     */
+    if (kernel_in_tlb_wait()) {
+        return 0;
+    }
     return pending && scheduler_should_reschedule_current();
 #endif
 }
@@ -532,6 +551,10 @@ int smp_tlb_shootdown(AddressSpace* space,
     }
     if (space == 0 || space->root_phys == 0 || generation == 0 ||
         operation_token == 0) {
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_TLB_REQUEST)) {
         return 0;
     }
 #ifdef OS64_HOST_TEST
@@ -819,6 +842,9 @@ void smp_print_summary() {
 
 #ifdef OS64_HOST_TEST
 int smp_host_prepare_start(uint32_t logical_id) {
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_AP_STARTUP)) {
+        return 0;
+    }
     if (!cpu_transition(logical_id, CPU_STATE_STARTING)) return 0;
     startup_stats.attempted++;
     return 1;

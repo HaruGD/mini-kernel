@@ -10,6 +10,7 @@ extern "C" {
 #include "kernel/klog.h"
 #include "kernel/kutil64.h"
 #include "kernel/cpu_local.h"
+#include "kernel/fault_injection.h"
 
 #define IA32_APIC_BASE_MSR 0x1Bu
 #define IA32_APIC_BASE_ENABLE (1ULL << 11)
@@ -365,6 +366,9 @@ void interrupt_controller_stop_local_timer() {
 }
 
 int interrupt_controller_claim_external_irq(uint8_t irq) {
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_IRQ_OWNER)) {
+        return 0;
+    }
     if (irq >= INTERRUPT_EXTERNAL_IRQ_COUNT) {
         __atomic_add_fetch(&irq_owner_violations, 1u, __ATOMIC_RELAXED);
         return 0;

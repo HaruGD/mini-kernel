@@ -70,6 +70,7 @@ def require(output: str, marker: str) -> None:
 
 
 def main() -> int:
+    cpu_count = os.environ.get("OS64_QEMU_CPUS", "1")
     os.chdir(ROOT)
     SERIAL.parent.mkdir(parents=True, exist_ok=True)
     SERIAL.unlink(missing_ok=True)
@@ -81,6 +82,7 @@ def main() -> int:
     shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", variables)
     qemu = [
         "qemu-system-x86_64", "-machine", "q35", "-m", "512M", "-cpu", "max",
+        "-smp", cpu_count,
         "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
         "-drive", f"if=pflash,format=raw,file={variables}",
         "-drive", f"if=none,id=esp,format=raw,file={esp}",

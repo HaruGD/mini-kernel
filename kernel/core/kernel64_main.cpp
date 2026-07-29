@@ -21,6 +21,7 @@ static int remap_range_identity(uint64_t start, uint64_t end, uint64_t flags) {
 }
 
 static void drain_kernel_shell_input() {
+    keyboard.drain_deferred();
     if (display_session_gui_active() || current_process() != 0 ||
         process_focused() != 0) {
         return;

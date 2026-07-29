@@ -55,6 +55,8 @@ def send_command(process: subprocess.Popen, command: str,
 
 def main() -> int:
     os.chdir(ROOT)
+    cpu_count = int(os.environ.get("OS64_QEMU_CPUS", "1"))
+    cycle_count = int(os.environ.get("OS64_SYNC_CYCLES", "1"))
     SERIAL.unlink(missing_ok=True)
     QEMU_LOG.unlink(missing_ok=True)
     run_id = os.getpid()
@@ -64,6 +66,7 @@ def main() -> int:
     shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", variables)
     qemu = [
         "qemu-system-x86_64", "-machine", "q35", "-m", "512M", "-cpu", "max",
+        "-smp", str(cpu_count),
         "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
         "-drive", f"if=pflash,format=raw,file={variables}",
         "-drive", f"if=none,id=esp,format=raw,file={esp}",
@@ -76,9 +79,14 @@ def main() -> int:
                                stderr=subprocess.STDOUT)
     try:
         wait_for("OS64>", 20)
-        output = send_command(process, "run usync_c.elf")
-        if "[SYNC] PASS" not in output or "counter=120 once=1 failures=0" not in output:
-            raise RuntimeError("thread synchronization smoke failed")
+        for cycle in range(cycle_count):
+            output = send_command(process, "run usync_c.elf")
+            if ("[SYNC] PASS" not in output or
+                    "counter=120 once=1 failures=0" not in output):
+                raise RuntimeError(
+                    f"thread synchronization smoke failed cycle={cycle + 1}\n"
+                    f"{output}"
+                )
     finally:
         if process.poll() is None:
             process.terminate()
@@ -91,7 +99,10 @@ def main() -> int:
             process.stdin.close()
         esp.unlink(missing_ok=True)
         variables.unlink(missing_ok=True)
-    print("thread synchronization smoke OK")
+    print(
+        f"thread synchronization smoke OK cpus={cpu_count} "
+        f"cycles={cycle_count}"
+    )
     return 0
 
 

@@ -8,6 +8,14 @@ extern "C" void keyboard_handler64() {
         }
         return;
     }
+    if (kernel_in_tlb_wait()) {
+        keyboard.defer_interrupt();
+        interrupt_controller_eoi(1);
+        if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+            local->interrupt_depth--;
+        }
+        return;
+    }
     interrupt_controller_eoi(1);
     keyboard.handle();
     driver_irq_dispatch(1);

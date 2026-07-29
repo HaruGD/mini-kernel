@@ -30,7 +30,9 @@ const char KeyboardDriver::kbd_US_shift[128] = {
 };
 
 KeyboardDriver::KeyboardDriver()
-    : shift_pressed(0), ctrl_pressed(0), alt_pressed(0), caps_lock_on(0), is_extended(false) {}
+    : shift_pressed(0), ctrl_pressed(0), alt_pressed(0), caps_lock_on(0),
+      is_extended(false), deferred_scan_codes{}, deferred_head(0),
+      deferred_tail(0) {}
 
 void KeyboardDriver::init() {
     // 키보드는 IDT에서 이미 초기화됨
@@ -167,9 +169,9 @@ bool KeyboardDriver::process_scan_code(uint8_t raw_code,
     return true;
 }
 
-void KeyboardDriver::handle() {
+void KeyboardDriver::deliver_scan_code(uint8_t raw_code) {
     OsInputEvent event;
-    if (!process_scan_code(inb(0x60), pit.get_tick64(), &event)) {
+    if (!process_scan_code(raw_code, pit.get_tick64(), &event)) {
         return;
     }
 
@@ -192,4 +194,35 @@ void KeyboardDriver::handle() {
         event.data.key.character != 0) {
         keyboard_deliver_char64((char)event.data.key.character);
     }
+}
+
+void KeyboardDriver::defer_interrupt() {
+    const uint8_t raw_code = inb(0x60);
+    const uint32_t tail = __atomic_load_n(&deferred_tail, __ATOMIC_RELAXED);
+    const uint32_t next = (tail + 1u) % deferred_capacity;
+    if (next == __atomic_load_n(&deferred_head, __ATOMIC_ACQUIRE)) {
+        return;
+    }
+    deferred_scan_codes[tail] = raw_code;
+    __atomic_store_n(&deferred_tail, next, __ATOMIC_RELEASE);
+}
+
+void KeyboardDriver::drain_deferred() {
+    for (;;) {
+        const uint32_t head =
+            __atomic_load_n(&deferred_head, __ATOMIC_RELAXED);
+        if (head == __atomic_load_n(&deferred_tail, __ATOMIC_ACQUIRE)) {
+            return;
+        }
+        const uint8_t raw_code = deferred_scan_codes[head];
+        __atomic_store_n(&deferred_head,
+                         (head + 1u) % deferred_capacity,
+                         __ATOMIC_RELEASE);
+        deliver_scan_code(raw_code);
+    }
+}
+
+void KeyboardDriver::handle() {
+    drain_deferred();
+    deliver_scan_code(inb(0x60));
 }

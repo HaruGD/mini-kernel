@@ -1103,7 +1103,12 @@ void complete_waiting_syscall64(Thread* thread) {
     }
 
     context->saved_rax = (uint64_t)(int64_t)result;
-    process_wait_reset(process);
+    /*
+     * Completion already names the exact waiter. On SMP, deriving it again
+     * through current_thread() can observe a different nested execution
+     * context; reset the supplied thread directly.
+     */
+    thread_wait_reset(thread);
 }
 
 bool dispatch_sdk_syscall64(uint64_t syscall_no,

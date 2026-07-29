@@ -2,6 +2,7 @@
 
 static OsMutex counter_mutex;
 static volatile uint32_t counter;
+static volatile uint32_t counter_iterations[3];
 static OsSemaphore gate;
 static OsSemaphore ready;
 static OsCondition condition;
@@ -11,7 +12,7 @@ static volatile uint32_t once_count;
 static volatile uint32_t once_attempts;
 
 static long counter_worker(void* argument) {
-    (void)argument;
+    uint32_t index = (uint32_t)(uintptr_t)argument;
     for (uint32_t i = 0; i < 40; i++) {
         if (os_mutex_lock(counter_mutex, OS_SYNC_WAIT_FOREVER) != OS_OK) {
             return 1;
@@ -21,6 +22,9 @@ static long counter_worker(void* argument) {
         counter = value + 1;
         if (os_mutex_unlock(counter_mutex) != OS_OK) {
             return 2;
+        }
+        if (index < 3) {
+            counter_iterations[index]++;
         }
     }
     return 0;
@@ -85,6 +89,32 @@ static int join_ok(OsThreadIdentity identity) {
     return os_thread_join(identity, &status) == OS_OK && status == 0;
 }
 
+static void expect_result(long actual,
+                          long expected,
+                          uint32_t code,
+                          uint32_t* failures) {
+    if (actual == expected) {
+        return;
+    }
+    (*failures)++;
+    os_printf("[SYNC] check=%u actual=%u expected=%u\n",
+              code, (uint32_t)actual, (uint32_t)expected);
+}
+
+static void expect_join(OsThreadIdentity identity,
+                        uint32_t expected_status,
+                        uint32_t code,
+                        uint32_t* failures) {
+    uint32_t status = 0xFFFFFFFFu;
+    long result = os_thread_join(identity, &status);
+    if (result == OS_OK && status == expected_status) {
+        return;
+    }
+    (*failures)++;
+    os_printf("[SYNC] check=%u join=%u status=%u expected=%u\n",
+              code, (uint32_t)result, status, expected_status);
+}
+
 int main(void) {
     uint32_t failures = 0;
     OsThreadIdentity workers[3];
@@ -112,7 +142,8 @@ int main(void) {
 
     if (os_once_run(&once_control, once_initializer, 0) != OS_ERR_IO) failures++;
     for (uint32_t i = 0; i < 3; i++) {
-        if (os_thread_create(counter_worker, 0, OS_THREAD_STACK_DEFAULT,
+        if (os_thread_create(counter_worker, (void*)(uintptr_t)i,
+                             OS_THREAD_STACK_DEFAULT,
                              &workers[i]) != OS_OK) {
             failures++;
         }
@@ -121,32 +152,39 @@ int main(void) {
         if (!join_ok(workers[i])) failures++;
     }
     if (counter != 120) failures++;
-    os_printf("[SYNC] mutex failures=%u\n", failures);
+    os_printf("[SYNC] mutex work=%u,%u,%u failures=%u\n",
+              counter_iterations[0], counter_iterations[1],
+              counter_iterations[2], failures);
 
     for (uint32_t i = 0; i < 2; i++) {
-        if (os_thread_create(semaphore_worker, 0, OS_THREAD_STACK_DEFAULT,
-                             &workers[i]) != OS_OK) failures++;
+        expect_result(os_thread_create(semaphore_worker, 0,
+                                       OS_THREAD_STACK_DEFAULT, &workers[i]),
+                      OS_OK, 200u + i, &failures);
     }
     for (uint32_t i = 0; i < 2; i++) {
-        if (os_semaphore_wait(ready, OS_SYNC_WAIT_FOREVER) != OS_OK) failures++;
+        expect_result(os_semaphore_wait(ready, OS_SYNC_WAIT_FOREVER),
+                      OS_OK, 210u + i, &failures);
     }
-    if (os_semaphore_post(gate, 2) != OS_OK) failures++;
+    expect_result(os_semaphore_post(gate, 2), OS_OK, 220, &failures);
     for (uint32_t i = 0; i < 2; i++) {
-        if (!join_ok(workers[i])) failures++;
+        expect_join(workers[i], 0, 230u + i, &failures);
     }
-    if (os_semaphore_post(gate, 3) != OS_OK ||
-        os_semaphore_post(gate, 1) != OS_ERR_OUT_OF_RANGE) failures++;
+    expect_result(os_semaphore_post(gate, 3), OS_OK, 240, &failures);
+    expect_result(os_semaphore_post(gate, 1), OS_ERR_OUT_OF_RANGE,
+                  241, &failures);
     for (uint32_t i = 0; i < 3; i++) {
-        if (os_semaphore_wait(gate, OS_SYNC_WAIT_FOREVER) != OS_OK) failures++;
+        expect_result(os_semaphore_wait(gate, OS_SYNC_WAIT_FOREVER),
+                      OS_OK, 250u + i, &failures);
     }
-    if (os_semaphore_wait(gate, 2) != OS_ERR_TIMEOUT) failures++;
-    if (os_thread_create(semaphore_worker, 0, OS_THREAD_STACK_DEFAULT,
-                         &workers[0]) != OS_OK ||
-        os_semaphore_wait(ready, OS_SYNC_WAIT_FOREVER) != OS_OK ||
-        os_semaphore_destroy(gate) != OS_OK) failures++;
-    uint32_t cancelled_status = 0;
-    if (os_thread_join(workers[0], &cancelled_status) != OS_OK ||
-        cancelled_status != (uint32_t)OS_ERR_CANCELLED) failures++;
+    expect_result(os_semaphore_wait(gate, 2), OS_ERR_TIMEOUT,
+                  260, &failures);
+    expect_result(os_thread_create(semaphore_worker, 0,
+                                   OS_THREAD_STACK_DEFAULT, &workers[0]),
+                  OS_OK, 270, &failures);
+    expect_result(os_semaphore_wait(ready, OS_SYNC_WAIT_FOREVER),
+                  OS_OK, 271, &failures);
+    expect_result(os_semaphore_destroy(gate), OS_OK, 272, &failures);
+    expect_join(workers[0], (uint32_t)OS_ERR_CANCELLED, 273, &failures);
     gate = 0;
     os_printf("[SYNC] semaphore failures=%u\n", failures);
 

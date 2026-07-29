@@ -88,11 +88,18 @@ extern "C" void save_sleep_context64(uint64_t* frame, uint32_t sleep_ticks) {
     }
 
     save_paused_context64(frame, thread, PROCESS_PAUSE_SLEEP, 0);
-    process_wait_begin(process,
-                       PROCESS_WAIT_TIMER,
-                       0,
-                       sleep_ticks,
-                       pit.get_tick());
+    if (!process_wait_begin(process,
+                            PROCESS_WAIT_TIMER,
+                            0,
+                            sleep_ticks,
+                            pit.get_tick())) {
+        /*
+         * A rejected wait must not leave a resumable thread detached from
+         * both the wait queues and the scheduler. Treat it as a yield; the
+         * syscall returns normally and the caller may retry.
+         */
+        scheduler_yield_current();
+    }
 }
 
 extern "C" void save_wait_context64(uint64_t* frame) {

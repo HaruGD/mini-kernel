@@ -19,6 +19,7 @@ enum KeyboardModifier : uint32_t {
 };
 
 class KeyboardDriver : public Driver {
+    static const uint32_t deferred_capacity = 32;
     static const char kbd_US[128];
     static const char kbd_US_shift[128];
     static const char kbd_US_caps[128];
@@ -27,11 +28,18 @@ class KeyboardDriver : public Driver {
     int alt_pressed;
     int caps_lock_on = 0;
     bool is_extended = false;
+    uint8_t deferred_scan_codes[deferred_capacity];
+    volatile uint32_t deferred_head;
+    volatile uint32_t deferred_tail;
+
+    void deliver_scan_code(uint8_t raw_code);
 
 public:
     KeyboardDriver();
     void init() override;
     void handle();
+    void defer_interrupt();
+    void drain_deferred();
     char get_char(uint8_t scan_code);
     bool process_scan_code(uint8_t raw_code, uint64_t timestamp_ticks, OsInputEvent* out_event);
     bool try_read_char(char* out_char);

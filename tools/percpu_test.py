@@ -88,6 +88,7 @@ def main() -> int:
             str(source),
             str(root / "kernel/cpu/cpu.cpp"),
             str(root / "kernel/cpu/cpu_local.cpp"),
+            str(root / "kernel/debug/fault_injection.cpp"),
             "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True)

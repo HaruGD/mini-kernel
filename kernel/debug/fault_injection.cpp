@@ -11,7 +11,9 @@ static KernelFaultPointState fault_points[KERNEL_FAULT_POINT_COUNT];
 static const char* fault_names[KERNEL_FAULT_POINT_COUNT] = {
     "pmm", "heap", "process", "mailbox", "service", "handle", "shared",
     "thread_record", "thread_user_stack", "thread_kernel_stack",
-    "thread_mapping", "thread_wait", "sync_object"
+    "thread_mapping", "thread_wait", "sync_object", "cpu_local",
+    "ap_startup", "local_timer", "scheduler_claim", "tlb_request",
+    "irq_owner"
 };
 
 static int text_equal(const char* left, const char* right) {
@@ -56,15 +58,33 @@ int kernel_fault_injection_should_fail(uint32_t point) {
         return 0;
     }
 
-    uint64_t remaining = __atomic_load_n(&state->remaining, __ATOMIC_RELAXED);
-    if (remaining != 0) {
-        __atomic_sub_fetch(&state->remaining, 1u, __ATOMIC_RELAXED);
-        return 0;
-    }
+    while (__atomic_load_n(&state->armed, __ATOMIC_ACQUIRE) != 0) {
+        uint64_t remaining =
+            __atomic_load_n(&state->remaining, __ATOMIC_RELAXED);
+        if (remaining != 0) {
+            if (__atomic_compare_exchange_n(&state->remaining,
+                                            &remaining,
+                                            remaining - 1u,
+                                            0,
+                                            __ATOMIC_ACQ_REL,
+                                            __ATOMIC_RELAXED)) {
+                return 0;
+            }
+            continue;
+        }
 
-    __atomic_store_n(&state->armed, 0u, __ATOMIC_RELEASE);
-    __atomic_add_fetch(&state->failures, 1u, __ATOMIC_RELAXED);
-    return 1;
+        uint32_t armed = 1;
+        if (__atomic_compare_exchange_n(&state->armed,
+                                        &armed,
+                                        0u,
+                                        0,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE)) {
+            __atomic_add_fetch(&state->failures, 1u, __ATOMIC_RELAXED);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void kernel_fault_injection_get_snapshot(KernelFaultInjectionSnapshot* snapshot) {

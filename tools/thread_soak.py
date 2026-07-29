@@ -70,10 +70,12 @@ def resources(process: subprocess.Popen) -> tuple[int, ...]:
     return tuple(int(value, 16) for value in matches[-1].groups())
 
 
-def thread_cycle(process: subprocess.Popen) -> None:
+def thread_cycle(process: subprocess.Popen, cpu_count: int) -> None:
     require(send_command(process, "run uthread_c.elf"), "[THREAD] PASS")
     require(send_command(process, "run usync_c.elf"), "[SYNC] PASS")
     require(send_command(process, "run uthread_ready_c.elf"), "[READY] PASS")
+    if cpu_count >= 4:
+        require(send_command(process, "run utlb_c.elf", 90), "[TLBX] PASS")
 
 
 def gui_cycle(process: subprocess.Popen) -> None:
@@ -81,7 +83,7 @@ def gui_cycle(process: subprocess.Popen) -> None:
             "[ugui-cycle] lifecycle OK cycles=4")
 
 
-def run(duration: float) -> int:
+def run(duration: float, cpu_count: int) -> int:
     os.chdir(ROOT)
     SERIAL.parent.mkdir(parents=True, exist_ok=True)
     SERIAL.unlink(missing_ok=True)
@@ -93,6 +95,7 @@ def run(duration: float) -> int:
     shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", variables)
     qemu = [
         "qemu-system-x86_64", "-machine", "q35", "-m", "512M", "-cpu", "max",
+        "-smp", str(cpu_count),
         "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
         "-drive", f"if=pflash,format=raw,file={variables}",
         "-drive", f"if=none,id=esp,format=raw,file={esp}",
@@ -114,14 +117,14 @@ def run(duration: float) -> int:
                 "[usvcctl] start window OK")
 
         for _ in range(9):
-            thread_cycle(process)
+            thread_cycle(process, cpu_count)
         for _ in range(3):
             gui_cycle(process)
         baseline = resources(process)
 
         deadline = time.monotonic() + duration
         while time.monotonic() < deadline:
-            thread_cycle(process)
+            thread_cycle(process, cpu_count)
             cycles += 1
             gui_cycle(process)
             gui_cycles += 4
@@ -137,6 +140,17 @@ def run(duration: float) -> int:
             )
         scheduler = send_command(process, "sched")
         require(scheduler, "Queue count: 0x00000000")
+        cpu_summary = send_command(process, "cpus")
+        require(cpu_summary, f"scheduler_cpus=0x{cpu_count:08X}")
+        for cpu in range(cpu_count):
+            pattern = re.compile(
+                rf"cpu\[0x{cpu:08X}\].*?"
+                rf"local_ticks=0x([0-9A-Fa-f]{{16}})",
+                re.DOTALL,
+            )
+            match = pattern.search(cpu_summary)
+            if match is None or int(match.group(1), 16) == 0:
+                raise RuntimeError(f"CPU{cpu} made no timer progress")
         locks = send_command(process, "locks")
         require(
             locks,
@@ -163,8 +177,9 @@ def run(duration: float) -> int:
         variables.unlink(missing_ok=True)
 
     print(
-        f"thread soak OK duration={duration:.0f}s cycles={cycles} "
-        f"thread_programs={cycles * 3} gui_windows={gui_cycles}"
+        f"thread soak OK duration={duration:.0f}s cpus={cpu_count} "
+        f"cycles={cycles} thread_programs={cycles * (4 if cpu_count >= 4 else 3)} "
+        f"gui_windows={gui_cycles}"
     )
     print(f"resource baseline={baseline}")
     print(f"resource final={final}")
@@ -174,8 +189,9 @@ def run(duration: float) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--duration", type=float, default=60.0)
+    parser.add_argument("--cpus", type=int, default=1, choices=(1, 2, 4))
     args = parser.parse_args()
-    return run(args.duration)
+    return run(args.duration, args.cpus)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ HARNESS = r'''
 #include "kernel/acpi.h"
 #include "kernel/cpu.h"
 #include "kernel/cpu_local.h"
+#include "kernel/fault_injection.h"
+#include "kernel/mm/address_space.h"
 #include "kernel/smp.h"
 
 static int failures = 0;
@@ -28,11 +30,24 @@ int main() {
     }
 
     CHECK(cpu_topology_init(&acpi, 0));
+    kernel_fault_injection_reset();
+    CHECK(kernel_fault_injection_arm(KERNEL_FAULT_POINT_CPU_LOCAL, 0));
+    CHECK(!cpu_local_system_init());
+    KernelFaultInjectionSnapshot faults = {};
+    kernel_fault_injection_get_snapshot(&faults);
+    CHECK(faults.points[KERNEL_FAULT_POINT_CPU_LOCAL].failures == 1);
+    kernel_fault_injection_reset();
     CHECK(cpu_local_system_init());
     CHECK(smp_start_application_processors());
     CpuLocal* ap = cpu_local_by_id(1);
     const uint64_t stack_top = ap->kernel_stack_top;
     CHECK(cpu_record(1)->lifecycle == CPU_STATE_PREPARED);
+    CHECK(kernel_fault_injection_arm(KERNEL_FAULT_POINT_AP_STARTUP, 0));
+    CHECK(!smp_host_prepare_start(1));
+    CHECK(cpu_record(1)->lifecycle == CPU_STATE_PREPARED);
+    kernel_fault_injection_get_snapshot(&faults);
+    CHECK(faults.points[KERNEL_FAULT_POINT_AP_STARTUP].failures == 1);
+    kernel_fault_injection_reset();
     CHECK(smp_host_prepare_start(1));
     CHECK(cpu_record(1)->lifecycle == CPU_STATE_STARTING);
     CHECK(smp_host_timeout_start(1));
@@ -49,6 +64,17 @@ int main() {
     CHECK(smp_startup_stats()->attempted == 1);
     CHECK(smp_startup_stats()->failed == 1);
     CHECK(!cpu_transition(1, CPU_STATE_ONLINE));
+
+    AddressSpace space = {};
+    space.root_phys = 0x1000;
+    space.identity = 1;
+    uint32_t acknowledged = 0;
+    CHECK(kernel_fault_injection_arm(KERNEL_FAULT_POINT_TLB_REQUEST, 0));
+    CHECK(!smp_tlb_shootdown(&space, 0x4000, 1, 0, 1, 1, 1,
+                             &acknowledged));
+    CHECK(acknowledged == 0);
+    kernel_fault_injection_get_snapshot(&faults);
+    CHECK(faults.points[KERNEL_FAULT_POINT_TLB_REQUEST].failures == 1);
     return failures == 0 ? 0 : 1;
 }
 '''
@@ -77,6 +103,7 @@ def main() -> int:
             str(root / "kernel/cpu/cpu.cpp"),
             str(root / "kernel/cpu/cpu_local.cpp"),
             str(root / "kernel/cpu/smp.cpp"),
+            str(root / "kernel/debug/fault_injection.cpp"),
             "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True)
