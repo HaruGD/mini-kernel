@@ -555,8 +555,13 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     restore_thread_fx_state64(thread);
     cpu_local_current()->user_state.return_reason = PROCESS_PAUSE_NONE;
     enter_user_mode(process->entry_point, initial_user_rsp);
-    const uint32_t initial_return_reason =
+    const uint32_t captured_initial_return_reason =
         cpu_local_current()->user_state.return_reason;
+    // A nested child can update the CPU-local pause reason before its parent
+    // unwinds. Terminal thread state is authoritative and must release the
+    // retained running_cpu claim instead of entering a stale wait branch.
+    const uint32_t initial_return_reason = thread->exited
+        ? PROCESS_PAUSE_NONE : captured_initial_return_reason;
     process_execution_pop(stack_index, process, thread);
     if (thread->context->scheduler_state != SCHED_STATE_FINISHED) {
         scheduler_complete_kernel_return(thread);
@@ -762,8 +767,11 @@ static int resume_user_thread_internal(Process* parent,
     restore_thread_fx_state64(thread);
     cpu_local_current()->user_state.return_reason = PROCESS_PAUSE_NONE;
     resume_user_mode();
-    const uint32_t return_reason =
+    const uint32_t captured_return_reason =
         cpu_local_current()->user_state.return_reason;
+    // See the initial-entry path above: exit always dominates a nested pause.
+    const uint32_t return_reason = thread->exited
+        ? PROCESS_PAUSE_NONE : captured_return_reason;
     set_user_fs_base(0);
     process_execution_pop(stack_index, process, thread);
     if (thread->context->scheduler_state != SCHED_STATE_FINISHED) {
