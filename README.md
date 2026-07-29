@@ -87,7 +87,8 @@ What works on the active 64-bit UEFI path:
 - kernel-enforced process permission masks for service discovery/registration,
   IPC, input, display, shared surfaces, and child management
 - `service [cmd] [name]` shell frontend routed through `usvcctl_c.elf`
-- `inputd_c.elf` and `displayd_c.elf` placeholder user-space services with IPC query replies
+- `inputd_c.elf` normalized keyboard forwarding and `displayd_c.elf` validated
+  surface-present services
 - `usvcprobe_c.elf` client sample for input/display service discovery and request/reply checks
 - default C shell userland: `ushell_c.elf`
 - VFS layer
@@ -153,6 +154,8 @@ What works on the active 64-bit UEFI path:
 - Phase 4.5 threading foundation: [docs/phases/phase-4.5/README.md](docs/phases/phase-4.5/README.md)
 - Phase 4.5 live progress: [docs/phases/phase-4.5/progress.md](docs/phases/phase-4.5/progress.md)
 - Phase 4.5 regression matrix: [docs/phases/phase-4.5/regression_matrix.md](docs/phases/phase-4.5/regression_matrix.md)
+- Phase 4.6 SMP foundation: [docs/phases/phase-4.6/README.md](docs/phases/phase-4.6/README.md)
+- Phase 4.7 driver memory/DMA foundation: [docs/phases/phase-4.7/README.md](docs/phases/phase-4.7/README.md)
 - Phase 3.5 starting baseline: [docs/phases/phase-3.5/baseline.md](docs/phases/phase-3.5/baseline.md)
 - Process/scheduler invariants: [docs/architecture/process_scheduler_invariants.md](docs/architecture/process_scheduler_invariants.md)
 - Kernel context rules: [docs/architecture/kernel_context_rules.md](docs/architecture/kernel_context_rules.md)
@@ -195,8 +198,9 @@ make test-services
 
 Phase 3 is closed with bounded IPC and service discovery. Service Manager v2
 now adds supervised lifecycle and permissions above that Phase 3 foundation,
-and the first input/display user-space services. The next phase introduces a
-compositor and window-server protocol above these service foundations.
+and the input/display user-space services. Phase 4 compositor/window work and
+Phase 4.5/4.6 threading/SMP work are complete. Phase 4.7 now specifies the
+driver-memory and DMA foundation that may proceed beside Phase 5 desktop work.
 
 Test ACPI power-off in an isolated QEMU instance:
 

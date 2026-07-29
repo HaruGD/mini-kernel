@@ -234,6 +234,38 @@ Progress:
 - [x] 4.6H: Pass deterministic SMP fault injection, the required multicore
   soak, clean Phase 4.6 aggregate, and full project closure
 
+## Phase 4.7: Driver Memory And DMA Foundation
+
+This phase may progress beside Phase 5. It is mandatory before new
+bus-mastering production drivers.
+
+Detailed planning and live evidence:
+
+- [Phase 4.7 overview](phases/phase-4.7/README.md)
+- [Entry baseline](phases/phase-4.7/entry_baseline.md)
+- [Implementation plan](phases/phase-4.7/implementation_plan.md)
+- [Regression matrix](phases/phase-4.7/regression_matrix.md)
+- [Progress ledger](phases/phase-4.7/progress.md)
+
+Progress:
+
+- [ ] 4.7A: Add generation-checked driver/device resource ownership and
+  lifecycle contracts
+- [ ] 4.7B: Replace monotonic driver-image allocation with reusable,
+  TLB-safe virtual address intervals
+- [ ] 4.7C: Add tagged driver-owned heap/page allocations, budgets, and
+  sleepable/atomic/IRQ context rules
+- [ ] 4.7D: Replace packaged-driver raw MMIO addresses with bound BAR mapping
+  handles, checked offsets, cache policy, unmap, and VA reuse
+- [ ] 4.7E: Add distinct CPU/physical/DMA address types, DMA masks, coherent
+  allocation, bounce fallback, and bus-master ordering
+- [ ] 4.7F: Add streaming and scatter/gather DMA, cache-sync semantics, and
+  IOMMU-ready domain/fail-closed isolation policy
+- [ ] 4.7G: Quiesce IRQ, work, exported calls, bus mastering, DMA, and MMIO
+  before automatic resource cleanup and code unmap
+- [ ] 4.7H: Pass deterministic failure injection, QEMU DMA-device checks,
+  required driver churn soak, clean aggregate, and inherited closure
+
 ## Phase 5: Desktop Foundation
 
 - [ ] GUI terminal
@@ -247,7 +279,8 @@ Progress:
 
 This track may progress beside GUI work, but DMA infrastructure comes first.
 
-- [ ] DMA allocation and mapping API
+- [ ] Complete Phase 4.7 driver-memory and DMA foundation
+- [ ] Add hardware IOMMU remapping and fault-reporting backend
 - [ ] USB xHCI host controller
 - [ ] USB enumeration and hub support
 - [ ] USB HID keyboard and mouse
