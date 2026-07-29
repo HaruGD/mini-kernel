@@ -27,6 +27,12 @@ static void reply_health(const OsIpcMessage* message) {
 }
 
 int main(void) {
+    OsThreadIdentity self;
+    if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_affinity(self, 1u) != OS_SUCCESS) {
+        os_puts("[svc_base] CPU0 ownership failed");
+        return 1;
+    }
     long result = os_service_register("base", OS_SERVICE_FLAG_NONE);
     if (result < 0) {
         os_printf("[svc_base] register failed %ld\n", result);

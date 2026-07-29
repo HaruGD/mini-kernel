@@ -27,6 +27,12 @@ static void reply_health(const OsIpcMessage* message) {
 }
 
 int main(int argc, char** argv) {
+    OsThreadIdentity self;
+    if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_affinity(self, 1u) != OS_SUCCESS) {
+        os_puts("[svc_demo] CPU0 ownership failed");
+        return 1;
+    }
     const char* service_name = "demo";
     int crash_after_register = 0;
     if (argc > 1 && os_streq(argv[1], "restricted")) {

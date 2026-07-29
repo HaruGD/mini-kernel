@@ -205,6 +205,7 @@ void scheduler_mark_waiting(Process* process);
 void scheduler_mark_sleeping(Process* process, uint32_t wake_tick);
 void scheduler_mark_finished(Process* process);
 void scheduler_yield_current();
+void scheduler_complete_kernel_return(Thread* thread);
 void scheduler_note_preemption(Thread* thread);
 void scheduler_refresh_timeslice(Thread* thread);
 int thread_get_info(const Process* requester,
@@ -232,6 +233,7 @@ Thread* scheduler_claim_ready_thread(ThreadIdentity exclude,
                                      int sleeping_only);
 
 int process_record_is_active(const Process* process);
+int process_has_running_threads(const Process* process);
 Process* allocate_process_record();
 const Process* find_last_child_process(uint32_t parent_pid);
 Process* find_waitable_child_process(uint32_t parent_pid);

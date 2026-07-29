@@ -528,7 +528,9 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     print("]");
     print("\n");
     interrupt_controller_set_mask(1, 0);
-    gdt64_set_kernel_stack(thread->context->kernel_stack_base + VM_PAGE_SIZE);
+    gdt64_set_kernel_stack(
+        thread->context->kernel_stack_base +
+        (uint64_t)thread->context->kernel_stack_page_count * VM_PAGE_SIZE);
     if (!map_user_elf_alias(process)) {
         cleanup_user_process_mapping(process);
         process->code_page_count = 0;
@@ -556,6 +558,9 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     const uint32_t initial_return_reason =
         cpu_local_current()->user_state.return_reason;
     process_execution_pop(stack_index, process, thread);
+    if (thread->context->scheduler_state != SCHED_STATE_FINISHED) {
+        scheduler_complete_kernel_return(thread);
+    }
     Process* active_after_return = current_process();
     if (active_after_return != 0) {
         address_space_activate(&active_after_return->address_space);
@@ -627,18 +632,6 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     }
     process->resumable = 0;
     scheduler_mark_finished(process);
-    if (parent != 0 && parent->active) {
-        if (parent_has_ready_context(parent)) {
-            return resume_saved_parent(parent);
-        }
-        if (!map_user_elf_alias(parent)) {
-            process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
-            scheduler_mark_finished(parent);
-            return 0;
-        }
-        scheduler_mark_running(parent);
-        focus_foreground_process(parent);
-    }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
     print("] state=");
@@ -648,6 +641,7 @@ static int run_user_program_internal(const char* command_line, uint32_t permissi
     print(" code=");
     print_hex32(process->status_code);
     print(".\n");
+    scheduler_complete_kernel_return(thread);
 
     if (continue_ready_threads(thread_identity(thread))) {
         return 1;
@@ -740,7 +734,9 @@ static int resume_user_thread_internal(Process* parent,
     kernel_user_resume_rflags = context->saved_rflags;
 
     interrupt_controller_set_mask(1, 0);
-    gdt64_set_kernel_stack(context->kernel_stack_base + VM_PAGE_SIZE);
+    gdt64_set_kernel_stack(
+        context->kernel_stack_base +
+        (uint64_t)context->kernel_stack_page_count * VM_PAGE_SIZE);
     if (!map_user_elf_alias(process)) {
         process_mark_failed(process, PROCESS_TERM_MAP_ERROR, 9);
         scheduler_mark_finished(process);
@@ -770,6 +766,9 @@ static int resume_user_thread_internal(Process* parent,
         cpu_local_current()->user_state.return_reason;
     set_user_fs_base(0);
     process_execution_pop(stack_index, process, thread);
+    if (thread->context->scheduler_state != SCHED_STATE_FINISHED) {
+        scheduler_complete_kernel_return(thread);
+    }
     Process* active_after_return = current_process();
     if (active_after_return != 0) {
         address_space_activate(&active_after_return->address_space);
@@ -790,6 +789,7 @@ static int resume_user_thread_internal(Process* parent,
     if (thread->exited && process->active && !process->exiting) {
         ThreadIdentity completed = thread_identity(thread);
         thread_release_runtime(thread);
+        scheduler_complete_kernel_return(thread);
         if (continue_ready_threads(completed)) {
             return 1;
         }
@@ -845,18 +845,6 @@ static int resume_user_thread_internal(Process* parent,
     }
     context->resumable = 0;
     scheduler_mark_finished(process);
-    if (parent_should_resume_immediately(parent)) {
-        if (parent_has_ready_context(parent)) {
-            return resume_saved_parent(parent);
-        }
-        if (!map_user_elf_alias(parent)) {
-            process_mark_failed(parent, PROCESS_TERM_MAP_ERROR, 9);
-            scheduler_mark_finished(parent);
-            return 0;
-        }
-        scheduler_mark_running(parent);
-        focus_foreground_process(parent);
-    }
     print("\nReturned from user program [pid=");
     print_hex32(process->pid);
     print("] state=");
@@ -866,6 +854,7 @@ static int resume_user_thread_internal(Process* parent,
     print(" code=");
     print_hex32(process->status_code);
     print(".\n");
+    scheduler_complete_kernel_return(thread);
 
     if (continue_ready_threads(thread_identity(thread))) {
         return 1;

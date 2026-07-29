@@ -9,6 +9,7 @@ extern "C" {
 #include "kernel/acpi.h"
 #include "kernel/klog.h"
 #include "kernel/kutil64.h"
+#include "kernel/cpu_local.h"
 
 #define IA32_APIC_BASE_MSR 0x1Bu
 #define IA32_APIC_BASE_ENABLE (1ULL << 11)
@@ -38,6 +39,21 @@ static volatile uint32_t* ioapic = 0;
 static uint32_t ioapic_gsi_base = 0;
 static uint32_t ioapic_redirections = 0;
 static uint32_t irq_gsi[16];
+static volatile uint32_t irq_owner_cpu[INTERRUPT_EXTERNAL_IRQ_COUNT];
+static volatile uint64_t irq_accepted[INTERRUPT_EXTERNAL_IRQ_COUNT];
+static volatile uint64_t irq_owner_violations = 0;
+static volatile uint64_t irq_owner_handoffs = 0;
+
+static void reset_irq_ownership() {
+    for (uint32_t irq = 0; irq < INTERRUPT_EXTERNAL_IRQ_COUNT; irq++) {
+        __atomic_store_n(&irq_owner_cpu[irq],
+                         INTERRUPT_OWNER_NONE,
+                         __ATOMIC_RELAXED);
+        __atomic_store_n(&irq_accepted[irq], 0u, __ATOMIC_RELAXED);
+    }
+    __atomic_store_n(&irq_owner_violations, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&irq_owner_handoffs, 0u, __ATOMIC_RELAXED);
+}
 
 static uint64_t read_msr(uint32_t msr) {
     uint32_t low = 0;
@@ -172,6 +188,7 @@ static int ioapic_route(uint8_t irq, uint8_t vector, const AcpiState* acpi) {
     ioapic_write((uint8_t)(0x10 + index * 2), low);
     if (irq < 16) {
         irq_gsi[irq] = gsi;
+        __atomic_store_n(&irq_owner_cpu[irq], 0u, __ATOMIC_RELEASE);
     }
     return 1;
 }
@@ -199,9 +216,12 @@ static void activate_legacy_pic() {
     for (uint32_t i = 0; i < 16; i++) {
         irq_gsi[i] = 0xFFFFFFFFu;
     }
+    __atomic_store_n(&irq_owner_cpu[0], 0u, __ATOMIC_RELEASE);
+    __atomic_store_n(&irq_owner_cpu[1], 0u, __ATOMIC_RELEASE);
 }
 
 int interrupt_controller_init(const AcpiState* acpi) {
+    reset_irq_ownership();
     if (acpi == 0 || !acpi->ready || acpi->ioapic_count == 0 ||
         !cpu_has_apic()) {
         activate_legacy_pic();
@@ -344,6 +364,39 @@ void interrupt_controller_stop_local_timer() {
     }
 }
 
+int interrupt_controller_claim_external_irq(uint8_t irq) {
+    if (irq >= INTERRUPT_EXTERNAL_IRQ_COUNT) {
+        __atomic_add_fetch(&irq_owner_violations, 1u, __ATOMIC_RELAXED);
+        return 0;
+    }
+    CpuLocal* local = cpu_local_current();
+    const uint32_t logical_id =
+        cpu_local_validate(local) ? local->logical_id : 0u;
+    const uint32_t owner =
+        __atomic_load_n(&irq_owner_cpu[irq], __ATOMIC_ACQUIRE);
+    if (owner == INTERRUPT_OWNER_NONE || logical_id != owner) {
+        __atomic_add_fetch(&irq_owner_violations, 1u, __ATOMIC_RELAXED);
+        return 0;
+    }
+    __atomic_add_fetch(&irq_accepted[irq], 1u, __ATOMIC_RELAXED);
+    return 1;
+}
+
+void interrupt_controller_get_ownership_stats(InterruptOwnershipStats* stats) {
+    if (stats == 0) {
+        return;
+    }
+    for (uint32_t irq = 0; irq < INTERRUPT_EXTERNAL_IRQ_COUNT; irq++) {
+        stats->owner_cpu[irq] =
+            __atomic_load_n(&irq_owner_cpu[irq], __ATOMIC_ACQUIRE);
+        stats->accepted[irq] =
+            __atomic_load_n(&irq_accepted[irq], __ATOMIC_RELAXED);
+    }
+    stats->violations =
+        __atomic_load_n(&irq_owner_violations, __ATOMIC_RELAXED);
+    stats->handoffs = __atomic_load_n(&irq_owner_handoffs, __ATOMIC_RELAXED);
+}
+
 void interrupt_controller_eoi(uint8_t irq) {
     if (controller_mode == INTERRUPT_CONTROLLER_APIC && lapic != 0) {
         lapic_write(LAPIC_EOI, 0);
@@ -434,7 +487,17 @@ void interrupt_controller_print() {
             print_hex32(ioapic_read((uint8_t)(0x10 + index * 2)));
             print(" high=");
             print_hex32(ioapic_read((uint8_t)(0x11 + index * 2)));
+            print(" owner_cpu=");
+            print_hex32(__atomic_load_n(&irq_owner_cpu[irq],
+                                        __ATOMIC_ACQUIRE));
+            print(" accepted=");
+            print_hex64(__atomic_load_n(&irq_accepted[irq],
+                                        __ATOMIC_RELAXED));
         }
     }
+    print("\nowner_violations=");
+    print_hex64(__atomic_load_n(&irq_owner_violations, __ATOMIC_RELAXED));
+    print(" handoffs=");
+    print_hex64(__atomic_load_n(&irq_owner_handoffs, __ATOMIC_RELAXED));
     print("\n============================\n");
 }

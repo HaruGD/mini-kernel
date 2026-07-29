@@ -1,6 +1,13 @@
 #include <os64/os64.h>
 #include "internal.h"
 
+#define OS_CONSOLE_BUFFER_SIZE 512u
+
+typedef struct {
+    char data[OS_CONSOLE_BUFFER_SIZE];
+    size_t length;
+} OsConsoleBuffer;
+
 long os_putchar(char ch) {
     return os_syscall1(OS_SYS_PUTCHAR, (long)(unsigned char)ch);
 }
@@ -14,55 +21,101 @@ long os_clear(void) {
 }
 
 long os_write(const char* text, size_t length) {
-    size_t written = 0;
+    if (text == 0) {
+        return OS_ERROR;
+    }
+    if (length == 0) {
+        return 0;
+    }
+    return os_syscall2(OS_SYS_WRITE, (long)text, (long)length);
+}
+
+static int console_buffer_flush(OsConsoleBuffer* output) {
+    if (output->length == 0) {
+        return 1;
+    }
+    if (os_write(output->data, output->length) != (long)output->length) {
+        output->length = 0;
+        return 0;
+    }
+    output->length = 0;
+    return 1;
+}
+
+static int console_buffer_putc(OsConsoleBuffer* output, char ch) {
+    if (output->length == sizeof(output->data) &&
+        !console_buffer_flush(output)) {
+        return 0;
+    }
+    output->data[output->length++] = ch;
+    return 1;
+}
+
+static int console_buffer_write(OsConsoleBuffer* output,
+                                const char* text,
+                                size_t length) {
+    for (size_t i = 0; i < length; i++) {
+        if (!console_buffer_putc(output, text[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+long os_puts(const char* text) {
+    OsConsoleBuffer output = {{0}, 0};
+    size_t length;
 
     if (text == 0) {
         return OS_ERROR;
     }
-    while (written < length) {
-        if (os_putchar(text[written]) < 0) {
-            return OS_ERROR;
-        }
-        written++;
-    }
-    return (long)written;
-}
-
-long os_puts(const char* text) {
-    long result = os_write(text, os_strlen(text));
-    if (result < 0 || os_putchar('\n') < 0) {
+    length = os_strlen(text);
+    if (!console_buffer_write(&output, text, length) ||
+        !console_buffer_putc(&output, '\n') ||
+        !console_buffer_flush(&output)) {
         return OS_ERROR;
     }
-    return result + 1;
+    return (long)length + 1;
 }
 
-static void print_unsigned(uint64_t value, uint32_t base, int prefix) {
+static int print_unsigned(OsConsoleBuffer* output,
+                          uint64_t value,
+                          uint32_t base,
+                          int prefix) {
     static const char digits[] = "0123456789ABCDEF";
     char buffer[32];
     size_t count = 0;
 
     if (prefix != 0) {
-        os_write("0x", 2);
+        if (!console_buffer_write(output, "0x", 2)) {
+            return 0;
+        }
     }
     if (value == 0) {
-        os_putchar('0');
-        return;
+        return console_buffer_putc(output, '0');
     }
     while (value != 0) {
         buffer[count++] = digits[value % base];
         value /= base;
     }
     while (count > 0) {
-        os_putchar(buffer[--count]);
+        if (!console_buffer_putc(output, buffer[--count])) {
+            return 0;
+        }
     }
+    return 1;
 }
 
 void os_vprintf(const char* format, va_list args) {
+    OsConsoleBuffer output = {{0}, 0};
+
     while (format != 0 && *format != '\0') {
         int wide = 0;
 
         if (*format != '%') {
-            os_putchar(*format++);
+            if (!console_buffer_putc(&output, *format++)) {
+                return;
+            }
             continue;
         }
         format++;
@@ -73,52 +126,82 @@ void os_vprintf(const char* format, va_list args) {
 
         switch (*format) {
             case '%':
-                os_putchar('%');
+                if (!console_buffer_putc(&output, '%')) {
+                    return;
+                }
                 break;
             case 'c':
-                os_putchar((char)va_arg(args, int));
+                if (!console_buffer_putc(&output, (char)va_arg(args, int))) {
+                    return;
+                }
                 break;
             case 's': {
                 const char* text = va_arg(args, const char*);
                 if (text == 0) {
                     text = "(null)";
                 }
-                os_write(text, os_strlen(text));
+                if (!console_buffer_write(&output, text, os_strlen(text))) {
+                    return;
+                }
                 break;
             }
             case 'd': {
                 int64_t value = wide ? (int64_t)va_arg(args, long) : (int64_t)va_arg(args, int);
                 if (value < 0) {
-                    os_putchar('-');
-                    print_unsigned((uint64_t)(-(value + 1)) + 1u, 10, 0);
+                    if (!console_buffer_putc(&output, '-') ||
+                        !print_unsigned(&output,
+                                        (uint64_t)(-(value + 1)) + 1u,
+                                        10,
+                                        0)) {
+                        return;
+                    }
                 } else {
-                    print_unsigned((uint64_t)value, 10, 0);
+                    if (!print_unsigned(&output, (uint64_t)value, 10, 0)) {
+                        return;
+                    }
                 }
                 break;
             }
             case 'u':
-                print_unsigned(wide ? (uint64_t)va_arg(args, unsigned long)
-                                    : (uint64_t)va_arg(args, unsigned int), 10, 0);
+                if (!print_unsigned(&output,
+                                    wide ? (uint64_t)va_arg(args, unsigned long)
+                                         : (uint64_t)va_arg(args, unsigned int),
+                                    10,
+                                    0)) {
+                    return;
+                }
                 break;
             case 'x':
-                print_unsigned(wide ? (uint64_t)va_arg(args, unsigned long)
-                                    : (uint64_t)va_arg(args, unsigned int), 16, 0);
+                if (!print_unsigned(&output,
+                                    wide ? (uint64_t)va_arg(args, unsigned long)
+                                         : (uint64_t)va_arg(args, unsigned int),
+                                    16,
+                                    0)) {
+                    return;
+                }
                 break;
             case 'p':
-                print_unsigned((uint64_t)(uintptr_t)va_arg(args, void*), 16, 1);
+                if (!print_unsigned(&output,
+                                    (uint64_t)(uintptr_t)va_arg(args, void*),
+                                    16,
+                                    1)) {
+                    return;
+                }
                 break;
             case '\0':
+                console_buffer_flush(&output);
                 return;
             default:
-                os_putchar('%');
-                if (wide != 0) {
-                    os_putchar('l');
+                if (!console_buffer_putc(&output, '%') ||
+                    (wide != 0 && !console_buffer_putc(&output, 'l')) ||
+                    !console_buffer_putc(&output, *format)) {
+                    return;
                 }
-                os_putchar(*format);
                 break;
         }
         format++;
     }
+    console_buffer_flush(&output);
 }
 
 void os_printf(const char* format, ...) {

@@ -12,14 +12,21 @@ static uint32_t session_display_pid = 0;
 static uint32_t session_display_generation = 0;
 static uint32_t session_width = 0;
 static uint32_t session_height = 0;
+static volatile uint32_t display_state_lock = 0;
 
 static uint64_t irq_save() {
     uint64_t flags;
     __asm__ volatile("pushfq; pop %0; cli" : "=r"(flags) : : "memory");
+    while (__atomic_exchange_n(&display_state_lock,
+                               1u,
+                               __ATOMIC_ACQUIRE) != 0) {
+        __asm__ volatile("pause");
+    }
     return flags;
 }
 
 static void irq_restore(uint64_t flags) {
+    __atomic_store_n(&display_state_lock, 0u, __ATOMIC_RELEASE);
     if (flags & (1ull << 9)) {
         __asm__ volatile("sti" : : : "memory");
     }
@@ -84,17 +91,22 @@ void display_owner_end(DisplayOwnerToken* token) {
 }
 
 uint32_t display_owner_current() {
-    return owner_state;
+    uint64_t flags = irq_save();
+    const uint32_t owner = owner_state;
+    irq_restore(flags);
+    return owner;
 }
 
 void display_owner_get_stats(DisplayOwnerStats* out_stats) {
     if (out_stats == 0) {
         return;
     }
+    uint64_t flags = irq_save();
     out_stats->current_owner = owner_state;
     out_stats->depth = owner_depth;
     out_stats->acquire_count = acquire_count;
     out_stats->busy_count = busy_count;
+    irq_restore(flags);
 }
 
 static void clear_session_owners() {
@@ -207,21 +219,32 @@ void display_session_finish_restore() {
 }
 
 int display_session_gui_active() {
-    return session_state == OS_DISPLAY_SESSION_GUI_ACTIVE;
+    uint64_t flags = irq_save();
+    const int active = session_state == OS_DISPLAY_SESSION_GUI_ACTIVE;
+    irq_restore(flags);
+    return active;
 }
 
 int display_session_terminal_scanout_allowed() {
-    return session_state == OS_DISPLAY_SESSION_CONSOLE_ACTIVE ||
-           session_state == OS_DISPLAY_SESSION_CONSOLE_RESTORING ||
-           session_state == OS_DISPLAY_SESSION_FALLBACK;
+    uint64_t flags = irq_save();
+    const int allowed =
+        session_state == OS_DISPLAY_SESSION_CONSOLE_ACTIVE ||
+        session_state == OS_DISPLAY_SESSION_CONSOLE_RESTORING ||
+        session_state == OS_DISPLAY_SESSION_FALLBACK;
+    irq_restore(flags);
+    return allowed;
 }
 
 int display_session_present_allowed(uint32_t display_pid,
                                     uint32_t display_generation) {
-    return session_state == OS_DISPLAY_SESSION_GUI_ACTIVE &&
-           display_pid != 0 && display_pid == session_display_pid &&
-           display_generation != 0 &&
-           display_generation == session_display_generation;
+    uint64_t flags = irq_save();
+    const int allowed =
+        session_state == OS_DISPLAY_SESSION_GUI_ACTIVE &&
+        display_pid != 0 && display_pid == session_display_pid &&
+        display_generation != 0 &&
+        display_generation == session_display_generation;
+    irq_restore(flags);
+    return allowed;
 }
 
 void display_session_get_info(OsDisplaySessionInfo* info) {

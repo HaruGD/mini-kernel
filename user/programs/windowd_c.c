@@ -1427,6 +1427,12 @@ static void service_deadlines(void) {
 }
 
 int main(void) {
+    OsThreadIdentity self;
+    if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_affinity(self, 1u) != OS_SUCCESS) {
+        os_puts("[windowd] CPU0 ownership failed");
+        return 1;
+    }
     window_state_init(&window_table);
     window_input_router_init(&input_router);
     os_memset(window_surfaces, 0, sizeof(window_surfaces));

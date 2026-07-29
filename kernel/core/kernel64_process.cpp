@@ -267,8 +267,9 @@ static int wait_for_terminal_process(Process* process) {
     uint32_t pid = process->pid;
     uint32_t generation = process->generation;
     while (process->pid == pid && process->generation == generation &&
-           process->state != PROCESS_STATE_RETURNED &&
-           process->state != PROCESS_STATE_FAILED) {
+           ((process->state != PROCESS_STATE_RETURNED &&
+             process->state != PROCESS_STATE_FAILED) ||
+            process_has_running_threads(process))) {
         if (continue_ready_processes(0)) {
             continue;
         }

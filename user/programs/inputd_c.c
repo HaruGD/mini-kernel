@@ -126,6 +126,12 @@ static void forward_event(const OsInputEvent* event) {
 }
 
 int main(void) {
+    OsThreadIdentity self;
+    if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_affinity(self, 1u) != OS_SUCCESS) {
+        os_puts("[inputd] CPU0 ownership failed");
+        return 1;
+    }
     window_owner.pid = 0;
     window_owner.generation = 0;
     long result = os_service_register("input", OS_SERVICE_FLAG_SYSTEM);

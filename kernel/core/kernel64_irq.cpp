@@ -1,6 +1,13 @@
 extern "C" void keyboard_handler64() {
     CpuLocal* local = cpu_local_current();
     if (cpu_local_validate(local)) local->interrupt_depth++;
+    if (!interrupt_controller_claim_external_irq(1)) {
+        interrupt_controller_eoi(1);
+        if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+            local->interrupt_depth--;
+        }
+        return;
+    }
     interrupt_controller_eoi(1);
     keyboard.handle();
     driver_irq_dispatch(1);
@@ -38,6 +45,13 @@ extern "C" uint64_t timer_handler64() {
     if (cpu_local_validate(local)) {
         local->interrupt_depth++;
         local->timer_interrupt_count++;
+    }
+    if (!interrupt_controller_claim_external_irq(0)) {
+        interrupt_controller_eoi(0);
+        if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+            local->interrupt_depth--;
+        }
+        return 0;
     }
     if (kernel_in_tlb_wait()) {
         interrupt_controller_eoi(0);

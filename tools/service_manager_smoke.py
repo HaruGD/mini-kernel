@@ -49,6 +49,7 @@ def send_command(process: subprocess.Popen, command: str) -> None:
 
 
 def run() -> int:
+    cpu_count = os.environ.get("OS64_QEMU_CPUS", "1")
     os.chdir(ROOT)
     (ROOT / "logs").mkdir(exist_ok=True)
     SERIAL.unlink(missing_ok=True)
@@ -66,6 +67,7 @@ def run() -> int:
         "-machine", "q35",
         "-m", "512M",
         "-cpu", "max",
+        "-smp", cpu_count,
         "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
         "-drive", f"if=pflash,format=raw,file={vars_image}",
         "-drive", f"if=none,id=esp,format=raw,file={esp}",

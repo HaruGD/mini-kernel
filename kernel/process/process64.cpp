@@ -527,7 +527,8 @@ Thread* allocate_thread_record(Process* owner, int is_main) {
     uint64_t kernel_stack =
         kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_THREAD_KERNEL_STACK)
             ? 0
-            : (uint64_t)(uintptr_t)pmm_alloc_block();
+            : (uint64_t)(uintptr_t)
+                  pmm_alloc_blocks(THREAD_KERNEL_STACK_PAGE_COUNT);
     if (kernel_stack == 0) {
         KernelSpinlockToken rollback_token;
         if (kernel_spinlock_acquire(&process_lock, &rollback_token)) {
@@ -543,11 +544,14 @@ Thread* allocate_thread_record(Process* owner, int is_main) {
         }
         return 0;
     }
-    for (uint64_t i = 0; i < VM_PAGE_SIZE; i++) {
+    for (uint64_t i = 0;
+         i < VM_PAGE_SIZE * THREAD_KERNEL_STACK_PAGE_COUNT;
+         i++) {
         *((volatile uint8_t*)(uintptr_t)(kernel_stack + i)) = 0;
     }
     result->context->kernel_stack_base = kernel_stack;
-    result->context->kernel_stack_page_count = 1;
+    result->context->kernel_stack_page_count =
+        THREAD_KERNEL_STACK_PAGE_COUNT;
     return result;
 }
 
@@ -639,7 +643,6 @@ static int thread_wait_begin_unlocked(Thread* thread,
     context->wake_tick = context->wait_deadline;
     context->scheduler_state = SCHED_STATE_WAITING;
     context->block_count++;
-    thread_release_cpu_unlocked(thread);
     return 1;
 }
 
@@ -695,12 +698,12 @@ static int thread_wait_signal_unlocked(Thread* thread, uint32_t reason, int32_t 
     context->wait_deadline = 0;
     context->wake_tick = 0;
     context->wake_count++;
-    if (thread->active && thread->owner != 0 && thread->owner->active &&
-        context->resumable) {
-        thread_release_cpu_unlocked(thread);
+    if (thread->active && thread->owner != 0 && thread->owner->active) {
         context->scheduler_state = SCHED_STATE_READY;
         context->timeslice_ticks = thread_quantum(thread);
-        scheduler_enqueue_unlocked(thread);
+        if (context->resumable) {
+            scheduler_enqueue_unlocked(thread);
+        }
     }
     return 1;
 }
@@ -1181,6 +1184,7 @@ void thread_release_process_records(Process* owner) {
         return;
     }
     uint64_t kernel_stacks[THREAD_TABLE_SIZE];
+    uint32_t kernel_stack_pages[THREAD_TABLE_SIZE];
     uint32_t kernel_stack_count = 0;
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&process_lock, &token)) {
@@ -1195,9 +1199,14 @@ void thread_release_process_records(Process* owner) {
         uint64_t kernel_stack = thread->context != 0
             ? thread->context->kernel_stack_base
             : 0;
+        uint32_t kernel_pages = thread->context != 0
+            ? thread->context->kernel_stack_page_count
+            : 0;
         thread_record_zero(thread);
         if (kernel_stack != 0 && kernel_stack_count < THREAD_TABLE_SIZE) {
-            kernel_stacks[kernel_stack_count++] = kernel_stack;
+            kernel_stacks[kernel_stack_count] = kernel_stack;
+            kernel_stack_pages[kernel_stack_count] = kernel_pages;
+            kernel_stack_count++;
         }
     }
     owner->thread_count = 0;
@@ -1205,7 +1214,8 @@ void thread_release_process_records(Process* owner) {
     owner->main_thread_identity.generation = 0;
     kernel_spinlock_release(&process_lock, &token);
     for (uint32_t i = 0; i < kernel_stack_count; i++) {
-        pmm_free_block((void*)(uintptr_t)kernel_stacks[i]);
+        pmm_free_blocks((void*)(uintptr_t)kernel_stacks[i],
+                        kernel_stack_pages[i]);
     }
 }
 
@@ -1392,7 +1402,6 @@ static void process_finish(Process* process,
         thread->exited = 1;
         thread->exit_code = status_code;
         thread->context->scheduler_state = SCHED_STATE_FINISHED;
-        thread_release_cpu_unlocked(thread);
         thread->context->pause_reason = PROCESS_PAUSE_NONE;
         thread->context->resumable = 0;
         thread_wait_reset_unlocked(thread);
@@ -1639,7 +1648,6 @@ void thread_mark_exited(Thread* thread, uint32_t exit_code) {
     thread->exited = 1;
     thread->exit_code = exit_code;
     thread->context->scheduler_state = SCHED_STATE_FINISHED;
-    thread_release_cpu_unlocked(thread);
     thread->context->resumable = 0;
     thread->context->pause_reason = PROCESS_PAUSE_NONE;
     thread_wait_reset_unlocked(thread);
@@ -1720,7 +1728,8 @@ void thread_release_runtime(Thread* thread) {
     context->stack_page_count = 0;
     context->stack_guard_page_count = 0;
     if (context->kernel_stack_base != 0) {
-        pmm_free_block((void*)(uintptr_t)context->kernel_stack_base);
+        pmm_free_blocks((void*)(uintptr_t)context->kernel_stack_base,
+                        context->kernel_stack_page_count);
         context->kernel_stack_base = 0;
         context->kernel_stack_page_count = 0;
     }
@@ -1784,7 +1793,6 @@ int thread_join_begin(Thread* caller,
     context->wait_target_tid = target_identity.tid;
     context->wait_target_generation = target_identity.generation;
     context->scheduler_state = SCHED_STATE_WAITING;
-    thread_release_cpu_unlocked(caller);
     kernel_spinlock_release(&process_lock, &token);
     return 0;
 }
@@ -1921,8 +1929,14 @@ void scheduler_mark_thread_running(Thread* thread) {
         return;
     }
     const uint32_t logical_id = scheduler_current_cpu();
-    if (thread->running_cpu == (int32_t)logical_id &&
-        thread->context->scheduler_state == SCHED_STATE_RUNNING) {
+    if (thread->running_cpu == (int32_t)logical_id) {
+        if (thread->context->wait_reason == PROCESS_WAIT_CHILD) {
+            thread_wait_reset_unlocked(thread);
+        }
+        thread->context->scheduler_state = SCHED_STATE_RUNNING;
+        thread->context->pause_reason = PROCESS_PAUSE_NONE;
+        thread->context->wake_tick = 0;
+        thread->context->timeslice_ticks = thread_quantum(thread);
         kernel_spinlock_release(&process_lock, &token);
         return;
     }
@@ -1954,7 +1968,6 @@ void scheduler_mark_waiting(Process* process) {
         return;
     }
     thread->context->scheduler_state = SCHED_STATE_WAITING;
-    thread_release_cpu_unlocked(thread);
     kernel_spinlock_release(&process_lock, &token);
 }
 
@@ -1970,7 +1983,6 @@ void scheduler_mark_sleeping(Process* process, uint32_t wake_tick) {
     }
     scheduler_remove_unlocked(thread);
     thread->context->scheduler_state = SCHED_STATE_WAITING;
-    thread_release_cpu_unlocked(thread);
     thread->context->wake_tick = wake_tick;
     kernel_spinlock_release(&process_lock, &token);
 }
@@ -1987,7 +1999,6 @@ void scheduler_mark_thread_finished(Thread* thread) {
     scheduler_remove_unlocked(thread);
     thread->context->scheduler_state = SCHED_STATE_FINISHED;
     thread->context->timeslice_ticks = 0;
-    thread_release_cpu_unlocked(thread);
     kernel_spinlock_release(&process_lock, &token);
 }
 
@@ -2010,11 +2021,30 @@ void scheduler_yield_current() {
     }
     sched_yield_count++;
     thread->context->yield_count++;
-    thread_release_cpu_unlocked(thread);
     thread->context->scheduler_state = SCHED_STATE_READY;
     thread->context->timeslice_ticks = thread_quantum(thread);
     scheduler_remove_unlocked(thread);
     scheduler_enqueue_unlocked(thread);
+    kernel_spinlock_release(&process_lock, &token);
+}
+
+void scheduler_complete_kernel_return(Thread* thread) {
+    if (thread == 0 || thread->context == 0) {
+        return;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return;
+    }
+    const uint32_t logical_id = scheduler_current_cpu();
+    if (thread->running_cpu == (int32_t)logical_id) {
+        thread_release_cpu_unlocked(thread);
+    }
+    if (thread->active && thread->owner != 0 && thread->owner->active &&
+        thread->context->resumable &&
+        thread->context->scheduler_state == SCHED_STATE_READY) {
+        scheduler_enqueue_unlocked(thread);
+    }
     kernel_spinlock_release(&process_lock, &token);
 }
 
@@ -2367,6 +2397,26 @@ int process_record_is_active(const Process* process) {
         }
     }
     return 0;
+}
+
+int process_has_running_threads(const Process* process) {
+    if (process == 0) {
+        return 0;
+    }
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&process_lock, &token)) {
+        return 1;
+    }
+    int running = 0;
+    for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
+        if (thread_table[i].owner == process &&
+            thread_table[i].running_cpu != THREAD_CPU_INVALID) {
+            running = 1;
+            break;
+        }
+    }
+    kernel_spinlock_release(&process_lock, &token);
+    return running;
 }
 
 Process* allocate_process_record() {

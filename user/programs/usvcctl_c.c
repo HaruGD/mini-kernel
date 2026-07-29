@@ -99,6 +99,12 @@ static int parse_reply(const OsIpcMessage* message,
 }
 
 int main(int argc, char** argv) {
+    OsThreadIdentity self;
+    if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_affinity(self, 1u) != OS_SUCCESS) {
+        os_puts("[usvcctl] CPU0 ownership failed");
+        return 1;
+    }
     uint32_t command = command_from_text(argc > 1 ? argv[1] : "ping");
     const char* target = argc > 2 ? argv[2] : "demo";
     if (command == OS_SERVICE_MANAGER_CMD_NONE) {

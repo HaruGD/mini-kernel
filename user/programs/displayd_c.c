@@ -309,6 +309,12 @@ static void handle_message(const OsIpcMessageV2* message) {
 }
 
 int main(void) {
+    OsThreadIdentity self;
+    if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_affinity(self, 1u) != OS_SUCCESS) {
+        os_puts("[displayd] CPU0 ownership failed");
+        return 1;
+    }
     os_display_server_protocol_init(&transaction);
     transaction_surface = 0;
     transaction_mapping = 0;

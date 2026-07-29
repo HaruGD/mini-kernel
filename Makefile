@@ -163,6 +163,16 @@ test-tlb-lock-order:
 test-tlb-shootdown: test-tlb-lock-order uefi-diagnostic
 	python3 ./tools/tlb_shootdown_smoke.py
 test-smp-memory: test-tlb-shootdown test-surface-abi test-thread-waits
+.PHONY: test-smp-spinlocks test-smp-concurrency test-smp-interrupt-ownership test-smp-services-gui test-phase46-audit
+test-smp-spinlocks: test-spinlocks test-tlb-lock-order
+test-smp-concurrency: test-concurrency test-smp-memory
+test-smp-interrupt-ownership: uefi-diagnostic
+	python3 ./tools/smp_irq_ownership_smoke.py
+test-smp-services-gui: uefi
+	OS64_QEMU_CPUS=4 python3 ./tools/service_manager_smoke.py
+	OS64_QEMU_CPUS=4 python3 ./tools/gui_recovery_smoke.py
+	OS64_QEMU_CPUS=4 python3 ./tools/input_event_loop_smoke.py
+test-phase46-audit: test-smp-spinlocks test-smp-concurrency test-smp-interrupt-ownership test-smp-services-gui
 test-phase1: uefi uefi-diagnostic
 	python3 ./tools/phase1_smoke.py
 test-shutdown: uefi

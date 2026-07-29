@@ -2,6 +2,7 @@
 #define OS64_SDK_INTERNAL_H
 
 enum {
+    OS_SYS_WRITE = 1,
     OS_SYS_EXIT = 2,
     OS_SYS_PUTCHAR = 3,
     OS_SYS_GETCHAR = 4,

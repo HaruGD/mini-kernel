@@ -530,6 +530,12 @@ static int handle_request(const OsIpcMessage* message) {
 }
 
 int main(void) {
+    OsThreadIdentity self;
+    if (os_thread_self(&self) != OS_SUCCESS ||
+        os_thread_set_affinity(self, 1u) != OS_SUCCESS) {
+        os_puts("[serviced] CPU0 ownership failed");
+        return 1;
+    }
     if (validate_dependencies() < 0) {
         os_puts("[serviced] dependency graph invalid");
         return 1;

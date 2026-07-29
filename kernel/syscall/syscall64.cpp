@@ -20,7 +20,7 @@ extern "C" {
 
 #define USER_PATH_MAX PROCESS_CMDLINE_MAX
 #define USER_WRITE_MAX 4096u
-#define USER_WRITE_CHUNK_MAX 128u
+#define USER_WRITE_CHUNK_MAX 512u
 
 extern Terminal terminal;
 
@@ -94,9 +94,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             if (!copy_user_buffer(user_buffer + written, chunk, chunk_size)) {
                 return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
             }
-            for (uint32_t i = 0; i < chunk_size; i++) {
-                putchar_both((char)chunk[i]);
-            }
+            print_n((const char*)chunk, chunk_size);
             written += chunk_size;
         }
         return written;

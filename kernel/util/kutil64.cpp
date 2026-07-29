@@ -7,8 +7,40 @@ extern "C" {
 #include "drivers/terminal.h"
 #include "kernel/klog.h"
 #include "kernel/kutil64.h"
+#include "kernel/cpu_local.h"
 
 extern Terminal terminal;
+static volatile uint32_t console_output_lock = 0;
+#define CONSOLE_LOCK_BYPASSED (1ULL << 63)
+
+static uint64_t console_lock_acquire() {
+    uint64_t flags = 0;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(flags) : : "memory");
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local) && local->emergency_active) {
+        if (__atomic_exchange_n(&console_output_lock,
+                                1u,
+                                __ATOMIC_ACQUIRE) != 0) {
+            return flags | CONSOLE_LOCK_BYPASSED;
+        }
+        return flags;
+    }
+    while (__atomic_exchange_n(&console_output_lock,
+                               1u,
+                               __ATOMIC_ACQUIRE) != 0) {
+        __asm__ volatile("pause");
+    }
+    return flags;
+}
+
+static void console_lock_release(uint64_t flags) {
+    if ((flags & CONSOLE_LOCK_BYPASSED) == 0) {
+        __atomic_store_n(&console_output_lock, 0u, __ATOMIC_RELEASE);
+    }
+    if ((flags & (1ULL << 9)) != 0) {
+        __asm__ volatile("sti" : : : "memory");
+    }
+}
 
 int strlen64(const char* str) {
     int len = 0;
@@ -79,15 +111,19 @@ void putchar_both(char c) {
 }
 
 void print(const char* str) {
+    const uint64_t flags = console_lock_acquire();
     for (int i = 0; str[i] != '\0'; i++) {
         putchar_both(str[i]);
     }
+    console_lock_release(flags);
 }
 
 void print_n(const char* str, uint64_t len) {
+    const uint64_t flags = console_lock_acquire();
     for (uint64_t i = 0; i < len; i++) {
         putchar_both(str[i]);
     }
+    console_lock_release(flags);
 }
 
 void print_hex32(uint32_t value) {

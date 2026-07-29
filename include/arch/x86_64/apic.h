@@ -16,6 +16,16 @@ struct LocalApicTimerCalibration {
     uint32_t reload;
 };
 
+#define INTERRUPT_EXTERNAL_IRQ_COUNT 16u
+#define INTERRUPT_OWNER_NONE 0xFFFFFFFFu
+
+struct InterruptOwnershipStats {
+    uint32_t owner_cpu[INTERRUPT_EXTERNAL_IRQ_COUNT];
+    uint64_t accepted[INTERRUPT_EXTERNAL_IRQ_COUNT];
+    uint64_t violations;
+    uint64_t handoffs;
+};
+
 int interrupt_controller_init(const AcpiState* acpi);
 void interrupt_controller_eoi(uint8_t irq);
 void interrupt_controller_set_mask(uint8_t irq, int masked);
@@ -33,5 +43,7 @@ int interrupt_controller_calibrate_local_timer(
     uint8_t vector,
     LocalApicTimerCalibration* calibration);
 void interrupt_controller_stop_local_timer();
+int interrupt_controller_claim_external_irq(uint8_t irq);
+void interrupt_controller_get_ownership_stats(InterruptOwnershipStats* stats);
 
 #endif

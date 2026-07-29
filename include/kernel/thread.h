@@ -9,6 +9,7 @@ struct Process;
 
 #define THREAD_CPU_INVALID (-1)
 #define THREAD_AFFINITY_ALL 0x000000FFu
+#define THREAD_KERNEL_STACK_PAGE_COUNT 4u
 
 #define THREAD_CONTEXT_FIELDS \
     uint64_t stack_guard_base; \

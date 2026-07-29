@@ -21,6 +21,7 @@ struct HostMapping {
 };
 
 static void* allocated_pages[HOST_MM_MAX_PAGES];
+static uint32_t allocated_page_counts[HOST_MM_MAX_PAGES];
 static HostMapping mappings[HOST_MM_MAX_PAGES];
 static int32_t map_successes_before_failure = -1;
 static int32_t unmap_successes_before_failure = -1;
@@ -35,6 +36,7 @@ void host_mm_reset() {
             free(allocated_pages[i]);
             allocated_pages[i] = 0;
         }
+        allocated_page_counts[i] = 0;
         mappings[i].active = 0;
         mappings[i].virt = 0;
         mappings[i].phys = 0;
@@ -51,7 +53,7 @@ void host_mm_reset() {
 uint32_t host_mm_allocated_pages() {
     uint32_t count = 0;
     for (uint32_t i = 0; i < HOST_MM_MAX_PAGES; i++) {
-        count += allocated_pages[i] != 0 ? 1u : 0u;
+        count += allocated_page_counts[i];
     }
     return count;
 }
@@ -72,7 +74,10 @@ void host_mm_fail_unmap_after(int32_t successes_before_failure) {
     unmap_successes_before_failure = successes_before_failure;
 }
 
-extern "C" void* pmm_alloc_block() {
+extern "C" void* pmm_alloc_blocks(uint32_t count) {
+    if (count == 0 || count > HOST_MM_MAX_PAGES) {
+        return 0;
+    }
     if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_PMM)) {
         return 0;
     }
@@ -89,24 +94,39 @@ extern "C" void* pmm_alloc_block() {
     }
 
     void* page = 0;
-    if (posix_memalign(&page, PMM_PAGE_SIZE, PMM_PAGE_SIZE) != 0) {
+    if (posix_memalign(&page,
+                       PMM_PAGE_SIZE,
+                       (size_t)PMM_PAGE_SIZE * count) != 0) {
         return 0;
     }
     allocated_pages[slot] = page;
+    allocated_page_counts[slot] = count;
     return page;
 }
 
-extern "C" void pmm_free_block(void* address) {
+extern "C" void* pmm_alloc_block() {
+    return pmm_alloc_blocks(1);
+}
+
+extern "C" void pmm_free_blocks(void* address, uint32_t count) {
     if (address == 0) {
         return;
     }
     for (uint32_t i = 0; i < HOST_MM_MAX_PAGES; i++) {
         if (allocated_pages[i] == address) {
+            if (count != allocated_page_counts[i]) {
+                return;
+            }
             free(allocated_pages[i]);
             allocated_pages[i] = 0;
+            allocated_page_counts[i] = 0;
             return;
         }
     }
+}
+
+extern "C" void pmm_free_block(void* address) {
+    pmm_free_blocks(address, 1);
 }
 
 extern "C" int vm_map_page(uint64_t virt, uint64_t phys, uint64_t flags) {
