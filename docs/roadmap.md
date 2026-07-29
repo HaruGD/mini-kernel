@@ -231,7 +231,7 @@ Progress:
   lock-free `TLB_WAIT` acknowledgement boundary
 - [x] 4.6G: Audit kernel subsystems for SMP-safe irqsave/preemption locking,
   atomics, blocking, lock ordering, and interrupt ownership
-- [ ] 4.6H: Pass deterministic SMP fault injection, the required multicore
+- [x] 4.6H: Pass deterministic SMP fault injection, the required multicore
   soak, clean Phase 4.6 aggregate, and full project closure
 
 ## Phase 5: Desktop Foundation

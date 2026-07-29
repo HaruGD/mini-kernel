@@ -28,17 +28,18 @@ a separate evidence commit.
 | 4.6E: Reschedule IPI, remote wake, affinity, distribution | Complete | 2026-07-25 | 2026-07-26 | `d8d1787`, `4595489`, `0488c78`, `e60a306` | P46-R07, P46-R08 |
 | 4.6F: TLB shootdown and address-space safety | Complete | 2026-07-30 | 2026-07-30 | `a15c0e8` | P46-R09 |
 | 4.6G: Kernel-wide SMP audit and interrupt ownership | Complete | 2026-07-30 | 2026-07-30 | `6dce9ef` | P46-R10, P46-R11 |
-| 4.6H: Multicore fault injection, soak, and closure | Planned | - | - | - | - |
+| 4.6H: Multicore fault injection, soak, and closure | Complete | 2026-07-30 | 2026-07-30 | `13fce61`, `61a13bb` | P46-R12, P46-R13, P46-R14 |
 
-Current status: 4.6A through 4.6G are complete. Four-vCPU QEMU runs three
+Current status: 4.6A through 4.6H are complete. Four-vCPU QEMU runs three
 distinct pinned user threads concurrently on AP1/AP2/AP3 with atomic
 single-CPU claims and calibrated CPU-local quantum accounting. Bounded
 reschedule IPIs, every required remote-wake class, affinity rejection and
 pinning, unpinned multi-CPU distribution, and generation-checked TLB
 shootdown have repeatable evidence. External IRQ and system control-plane
-ownership plus concurrent lifecycle teardown have passed. 4.6H is next;
-Phase 5 remains gated on
-complete 4.6 closure.
+ownership plus concurrent lifecycle teardown have passed. Deterministic SMP
+fault injection, the required four-vCPU 60-second soak, a clean Phase 4.6
+aggregate, and full project closure also pass. Phase 4.6 is closed and the
+Phase 5 entry gate is open.
 
 ## Recording Workflow
 
@@ -491,7 +492,66 @@ violation.
 
 ### Remaining
 
-- 4.6H owns deterministic SMP failure injection, the required 60-second
-  multicore soak, aggregate `test-phase46`, and clean project closure.
 - Per-CPU scheduler queues, work stealing, non-recursive context switching,
   PCID, CPU hotplug, and dynamic IRQ affinity remain later work.
+
+## 4.6H: Multicore Fault Injection, Soak, And Closure
+
+- Status: Complete
+- Started: 2026-07-30
+- Completed: 2026-07-30
+- Implementation commit: `13fce61`
+- Closure regression fix: `61a13bb`
+
+### Delivered
+
+- Added contention-safe, one-shot fault points for CPU-local setup, AP
+  startup, Local APIC timer setup, scheduler claim, TLB request publication,
+  and external interrupt ownership. Concurrent consumers cannot fire one
+  armed point more than once.
+- Extended AP-state, per-CPU, thread fault, synchronization, and soak tests
+  with four-vCPU execution, exact fault counts, per-CPU progress, and
+  warmed/final resource accounting.
+- Deferred PS/2 scan processing and reschedule work while a CPU is inside the
+  interrupt-enabled, ordinary-lock-free `TLB_WAIT` boundary.
+- Closed lifecycle races found by the stress gate: rejected waits no longer
+  strand a sleeper; early kernel-stack allocation failures release all four
+  pages; join completion waits for runtime release; process records cannot be
+  reused while any CPU still owns an execution stack; and only the join path
+  discards a joined thread record, preventing slot-reuse ABA cleanup.
+- Made a terminal thread state authoritative over a nested child's pause
+  reason. This fixes the full-closure display restart hang discovered after
+  the implementation commit.
+- Added real `test-smp-faults`, `test-smp-soak`, `test-phase46`, and
+  `test-phase46-closure` targets.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-smp-faults` | PASS | One-shot contention model and six four-vCPU QEMU fault cases passed; resources remained `(0,0,0,0,0,0,0,26968,4096000,4116480)` |
+| `OS64_QEMU_CPUS=4 OS64_SYNC_CYCLES=200 python3 tools/thread_sync_smoke.py` | PASS | 200 four-vCPU synchronization cycles completed without a semaphore, condition, join, or cleanup failure |
+| `make test-smp-soak` | PASS | 60 seconds, four vCPUs, 12 cycles, 48 thread programs, 48 GUI windows; warmed/final tuple identical `(4,21,1,0,4,0,1,26912,1944432,1961984)` |
+| `make clean && make -j4 uefi uefi-diagnostic && make test-phase46` | PASS | Clean normal/diagnostic images and P46-R01 through P46-R14 passed on the final code; TLB churn completed 64 cycles and the final four-vCPU soak retained exact resources |
+| `make test-closure` | PASS | Full inherited closure passed; GUI soak completed 33 cycles/132 windows/6 restarts and service soak completed 40 cycles |
+
+### Resource And CPU Accounting
+
+- The required soak used QEMU `-cpu max -smp 4`. All four CPUs remained
+  online and made scheduler, wake, TLB, service, GUI, and input progress.
+- Four-vCPU TLB churn completed 64 cycles with `8,285,714` concurrent reads
+  and AP acknowledgement counts `141/130/9`.
+- The required soak began and ended at
+  `(4,21,1,0,4,0,1,26912,1944432,1961984)`. No stale queued/running thread,
+  stalled CPU, double cleanup, lock-order violation, TLB quarantine leak, or
+  unexplained resource drift was reported.
+- The inherited single-vCPU 60-second soak completed 14 cycles, 42 thread
+  programs, and 56 GUI windows with identical warmed/final resources.
+
+### Remaining
+
+- The optional one-hour release soak remains useful release evidence but is
+  not a Phase 4.6 completion requirement.
+- Per-CPU queues, work stealing, PCID, CPU hotplug, x2APIC mode, NUMA policy,
+  and dynamic IRQ affinity remain post-foundation optimizations.
+- Phase 5 desktop-foundation work may begin.

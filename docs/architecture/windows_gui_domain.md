@@ -1084,7 +1084,7 @@ Existing OS64 work already supplies the beginning of this architecture:
 | Host file namespace | current VFS; capability-rooted directory export remains future work |
 | file-service isolation | user service and permission model; `fileportald` remains future work |
 | Guest data transport | IPC/shared-object patterns; VirtIO-FS and vsock remain future work |
-| thread and CPU foundation | completed Phase 4.5 threading; Phase 4.6 SMP remains planned |
+| thread and CPU foundation | completed Phase 4.5 threading and Phase 4.6 correctness-first SMP |
 | Windows VM | post-roadmap hypervisor goal |
 
 The current decision to combine window management and native composition in

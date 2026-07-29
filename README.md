@@ -42,7 +42,7 @@ What works on the active 64-bit UEFI path:
 - diagnostic-only kernel GP and runtime ACPI corruption fault injection
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
-- bounded process and thread tables with a thread-selecting single-CPU scheduler
+- bounded process and thread tables with a locked global-queue SMP scheduler
 - generation-tagged thread identities and up to four threads per process
 - extracted main-thread contexts plus private guarded user and kernel stacks
 - process identities with pid generation checks for lifecycle-sensitive paths

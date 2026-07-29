@@ -1,12 +1,10 @@
 # Phase 4.6 Regression Matrix
 
 This matrix defines the evidence required to close SMP and multicore
-scheduling. Rows marked `Reserved` are design names only and must not be cited
-as executed evidence until the Makefile contains them and they pass.
+scheduling. Every listed command is now a real target with passing evidence.
 
-The final aggregate target will be `make test-phase46`. It must invoke real
-focused targets and must not be added as an empty or documentation-only
-target.
+The final aggregate target is `make test-phase46`; it invokes the real focused
+targets rather than an empty or documentation-only gate.
 
 ## Matrix
 
@@ -23,9 +21,9 @@ target.
 | P46-R09 | 4.6F | Mapping mutation and address-space teardown invalidate every CPU that may cache the old translation before page reuse through a lock-safe three-phase transaction. | `make test-tlb-shootdown`; `make test-tlb-lock-order`; `make test-smp-memory` | Mutation quarantines state under VM lock, the initiator flushes locally, `TLB_WAIT` begins only at ordinary lock depth zero, remote acknowledgements match address-space operation generation/target mask, a CPU entering later flushes the newer generation before user mode, and retirement occurs only after every required acknowledgement; delayed, duplicate, stale, and timeout cases cannot free or reuse state. | Complete |
 | P46-R10 | 4.6G | Kernel subsystems obey SMP-safe irqsave/raw spinlock, preemption, atomic, blocking, and interrupt ownership rules. | `make test-smp-spinlocks`; `make test-smp-concurrency`; `make test-smp-interrupt-ownership` | Acquire/release balances local IF and preemption depth, records/verifies owner CPU and LIFO order, and rejects recursion, wrong-CPU/token release, scheduling/blocking while atomic, ordinary NMI/DF locking, and locks crossing `TLB_WAIT`; concurrent subsystem work has zero violation. | Complete |
 | P46-R11 | 4.6G | Existing shell, services, display, window, GUI, and device input remain responsive under multicore execution and restart. | `make test-smp-services-gui` | Supervised service restart, GUI lifecycle, input focus, and display ownership pass on at least two CPUs with named interrupt ownership and no helper loop. | Complete |
-| P46-R12 | 4.6H | SMP startup, scheduler, IPI, TLB, and teardown failures roll back without false online/running state or resource drift. | Reserved: `make test-smp-faults` | Every injected point fires exactly once; AP/startup failure degrades safely; remote fault/exit and delayed shootdown cleanup complete exactly once. | Planned |
-| P46-R13 | 4.6H | Repeated multicore lifecycle, synchronization, mapping, IPC, service, GUI, and input churn is stable. | Reserved: `make test-smp-soak` | A minimum 60-second dual/four-vCPU soak reports per-CPU progress, cycle counts, identical warmed/final resources, no stalled CPU, and no stale queued/running thread. | Planned |
-| P46-R14 | 4.6H | Phase 4.6 and all inherited single-CPU contracts pass together from a clean tree. | Future `make test-phase46`; existing `make test-phase45` and `make test-closure`; clean parallel UEFI build | Every focused row and inherited suite passes; exact commands, vCPU counts, durations, commits, and measurements are recorded. | Planned |
+| P46-R12 | 4.6H | SMP startup, scheduler, IPI, TLB, and teardown failures roll back without false online/running state or resource drift. | `make test-smp-faults` | Every injected point fires exactly once; AP/startup failure degrades safely; remote fault/exit and delayed shootdown cleanup complete exactly once. | Complete |
+| P46-R13 | 4.6H | Repeated multicore lifecycle, synchronization, mapping, IPC, service, GUI, and input churn is stable. | `make test-smp-soak` | A minimum 60-second dual/four-vCPU soak reports per-CPU progress, cycle counts, identical warmed/final resources, no stalled CPU, and no stale queued/running thread. | Complete |
+| P46-R14 | 4.6H | Phase 4.6 and all inherited single-CPU contracts pass together from a clean tree. | `make clean && make -j4 uefi uefi-diagnostic && make test-phase46`; `make test-closure` | Every focused row and inherited suite passes; exact commands, vCPU counts, durations, commits, and measurements are recorded. | Complete |
 
 ## Mandatory Negative Coverage
 
@@ -60,8 +58,6 @@ Focused targets must cover, where applicable:
 
 ## Evidence Rules
 
-- Replace `Reserved` or `Future` with exact real commands only after the
-  corresponding targets exist and pass.
 - Host tests close parsers and isolated state machines, but cannot alone close
   AP startup, interrupt entry, concurrent scheduling, IPI, TLB, or end-to-end
   resource rows.

@@ -128,7 +128,8 @@ thread-selecting scheduler, private stacks, public thread lifecycle ABI,
 per-thread waits, synchronization objects, TLS, accounting, single-CPU
 fairness, deterministic fault injection, fatal-fault cleanup, and 60-second
 churn certification are implemented. The clean Phase 4.5 aggregate and full
-project closure suites pass; Phase 4.6 is now the active scheduler milestone.
+project closure suites pass. Phase 4.6 subsequently completed on 2026-07-30,
+opening the Phase 5 desktop-foundation gate.
 
 The detailed entry baseline, subphase order, fixed lifecycle policies,
 regression matrix, and live evidence ledger are indexed in
@@ -181,6 +182,13 @@ NMI/Double Fault independent emergency IST recovery, requires each CPU to
 self-calibrate its Local APIC timer, standardizes irqsave/preemption spinlock
 ownership, and places every TLB acknowledgement wait after ordinary locks have
 been released.
+
+The complete A-through-H implementation now passes deterministic SMP fault
+injection, four-vCPU synchronization stress, the required 60-second multicore
+soak, the clean Phase 4.6 aggregate, and full project closure. The first
+correctness-first global-queue SMP foundation is therefore complete; per-CPU
+queues, work stealing, PCID, CPU hotplug, and NUMA policy remain later
+optimizations.
 
 ### CPU Bring-Up And State
 

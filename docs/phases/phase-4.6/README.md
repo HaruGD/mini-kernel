@@ -54,7 +54,14 @@ service/GUI control plane have explicit CPU0 ownership. Process wait and
 terminal transitions retain CPU ownership until the returning kernel path is
 safe, handles/surfaces/display state are serialized, and user console records
 are emitted atomically. The complete four-vCPU subsystem, service restart,
-GUI crash/recovery, and input suite passes. 4.6H is next.
+GUI crash/recovery, and input suite passes.
+
+Phase 4.6H completed on 2026-07-30 with implementation commit `13fce61` and
+closure regression fix `61a13bb`. Deterministic SMP fault injection, 200-cycle
+four-vCPU synchronization stress, the required four-vCPU 60-second soak,
+clean normal/diagnostic builds, the complete `test-phase46` aggregate, and the
+full inherited closure suite pass. Phase 4.6 is closed and Phase 5 may begin;
+the optional one-hour release soak was not required or run.
 
 ## Scope Boundary
 
