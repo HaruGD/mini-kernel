@@ -229,7 +229,7 @@ Progress:
 - [x] 4.6F: Implement generation-checked cross-CPU TLB shootdown before
   concurrent address-space mutation and page reuse, using quarantine and a
   lock-free `TLB_WAIT` acknowledgement boundary
-- [ ] 4.6G: Audit kernel subsystems for SMP-safe irqsave/preemption locking,
+- [x] 4.6G: Audit kernel subsystems for SMP-safe irqsave/preemption locking,
   atomics, blocking, lock ordering, and interrupt ownership
 - [ ] 4.6H: Pass deterministic SMP fault injection, the required multicore
   soak, clean Phase 4.6 aggregate, and full project closure

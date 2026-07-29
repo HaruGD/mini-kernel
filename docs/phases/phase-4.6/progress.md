@@ -27,15 +27,17 @@ a separate evidence commit.
 | 4.6D: Multicore scheduler and local preemption | Complete | 2026-07-25 | 2026-07-25 | `d8d1787`, `4595489`, `02abf86`, `d17075e`, `e60a306` | P46-R05, P46-R06 |
 | 4.6E: Reschedule IPI, remote wake, affinity, distribution | Complete | 2026-07-25 | 2026-07-26 | `d8d1787`, `4595489`, `0488c78`, `e60a306` | P46-R07, P46-R08 |
 | 4.6F: TLB shootdown and address-space safety | Complete | 2026-07-30 | 2026-07-30 | `a15c0e8` | P46-R09 |
-| 4.6G: Kernel-wide SMP audit and interrupt ownership | Planned | - | - | - | - |
+| 4.6G: Kernel-wide SMP audit and interrupt ownership | Complete | 2026-07-30 | 2026-07-30 | `6dce9ef` | P46-R10, P46-R11 |
 | 4.6H: Multicore fault injection, soak, and closure | Planned | - | - | - | - |
 
-Current status: 4.6A through 4.6F are complete. Four-vCPU QEMU runs three
+Current status: 4.6A through 4.6G are complete. Four-vCPU QEMU runs three
 distinct pinned user threads concurrently on AP1/AP2/AP3 with atomic
 single-CPU claims and calibrated CPU-local quantum accounting. Bounded
 reschedule IPIs, every required remote-wake class, affinity rejection and
 pinning, unpinned multi-CPU distribution, and generation-checked TLB
-shootdown have repeatable evidence. 4.6G is next; Phase 5 remains gated on
+shootdown have repeatable evidence. External IRQ and system control-plane
+ownership plus concurrent lifecycle teardown have passed. 4.6H is next;
+Phase 5 remains gated on
 complete 4.6 closure.
 
 ## Recording Workflow
@@ -434,7 +436,62 @@ violation.
 
 ### Remaining
 
-- 4.6G owns the kernel-wide shared-state/lock audit and named external
-  interrupt ownership.
+- The kernel-wide shared-state/lock audit and named external interrupt
+  ownership were completed by 4.6G.
 - PCID, large-page-aware range invalidation, NUMA policy, and CPU hotplug
   remain deferred.
+
+## 4.6G: Kernel-Wide SMP Audit And Interrupt Ownership
+
+- Status: Complete
+- Started: 2026-07-30
+- Completed: 2026-07-30
+- Implementation commit: `6dce9ef`
+
+### Delivered
+
+- IOAPIC/PIC external IRQ0 and IRQ1 have named CPU0 ownership, accepted-event
+  counters, wrong-owner rejection, and ownership-violation diagnostics.
+- Process wait, yield, preemption, exit, and terminal reporting retain
+  `running_cpu` ownership until the original kernel return path has saved its
+  context and left the per-thread entry stack. This closes the same-thread
+  double-resume and premature stack-reclaim race found by the four-vCPU
+  service regression.
+- Per-thread kernel entry stacks are four contiguous pages. Host PMM fixtures
+  account for contiguous allocations and exact-count release.
+- Kernel objects, shared-memory/surface publication, surface backing
+  reservation/release, display ownership, and console output now serialize
+  shared publication and cleanup. Allocation and backing release occur
+  outside ordinary spinlock critical sections.
+- `serviced`, service clients/workers, `displayd`, `inputd`, and `windowd`
+  declare CPU0 control-plane ownership. User SDK formatting emits a complete
+  record through one bounded write instead of interleaving characters from
+  multiple CPUs.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-smp-spinlocks` | PASS | irqsave/preemption/owner/LIFO checks and the `TLB_WAIT` lock-order model passed |
+| `make test-smp-concurrency` | PASS | Handle, process, service, IPC, TLB, surface, and thread lifecycle suites passed; 64 TLB cycles completed with `8,270,054` reads and AP ACK counts `141/9/137` |
+| `make test-smp-interrupt-ownership` | PASS | QEMU `-cpu max -smp 4`: timer `109`, keyboard `13`, both owned by CPU0, ownership violations `0` |
+| `make test-smp-services-gui` | PASS | Four-vCPU service manager restart/policy, display/window crash recovery, GUI lifecycle, and input event-loop sessions passed |
+| `make test-phase46-audit` | PASS | P46-R10/R11 aggregate passed with no kernel panic, double fault, lock violation, stale IRQ owner, or resource-contract failure |
+
+### Resource And CPU Accounting
+
+- All QEMU audit workloads used four vCPUs; the one-vCPU fallback remains
+  covered by inherited scheduler and lifecycle targets.
+- Surface mapping remained
+  `(0,0,0,0,0,0,0,26919,4120432,4141056)`. Ten thread cycles remained
+  `(0,0,0,0,0,0,0,26929,4120432,4141056)` with scheduler tuple `(0,8)`.
+- GUI crash/recovery kept all contract fields stable:
+  baseline `(4,21,1,0,4,0,1,26936,1944432,1961984)`, final
+  `(4,21,1,0,4,0,1,26909,1944432,1961984)`; only bounded PMM history changed.
+
+### Remaining
+
+- 4.6H owns deterministic SMP failure injection, the required 60-second
+  multicore soak, aggregate `test-phase46`, and clean project closure.
+- Per-CPU scheduler queues, work stealing, non-recursive context switching,
+  PCID, CPU hotplug, and dynamic IRQ affinity remain later work.

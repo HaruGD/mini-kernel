@@ -47,8 +47,14 @@ remote wake paths pass in repeatable four-vCPU sessions.
 Phase 4.6F completed on 2026-07-30. Address spaces now carry stable identities
 and generations, one serialized mapping transaction, per-CPU shootdown
 mailboxes, lock-free `TLB_WAIT`, and acknowledgement-gated page retirement.
-Four-vCPU mapping churn and inherited surface/thread regressions pass. 4.6G is
-next and owns the kernel-wide shared-state and interrupt-ownership audit.
+Four-vCPU mapping churn and inherited surface/thread regressions pass.
+
+Phase 4.6G completed on 2026-07-30. External IRQ0/IRQ1 and the system
+service/GUI control plane have explicit CPU0 ownership. Process wait and
+terminal transitions retain CPU ownership until the returning kernel path is
+safe, handles/surfaces/display state are serialized, and user console records
+are emitted atomically. The complete four-vCPU subsystem, service restart,
+GUI crash/recovery, and input suite passes. 4.6H is next.
 
 ## Scope Boundary
 
