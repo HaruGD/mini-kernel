@@ -8,11 +8,13 @@
 struct Process;
 struct Thread;
 struct KernelSpinlock;
+struct AddressSpace;
 
 #define CPU_LOCAL_MAGIC 0x4F5336344350554CULL
 #define CPU_LOCAL_EXECUTION_STACK_MAX 32u
 #define CPU_LOCAL_LOCK_STACK_MAX 8u
-#define CPU_LOCAL_STACK_SIZE 16384u
+#define CPU_LOCAL_KERNEL_STACK_SIZE 65536u
+#define CPU_LOCAL_EMERGENCY_STACK_SIZE 16384u
 #define CPU_LOCAL_USER_STATE_OFFSET 32u
 
 struct CpuUserState {
@@ -72,6 +74,22 @@ struct CpuLocal {
     KernelSpinlock* held_locks[CPU_LOCAL_LOCK_STACK_MAX];
     uint32_t held_lock_depth;
     uint32_t pending_reschedule;
+    uint32_t tlb_wait_depth;
+    uint32_t pending_tlb_shootdown;
+
+    AddressSpace* loaded_address_space;
+    uint64_t loaded_address_space_identity;
+    uint64_t loaded_address_space_root;
+    uint64_t observed_tlb_generation;
+    uint64_t tlb_request_identity;
+    uint64_t tlb_request_root;
+    uint64_t tlb_request_generation;
+    uint64_t tlb_request_token;
+    uint64_t tlb_request_address;
+    uint32_t tlb_request_page_count;
+    uint32_t tlb_request_full;
+    uint64_t tlb_ack_generation;
+    uint64_t tlb_ack_token;
 
     uint64_t kernel_stack_base;
     uint64_t kernel_stack_top;
@@ -104,6 +122,11 @@ struct CpuLocal {
     uint64_t reschedule_received_count;
     uint64_t reschedule_coalesced_count;
     uint64_t reschedule_ignored_count;
+    uint64_t tlb_shootdown_sent_count;
+    uint64_t tlb_shootdown_received_count;
+    uint64_t tlb_shootdown_ack_count;
+    uint64_t tlb_shootdown_stale_count;
+    uint64_t tlb_local_flush_count;
 };
 
 int cpu_local_system_init();

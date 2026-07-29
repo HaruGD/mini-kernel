@@ -39,6 +39,13 @@ extern "C" uint64_t timer_handler64() {
         local->interrupt_depth++;
         local->timer_interrupt_count++;
     }
+    if (kernel_in_tlb_wait()) {
+        interrupt_controller_eoi(0);
+        if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+            local->interrupt_depth--;
+        }
+        return 0;
+    }
     pit.handle();
     interrupt_controller_eoi(0);
     driver_irq_dispatch(0);
@@ -69,6 +76,13 @@ extern "C" uint64_t local_timer_handler64() {
         local->interrupt_depth++;
         local->local_timer_interrupt_count++;
         local->scheduler_tick_count++;
+    }
+    if (kernel_in_tlb_wait()) {
+        interrupt_controller_eoi(0);
+        if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+            local->interrupt_depth--;
+        }
+        return 0;
     }
     interrupt_controller_eoi(0);
     scheduler_on_tick();

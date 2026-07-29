@@ -99,6 +99,12 @@ def main() -> int:
         if "KERNEL PANIC" in output or "Double fault" in output:
             raise RuntimeError("kernel fault observed")
     except (RuntimeError, TimeoutError) as error:
+        try:
+            print(send_command(process, "locks", 10))
+            print(send_command(process, "resources", 10))
+            print(send_command(process, "cpus", 10))
+        except (RuntimeError, TimeoutError):
+            pass
         print(f"surface mapping smoke failed: {error}")
         return 1
     finally:

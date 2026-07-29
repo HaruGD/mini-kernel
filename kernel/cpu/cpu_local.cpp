@@ -7,9 +7,12 @@
 #endif
 
 static CpuLocal cpu_locals[CPU_MAX_COUNT];
-alignas(4096) static uint8_t kernel_stacks[CPU_MAX_COUNT][CPU_LOCAL_STACK_SIZE];
-alignas(4096) static uint8_t nmi_stacks[CPU_MAX_COUNT][CPU_LOCAL_STACK_SIZE];
-alignas(4096) static uint8_t double_fault_stacks[CPU_MAX_COUNT][CPU_LOCAL_STACK_SIZE];
+alignas(4096) static uint8_t
+    kernel_stacks[CPU_MAX_COUNT][CPU_LOCAL_KERNEL_STACK_SIZE];
+alignas(4096) static uint8_t
+    nmi_stacks[CPU_MAX_COUNT][CPU_LOCAL_EMERGENCY_STACK_SIZE];
+alignas(4096) static uint8_t
+    double_fault_stacks[CPU_MAX_COUNT][CPU_LOCAL_EMERGENCY_STACK_SIZE];
 
 static_assert(offsetof(CpuLocal, user_state) == CPU_LOCAL_USER_STATE_OFFSET,
               "CpuLocal user-state assembly offset changed");
@@ -37,14 +40,15 @@ static void prepare_local(uint32_t logical_id, const CpuRecord* record) {
     local->kernel_stack_base =
         (uint64_t)(uintptr_t)&kernel_stacks[logical_id][0];
     local->kernel_stack_top =
-        local->kernel_stack_base + CPU_LOCAL_STACK_SIZE;
+        local->kernel_stack_base + CPU_LOCAL_KERNEL_STACK_SIZE;
     local->nmi_stack_base =
         (uint64_t)(uintptr_t)&nmi_stacks[logical_id][0];
-    local->nmi_stack_top = local->nmi_stack_base + CPU_LOCAL_STACK_SIZE;
+    local->nmi_stack_top =
+        local->nmi_stack_base + CPU_LOCAL_EMERGENCY_STACK_SIZE;
     local->double_fault_stack_base =
         (uint64_t)(uintptr_t)&double_fault_stacks[logical_id][0];
     local->double_fault_stack_top =
-        local->double_fault_stack_base + CPU_LOCAL_STACK_SIZE;
+        local->double_fault_stack_base + CPU_LOCAL_EMERGENCY_STACK_SIZE;
 }
 
 #ifndef OS64_HOST_TEST
@@ -217,6 +221,20 @@ void cpu_local_print_summary() {
         print_hex64(local->reschedule_received_count);
         print(" rs_coal=");
         print_hex64(local->reschedule_coalesced_count);
+        print(" asid=");
+        print_hex64(local->loaded_address_space_identity);
+        print(" tlb_gen=");
+        print_hex64(local->observed_tlb_generation);
+        print(" tlb_sent=");
+        print_hex64(local->tlb_shootdown_sent_count);
+        print(" tlb_recv=");
+        print_hex64(local->tlb_shootdown_received_count);
+        print(" tlb_ack=");
+        print_hex64(local->tlb_shootdown_ack_count);
+        print(" tlb_stale=");
+        print_hex64(local->tlb_shootdown_stale_count);
+        print(" tlb_flush=");
+        print_hex64(local->tlb_local_flush_count);
     }
     print("\n=================\n");
 #endif

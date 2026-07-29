@@ -38,6 +38,7 @@ void spurious_interrupt_handler64();
 void pic_spurious_interrupt_handler64(uint64_t irq);
 void smp_startup_ping_interrupt_handler64();
 uint64_t smp_reschedule_interrupt_handler64();
+void smp_tlb_shootdown_interrupt_handler64();
 uint32_t pic_spurious_irq7_count();
 uint32_t pic_spurious_irq15_count();
 

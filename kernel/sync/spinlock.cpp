@@ -11,6 +11,8 @@ static volatile uint64_t stat_recursion_violations = 0;
 static volatile uint64_t stat_release_violations = 0;
 static volatile uint64_t stat_wrong_cpu_violations = 0;
 static volatile uint64_t stat_schedule_violations = 0;
+static volatile uint64_t stat_tlb_wait_violations = 0;
+static volatile uint64_t stat_tlb_wait_entries = 0;
 static volatile uint32_t stat_maximum_depth = 0;
 static volatile uint32_t stat_last_violation_type = 0;
 static volatile uint32_t stat_last_held_class = 0;
@@ -19,6 +21,7 @@ static volatile uint32_t stat_last_requested_class = 0;
 #ifdef OS64_HOST_TEST
 static thread_local uint32_t held_depth = 0;
 static thread_local uint32_t preemption_depth = 0;
+static thread_local uint32_t tlb_wait_depth = 0;
 static thread_local KernelSpinlock* held_locks[KERNEL_LOCK_STACK_MAX];
 static thread_local int host_interrupts_enabled = 1;
 static thread_local uint32_t host_cpu_id = 0xFFFFFFFFu;
@@ -34,6 +37,7 @@ static uint32_t current_cpu_id() {
 static KernelSpinlock** current_locks() { return held_locks; }
 static uint32_t* current_depth() { return &held_depth; }
 static uint32_t* current_preemption_depth() { return &preemption_depth; }
+static uint32_t* current_tlb_wait_depth() { return &tlb_wait_depth; }
 #else
 static CpuLocal* checked_local() {
     CpuLocal* local = cpu_local_current();
@@ -58,6 +62,11 @@ static uint32_t* current_depth() {
 static uint32_t* current_preemption_depth() {
     CpuLocal* local = checked_local();
     return local != 0 ? &local->preemption_disable_count : 0;
+}
+
+static uint32_t* current_tlb_wait_depth() {
+    CpuLocal* local = checked_local();
+    return local != 0 ? &local->tlb_wait_depth : 0;
 }
 #endif
 
@@ -130,7 +139,8 @@ int kernel_spinlock_acquire(KernelSpinlock* lock, KernelSpinlockToken* token) {
     token->recursive = 0;
 
     if (depth == 0 || preempt == 0 || locks == 0 ||
-        token->owner_cpu == KERNEL_LOCK_NO_OWNER) {
+        token->owner_cpu == KERNEL_LOCK_NO_OWNER ||
+        kernel_in_tlb_wait()) {
         stat_increment(&stat_order_violations);
         record_violation(1, lock != 0 ? lock->lock_class : 0);
         interrupt_restore(token->interrupt_flags);
@@ -233,6 +243,40 @@ int kernel_spinlock_assert_can_schedule() {
     return 1;
 }
 
+int kernel_tlb_wait_enter() {
+    uint32_t* preempt = current_preemption_depth();
+    uint32_t* wait_depth = current_tlb_wait_depth();
+    if (preempt == 0 || wait_depth == 0 ||
+        kernel_spinlock_depth() != 0 || !kernel_interrupts_enabled() ||
+        *wait_depth != 0) {
+        stat_increment(&stat_tlb_wait_violations);
+        record_violation(6, 0);
+        return 0;
+    }
+    (*preempt)++;
+    *wait_depth = 1;
+    stat_increment(&stat_tlb_wait_entries);
+    return 1;
+}
+
+void kernel_tlb_wait_leave() {
+    uint32_t* preempt = current_preemption_depth();
+    uint32_t* wait_depth = current_tlb_wait_depth();
+    if (preempt == 0 || wait_depth == 0 || *wait_depth != 1 ||
+        *preempt == 0) {
+        stat_increment(&stat_tlb_wait_violations);
+        record_violation(6, 0);
+        return;
+    }
+    *wait_depth = 0;
+    (*preempt)--;
+}
+
+int kernel_in_tlb_wait() {
+    uint32_t* wait_depth = current_tlb_wait_depth();
+    return wait_depth != 0 && *wait_depth != 0;
+}
+
 void kernel_spinlock_get_stats(KernelSpinlockStats* stats) {
     if (stats == 0) return;
     uint32_t* depth = current_depth();
@@ -244,6 +288,8 @@ void kernel_spinlock_get_stats(KernelSpinlockStats* stats) {
     stats->release_violations = __atomic_load_n(&stat_release_violations, __ATOMIC_RELAXED);
     stats->wrong_cpu_violations = __atomic_load_n(&stat_wrong_cpu_violations, __ATOMIC_RELAXED);
     stats->schedule_violations = __atomic_load_n(&stat_schedule_violations, __ATOMIC_RELAXED);
+    stats->tlb_wait_violations = __atomic_load_n(&stat_tlb_wait_violations, __ATOMIC_RELAXED);
+    stats->tlb_wait_entries = __atomic_load_n(&stat_tlb_wait_entries, __ATOMIC_RELAXED);
     stats->current_depth = depth != 0 ? *depth : 0;
     stats->maximum_depth = __atomic_load_n(&stat_maximum_depth, __ATOMIC_RELAXED);
     stats->current_class =
@@ -264,6 +310,8 @@ void kernel_spinlock_reset_stats() {
     __atomic_store_n(&stat_release_violations, 0u, __ATOMIC_RELAXED);
     __atomic_store_n(&stat_wrong_cpu_violations, 0u, __ATOMIC_RELAXED);
     __atomic_store_n(&stat_schedule_violations, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&stat_tlb_wait_violations, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&stat_tlb_wait_entries, 0u, __ATOMIC_RELAXED);
     __atomic_store_n(&stat_maximum_depth, kernel_spinlock_depth(), __ATOMIC_RELAXED);
     __atomic_store_n(&stat_last_violation_type, 0u, __ATOMIC_RELAXED);
     __atomic_store_n(&stat_last_held_class, 0u, __ATOMIC_RELAXED);

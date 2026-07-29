@@ -10,6 +10,9 @@
 #define SMP_STARTUP_PING_ROUNDS 3u
 #define SMP_LOCAL_TIMER_VECTOR 0xF2u
 #define SMP_RESCHEDULE_VECTOR 0xF3u
+#define SMP_TLB_SHOOTDOWN_VECTOR 0xF4u
+
+struct AddressSpace;
 
 struct SmpStartupStats {
     uint32_t attempted;
@@ -47,6 +50,15 @@ int smp_scheduler_execution_released();
 void smp_notify_runnable(uint32_t affinity_mask);
 int smp_request_reschedule(uint32_t logical_id);
 int smp_reschedule_handler();
+int smp_tlb_shootdown(AddressSpace* space,
+                      uint64_t address,
+                      uint32_t page_count,
+                      int full_flush,
+                      uint64_t generation,
+                      uint64_t operation_token,
+                      uint32_t target_mask,
+                      uint32_t* acknowledged_mask);
+void smp_tlb_shootdown_handler();
 const SmpStartupStats* smp_startup_stats();
 const SmpTimeReference* smp_time_reference();
 const SmpExecutionStats* smp_execution_stats();

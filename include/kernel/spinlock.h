@@ -36,6 +36,8 @@ struct KernelSpinlockStats {
     uint64_t release_violations;
     uint64_t wrong_cpu_violations;
     uint64_t schedule_violations;
+    uint64_t tlb_wait_violations;
+    uint64_t tlb_wait_entries;
     uint32_t current_depth;
     uint32_t maximum_depth;
     uint32_t current_class;
@@ -58,6 +60,9 @@ int kernel_interrupts_enabled();
 uint32_t kernel_spinlock_depth();
 uint32_t kernel_preemption_disable_depth();
 int kernel_spinlock_assert_can_schedule();
+int kernel_tlb_wait_enter();
+void kernel_tlb_wait_leave();
+int kernel_in_tlb_wait();
 
 #ifdef OS64_HOST_TEST
 void kernel_host_set_interrupts_enabled(int enabled);

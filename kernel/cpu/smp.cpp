@@ -7,7 +7,9 @@
 #include "kernel/cpu.h"
 #include "kernel/cpu_local.h"
 #include "kernel/process64.h"
+#include "kernel/spinlock.h"
 #include "kernel/userprog64.h"
+#include "kernel/mm/address_space.h"
 
 #ifndef OS64_HOST_TEST
 #include "kernel/klog.h"
@@ -474,6 +476,231 @@ int smp_reschedule_handler() {
     else local->reschedule_ignored_count++;
     interrupt_controller_eoi(0);
     return pending && scheduler_should_reschedule_current();
+#endif
+}
+
+static void flush_loaded_address_space(CpuLocal* local,
+                                       uint64_t identity,
+                                       uint64_t root,
+                                       uint64_t address,
+                                       uint32_t page_count,
+                                       int full_flush,
+                                       uint64_t generation) {
+#ifndef OS64_HOST_TEST
+    if (!cpu_local_validate(local) ||
+        local->loaded_address_space_identity != identity ||
+        local->loaded_address_space_root != root) {
+        if (cpu_local_validate(local)) {
+            local->tlb_shootdown_stale_count++;
+        }
+        return;
+    }
+    if (full_flush || page_count == 0 ||
+        page_count > ADDRESS_SPACE_TLB_PAGE_LIMIT) {
+        vm_switch_root(root);
+        local->tlb_local_flush_count++;
+    } else {
+        for (uint32_t page = 0; page < page_count; page++) {
+            vm_flush_page(address + (uint64_t)page * VM_PAGE_SIZE);
+            local->tlb_local_flush_count++;
+        }
+    }
+    __atomic_store_n(&local->observed_tlb_generation,
+                     generation,
+                     __ATOMIC_RELEASE);
+#else
+    (void)local;
+    (void)identity;
+    (void)root;
+    (void)address;
+    (void)page_count;
+    (void)full_flush;
+    (void)generation;
+#endif
+}
+
+int smp_tlb_shootdown(AddressSpace* space,
+                      uint64_t address,
+                      uint32_t page_count,
+                      int full_flush,
+                      uint64_t generation,
+                      uint64_t operation_token,
+                      uint32_t target_mask,
+                      uint32_t* acknowledged_mask) {
+    if (acknowledged_mask != 0) {
+        *acknowledged_mask = 0;
+    }
+    if (space == 0 || space->root_phys == 0 || generation == 0 ||
+        operation_token == 0) {
+        return 0;
+    }
+#ifdef OS64_HOST_TEST
+    if (acknowledged_mask != 0) {
+        *acknowledged_mask = target_mask;
+    }
+    return 1;
+#else
+    CpuLocal* current = cpu_local_current();
+    if (!cpu_local_validate(current) || current->interrupt_depth != 0 ||
+        kernel_spinlock_depth() != 0) {
+        return 0;
+    }
+    uint64_t saved_flags = 0;
+    __asm__ volatile("pushfq; pop %0" : "=r"(saved_flags));
+    if ((saved_flags & (1ULL << 9)) == 0) {
+        __asm__ volatile("sti" : : : "memory");
+    }
+    if (!kernel_tlb_wait_enter()) {
+        if ((saved_flags & (1ULL << 9)) == 0) {
+            __asm__ volatile("cli" : : : "memory");
+        }
+        return 0;
+    }
+
+    uint32_t acknowledged = 0;
+    const uint32_t current_bit = 1u << current->logical_id;
+    if ((target_mask & current_bit) != 0) {
+        flush_loaded_address_space(current,
+                                   space->identity,
+                                   space->root_phys,
+                                   address,
+                                   page_count,
+                                   full_flush,
+                                   generation);
+        acknowledged |= current_bit;
+    }
+
+    uint32_t published = 0;
+    int success = 1;
+    const uint64_t deadline = smp_read_tsc() + startup_timeout_ticks();
+    const CpuTopologyStats* topology = cpu_topology_stats();
+    for (uint32_t logical_id = 0;
+         success && topology != 0 && logical_id < topology->record_count;
+         logical_id++) {
+        const uint32_t bit = 1u << logical_id;
+        if ((target_mask & bit) == 0 || bit == current_bit) {
+            continue;
+        }
+        CpuLocal* target = cpu_local_by_id(logical_id);
+        const CpuRecord* record = cpu_record(logical_id);
+        if (target == 0 || record == 0 ||
+            record->lifecycle != CPU_STATE_ONLINE ||
+            !__atomic_load_n(&target->online, __ATOMIC_ACQUIRE)) {
+            success = 0;
+            break;
+        }
+        while (__atomic_load_n(&target->pending_tlb_shootdown,
+                               __ATOMIC_ACQUIRE) != 0) {
+            if ((int64_t)(smp_read_tsc() - deadline) >= 0) {
+                success = 0;
+                break;
+            }
+            __asm__ volatile("pause");
+        }
+        if (!success) {
+            break;
+        }
+        target->tlb_request_identity = space->identity;
+        target->tlb_request_root = space->root_phys;
+        target->tlb_request_generation = generation;
+        target->tlb_request_token = operation_token;
+        target->tlb_request_address = address;
+        target->tlb_request_page_count = page_count;
+        target->tlb_request_full = full_flush ? 1u : 0u;
+        __atomic_thread_fence(__ATOMIC_RELEASE);
+        __atomic_store_n(&target->pending_tlb_shootdown,
+                         1u,
+                         __ATOMIC_RELEASE);
+        current->tlb_shootdown_sent_count++;
+        if (!interrupt_controller_send_ipi(record->apic_id,
+                                           SMP_TLB_SHOOTDOWN_VECTOR)) {
+            __atomic_store_n(&target->pending_tlb_shootdown,
+                             0u,
+                             __ATOMIC_RELEASE);
+            success = 0;
+            break;
+        }
+        published |= bit;
+    }
+
+    while (success && (acknowledged & published) != published) {
+        for (uint32_t logical_id = 0;
+             topology != 0 && logical_id < topology->record_count;
+             logical_id++) {
+            const uint32_t bit = 1u << logical_id;
+            if ((published & bit) == 0 || (acknowledged & bit) != 0) {
+                continue;
+            }
+            CpuLocal* target = cpu_local_by_id(logical_id);
+            if (target != 0 &&
+                __atomic_load_n(&target->tlb_ack_token,
+                                __ATOMIC_ACQUIRE) == operation_token &&
+                __atomic_load_n(&target->tlb_ack_generation,
+                                __ATOMIC_ACQUIRE) == generation) {
+                acknowledged |= bit;
+            }
+        }
+        if ((acknowledged & published) == published) {
+            break;
+        }
+        if ((int64_t)(smp_read_tsc() - deadline) >= 0) {
+            success = 0;
+            break;
+        }
+        __asm__ volatile("pause");
+    }
+
+    kernel_tlb_wait_leave();
+    if ((saved_flags & (1ULL << 9)) == 0) {
+        __asm__ volatile("cli" : : : "memory");
+    }
+    if (acknowledged_mask != 0) {
+        *acknowledged_mask = acknowledged;
+    }
+    return success && (acknowledged & target_mask) == target_mask;
+#endif
+}
+
+void smp_tlb_shootdown_handler() {
+#ifndef OS64_HOST_TEST
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local)) {
+        interrupt_controller_eoi(0);
+        return;
+    }
+    if (__atomic_load_n(&local->pending_tlb_shootdown,
+                        __ATOMIC_ACQUIRE) == 0) {
+        local->tlb_shootdown_stale_count++;
+        interrupt_controller_eoi(0);
+        return;
+    }
+
+    const uint64_t identity = local->tlb_request_identity;
+    const uint64_t root = local->tlb_request_root;
+    const uint64_t generation = local->tlb_request_generation;
+    const uint64_t token = local->tlb_request_token;
+    const uint64_t address = local->tlb_request_address;
+    const uint32_t page_count = local->tlb_request_page_count;
+    const uint32_t full_flush = local->tlb_request_full;
+    local->tlb_shootdown_received_count++;
+    flush_loaded_address_space(local,
+                               identity,
+                               root,
+                               address,
+                               page_count,
+                               full_flush != 0,
+                               generation);
+    __atomic_store_n(&local->tlb_ack_generation,
+                     generation,
+                     __ATOMIC_RELAXED);
+    __atomic_store_n(&local->tlb_ack_token,
+                     token,
+                     __ATOMIC_RELEASE);
+    __atomic_store_n(&local->pending_tlb_shootdown,
+                     0u,
+                     __ATOMIC_RELEASE);
+    local->tlb_shootdown_ack_count++;
+    interrupt_controller_eoi(0);
 #endif
 }
 

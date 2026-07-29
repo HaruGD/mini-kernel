@@ -132,7 +132,8 @@ struct Thread {
     uint8_t exited;
     uint8_t join_consumed;
     uint8_t runtime_released;
-    uint8_t reserved[3];
+    volatile uint8_t runtime_release_claimed;
+    uint8_t reserved[2];
 };
 
 #endif

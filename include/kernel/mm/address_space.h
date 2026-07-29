@@ -4,8 +4,11 @@
 #include <stdint.h>
 
 #include "kernel/mm/vm.h"
+#include "kernel/spinlock.h"
 
 #define ADDRESS_SPACE_MAX_REGIONS 32
+#define ADDRESS_SPACE_TLB_PAGE_LIMIT 32u
+#define ADDRESS_SPACE_QUARANTINE_LIMIT 64u
 
 #define ADDRESS_SPACE_REGION_READ    0x00000001U
 #define ADDRESS_SPACE_REGION_WRITE   0x00000002U
@@ -37,9 +40,22 @@ struct AddressSpace {
     uint32_t heap_page_count;
     uint32_t region_count;
     AddressSpaceRegion regions[ADDRESS_SPACE_MAX_REGIONS];
+    KernelSpinlock lock;
+    uint64_t identity;
+    volatile uint64_t tlb_generation;
+    volatile uint64_t operation_token;
+    volatile uint32_t active_cpu_mask;
+    volatile uint32_t cached_cpu_mask;
+    volatile uint32_t shootdown_active;
+    uint32_t reserved0;
+    uint64_t shootdown_count;
+    uint64_t shootdown_timeout_count;
+    uint64_t quarantined_page_count;
+    uint64_t retired_page_count;
 };
 
 void address_space_init(AddressSpace* space);
+void address_space_recycle(AddressSpace* space);
 int address_space_ensure_root(AddressSpace* space);
 void address_space_reset_user(AddressSpace* space);
 void address_space_activate(const AddressSpace* space);
@@ -61,5 +77,7 @@ int address_space_alloc_map_range(AddressSpace* space,
 uint32_t address_space_unmap_free_range(AddressSpace* space, uint64_t virt, uint32_t page_count);
 uint64_t address_space_get_phys(const AddressSpace* space, uint64_t virt);
 uint64_t address_space_get_flags(const AddressSpace* space, uint64_t virt);
+uint64_t address_space_identity(const AddressSpace* space);
+uint64_t address_space_tlb_generation(const AddressSpace* space);
 
 #endif

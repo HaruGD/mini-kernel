@@ -30,6 +30,7 @@ global irq_spurious_asm
 global irq_smp_startup_ping_asm
 global irq_smp_local_timer_asm
 global irq_smp_reschedule_asm
+global irq_smp_tlb_shootdown_asm
 global irq_pic_spurious7_asm
 global irq_pic_spurious15_asm
 global user_test_asm
@@ -46,6 +47,7 @@ extern timer_handler64
 extern spurious_interrupt_handler64
 extern smp_startup_ping_interrupt_handler64
 extern smp_reschedule_interrupt_handler64
+extern smp_tlb_shootdown_interrupt_handler64
 extern local_timer_handler64
 extern pic_spurious_interrupt_handler64
 extern user_test_interrupt_handler64
@@ -255,6 +257,14 @@ irq_smp_reschedule_asm:
     mov rsp, [kernel_user_return_rsp]
     ret
 .reschedule_iret:
+    add rsp, 8
+    POP_GPRS
+    iretq
+
+irq_smp_tlb_shootdown_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    call smp_tlb_shootdown_interrupt_handler64
     add rsp, 8
     POP_GPRS
     iretq

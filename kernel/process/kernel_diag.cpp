@@ -7,6 +7,7 @@
 #include "kernel/process64.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/spinlock.h"
+#include "kernel/graphics/surface_backing.h"
 
 const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_LOADED) {
@@ -394,6 +395,10 @@ void print_concurrency_info() {
     print_hex64(stats.wrong_cpu_violations);
     print(" schedule_violations=");
     print_hex64(stats.schedule_violations);
+    print(" tlb_wait_violations=");
+    print_hex64(stats.tlb_wait_violations);
+    print(" tlb_wait_entries=");
+    print_hex64(stats.tlb_wait_entries);
     print("\ndepth=");
     print_hex32(stats.current_depth);
     print(" max_depth=");
@@ -419,11 +424,13 @@ void print_resource_info() {
     KernelObjectStats objects;
     PmmStats pmm;
     HeapStats heap;
+    KernelGraphicsSurfaceBackingStats surface_backing;
     process_get_diagnostic_snapshot(&processes);
     service_registry_get_snapshot(&services);
     kernel_object_get_stats(&objects);
     pmm_get_stats(&pmm);
     heap_get_stats(&heap);
+    kernel_graphics_surface_backing_get_stats(&surface_backing);
 
     uint32_t active_processes = 0;
     uint32_t mappings = 0;
@@ -460,6 +467,12 @@ void print_resource_info() {
     print_hex32(objects.surface_pages);
     print(" surface_backing_bytes=");
     print_hex64(objects.surface_backing_bytes);
+    print(" surface_alloc_attempts=");
+    print_hex64(surface_backing.allocation_attempts);
+    print(" surface_alloc_failures=");
+    print_hex64(surface_backing.allocation_failures);
+    print(" surface_unmap_failures=");
+    print_hex64(surface_backing.unmap_failures);
     print("\npmm_free=");
     print_hex32(pmm.free_blocks);
     print(" pmm_failures=");

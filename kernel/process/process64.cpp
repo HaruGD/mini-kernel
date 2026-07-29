@@ -181,6 +181,7 @@ void process_system_init() {
         thread_record_zero(&thread_table[i]);
     }
     for (uint32_t i = 0; i < PROCESS_TABLE_SIZE; i++) {
+        address_space_init(&process_table[i].address_space);
         process_clear(&process_table[i]);
     }
 }
@@ -442,16 +443,16 @@ int process_execution_push(Process* process,
     uint32_t depth = process_execution_depth();
     if (process == 0 || thread == 0 || depth >= EXECUTION_STACK_SIZE) return 0;
 #ifdef OS64_HOST_TEST
-    host_process_stack[depth] = process;
-    host_thread_stack[depth] = thread;
-    host_execution_depth = depth + 1;
+    __atomic_store_n(&host_process_stack[depth], process, __ATOMIC_RELAXED);
+    __atomic_store_n(&host_thread_stack[depth], thread, __ATOMIC_RELAXED);
+    __atomic_store_n(&host_execution_depth, depth + 1, __ATOMIC_RELEASE);
 #else
     CpuLocal* local = cpu_local_current();
     if (!cpu_local_validate(local)) return 0;
-    local->process_stack[depth] = process;
-    local->thread_stack[depth] = thread;
+    __atomic_store_n(&local->process_stack[depth], process, __ATOMIC_RELAXED);
+    __atomic_store_n(&local->thread_stack[depth], thread, __ATOMIC_RELAXED);
     local->current_thread = thread;
-    local->execution_depth = depth + 1;
+    __atomic_store_n(&local->execution_depth, depth + 1, __ATOMIC_RELEASE);
     local->entry_depth++;
 #endif
     if (stack_index != 0) *stack_index = depth;
@@ -466,20 +467,20 @@ int process_execution_pop(uint32_t stack_index,
 #ifdef OS64_HOST_TEST
     if (host_process_stack[stack_index] != process ||
         host_thread_stack[stack_index] != thread) return 0;
-    host_process_stack[stack_index] = 0;
-    host_thread_stack[stack_index] = 0;
-    host_execution_depth--;
+    __atomic_store_n(&host_process_stack[stack_index], 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&host_thread_stack[stack_index], 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&host_execution_depth, depth - 1, __ATOMIC_RELEASE);
 #else
     CpuLocal* local = cpu_local_current();
     if (!cpu_local_validate(local) ||
         local->process_stack[stack_index] != process ||
         local->thread_stack[stack_index] != thread) return 0;
-    local->process_stack[stack_index] = 0;
-    local->thread_stack[stack_index] = 0;
-    local->execution_depth--;
+    __atomic_store_n(&local->process_stack[stack_index], 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&local->thread_stack[stack_index], 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&local->execution_depth, depth - 1, __ATOMIC_RELEASE);
     if (local->entry_depth != 0) local->entry_depth--;
-    local->current_thread = local->execution_depth != 0
-        ? local->thread_stack[local->execution_depth - 1] : 0;
+    local->current_thread = depth > 1
+        ? local->thread_stack[depth - 2] : 0;
 #endif
     return 1;
 }
@@ -945,31 +946,7 @@ static void process_reset_address_space_record(Process* process) {
     if (process == 0) {
         return;
     }
-
-    uint64_t root_phys = process->address_space.root_phys;
-    process->address_space.root_phys = root_phys;
-    process->address_space.code_base = 0;
-    process->address_space.elf_link_base = 0;
-    process->address_space.stack_guard_base = 0;
-    process->address_space.stack_base = 0;
-    process->address_space.heap_base = 0;
-    process->address_space.heap_break = 0;
-    process->address_space.heap_mapped_end = 0;
-    process->address_space.heap_limit = 0;
-    process->address_space.code_page_count = 0;
-    process->address_space.elf_alias_page_count = 0;
-    process->address_space.stack_guard_page_count = 0;
-    process->address_space.stack_page_count = 0;
-    process->address_space.heap_page_count = 0;
-    process->address_space.region_count = 0;
-    for (uint32_t i = 0; i < ADDRESS_SPACE_MAX_REGIONS; i++) {
-        process->address_space.regions[i].active = 0;
-        process->address_space.regions[i].reserved0 = 0;
-        process->address_space.regions[i].reserved1 = 0;
-        process->address_space.regions[i].rights = 0;
-        process->address_space.regions[i].start = 0;
-        process->address_space.regions[i].end = 0;
-    }
+    address_space_recycle(&process->address_space);
     process_surface_mappings_reset(process);
 }
 
@@ -1689,6 +1666,48 @@ void thread_release_runtime(Thread* thread) {
     if (thread == 0 || thread->context == 0 || thread->runtime_released) {
         return;
     }
+
+#ifdef OS64_HOST_TEST
+    const uint32_t execution_depth =
+        __atomic_load_n(&host_execution_depth, __ATOMIC_ACQUIRE);
+    for (uint32_t depth = 0; depth < execution_depth; depth++) {
+        if (__atomic_load_n(&host_thread_stack[depth], __ATOMIC_ACQUIRE) ==
+            thread) {
+            return;
+        }
+    }
+#else
+    const CpuTopologyStats* topology = cpu_topology_stats();
+    for (uint32_t logical_id = 0;
+         topology != 0 && logical_id < topology->record_count;
+         logical_id++) {
+        CpuLocal* local = cpu_local_by_id(logical_id);
+        if (!cpu_local_validate(local)) {
+            continue;
+        }
+        uint32_t execution_depth =
+            __atomic_load_n(&local->execution_depth, __ATOMIC_ACQUIRE);
+        if (execution_depth > CPU_LOCAL_EXECUTION_STACK_MAX) {
+            execution_depth = CPU_LOCAL_EXECUTION_STACK_MAX;
+        }
+        for (uint32_t depth = 0; depth < execution_depth; depth++) {
+            if (__atomic_load_n(&local->thread_stack[depth],
+                                __ATOMIC_ACQUIRE) == thread) {
+                return;
+            }
+        }
+    }
+#endif
+
+    uint8_t expected = 0;
+    if (!__atomic_compare_exchange_n(&thread->runtime_release_claimed,
+                                     &expected,
+                                     1u,
+                                     0,
+                                     __ATOMIC_ACQ_REL,
+                                     __ATOMIC_ACQUIRE)) {
+        return;
+    }
     ThreadContext* context = thread->context;
     if (thread->owner != 0 && context->stack_base != 0 &&
         context->stack_page_count != 0) {
@@ -1705,7 +1724,7 @@ void thread_release_runtime(Thread* thread) {
         context->kernel_stack_base = 0;
         context->kernel_stack_page_count = 0;
     }
-    thread->runtime_released = 1;
+    __atomic_store_n(&thread->runtime_released, 1u, __ATOMIC_RELEASE);
     if (thread->join_consumed && !thread->is_main) {
         thread_discard_record(thread);
     }

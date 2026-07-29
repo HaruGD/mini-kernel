@@ -5,6 +5,7 @@
 
 #include "kernel/fault_injection.h"
 #include "kernel/mm/pmm.h"
+#include "kernel/mm/address_space.h"
 #include "kernel/mm/vm.h"
 
 #define HOST_MM_MAX_PAGES 16384u
@@ -23,6 +24,10 @@ static void* allocated_pages[HOST_MM_MAX_PAGES];
 static HostMapping mappings[HOST_MM_MAX_PAGES];
 static int32_t map_successes_before_failure = -1;
 static int32_t unmap_successes_before_failure = -1;
+static uint8_t tlb_fail_next = 0;
+static uint64_t tlb_last_generation = 0;
+static uint64_t tlb_last_token = 0;
+static uint32_t tlb_last_target_mask = 0;
 
 void host_mm_reset() {
     for (uint32_t i = 0; i < HOST_MM_MAX_PAGES; i++) {
@@ -37,6 +42,10 @@ void host_mm_reset() {
     }
     map_successes_before_failure = -1;
     unmap_successes_before_failure = -1;
+    tlb_fail_next = 0;
+    tlb_last_generation = 0;
+    tlb_last_token = 0;
+    tlb_last_target_mask = 0;
 }
 
 uint32_t host_mm_allocated_pages() {
@@ -233,4 +242,41 @@ extern "C" uint32_t vm_unmap_free_range_in_root(uint64_t,
         }
     }
     return unmapped;
+}
+
+int smp_tlb_shootdown(AddressSpace*,
+                      uint64_t,
+                      uint32_t,
+                      int,
+                      uint64_t generation,
+                      uint64_t token,
+                      uint32_t target_mask,
+                      uint32_t* acknowledged_mask) {
+    tlb_last_generation = generation;
+    tlb_last_token = token;
+    tlb_last_target_mask = target_mask;
+    if (tlb_fail_next) {
+        tlb_fail_next = 0;
+        return 0;
+    }
+    if (acknowledged_mask != 0) {
+        *acknowledged_mask = target_mask;
+    }
+    return 1;
+}
+
+void host_tlb_fail_next() {
+    tlb_fail_next = 1;
+}
+
+uint64_t host_tlb_last_generation() {
+    return tlb_last_generation;
+}
+
+uint64_t host_tlb_last_token() {
+    return tlb_last_token;
+}
+
+uint32_t host_tlb_last_target_mask() {
+    return tlb_last_target_mask;
 }

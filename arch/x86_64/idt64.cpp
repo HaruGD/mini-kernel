@@ -36,6 +36,7 @@ extern "C" void irq_spurious_asm();
 extern "C" void irq_smp_startup_ping_asm();
 extern "C" void irq_smp_local_timer_asm();
 extern "C" void irq_smp_reschedule_asm();
+extern "C" void irq_smp_tlb_shootdown_asm();
 extern "C" void irq_pic_spurious7_asm();
 extern "C" void irq_pic_spurious15_asm();
 extern "C" void user_test_asm();
@@ -102,6 +103,8 @@ extern "C" void idt64_init() {
                    (uint64_t)irq_smp_local_timer_asm);
     set_idt64_gate(SMP_RESCHEDULE_VECTOR,
                    (uint64_t)irq_smp_reschedule_asm);
+    set_idt64_gate(SMP_TLB_SHOOTDOWN_VECTOR,
+                   (uint64_t)irq_smp_tlb_shootdown_asm);
     set_idt64_gate_dpl(0x81, (uint64_t)user_test_asm, 3);
     set_idt64_gate_dpl(0x82, (uint64_t)user_exit_asm, 3);
     set_idt64_gate_dpl(0x80, (uint64_t)syscall_asm, 3);
@@ -126,6 +129,15 @@ extern "C" uint64_t smp_reschedule_interrupt_handler64() {
         local->interrupt_depth--;
     }
     return result;
+}
+
+extern "C" void smp_tlb_shootdown_interrupt_handler64() {
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) local->interrupt_depth++;
+    smp_tlb_shootdown_handler();
+    if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+        local->interrupt_depth--;
+    }
 }
 
 extern "C" void default_interrupt_handler64(uint64_t* frame) {
