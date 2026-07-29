@@ -42,9 +42,13 @@ the PIT remains single-owner global time, and the one-vCPU fallback passes.
 
 Phase 4.6E completed on 2026-07-26. Reschedule IPIs, affinity, pinned and
 unpinned distribution, and semaphore/join, condition, timer, IPC, and input
-remote wake paths pass in repeatable four-vCPU sessions. Phase 4.6F is next
-and owns generation-checked TLB shootdown before concurrent mapping mutation
-or page reuse can be enabled.
+remote wake paths pass in repeatable four-vCPU sessions.
+
+Phase 4.6F completed on 2026-07-30. Address spaces now carry stable identities
+and generations, one serialized mapping transaction, per-CPU shootdown
+mailboxes, lock-free `TLB_WAIT`, and acknowledgement-gated page retirement.
+Four-vCPU mapping churn and inherited surface/thread regressions pass. 4.6G is
+next and owns the kernel-wide shared-state and interrupt-ownership audit.
 
 ## Scope Boundary
 

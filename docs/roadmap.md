@@ -226,7 +226,7 @@ Progress:
   and independently calibrated per-CPU Local APIC preemption
 - [x] 4.6E: Add reschedule IPIs, remote wakeups, CPU affinity, and bounded
   distribution
-- [ ] 4.6F: Implement generation-checked cross-CPU TLB shootdown before
+- [x] 4.6F: Implement generation-checked cross-CPU TLB shootdown before
   concurrent address-space mutation and page reuse, using quarantine and a
   lock-free `TLB_WAIT` acknowledgement boundary
 - [ ] 4.6G: Audit kernel subsystems for SMP-safe irqsave/preemption locking,

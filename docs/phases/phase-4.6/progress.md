@@ -26,16 +26,17 @@ a separate evidence commit.
 | 4.6C: Application processor bring-up and idle | Complete | 2026-07-25 | 2026-07-25 | `d2c4694` | P46-R04 |
 | 4.6D: Multicore scheduler and local preemption | Complete | 2026-07-25 | 2026-07-25 | `d8d1787`, `4595489`, `02abf86`, `d17075e`, `e60a306` | P46-R05, P46-R06 |
 | 4.6E: Reschedule IPI, remote wake, affinity, distribution | Complete | 2026-07-25 | 2026-07-26 | `d8d1787`, `4595489`, `0488c78`, `e60a306` | P46-R07, P46-R08 |
-| 4.6F: TLB shootdown and address-space safety | Planned | - | - | - | - |
+| 4.6F: TLB shootdown and address-space safety | Complete | 2026-07-30 | 2026-07-30 | `a15c0e8` | P46-R09 |
 | 4.6G: Kernel-wide SMP audit and interrupt ownership | Planned | - | - | - | - |
 | 4.6H: Multicore fault injection, soak, and closure | Planned | - | - | - | - |
 
-Current status: 4.6A through 4.6E are complete. Four-vCPU QEMU runs three
+Current status: 4.6A through 4.6F are complete. Four-vCPU QEMU runs three
 distinct pinned user threads concurrently on AP1/AP2/AP3 with atomic
 single-CPU claims and calibrated CPU-local quantum accounting. Bounded
 reschedule IPIs, every required remote-wake class, affinity rejection and
-pinning, and unpinned multi-CPU distribution have repeatable evidence. 4.6F
-is next; Phase 5 remains gated on complete 4.6 closure.
+pinning, unpinned multi-CPU distribution, and generation-checked TLB
+shootdown have repeatable evidence. 4.6G is next; Phase 5 remains gated on
+complete 4.6 closure.
 
 ## Recording Workflow
 
@@ -383,3 +384,57 @@ violation.
 - A non-recursive production context-switch boundary remains desirable, but
   it does not block 4.6E: isolated repeatable sessions cover every required
   wake class without nesting sequential contexts on an AP stack.
+
+## 4.6F: TLB Shootdown And Address-Space Safety
+
+- Status: Complete
+- Started: 2026-07-30
+- Completed: 2026-07-30
+- Implementation commit: `a15c0e8`
+
+### Delivered
+
+- Every address space has a non-reused identity, monotonic TLB generation and
+  operation token, active/cached CPU masks, and one serialized mutation
+  transaction.
+- Dedicated vector `0xF4` uses per-CPU mailboxes. The initiator mutates and
+  quarantines under the address-space lock, drops every ordinary lock, enters
+  interrupt-enabled/preemption-disabled `TLB_WAIT`, then retires physical
+  pages only after matching generation/token acknowledgements.
+- The IPI handler is allocation- and ordinary-lock-free, distinguishes local
+  page invalidation from full-root flushes, and publishes ACK state before
+  EOI. Timeout leaves pages quarantined and poisons further mutation until
+  address-space recycle.
+- Address-space reuse changes identity. CPU activation records the observed
+  generation and cached membership before user execution.
+- Concurrent thread exit no longer double-reclaims runtime state, and the
+  CPU-local execution stack has 64 KiB of interrupt headroom. The UEFI loader
+  reserves the resulting two-MiB kernel runtime image including BSS.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-tlb-lock-order` | PASS | Held-lock and IF-off entry rejection, lock acquisition rejection inside `TLB_WAIT`, generation/token matching, successful retirement, timeout quarantine, and address-space identity recycle |
+| `make test-tlb-shootdown` | PASS | QEMU `-cpu max -smp 4`: 64 grow/shrink cycles, `9,008,711` shared reads, failures `0`; AP ACK counts `137/137/9`; no panic or TLB_WAIT violation |
+| `make test-smp-memory` | PASS | Repeated four-vCPU TLB run plus surface ABI/mapping and thread wait/lifecycle regressions |
+| `make test-smp-memory` inherited resource checks | PASS | Surface warmed/final tuple `(0,0,0,0,0,0,0,26919,4120432,4141056)`; ten thread cycles ended at the identical warmed/final tuple `(0,0,0,0,0,0,0,26929,4120432,4141056)` and scheduler tuple `(0,8)` |
+
+### Resource And CPU Accounting
+
+- The focused QEMU sessions used `-cpu max -smp 4`; all four CPUs were online
+  and each recorded a local flush. CPU0 initiated remote invalidations and
+  AP1/AP2/AP3 received and acknowledged them.
+- Quarantined pages returned to zero after successful acknowledgement.
+  Deterministic timeout evidence retained one allocated quarantined page and
+  did not increase the retired count.
+- The live workload completed with `cycles=64`, nonzero reads on three pinned
+  readers, user failures zero, kernel fatal paths zero, and TLB_WAIT
+  violations zero.
+
+### Remaining
+
+- 4.6G owns the kernel-wide shared-state/lock audit and named external
+  interrupt ownership.
+- PCID, large-page-aware range invalidation, NUMA policy, and CPU hotplug
+  remain deferred.
