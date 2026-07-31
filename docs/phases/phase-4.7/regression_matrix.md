@@ -11,7 +11,7 @@ targets and must not be an empty or documentation-only target.
 
 | ID | Subphase | Contract | Planned automated evidence | Pass condition | Status |
 | --- | --- | --- | --- | --- | --- |
-| P47-R01 | 4.7A | Every driver/device/resource reference has a live generation owner and legal lifecycle state. | Reserved: `make test-driver-ownership` | Stale, cross-driver, wrong-device, overflow, duplicate publication, and illegal lifecycle transitions are rejected without state drift. | Planned |
+| P47-R01 | 4.7A | Every driver/device/resource reference has a live generation owner and legal lifecycle state. | `make test-driver-ownership` | Stale, cross-driver, wrong-device, overflow, duplicate publication, and illegal lifecycle transitions are rejected without state drift. | Complete |
 | P47-R02 | 4.7B | Driver image VA intervals are reusable, nonoverlapping, and exactly owned. | Reserved: `make test-driver-va` | Split/coalesce, exact-fit, fragmentation, exhaustion, stale/double/wrong-owner free, and repeated mixed-size reuse preserve allocator invariants. | Planned |
 | P47-R03 | 4.7B | Reusable image mapping preserves package validation, W^X, rollback, and TLB-safe unload. | Reserved: `make test-driver-image-memory` | CODE remains RX, RODATA R/NX, DATA/BSS RW/NX; relocation/load/protect failures release pages and intervals; no CPU executes or resolves stale unloaded code. | Planned |
 | P47-R04 | 4.7C | Driver heap/page allocations are tagged, bounded, generation-owned, and reclaimable. | Reserved: `make test-driver-alloc` | Alignment, zeroing, budget, exhaustion, wrong-owner, stale, double-free, partial-page failure, leak report, and post-quiesce reclaim retain exact counts. | Planned |

@@ -19,7 +19,7 @@ coverage, and a separate evidence commit.
 
 | Subphase | Status | Started | Completed | Implementation commit(s) | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| 4.7A: Ownership and lifetime contracts | Planned | - | - | - | P47-R01 |
+| 4.7A: Ownership and lifetime contracts | Complete | 2026-08-01 | 2026-08-01 | `ddb0772` | P47-R01 |
 | 4.7B: Reusable driver virtual address space | Planned | - | - | - | P47-R02, P47-R03 |
 | 4.7C: Owned allocation and execution contexts | Planned | - | - | - | P47-R04, P47-R05 |
 | 4.7D: Capability-scoped MMIO | Planned | - | - | - | P47-R06, P47-R07 |
@@ -28,8 +28,9 @@ coverage, and a separate evidence commit.
 | 4.7G: Quiescent unload and automatic cleanup | Planned | - | - | - | P47-R11 |
 | 4.7H: Fault injection, device smoke, soak, and closure | Planned | - | - | - | P47-R12, P47-R13 |
 
-Current status: Phase 4.7 is planned. Phase 4.6 remains the immutable entry
-baseline.
+Current status: Phase 4.7A is complete. Driver, bound-device, and current
+resource references carry slot-plus-generation ownership; legal lifecycle
+transitions and quiescing deny new resource publication. Phase 4.7B is next.
 
 ## Implementation Order
 
@@ -55,6 +56,50 @@ For each subphase:
 5. record the immutable implementation hash and measured evidence;
 6. mark the row complete only when every required result passes;
 7. commit evidence separately.
+
+## 4.7A: Ownership And Lifetime Contracts
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commit: `ddb0772`
+
+### Delivered
+
+- Added generation-tagged driver and PCI-binding identities with stale and
+  cross-owner rejection.
+- Added a bounded 128-slot resource registry for exports, PCI bindings, IRQ
+  hooks, and later image/allocation/MMIO/DMA resource classes.
+- Bound module exports, PCI bindings, and IRQ hooks to the exact live driver
+  generation instead of a reusable name alone.
+- Enforced legal `REGISTERED`, `LOADING`, `LINKED`, `READY`, `QUIESCING`,
+  failure, and rejection transitions. Quiescing drivers cannot publish new
+  resources, resolve exports, or receive driver IRQ dispatch.
+- Added active/high-water/per-kind and denial diagnostics while preserving the
+  established `drivers` output prefix used by boot regression parsers.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-driver-ownership` | PASS | Stale lifecycle and cross-owner cases passed; four host threads completed 4,000 concurrent register/release cycles; 128 live records reached exact exhaustion and returned to zero |
+| `make -j4 uefi` | PASS | Kernel, driver runtime, packaged drivers, root image, and UEFI image built successfully |
+| `make test-driver-regression` | PASS | Policy/layout/build seven-combination coverage, signed/unsigned/tampered/bounded/dependency boot handoff, UEFI smoke, SDK 91/91, and R01-R12 passed |
+
+### Resource Accounting
+
+- Resource-table capacity/high-water: `128/128` in the deterministic
+  exhaustion case.
+- Active resources after owner cleanup and after concurrent churn: `0`.
+- Stale driver identity after same-slot reuse remained invalid; the new
+  generation remained live.
+- Unexplained resource drift: zero.
+
+### Remaining
+
+- 4.7B replaces the monotonic driver-image virtual-address cursor with a
+  reusable, TLB-safe interval allocator and registers image mappings to these
+  owners.
 
 ## Evidence Record Template
 

@@ -249,7 +249,7 @@ Detailed planning and live evidence:
 
 Progress:
 
-- [ ] 4.7A: Add generation-checked driver/device resource ownership and
+- [x] 4.7A: Add generation-checked driver/device resource ownership and
   lifecycle contracts
 - [ ] 4.7B: Replace monotonic driver-image allocation with reusable,
   TLB-safe virtual address intervals
