@@ -24,7 +24,7 @@ the Phase 4.7 contracts.
 ## Current Status
 
 Phase 4.7A and 4.7B completed on 2026-08-01 with implementation commits
-`ddb0772` and `e93813a`. Driver and bound-device identities include
+`ddb0772`, `e93813a`, and corrective commit `89be05e`. Driver and bound-device identities include
 generations, while `.drv` image sections now use reusable owned VA intervals,
 two-sided guard pages, final W^X protection, and acknowledged kernel-global
 TLB invalidation before reuse. Phase 4.7C is next; later reserved test targets

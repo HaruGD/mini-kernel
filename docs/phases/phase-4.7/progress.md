@@ -20,7 +20,7 @@ coverage, and a separate evidence commit.
 | Subphase | Status | Started | Completed | Implementation commit(s) | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | 4.7A: Ownership and lifetime contracts | Complete | 2026-08-01 | 2026-08-01 | `ddb0772` | P47-R01 |
-| 4.7B: Reusable driver virtual address space | Complete | 2026-08-01 | 2026-08-01 | `e93813a` | P47-R02, P47-R03 |
+| 4.7B: Reusable driver virtual address space | Complete | 2026-08-01 | 2026-08-01 | `e93813a`, `89be05e` | P47-R02, P47-R03 |
 | 4.7C: Owned allocation and execution contexts | Planned | - | - | - | P47-R04, P47-R05 |
 | 4.7D: Capability-scoped MMIO | Planned | - | - | - | P47-R06, P47-R07 |
 | 4.7E: Coherent DMA and address model | Planned | - | - | - | P47-R08 |
@@ -106,7 +106,7 @@ For each subphase:
 - Status: Complete
 - Started: 2026-08-01
 - Completed: 2026-08-01
-- Implementation commit: `e93813a`
+- Implementation commits: `e93813a`, `89be05e`
 
 ### Delivered
 
@@ -122,6 +122,8 @@ For each subphase:
 - Added a kernel-global SMP TLB shootdown mode. Image VA is released only
   after unmap and acknowledgement from every online CPU; failure quarantines
   the interval instead of making it reusable.
+- Deferred PMM page return until that acknowledgement completes, so a stale
+  translation cannot observe a page already reassigned to another owner.
 - Added address-free shell diagnostics for active image intervals, free and
   largest-free pages, and quarantine count.
 
