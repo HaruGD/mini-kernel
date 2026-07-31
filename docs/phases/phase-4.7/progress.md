@@ -20,7 +20,7 @@ coverage, and a separate evidence commit.
 | Subphase | Status | Started | Completed | Implementation commit(s) | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | 4.7A: Ownership and lifetime contracts | Complete | 2026-08-01 | 2026-08-01 | `ddb0772` | P47-R01 |
-| 4.7B: Reusable driver virtual address space | Planned | - | - | - | P47-R02, P47-R03 |
+| 4.7B: Reusable driver virtual address space | Complete | 2026-08-01 | 2026-08-01 | `e93813a` | P47-R02, P47-R03 |
 | 4.7C: Owned allocation and execution contexts | Planned | - | - | - | P47-R04, P47-R05 |
 | 4.7D: Capability-scoped MMIO | Planned | - | - | - | P47-R06, P47-R07 |
 | 4.7E: Coherent DMA and address model | Planned | - | - | - | P47-R08 |
@@ -28,9 +28,10 @@ coverage, and a separate evidence commit.
 | 4.7G: Quiescent unload and automatic cleanup | Planned | - | - | - | P47-R11 |
 | 4.7H: Fault injection, device smoke, soak, and closure | Planned | - | - | - | P47-R12, P47-R13 |
 
-Current status: Phase 4.7A is complete. Driver, bound-device, and current
-resource references carry slot-plus-generation ownership; legal lifecycle
-transitions and quiescing deny new resource publication. Phase 4.7B is next.
+Current status: Phase 4.7A and 4.7B are complete. Driver images now use an
+owned, reusable interval arena with guard pages, deterministic coalescing,
+W^X preservation, and acknowledged kernel-global TLB invalidation before VA
+reuse. Phase 4.7C is next.
 
 ## Implementation Order
 
@@ -97,9 +98,63 @@ For each subphase:
 
 ### Remaining
 
-- 4.7B replaces the monotonic driver-image virtual-address cursor with a
-  reusable, TLB-safe interval allocator and registers image mappings to these
-  owners.
+- 4.7C adds tagged owned heap/page allocation and checked execution-context
+  rules.
+
+## 4.7B: Reusable Driver Virtual Address Space
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commit: `e93813a`
+
+### Delivered
+
+- Replaced the monotonic image cursor with a bounded, first-fit reusable
+  interval arena covering 32,768 pages.
+- Added exact generation-owned VA handles, sorted insertion, overlap checks,
+  adjacent coalescing, exhaustion accounting, and stale/double/wrong-owner
+  rejection.
+- Reserved one unmapped guard page on each side of every loaded section and
+  registered each usable image mapping in the driver resource registry.
+- Preserved initial `RW/NX` relocation/import patching followed by final
+  `CODE=RX`, `RODATA=R/NX`, and `DATA/BSS=RW/NX` protection.
+- Added a kernel-global SMP TLB shootdown mode. Image VA is released only
+  after unmap and acknowledgement from every online CPU; failure quarantines
+  the interval instead of making it reusable.
+- Added address-free shell diagnostics for active image intervals, free and
+  largest-free pages, and quarantine count.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-driver-va` | PASS | Mixed 2/3/1-page allocation, freed-low-address reuse, exact 16-page coalescing, exact-limit exhaustion, stale/double/wrong-owner rejection, and quarantine retention passed |
+| `make test-driver-image-memory` | PASS | Monotonic cursor absence, two-sided guard policy, W^X flags, and unmap -> SMP acknowledgement -> resource release -> VA release ordering passed |
+| `make test-tlb-shootdown test-tlb-lock-order` | PASS | 64-cycle SMP smoke completed with AP acknowledgements and the existing no-lock-wait/quarantine model passed |
+| `make test-driver-ownership` | PASS | Generation-owned resource regression and 4,000 concurrent resource cycles remained green |
+| `make test-driver-boot` | PASS | Signed, unsigned, tampered, bounded, and dependency handoff cases passed |
+| `make test-uefi-smoke` | PASS | Real `.drv` load, unload, second load, reload, dependencies, one/five-section packages, and user/kernel regression commands passed; quarantine remained zero |
+| `make -j4 uefi` | PASS | Kernel, root image, packaged drivers, and UEFI image rebuilt successfully |
+
+### Resource Accounting
+
+- Arena capacity/free baseline after a complete host release: `16/16` pages
+  with one coalesced free interval in the bounded test arena.
+- Production image arena capacity: `32,768` pages; every active section adds
+  two unmapped guard pages.
+- Exact-limit allocation: 14 usable plus two guard pages consumed the
+  16-page test arena; the next allocation failed without state drift.
+- UEFI smoke diagnostic quarantine count: `0` before and after manual driver
+  lifecycle commands.
+- A deliberately quarantined four-page reserved interval was retained and
+  rejected on release in the negative host case.
+
+### Remaining
+
+- Physical-page baseline and extended mixed-package churn remain part of the
+  final Phase 4.7 soak, while 4.7C now adds owned heap/page allocations and
+  legal execution contexts.
 
 ## Evidence Record Template
 

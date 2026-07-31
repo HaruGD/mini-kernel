@@ -251,7 +251,7 @@ Progress:
 
 - [x] 4.7A: Add generation-checked driver/device resource ownership and
   lifecycle contracts
-- [ ] 4.7B: Replace monotonic driver-image allocation with reusable,
+- [x] 4.7B: Replace monotonic driver-image allocation with reusable,
   TLB-safe virtual address intervals
 - [ ] 4.7C: Add tagged driver-owned heap/page allocations, budgets, and
   sleepable/atomic/IRQ context rules
