@@ -71,6 +71,7 @@ int driver_execution_enter(DriverIdentity owner, uint32_t kind,
 void driver_execution_leave(DriverExecutionToken* token);
 int driver_execution_current(DriverExecutionContext* out);
 int driver_execution_require_sleepable();
+int driver_execution_runtime_allowed();
 int driver_allocation_create(DriverIdentity owner, uint32_t context,
                              uint64_t size, uint64_t alignment,
                              uint32_t flags, const char* tag,

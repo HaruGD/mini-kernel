@@ -119,6 +119,8 @@ int main() {
     check(driver_execution_current(&current));
     check(driver_identity_equal(current.owner, alpha));
     check(current.kind == DRIVER_CONTEXT_THREAD_SLEEPABLE && current.depth == 1);
+    check(driver_execution_runtime_allowed());
+    check(driver_execution_require_sleepable());
     DriverAllocationResult current_alloc;
     check(driver_allocation_create_current(96, 32, DRIVER_ALLOC_ZERO,
                                            "current", &current_alloc) == 0);
@@ -127,6 +129,12 @@ int main() {
     check(!driver_execution_current(&current));
     check(driver_allocation_create_current(16, 8, 0, "none", &current_alloc) ==
           DRIVER_LOAD_CONTEXT_DENIED);
+    DriverExecutionToken emergency = {};
+    check(driver_execution_enter(alpha, DRIVER_CONTEXT_EMERGENCY,
+                                 &emergency) == 0);
+    check(!driver_execution_runtime_allowed());
+    check(!driver_execution_require_sleepable());
+    driver_execution_leave(&emergency);
 
     DriverAllocationResult leaked_a, leaked_b;
     check(driver_allocation_create(alpha, DRIVER_CONTEXT_THREAD_SLEEPABLE,

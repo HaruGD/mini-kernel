@@ -188,6 +188,12 @@ int driver_execution_require_sleepable() {
            context.kind == DRIVER_CONTEXT_THREAD_SLEEPABLE;
 }
 
+int driver_execution_runtime_allowed() {
+    DriverExecutionContext context;
+    return driver_execution_current(&context) &&
+           context.kind != DRIVER_CONTEXT_EMERGENCY;
+}
+
 static uint64_t owner_bytes_locked(DriverIdentity owner) {
     uint64_t bytes = 0;
     for (uint32_t i = 0; i < DRIVER_MAX_ALLOCATIONS; i++) {

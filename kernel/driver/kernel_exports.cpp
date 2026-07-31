@@ -16,6 +16,7 @@ extern "C" {
 extern ATADriver ata;
 
 extern "C" void driver_klog(const char* text) {
+    if (!driver_execution_runtime_allowed()) return;
     print("\n[drv] ");
     print(text != 0 ? text : "(null)");
     print("\n");
@@ -27,6 +28,7 @@ extern "C" void* driver_kmalloc(uint64_t size) {
 }
 
 extern "C" void driver_kfree(void* ptr) {
+    if (!driver_execution_require_sleepable()) return;
     kfree(ptr);
 }
 
@@ -42,34 +44,42 @@ extern "C" int64_t driver_owned_free(DriverAllocationHandle handle) {
 }
 
 extern "C" const GOPInfo* driver_gop_get_info() {
+    if (!driver_execution_require_sleepable()) return 0;
     return gop.info();
 }
 
 extern "C" void driver_gop_clear(uint32_t color) {
+    if (!driver_execution_require_sleepable()) return;
     gop.clear(color);
 }
 
 extern "C" void driver_gop_putpixel(uint32_t x, uint32_t y, uint32_t color) {
+    if (!driver_execution_require_sleepable()) return;
     gop.putpixel(x, y, color);
 }
 
 extern "C" void driver_gop_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color) {
+    if (!driver_execution_require_sleepable()) return;
     gop.fill_rect(x, y, width, height, color);
 }
 
 extern "C" uint32_t driver_pci_read_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset) {
+    if (!driver_execution_require_sleepable()) return 0xFFFFFFFFu;
     return pci_read_config32(bus, device, function, offset);
 }
 
 extern "C" void driver_pci_write_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset, uint32_t value) {
+    if (!driver_execution_require_sleepable()) return;
     pci_write_config32(bus, device, function, offset, value);
 }
 
 extern "C" uint64_t driver_pci_device_count() {
+    if (!driver_execution_require_sleepable()) return 0;
     return pci_get_device_count();
 }
 
 extern "C" int64_t driver_pci_get_device(uint64_t index, PCIDeviceInfo* out) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     const PCIDeviceInfo* device = pci_get_device((uint32_t)index);
     if (device == 0 || out == 0) {
         return -1;
@@ -79,26 +89,32 @@ extern "C" int64_t driver_pci_get_device(uint64_t index, PCIDeviceInfo* out) {
 }
 
 extern "C" int64_t driver_pci_find_device(uint64_t vendor_id, uint64_t device_id, PCIDeviceInfo* out) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return pci_find_device((uint16_t)vendor_id, (uint16_t)device_id, out) ? 0 : -1;
 }
 
 extern "C" int64_t driver_pci_get_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return pci_get_bar(device, (uint32_t)bar_index, out) ? 0 : -1;
 }
 
 extern "C" void* driver_pci_map_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out) {
+    if (!driver_execution_require_sleepable()) return 0;
     return pci_map_bar(device, (uint32_t)bar_index, out);
 }
 
 extern "C" int64_t driver_pci_enable_memory_space(const PCIDeviceInfo* device) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return pci_enable_memory_space(device) ? 0 : -1;
 }
 
 extern "C" int64_t driver_pci_enable_bus_mastering(const PCIDeviceInfo* device) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return pci_enable_bus_mastering(device) ? 0 : -1;
 }
 
 extern "C" int64_t driver_pci_bind_device(const PCIDeviceInfo* device, uint64_t flags) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     const char* driver_name = driver_manager_current_lifecycle_driver();
     if (driver_name == 0) {
         return DRIVER_LOAD_BIND_DENIED;
@@ -107,6 +123,7 @@ extern "C" int64_t driver_pci_bind_device(const PCIDeviceInfo* device, uint64_t 
 }
 
 extern "C" int64_t driver_irq_register(uint64_t irq, DriverIrqHandler handler) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     const char* driver_name = driver_manager_current_lifecycle_driver();
     if (driver_name == 0) {
         return DRIVER_LOAD_IRQ_DENIED;
@@ -115,6 +132,7 @@ extern "C" int64_t driver_irq_register(uint64_t irq, DriverIrqHandler handler) {
 }
 
 extern "C" int64_t driver_irq_unregister(uint64_t irq, DriverIrqHandler handler) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     const char* driver_name = driver_manager_current_lifecycle_driver();
     if (driver_name == 0) {
         return DRIVER_LOAD_IRQ_DENIED;
@@ -123,10 +141,12 @@ extern "C" int64_t driver_irq_unregister(uint64_t irq, DriverIrqHandler handler)
 }
 
 extern "C" uint32_t driver_mmio_read32(uint64_t address) {
+    if (!driver_execution_runtime_allowed()) return 0;
     return *(volatile uint32_t*)(uintptr_t)address;
 }
 
 extern "C" void driver_mmio_write32(uint64_t address, uint32_t value) {
+    if (!driver_execution_runtime_allowed()) return;
     *(volatile uint32_t*)(uintptr_t)address = value;
 }
 
@@ -161,10 +181,12 @@ extern "C" int64_t driver_vfs_close(uint64_t fd) {
 }
 
 extern "C" int64_t driver_block_read_sector(uint64_t lba, void* buffer) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return ata.read_sector((uint32_t)lba, (uint8_t*)buffer) ? 0 : -1;
 }
 
 extern "C" int64_t driver_block_write_sector(uint64_t lba, const void* buffer) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return ata.write_sector((uint32_t)lba, (const uint8_t*)buffer) ? 0 : -1;
 }
 
