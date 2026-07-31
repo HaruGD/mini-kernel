@@ -21,17 +21,17 @@ coverage, and a separate evidence commit.
 | --- | --- | --- | --- | --- | --- |
 | 4.7A: Ownership and lifetime contracts | Complete | 2026-08-01 | 2026-08-01 | `ddb0772` | P47-R01 |
 | 4.7B: Reusable driver virtual address space | Complete | 2026-08-01 | 2026-08-01 | `e93813a`, `89be05e` | P47-R02, P47-R03 |
-| 4.7C: Owned allocation and execution contexts | Planned | - | - | - | P47-R04, P47-R05 |
+| 4.7C: Owned allocation and execution contexts | Complete | 2026-08-01 | 2026-08-01 | `39c440e`, `f1875a3`, `fe6afbf` | P47-R04, P47-R05 |
 | 4.7D: Capability-scoped MMIO | Planned | - | - | - | P47-R06, P47-R07 |
 | 4.7E: Coherent DMA and address model | Planned | - | - | - | P47-R08 |
 | 4.7F: Streaming DMA, scatter/gather, and domain policy | Planned | - | - | - | P47-R09, P47-R10 |
 | 4.7G: Quiescent unload and automatic cleanup | Planned | - | - | - | P47-R11 |
 | 4.7H: Fault injection, device smoke, soak, and closure | Planned | - | - | - | P47-R12, P47-R13 |
 
-Current status: Phase 4.7A and 4.7B are complete. Driver images now use an
-owned, reusable interval arena with guard pages, deterministic coalescing,
-W^X preservation, and acknowledged kernel-global TLB invalidation before VA
-reuse. Phase 4.7C is next.
+Current status: Phase 4.7A through 4.7C are complete. Driver images use safe
+reusable VA, and packaged drivers now have generation-owned heap/page/atomic
+allocation handles with budgets and checked sleepable/atomic/IRQ/emergency
+contexts. Phase 4.7D is next.
 
 ## Implementation Order
 
@@ -157,6 +157,72 @@ For each subphase:
 - Physical-page baseline and extended mixed-package churn remain part of the
   final Phase 4.7 soak, while 4.7C now adds owned heap/page allocations and
   legal execution contexts.
+
+## 4.7C: Owned Allocation And Execution Contexts
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commits: `39c440e`, `f1875a3`, `fe6afbf`
+
+### Delivered
+
+- Added `drv_alloc`/`drv_free` to the packaged-driver SDK. The ABI returns a
+  slot-plus-generation handle, CPU pointer, and logical size; freeing by raw
+  pointer is not supported by the new interface.
+- Added a bounded 128-record allocation table with exact driver-generation
+  ownership, tags, flags, alignment, charged bytes, backing class, resource
+  handle, state, and diagnostics.
+- Enforced a 1 MiB per-driver budget and distinct ordinary heap, page-backed
+  NX, and bounded atomic-reserve allocation paths.
+- Added eight 256-byte, 16-byte-aligned atomic reserve slots per driver. IRQ
+  and thread-atomic contexts may use only this reserve and fail immediately
+  when it is exhausted.
+- Added per-CPU nested execution contexts. Driver entry/exit execute as
+  `THREAD_SLEEPABLE`; registered IRQ callbacks execute as `IRQ`; emergency
+  context rejects every ordinary driver allocation operation.
+- PCI probe callbacks also enter the owning driver's sleepable context before
+  using PCI imports; a UEFI negative run caught and verified this boundary.
+- Restricted VFS driver imports and legacy `kmalloc` to sleepable driver
+  execution. Legacy `kmalloc/kfree` symbols remain temporarily available for
+  migration, while new code uses owned handles.
+- Added deterministic allocation backing fault injection, page-allocation
+  rollback, zero-on-request and confidentiality clearing, automatic ordinary
+  allocation reclamation after quiescing, and quarantine-on-TLB-failure.
+- Migrated `hello_c.drv` to exercise owned scratch allocation and exact handle
+  release during real packaged-driver activation.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-driver-alloc` | PASS | 128/128 exact slot exhaustion, 1 MiB budget boundary, alignment/zeroing, wrong-owner/stale/double release, injected page-backing failure and retry, two leaked-object auto-reclaim, and zero final resources passed |
+| `make test-driver-context` | PASS | Eight IRQ atomic slots succeeded, the ninth failed immediately, ordinary/page IRQ allocation and emergency allocation were rejected, nested current-owner entry worked, and four threads completed 1,000 allocation/release cycles |
+| `make test-driver-ownership test-driver-va test-driver-image-memory` | PASS | Existing generation, resource, image VA, W^X, guard, and TLB-retirement contracts remained green |
+| `make test-fault-injection` | PASS | Existing host and QEMU fault suites passed with the new `driver_alloc` injection point |
+| `make -j4 uefi` | PASS | New runtime object, SDK imports, sample package, kernel, root image, and UEFI image built successfully |
+| `make test-uefi-smoke` | PASS | `hello_c.drv` used the new owned API during automatic activation; manual driver lifecycle and system commands passed with allocation active/bytes/quarantine all zero |
+| `make test-driver-regression` | PASS | Seven policy/build combinations, signed/unsigned/tampered/bounded/dependency handoff, UEFI smoke, SDK 91/91, and R01-R12 passed |
+
+### Resource Accounting
+
+- Allocation-record high-water/capacity: `128/128`; final active records and
+  charged bytes: `0/0`.
+- Per-driver budget boundary: an exact `1,048,576`-byte allocation succeeded;
+  one additional byte failed without drift.
+- Atomic reserve boundary: `8/8` slots succeeded; slot nine failed; final
+  atomic-active count was zero.
+- Deterministic backing failure count: one; the same page range was reusable
+  immediately after rollback.
+- Concurrent churn: four host threads completed 250 cycles each; unexplained
+  allocation or resource drift was zero.
+- UEFI smoke before/final diagnostics: `alloc_active=0`, `alloc_bytes=0`,
+  `alloc_quarantine=0`.
+
+### Remaining
+
+- 4.7D builds BAR-scoped MMIO handles and a reusable NX MMIO VA arena on top
+  of these owner, context, resource, and deferred-retirement contracts.
 
 ## Evidence Record Template
 

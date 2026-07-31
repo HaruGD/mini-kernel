@@ -23,20 +23,20 @@ the Phase 4.7 contracts.
 
 ## Current Status
 
-Phase 4.7A and 4.7B completed on 2026-08-01 with implementation commits
+Phase 4.7A through 4.7C completed on 2026-08-01 with implementation commits
 `ddb0772`, `e93813a`, and corrective commit `89be05e`. Driver and bound-device identities include
 generations, while `.drv` image sections now use reusable owned VA intervals,
 two-sided guard pages, final W^X protection, and acknowledged kernel-global
-TLB invalidation before reuse. Phase 4.7C is next; later reserved test targets
-remain plans rather than executed evidence.
+TLB invalidation before reuse. Commits `39c440e`, `f1875a3`, and `fe6afbf` add owned allocation handles,
+budgets, an atomic reserve, and checked execution contexts. Phase 4.7D is next;
+later reserved test targets remain plans rather than executed evidence.
 
 The entry system already provides page-separated `.drv` images with
 `CODE=RX`, `RODATA=R/NX`, and `DATA/BSS=RW/NX`, package validation,
 dependency-aware unload denial, PCI binding, IRQ registration, and section
 page release. It does not yet provide reusable MMIO virtual-address
-allocation, driver-owned heap/page allocation records, handle-scoped MMIO,
-DMA mapping, IOMMU domains, or complete quiescent automatic resource
-teardown.
+allocation, handle-scoped MMIO, DMA mapping, IOMMU domains, or complete
+quiescent device-resource teardown.
 
 ## Intended Result
 

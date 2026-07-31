@@ -197,6 +197,44 @@ After relocation/import patching, loaded package memory is protected as:
 Driver sections are mapped into a dedicated driver virtual address range instead
 of being left in the kernel heap.
 
+## Owned Allocation ABI
+
+Packaged drivers use `os64_drv_alloc` and `os64_drv_free` for new dynamic
+memory. Allocation returns an opaque `slot:generation` handle together with a
+CPU pointer and logical size. The handle, not the pointer, is the authority to
+free the object.
+
+Supported flags are:
+
+- `OS64_DRV_ALLOC_ZERO`: return zero-filled logical bytes;
+- `OS64_DRV_ALLOC_PAGES`: use reusable page-aligned RW/NX backing;
+- `OS64_DRV_ALLOC_ATOMIC`: use the fixed per-driver atomic reserve.
+
+Size and alignment are recorded. Alignment must be a power of two. Each
+driver generation has a 1 MiB charged-byte budget and all drivers share a
+bounded 128-record allocation table. Page-backed and atomic memory is always
+cleared before use; all owned memory is cleared before it can pass to another
+owner.
+
+Execution-context policy is explicit:
+
+- driver entry and exit run as `THREAD_SLEEPABLE`;
+- thread-atomic and IRQ callbacks may allocate only from eight fixed 256-byte
+  atomic slots assigned to that driver;
+- NMI/double-fault emergency context cannot call the ordinary driver memory
+  runtime;
+- VFS imports and legacy `kmalloc` require a sleepable driver context.
+
+Unload enters quiescing state, stops new IRQ delivery, then automatically
+reclaims remaining ordinary owned allocations before executable image pages
+are removed. A page whose TLB retirement cannot be acknowledged is
+quarantined rather than reused. Ordinary diagnostics expose counts and bytes,
+not addresses.
+
+The legacy `kmalloc` and `kfree` imports remain temporarily for compatibility.
+They do not provide generation ownership and are not the API for new packaged
+hardware drivers.
+
 ## Validation
 
 The kernel rejects malformed packages before loading sections.

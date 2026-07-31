@@ -253,7 +253,7 @@ Progress:
   lifecycle contracts
 - [x] 4.7B: Replace monotonic driver-image allocation with reusable,
   TLB-safe virtual address intervals
-- [ ] 4.7C: Add tagged driver-owned heap/page allocations, budgets, and
+- [x] 4.7C: Add tagged driver-owned heap/page allocations, budgets, and
   sleepable/atomic/IRQ context rules
 - [ ] 4.7D: Replace packaged-driver raw MMIO addresses with bound BAR mapping
   handles, checked offsets, cache policy, unmap, and VA reuse
