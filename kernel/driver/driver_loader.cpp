@@ -1,4 +1,5 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
@@ -892,9 +893,16 @@ static int call_driver_entry(const DrvManifest* manifest, DriverLoadedImage* loa
     }
 
     DriverLifecycleFn entry = (DriverLifecycleFn)loaded->entry;
+    DriverExecutionToken context_token = {};
+    if (driver_execution_enter(loaded->owner,
+                               DRIVER_CONTEXT_THREAD_SLEEPABLE,
+                               &context_token) != DRIVER_LOAD_OK) {
+        return DRIVER_LOAD_CONTEXT_DENIED;
+    }
     driver_manager_set_lifecycle_driver(manifest->name);
     uint64_t entry_result = entry();
     driver_manager_set_lifecycle_driver(0);
+    driver_execution_leave(&context_token);
     if (entry_result != 0) {
         driver_manager_set_state(manifest->name, DRIVER_STATE_FAILED);
         driver_manager_set_last_error(DRIVER_LOAD_ENTRY_FAILED, "entry", manifest->name, manifest->entry_symbol, 0, entry_result);
@@ -990,6 +998,7 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
     }
     if (result != DRIVER_LOAD_OK) {
         driver_export_unregister_module(manifest->name);
+        driver_allocation_release_owner(loaded->owner);
         if (registered) {
             driver_manager_set_instance(manifest->name, 0);
             driver_manager_set_state(manifest->name, failure_state_for_result(result));

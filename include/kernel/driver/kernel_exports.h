@@ -2,6 +2,7 @@
 #define KERNEL_DRIVER_KERNEL_EXPORTS_H
 
 #include <stdint.h>
+#include "kernel/driver/driver_alloc.h"
 
 #include "drivers/gop.h"
 #include "kernel/driver/driver_manager.h"
@@ -10,6 +11,10 @@
 extern "C" void driver_klog(const char* text);
 extern "C" void* driver_kmalloc(uint64_t size);
 extern "C" void driver_kfree(void* ptr);
+extern "C" int64_t driver_owned_alloc(uint64_t size, uint64_t alignment,
+                                       uint64_t flags, const char* tag,
+                                       DriverAllocationResult* out);
+extern "C" int64_t driver_owned_free(DriverAllocationHandle handle);
 extern "C" const GOPInfo* driver_gop_get_info();
 extern "C" void driver_gop_clear(uint32_t color);
 extern "C" void driver_gop_putpixel(uint32_t x, uint32_t y, uint32_t color);

@@ -1,4 +1,5 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/kernel_exports.h"
 #include "kernel/kutil64.h"
@@ -21,11 +22,23 @@ extern "C" void driver_klog(const char* text) {
 }
 
 extern "C" void* driver_kmalloc(uint64_t size) {
+    if (!driver_execution_require_sleepable()) return 0;
     return kmalloc((size_t)size);
 }
 
 extern "C" void driver_kfree(void* ptr) {
     kfree(ptr);
+}
+
+extern "C" int64_t driver_owned_alloc(uint64_t size, uint64_t alignment,
+                                        uint64_t flags, const char* tag,
+                                        DriverAllocationResult* out) {
+    return driver_allocation_create_current(size, alignment, (uint32_t)flags,
+                                            tag, out);
+}
+
+extern "C" int64_t driver_owned_free(DriverAllocationHandle handle) {
+    return driver_allocation_release_current(handle);
 }
 
 extern "C" const GOPInfo* driver_gop_get_info() {
@@ -118,10 +131,12 @@ extern "C" void driver_mmio_write32(uint64_t address, uint32_t value) {
 }
 
 extern "C" int64_t driver_vfs_open(const char* path, uint64_t mode) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return vfs_open(path, (uint32_t)mode);
 }
 
 extern "C" int64_t driver_vfs_read(uint64_t fd, void* buffer, uint64_t size) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     uint32_t bytes_read = 0;
     int result = vfs_read((int)fd, (uint8_t*)buffer, (uint32_t)size, &bytes_read);
     if (result != VFS_OK) {
@@ -131,6 +146,7 @@ extern "C" int64_t driver_vfs_read(uint64_t fd, void* buffer, uint64_t size) {
 }
 
 extern "C" int64_t driver_vfs_write(uint64_t fd, const void* buffer, uint64_t size) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     uint32_t bytes_written = 0;
     int result = vfs_write((int)fd, (const uint8_t*)buffer, (uint32_t)size, &bytes_written);
     if (result != VFS_OK) {
@@ -140,6 +156,7 @@ extern "C" int64_t driver_vfs_write(uint64_t fd, const void* buffer, uint64_t si
 }
 
 extern "C" int64_t driver_vfs_close(uint64_t fd) {
+    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return vfs_close((int)fd);
 }
 
@@ -155,6 +172,8 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "klog", (void*)driver_klog, 0);
     driver_export_register("kernel", "kmalloc", (void*)driver_kmalloc, 0);
     driver_export_register("kernel", "kfree", (void*)driver_kfree, 0);
+    driver_export_register("kernel", "drv_alloc", (void*)driver_owned_alloc, 0);
+    driver_export_register("kernel", "drv_free", (void*)driver_owned_free, 0);
     driver_export_register("kernel", "gop_get_info", (void*)driver_gop_get_info, DRV_PERMISSION_DISPLAY);
     driver_export_register("kernel", "gop_clear", (void*)driver_gop_clear, DRV_PERMISSION_DISPLAY);
     driver_export_register("kernel", "gop_putpixel", (void*)driver_gop_putpixel, DRV_PERMISSION_DISPLAY);

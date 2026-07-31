@@ -1,4 +1,5 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
@@ -55,9 +56,16 @@ static int call_driver_exit(const DriverRecord* record, DriverLoadedImage* loade
     }
 
     DriverLifecycleFn exit_fn = (DriverLifecycleFn)loaded->exit;
+    DriverExecutionToken context_token = {};
+    if (driver_execution_enter(loaded->owner,
+                               DRIVER_CONTEXT_THREAD_SLEEPABLE,
+                               &context_token) != DRIVER_LOAD_OK) {
+        return DRIVER_LOAD_CONTEXT_DENIED;
+    }
     driver_manager_set_lifecycle_driver(record->name);
     uint64_t exit_result = exit_fn();
     driver_manager_set_lifecycle_driver(0);
+    driver_execution_leave(&context_token);
     if (exit_result != 0) {
         driver_manager_set_last_error(DRIVER_LOAD_EXIT_FAILED, "exit", record->name, "driver_exit", 0, exit_result);
         return DRIVER_LOAD_EXIT_FAILED;
@@ -165,6 +173,13 @@ int driver_manager_unload(const char* name) {
     driver_export_unregister_module(snapshot.name);
     driver_irq_unregister_module(snapshot.name);
     driver_manager_unbind_module(snapshot.name);
+    driver_allocation_release_owner(loaded->owner);
+    if (driver_allocation_owner_count(loaded->owner) != 0) {
+        driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);
+        driver_manager_set_last_error(DRIVER_LOAD_RESOURCE_DENIED, "unload",
+                                      snapshot.name, "alloc-quarantined", 0, 0);
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    }
     int free_result = free_loaded_image(loaded);
     if (free_result != DRIVER_LOAD_OK) {
         driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);

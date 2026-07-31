@@ -1,4 +1,5 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
 
@@ -138,7 +139,13 @@ void driver_irq_dispatch(uint32_t irq) {
             continue;
         }
         hook->call_count++;
+        DriverExecutionToken context_token = {};
+        if (driver_execution_enter(hook->owner, DRIVER_CONTEXT_IRQ,
+                                   &context_token) != DRIVER_LOAD_OK) {
+            continue;
+        }
         hook->handler(irq);
+        driver_execution_leave(&context_token);
     }
 }
 

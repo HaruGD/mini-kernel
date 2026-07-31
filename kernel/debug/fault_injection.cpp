@@ -13,7 +13,7 @@ static const char* fault_names[KERNEL_FAULT_POINT_COUNT] = {
     "thread_record", "thread_user_stack", "thread_kernel_stack",
     "thread_mapping", "thread_wait", "sync_object", "cpu_local",
     "ap_startup", "local_timer", "scheduler_claim", "tlb_request",
-    "irq_owner"
+    "irq_owner", "driver_alloc"
 };
 
 static int text_equal(const char* left, const char* right) {

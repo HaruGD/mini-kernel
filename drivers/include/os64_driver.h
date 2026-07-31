@@ -5,6 +5,21 @@ typedef unsigned long long os64_u64;
 typedef signed long long os64_i64;
 typedef unsigned int os64_u32;
 
+#define OS64_DRV_ALLOC_ZERO   0x01u
+#define OS64_DRV_ALLOC_PAGES  0x02u
+#define OS64_DRV_ALLOC_ATOMIC 0x04u
+
+typedef struct os64_driver_allocation_handle {
+    os64_u32 slot;
+    os64_u32 generation;
+} os64_driver_allocation_handle;
+
+typedef struct os64_driver_allocation {
+    os64_driver_allocation_handle handle;
+    void* address;
+    os64_u64 size;
+} os64_driver_allocation;
+
 #define OS64_PCI_MAX_BARS 6
 
 typedef struct os64_gop_info {
@@ -47,6 +62,10 @@ typedef struct os64_pci_device_info {
 typedef void (*os64_klog_fn)(const char* text);
 typedef void* (*os64_kmalloc_fn)(os64_u64 size);
 typedef void (*os64_kfree_fn)(void* ptr);
+typedef os64_i64 (*os64_drv_alloc_fn)(os64_u64 size, os64_u64 alignment,
+                                      os64_u64 flags, const char* tag,
+                                      os64_driver_allocation* out);
+typedef os64_i64 (*os64_drv_free_fn)(os64_driver_allocation_handle handle);
 typedef const os64_gop_info* (*os64_gop_get_info_fn)(void);
 typedef void (*os64_gop_clear_fn)(os64_u32 color);
 typedef void (*os64_gop_putpixel_fn)(os64_u32 x, os64_u32 y, os64_u32 color);
@@ -80,6 +99,8 @@ extern "C" {
 extern os64_klog_fn kernel__klog;
 extern os64_kmalloc_fn kernel__kmalloc;
 extern os64_kfree_fn kernel__kfree;
+extern os64_drv_alloc_fn kernel__drv_alloc;
+extern os64_drv_free_fn kernel__drv_free;
 extern os64_gop_get_info_fn kernel__gop_get_info;
 extern os64_gop_clear_fn kernel__gop_clear;
 extern os64_gop_putpixel_fn kernel__gop_putpixel;
@@ -121,6 +142,16 @@ static inline void* os64_kmalloc(os64_u64 size) {
 
 static inline void os64_kfree(void* ptr) {
     kernel__kfree(ptr);
+}
+
+static inline os64_i64 os64_drv_alloc(os64_u64 size, os64_u64 alignment,
+                                      os64_u64 flags, const char* tag,
+                                      os64_driver_allocation* out) {
+    return kernel__drv_alloc(size, alignment, flags, tag, out);
+}
+
+static inline os64_i64 os64_drv_free(os64_driver_allocation_handle handle) {
+    return kernel__drv_free(handle);
 }
 
 static inline const os64_gop_info* os64_gop_get_info(void) {

@@ -174,6 +174,7 @@ int main() {
 STUBS = r"""
 #include <stdint.h>
 #include "kernel/pci.h"
+#include "kernel/driver/driver_alloc.h"
 
 int strcmp64(const char* left, const char* right) {
     while (*left != '\0' && *left == *right) { left++; right++; }
@@ -191,6 +192,14 @@ void copy_string64(char* out, uint32_t capacity, const char* text) {
 
 uint32_t pci_get_device_count() { return 0; }
 const PCIDeviceInfo* pci_get_device(uint32_t) { return 0; }
+int driver_execution_enter(DriverIdentity, uint32_t,
+                           DriverExecutionToken* token) {
+    if (token) token->active = 1;
+    return DRIVER_LOAD_OK;
+}
+void driver_execution_leave(DriverExecutionToken* token) {
+    if (token) token->active = 0;
+}
 """
 
 

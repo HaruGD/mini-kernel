@@ -1,5 +1,6 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_va.h"
+#include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
 #include "fs/vfs.h"
@@ -100,6 +101,14 @@ void command_drivers() {
     print_hex64(va_stats.largest_free_pages);
     print(" image_va_quarantine=");
     print_hex32(va_stats.quarantined);
+    DriverAllocationStats allocation_stats;
+    driver_allocation_get_stats(&allocation_stats);
+    print(" alloc_active=");
+    print_hex32(allocation_stats.active);
+    print(" alloc_bytes=");
+    print_hex64(allocation_stats.active_bytes);
+    print(" alloc_quarantine=");
+    print_hex32(allocation_stats.quarantined);
     print("\n===============");
 }
 
@@ -125,6 +134,9 @@ static const char* drv_load_result_name(int result) {
     if (result == DRIVER_LOAD_STATE_DENIED) return "state_denied";
     if (result == DRIVER_LOAD_STALE_IDENTITY) return "stale_identity";
     if (result == DRIVER_LOAD_RESOURCE_DENIED) return "resource_denied";
+    if (result == DRIVER_LOAD_CONTEXT_DENIED) return "context_denied";
+    if (result == DRIVER_LOAD_ALLOCATION_BUDGET) return "allocation_budget";
+    if (result == DRIVER_LOAD_ALLOCATION_DENIED) return "allocation_denied";
     return "unknown";
 }
 

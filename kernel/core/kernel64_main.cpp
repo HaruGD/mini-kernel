@@ -171,6 +171,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     int gop_back_buffer_ready = gop.init_back_buffer();
     display_backend_init();
     driver_manager_init();
+    driver_allocation_init();
     service_registry_init();
     process_system_init();
     driver_manager_register_kernel_exports();
