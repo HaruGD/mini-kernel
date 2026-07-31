@@ -6,6 +6,11 @@ static DriverRecord g_drivers[DRIVER_MAX_RECORDS];
 static DriverLoadDiagnostics g_last_error;
 static char g_lifecycle_driver[32];
 
+static uint32_t next_generation(uint32_t generation) {
+    generation++;
+    return generation != 0 ? generation : 1u;
+}
+
 static void clear_driver_record(DriverRecord* record) {
     if (record == 0) {
         return;
@@ -19,10 +24,22 @@ static void clear_driver_record(DriverRecord* record) {
     record->instance = 0;
 }
 
+static void activate_driver_record(DriverRecord* record) {
+    record->generation = next_generation(record->generation);
+    record->active = 1;
+    record->state = DRIVER_STATE_REGISTERED;
+}
+
 void driver_manager_init() {
     for (uint32_t i = 0; i < DRIVER_MAX_RECORDS; i++) {
+        g_drivers[i].slot = i;
+        g_drivers[i].generation = 0;
         clear_driver_record(&g_drivers[i]);
     }
+    driver_resource_init();
+    driver_manager_binding_init();
+    driver_irq_init();
+    driver_export_init();
     g_lifecycle_driver[0] = '\0';
     driver_manager_clear_last_error();
 }
@@ -69,15 +86,20 @@ int driver_manager_register_builtin(const char* name,
     }
 
     DriverRecord* record = find_driver_by_name(name);
-    if (record == 0) {
-        record = alloc_driver_record();
+    if (record != 0) {
+        if (!driver_record_can_be_reused(record)) {
+            return DRIVER_LOAD_DUPLICATE;
+        }
+        DriverIdentity old_identity = {record->slot, record->generation};
+        driver_resource_release_owner(old_identity);
+        clear_driver_record(record);
     }
+    if (record == 0) record = alloc_driver_record();
     if (record == 0) {
         return DRIVER_LOAD_NO_SLOT;
     }
 
-    record->active = 1;
-    record->state = DRIVER_STATE_REGISTERED;
+    activate_driver_record(record);
     record->kind = (uint16_t)kind;
     record->permissions = permissions;
     record->instance = instance;
@@ -96,6 +118,8 @@ int driver_manager_register_package_manifest(const DrvManifest* manifest, void* 
         if (!driver_record_can_be_reused(existing)) {
             return DRIVER_LOAD_DUPLICATE;
         }
+        DriverIdentity old_identity = {existing->slot, existing->generation};
+        driver_resource_release_owner(old_identity);
         clear_driver_record(existing);
     }
 
@@ -104,8 +128,7 @@ int driver_manager_register_package_manifest(const DrvManifest* manifest, void* 
         return DRIVER_LOAD_NO_SLOT;
     }
 
-    record->active = 1;
-    record->state = DRIVER_STATE_REGISTERED;
+    activate_driver_record(record);
     record->kind = DRIVER_KIND_MODULE;
     record->permissions = manifest->permissions;
     record->instance = instance;
@@ -114,13 +137,85 @@ int driver_manager_register_package_manifest(const DrvManifest* manifest, void* 
     return DRIVER_LOAD_OK;
 }
 
-int driver_manager_set_state(const char* name, uint32_t state) {
+static int legal_state_transition(uint32_t from, uint32_t to) {
+    if (from == to) return 1;
+    if (from == DRIVER_STATE_REGISTERED) {
+        return to == DRIVER_STATE_LOADING || to == DRIVER_STATE_LINKED ||
+               to == DRIVER_STATE_READY || to == DRIVER_STATE_FAILED ||
+               to == DRIVER_STATE_REJECTED;
+    }
+    if (from == DRIVER_STATE_LOADING) {
+        return to == DRIVER_STATE_LINKED || to == DRIVER_STATE_FAILED ||
+               to == DRIVER_STATE_REJECTED;
+    }
+    if (from == DRIVER_STATE_LINKED) {
+        return to == DRIVER_STATE_READY || to == DRIVER_STATE_FAILED ||
+               to == DRIVER_STATE_REJECTED || to == DRIVER_STATE_QUIESCING;
+    }
+    if (from == DRIVER_STATE_READY) {
+        return to == DRIVER_STATE_QUIESCING || to == DRIVER_STATE_FAILED;
+    }
+    if (from == DRIVER_STATE_QUIESCING) {
+        return to == DRIVER_STATE_FAILED;
+    }
+    return 0;
+}
+
+DriverIdentity driver_identity_invalid() {
+    DriverIdentity identity = {DRIVER_IDENTITY_INVALID_SLOT, 0};
+    return identity;
+}
+
+int driver_identity_is_valid(DriverIdentity identity) {
+    return identity.slot < DRIVER_MAX_RECORDS && identity.generation != 0;
+}
+
+int driver_identity_equal(DriverIdentity left, DriverIdentity right) {
+    return left.slot == right.slot && left.generation == right.generation;
+}
+
+DriverIdentity driver_manager_identity_from_name(const char* name) {
     DriverRecord* record = find_driver_by_name(name);
-    if (record == 0) {
-        return DRIVER_LOAD_BAD_HEADER;
+    if (record == 0) return driver_identity_invalid();
+    DriverIdentity identity = {record->slot, record->generation};
+    return identity;
+}
+
+int driver_manager_identity_is_live(DriverIdentity identity) {
+    if (!driver_identity_is_valid(identity)) return 0;
+    const DriverRecord* record = &g_drivers[identity.slot];
+    return record->active && record->generation == identity.generation;
+}
+
+int driver_manager_identity_accepts_resources(DriverIdentity identity) {
+    if (!driver_manager_identity_is_live(identity)) return 0;
+    const uint32_t state = g_drivers[identity.slot].state;
+    return state == DRIVER_STATE_REGISTERED || state == DRIVER_STATE_LOADING ||
+           state == DRIVER_STATE_LINKED || state == DRIVER_STATE_READY;
+}
+
+int driver_manager_set_state_identity(DriverIdentity identity, uint32_t state) {
+    if (!driver_manager_identity_is_live(identity)) {
+        return DRIVER_LOAD_STALE_IDENTITY;
+    }
+    DriverRecord* record = &g_drivers[identity.slot];
+    if (!legal_state_transition(record->state, state)) {
+        driver_manager_set_last_error(DRIVER_LOAD_STATE_DENIED,
+                                      "state",
+                                      record->name,
+                                      driver_state_name(state),
+                                      record->state,
+                                      state);
+        return DRIVER_LOAD_STATE_DENIED;
     }
     record->state = (uint8_t)state;
     return DRIVER_LOAD_OK;
+}
+
+int driver_manager_set_state(const char* name, uint32_t state) {
+    DriverIdentity identity = driver_manager_identity_from_name(name);
+    if (!driver_identity_is_valid(identity)) return DRIVER_LOAD_BAD_HEADER;
+    return driver_manager_set_state_identity(identity, state);
 }
 
 int driver_manager_set_instance(const char* name, void* instance) {
@@ -137,6 +232,8 @@ int driver_manager_unregister(const char* name) {
     if (record == 0) {
         return DRIVER_LOAD_BAD_HEADER;
     }
+    DriverIdentity identity = {record->slot, record->generation};
+    driver_resource_release_owner(identity);
     clear_driver_record(record);
     return DRIVER_LOAD_OK;
 }
@@ -176,6 +273,7 @@ const char* driver_state_name(uint32_t state) {
     if (state == DRIVER_STATE_REJECTED) return "rejected";
     if (state == DRIVER_STATE_LOADING) return "loading";
     if (state == DRIVER_STATE_LINKED) return "linked";
+    if (state == DRIVER_STATE_QUIESCING) return "quiescing";
     return "empty";
 }
 

@@ -7,6 +7,7 @@
 #define DRIVER_MAX_EXPORTS 64
 #define DRIVER_MAX_BINDINGS 64
 #define DRIVER_MAX_IRQ_HOOKS 32
+#define DRIVER_MAX_RESOURCES 128
 
 #define DRIVER_KIND_CORE   1
 #define DRIVER_KIND_BUS    2
@@ -24,6 +25,7 @@
 #define DRIVER_STATE_REJECTED   4
 #define DRIVER_STATE_LOADING    5
 #define DRIVER_STATE_LINKED     6
+#define DRIVER_STATE_QUIESCING  7
 
 #define DRIVER_LOAD_OK                 0
 #define DRIVER_LOAD_BAD_HEADER        -1
@@ -43,12 +45,41 @@
 #define DRIVER_LOAD_MISSING_DEPENDENCY -15
 #define DRIVER_LOAD_BIND_DENIED      -16
 #define DRIVER_LOAD_IRQ_DENIED       -17
+#define DRIVER_LOAD_STATE_DENIED     -18
+#define DRIVER_LOAD_STALE_IDENTITY   -19
+#define DRIVER_LOAD_RESOURCE_DENIED  -20
 
 #define DRIVER_MAX_LOADED_SECTIONS 16
 #define DRIVER_MAX_RESOLVED_IMPORTS 32
 #define DRIVER_MAX_DEPENDENCIES 8
 
 #define DRIVER_BIND_KIND_PCI 1
+
+#define DRIVER_RESOURCE_NONE       0
+#define DRIVER_RESOURCE_EXPORT     1
+#define DRIVER_RESOURCE_PCI_BINDING 2
+#define DRIVER_RESOURCE_IRQ_HOOK   3
+#define DRIVER_RESOURCE_IMAGE      4
+#define DRIVER_RESOURCE_ALLOCATION 5
+#define DRIVER_RESOURCE_MMIO       6
+#define DRIVER_RESOURCE_DMA        7
+
+#define DRIVER_IDENTITY_INVALID_SLOT 0xFFFFFFFFu
+
+struct DriverIdentity {
+    uint32_t slot;
+    uint32_t generation;
+};
+
+struct DriverDeviceIdentity {
+    uint32_t slot;
+    uint32_t generation;
+};
+
+struct DriverResourceHandle {
+    uint32_t slot;
+    uint32_t generation;
+};
 
 struct DrvManifest;
 struct PCIDeviceInfo;
@@ -92,6 +123,8 @@ struct DriverRecord {
     uint8_t active;
     uint8_t state;
     uint16_t kind;
+    uint32_t slot;
+    uint32_t generation;
     uint32_t permissions;
     char name[32];
     char version[16];
@@ -101,6 +134,8 @@ struct DriverRecord {
 struct DriverExportRecord {
     uint8_t active;
     uint32_t required_permission;
+    DriverIdentity owner;
+    DriverResourceHandle resource;
     char module[32];
     char name[48];
     void* address;
@@ -119,6 +154,10 @@ struct DriverBindingRecord {
     uint8_t active;
     uint8_t kind;
     uint16_t flags;
+    uint32_t slot;
+    uint32_t generation;
+    DriverIdentity owner;
+    DriverResourceHandle resource;
     char driver[32];
     uint16_t vendor_id;
     uint16_t device_id;
@@ -134,9 +173,36 @@ struct DriverIrqHookRecord {
     uint8_t active;
     uint8_t irq;
     uint16_t flags;
+    DriverIdentity owner;
+    DriverResourceHandle resource;
     uint64_t call_count;
     char driver[32];
     DriverIrqHandler handler;
+};
+
+struct DriverResourceRecord {
+    uint8_t active;
+    uint8_t kind;
+    uint16_t flags;
+    uint32_t slot;
+    uint32_t generation;
+    DriverIdentity owner;
+    DriverDeviceIdentity device;
+    uint64_t value;
+    uint64_t size;
+    char tag[24];
+};
+
+struct DriverResourceStats {
+    uint32_t active;
+    uint32_t high_water;
+    uint32_t by_kind[8];
+    uint64_t registrations;
+    uint64_t releases;
+    uint64_t stale_rejections;
+    uint64_t owner_rejections;
+    uint64_t state_rejections;
+    uint64_t exhaustion_failures;
 };
 
 void driver_manager_init();
@@ -152,6 +218,13 @@ int driver_manager_unregister(const char* name);
 uint32_t driver_manager_count();
 const DriverRecord* driver_manager_get(uint32_t index);
 const DriverRecord* driver_manager_find(const char* name);
+DriverIdentity driver_identity_invalid();
+int driver_identity_is_valid(DriverIdentity identity);
+int driver_identity_equal(DriverIdentity left, DriverIdentity right);
+DriverIdentity driver_manager_identity_from_name(const char* name);
+int driver_manager_identity_is_live(DriverIdentity identity);
+int driver_manager_identity_accepts_resources(DriverIdentity identity);
+int driver_manager_set_state_identity(DriverIdentity identity, uint32_t state);
 const char* driver_state_name(uint32_t state);
 const char* driver_kind_name(uint32_t kind);
 void driver_manager_set_lifecycle_driver(const char* name);
@@ -165,6 +238,26 @@ void driver_manager_set_last_error(int result,
                                    uint64_t detail);
 const DriverLoadDiagnostics* driver_manager_last_error();
 
+void driver_resource_init();
+DriverResourceHandle driver_resource_invalid();
+int driver_resource_handle_is_valid(DriverResourceHandle handle);
+int driver_resource_register(DriverIdentity owner,
+                             DriverDeviceIdentity device,
+                             uint32_t kind,
+                             uint32_t flags,
+                             uint64_t value,
+                             uint64_t size,
+                             const char* tag,
+                             DriverResourceHandle* out);
+int driver_resource_release(DriverIdentity owner,
+                            DriverResourceHandle handle,
+                            uint32_t expected_kind);
+uint32_t driver_resource_release_owner(DriverIdentity owner);
+const DriverResourceRecord* driver_resource_resolve(DriverIdentity owner,
+                                                    DriverResourceHandle handle,
+                                                    uint32_t expected_kind);
+void driver_resource_get_stats(DriverResourceStats* out);
+
 int driver_export_register(const char* module,
                            const char* name,
                            void* address,
@@ -173,6 +266,7 @@ void driver_export_unregister_module(const char* module);
 void* driver_export_resolve(const char* module, const char* name, uint32_t granted_permissions);
 uint32_t driver_export_count();
 const DriverExportRecord* driver_export_get(uint32_t index);
+void driver_export_init();
 
 int driver_manager_validate_drv_image(const uint8_t* image, uint64_t size);
 int driver_manager_load_drv_image(const uint8_t* image, uint64_t size);
@@ -193,6 +287,11 @@ int driver_manager_bind_pci(const char* driver_name, const PCIDeviceInfo* device
 void driver_manager_unbind_module(const char* name);
 uint32_t driver_manager_binding_count();
 const DriverBindingRecord* driver_manager_binding_get(uint32_t index);
+void driver_manager_binding_init();
+DriverDeviceIdentity driver_device_identity_invalid();
+int driver_device_identity_is_valid(DriverDeviceIdentity identity);
+int driver_manager_device_identity_is_live(DriverDeviceIdentity identity,
+                                           DriverIdentity owner);
 
 int driver_irq_register_handler(const char* driver_name, uint32_t irq, DriverIrqHandler handler, uint32_t flags);
 int driver_irq_unregister_handler(const char* driver_name, uint32_t irq, DriverIrqHandler handler);
@@ -200,6 +299,7 @@ void driver_irq_unregister_module(const char* name);
 void driver_irq_dispatch(uint32_t irq);
 uint32_t driver_irq_hook_count();
 const DriverIrqHookRecord* driver_irq_hook_get(uint32_t index);
+void driver_irq_init();
 
 void command_drivers();
 void command_bindings();

@@ -71,6 +71,10 @@ void command_drivers() {
         print(driver_state_name(driver->state));
         print(" perms=");
         print_permission_names(driver->permissions);
+        print(" id=");
+        print_hex32(driver->slot);
+        print(":");
+        print_hex32(driver->generation);
     }
 
     print("\nexports=");
@@ -79,6 +83,12 @@ void command_drivers() {
     print_hex32(driver_manager_binding_count());
     print(" irq_hooks=");
     print_hex32(driver_irq_hook_count());
+    DriverResourceStats resource_stats;
+    driver_resource_get_stats(&resource_stats);
+    print(" resources=");
+    print_hex32(resource_stats.active);
+    print(" resource_high=");
+    print_hex32(resource_stats.high_water);
     print("\n===============");
 }
 
@@ -101,6 +111,9 @@ static const char* drv_load_result_name(int result) {
     if (result == DRIVER_LOAD_MISSING_DEPENDENCY) return "missing_dependency";
     if (result == DRIVER_LOAD_BIND_DENIED) return "bind_denied";
     if (result == DRIVER_LOAD_IRQ_DENIED) return "irq_denied";
+    if (result == DRIVER_LOAD_STATE_DENIED) return "state_denied";
+    if (result == DRIVER_LOAD_STALE_IDENTITY) return "stale_identity";
+    if (result == DRIVER_LOAD_RESOURCE_DENIED) return "resource_denied";
     return "unknown";
 }
 

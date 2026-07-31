@@ -11,9 +11,17 @@ static void clear_irq_hook(DriverIrqHookRecord* hook) {
     hook->active = 0;
     hook->irq = 0;
     hook->flags = 0;
+    hook->owner = driver_identity_invalid();
+    hook->resource = driver_resource_invalid();
     hook->call_count = 0;
     hook->driver[0] = '\0';
     hook->handler = 0;
+}
+
+void driver_irq_init() {
+    for (uint32_t i = 0; i < DRIVER_MAX_IRQ_HOOKS; i++) {
+        clear_irq_hook(&g_irq_hooks[i]);
+    }
 }
 
 int driver_irq_register_handler(const char* driver_name, uint32_t irq, DriverIrqHandler handler, uint32_t flags) {
@@ -27,13 +35,21 @@ int driver_irq_register_handler(const char* driver_name, uint32_t irq, DriverIrq
         driver_manager_set_last_error(DRIVER_LOAD_IRQ_DENIED, "irq", driver_name, "permission", irq, 0);
         return DRIVER_LOAD_IRQ_DENIED;
     }
+    DriverIdentity owner = {driver->slot, driver->generation};
+    if (!driver_manager_identity_accepts_resources(owner)) {
+        driver_manager_set_last_error(DRIVER_LOAD_STATE_DENIED, "irq",
+                                      driver_name, "state", irq,
+                                      driver->state);
+        return DRIVER_LOAD_STATE_DENIED;
+    }
 
     for (uint32_t i = 0; i < DRIVER_MAX_IRQ_HOOKS; i++) {
         DriverIrqHookRecord* hook = &g_irq_hooks[i];
         if (!hook->active) {
             continue;
         }
-        if (hook->irq == irq && hook->handler == handler && strcmp64(hook->driver, driver_name) == 0) {
+        if (hook->irq == irq && hook->handler == handler &&
+            driver_identity_equal(hook->owner, owner)) {
             return DRIVER_LOAD_OK;
         }
     }
@@ -48,7 +64,20 @@ int driver_irq_register_handler(const char* driver_name, uint32_t irq, DriverIrq
         hook->irq = (uint8_t)irq;
         hook->flags = (uint16_t)flags;
         hook->handler = handler;
+        hook->owner = owner;
         copy_string64(hook->driver, sizeof(hook->driver), driver_name);
+        int resource_result = driver_resource_register(owner,
+                                                       driver_device_identity_invalid(),
+                                                       DRIVER_RESOURCE_IRQ_HOOK,
+                                                       flags,
+                                                       irq,
+                                                       0,
+                                                       "irq_hook",
+                                                       &hook->resource);
+        if (resource_result != DRIVER_LOAD_OK) {
+            clear_irq_hook(hook);
+            return resource_result;
+        }
         return DRIVER_LOAD_OK;
     }
 
@@ -67,6 +96,9 @@ int driver_irq_unregister_handler(const char* driver_name, uint32_t irq, DriverI
             continue;
         }
         if (hook->irq == irq && hook->handler == handler && strcmp64(hook->driver, driver_name) == 0) {
+            driver_resource_release(hook->owner,
+                                    hook->resource,
+                                    DRIVER_RESOURCE_IRQ_HOOK);
             clear_irq_hook(hook);
             return DRIVER_LOAD_OK;
         }
@@ -80,6 +112,9 @@ void driver_irq_unregister_module(const char* name) {
     }
     for (uint32_t i = 0; i < DRIVER_MAX_IRQ_HOOKS; i++) {
         if (g_irq_hooks[i].active && strcmp64(g_irq_hooks[i].driver, name) == 0) {
+            driver_resource_release(g_irq_hooks[i].owner,
+                                    g_irq_hooks[i].resource,
+                                    DRIVER_RESOURCE_IRQ_HOOK);
             clear_irq_hook(&g_irq_hooks[i]);
         }
     }
@@ -93,6 +128,13 @@ void driver_irq_dispatch(uint32_t irq) {
     for (uint32_t i = 0; i < DRIVER_MAX_IRQ_HOOKS; i++) {
         DriverIrqHookRecord* hook = &g_irq_hooks[i];
         if (!hook->active || hook->irq != irq || hook->handler == 0) {
+            continue;
+        }
+        if (!driver_manager_identity_is_live(hook->owner)) {
+            continue;
+        }
+        const DriverRecord* owner = driver_manager_find(hook->driver);
+        if (owner == 0 || owner->state != DRIVER_STATE_READY) {
             continue;
         }
         hook->call_count++;

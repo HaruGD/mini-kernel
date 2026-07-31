@@ -123,6 +123,15 @@ int driver_manager_unload(const char* name) {
     }
 
     DriverRecord snapshot = *record;
+    if (snapshot.state == DRIVER_STATE_READY ||
+        snapshot.state == DRIVER_STATE_LINKED) {
+        DriverIdentity identity = {snapshot.slot, snapshot.generation};
+        int state_result = driver_manager_set_state_identity(
+            identity, DRIVER_STATE_QUIESCING);
+        if (state_result != DRIVER_LOAD_OK) {
+            return state_result;
+        }
+    }
     DriverLoadedImage* loaded = (DriverLoadedImage*)snapshot.instance;
     int exit_result = call_driver_exit(&snapshot, loaded);
     if (exit_result != DRIVER_LOAD_OK) {
