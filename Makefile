@@ -480,7 +480,7 @@ all32:
 ./build/driver_exports64.o: ./kernel/driver/driver_exports.cpp ./include/kernel/driver/driver_manager.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/driver_binding64.o: ./kernel/driver/driver_binding.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/pci.h
+./build/driver_binding64.o: ./kernel/driver/driver_binding.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_alloc.h ./include/kernel/pci.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/driver_irq64.o: ./kernel/driver/driver_irq.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_alloc.h

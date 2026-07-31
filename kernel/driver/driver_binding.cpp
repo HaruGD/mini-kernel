@@ -1,4 +1,5 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
 #include "kernel/pci.h"
@@ -212,9 +213,16 @@ int driver_manager_probe_loaded_driver(const char* name, DriverLoadedImage* load
         if (device == 0 || find_pci_binding(device) != 0) {
             continue;
         }
+        DriverExecutionToken context_token = {};
+        if (driver_execution_enter(loaded->owner,
+                                   DRIVER_CONTEXT_THREAD_SLEEPABLE,
+                                   &context_token) != DRIVER_LOAD_OK) {
+            return DRIVER_LOAD_CONTEXT_DENIED;
+        }
         driver_manager_set_lifecycle_driver(name);
         uint64_t matched = probe(device);
         driver_manager_set_lifecycle_driver(0);
+        driver_execution_leave(&context_token);
         if (matched != 0) {
             int bind_result = driver_manager_bind_pci(name, device, 0);
             if (bind_result != DRIVER_LOAD_OK) {
