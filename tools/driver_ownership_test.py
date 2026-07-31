@@ -208,6 +208,7 @@ def main() -> int:
             str(ROOT / "kernel/sync/spinlock.cpp"),
             str(ROOT / "kernel/driver/driver_manager.cpp"),
             str(ROOT / "kernel/driver/driver_resource.cpp"),
+            str(ROOT / "kernel/driver/driver_va.cpp"),
             str(ROOT / "kernel/driver/driver_exports.cpp"),
             str(ROOT / "kernel/driver/driver_binding.cpp"),
             str(ROOT / "kernel/driver/driver_irq.cpp"),

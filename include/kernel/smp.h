@@ -58,6 +58,7 @@ int smp_tlb_shootdown(AddressSpace* space,
                       uint64_t operation_token,
                       uint32_t target_mask,
                       uint32_t* acknowledged_mask);
+int smp_kernel_tlb_shootdown(uint64_t address, uint32_t page_count);
 void smp_tlb_shootdown_handler();
 const SmpStartupStats* smp_startup_stats();
 const SmpTimeReference* smp_time_reference();

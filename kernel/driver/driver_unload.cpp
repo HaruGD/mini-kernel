@@ -1,15 +1,18 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
+#include "kernel/smp.h"
 #include "kernel/mm/vm.h"
 #include "kernel/mm/pmm.h"
 
 typedef uint64_t (*DriverLifecycleFn)();
 
-static void free_loaded_image(DriverLoadedImage* loaded) {
+static int free_loaded_image(DriverLoadedImage* loaded) {
     if (loaded == 0) {
-        return;
+        return DRIVER_LOAD_OK;
     }
+    int result = DRIVER_LOAD_OK;
     for (uint32_t i = 0; i < loaded->section_count && i < DRIVER_MAX_LOADED_SECTIONS; i++) {
         if (loaded->sections[i].base != 0) {
             if (loaded->sections[i].page_count == 0) {
@@ -18,12 +21,33 @@ static void free_loaded_image(DriverLoadedImage* loaded) {
                 continue;
             }
             uint64_t base = (uint64_t)(uintptr_t)loaded->sections[i].base;
-            vm_unmap_free_range(base, loaded->sections[i].page_count);
+            DriverVaHandle va = {loaded->sections[i].va_slot,
+                                 loaded->sections[i].va_generation};
+            const uint32_t unmapped =
+                vm_unmap_free_range(base, loaded->sections[i].page_count);
+            if (unmapped != loaded->sections[i].page_count ||
+                !smp_kernel_tlb_shootdown(base,
+                                          loaded->sections[i].page_count)) {
+                driver_image_va_quarantine(loaded->owner, va);
+                result = DRIVER_LOAD_RESOURCE_DENIED;
+            } else {
+                int release_result = driver_resource_release(
+                    loaded->owner, loaded->sections[i].resource,
+                    DRIVER_RESOURCE_IMAGE);
+                if (release_result == DRIVER_LOAD_OK) {
+                    release_result = driver_image_va_release(loaded->owner, va);
+                }
+                if (result == DRIVER_LOAD_OK &&
+                    release_result != DRIVER_LOAD_OK) {
+                    result = release_result;
+                }
+            }
             loaded->sections[i].base = 0;
             loaded->sections[i].page_count = 0;
         }
     }
     delete loaded;
+    return result;
 }
 
 static int call_driver_exit(const DriverRecord* record, DriverLoadedImage* loaded) {
@@ -142,7 +166,13 @@ int driver_manager_unload(const char* name) {
     driver_export_unregister_module(snapshot.name);
     driver_irq_unregister_module(snapshot.name);
     driver_manager_unbind_module(snapshot.name);
-    free_loaded_image(loaded);
+    int free_result = free_loaded_image(loaded);
+    if (free_result != DRIVER_LOAD_OK) {
+        driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);
+        driver_manager_set_last_error(free_result, "unload", snapshot.name,
+                                      "image-quarantined", 0, 0);
+        return free_result;
+    }
     driver_manager_unregister(snapshot.name);
     return DRIVER_LOAD_OK;
 }

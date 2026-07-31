@@ -35,6 +35,8 @@ static SmpTimeReference time_reference;
 static SmpExecutionStats execution_stats;
 static volatile uint32_t scheduler_release_generation = 0;
 static volatile uint64_t reference_lapic_hz = 0;
+static volatile uint64_t kernel_tlb_generation = 0;
+static volatile uint64_t kernel_tlb_operation_token = 0;
 
 #ifndef OS64_HOST_TEST
 extern PIT pit;
@@ -506,9 +508,11 @@ static void flush_loaded_address_space(CpuLocal* local,
                                        int full_flush,
                                        uint64_t generation) {
 #ifndef OS64_HOST_TEST
+    const int kernel_global = identity == 0 && root == 0;
     if (!cpu_local_validate(local) ||
-        local->loaded_address_space_identity != identity ||
-        local->loaded_address_space_root != root) {
+        (!kernel_global &&
+         (local->loaded_address_space_identity != identity ||
+          local->loaded_address_space_root != root))) {
         if (cpu_local_validate(local)) {
             local->tlb_shootdown_stale_count++;
         }
@@ -516,7 +520,7 @@ static void flush_loaded_address_space(CpuLocal* local,
     }
     if (full_flush || page_count == 0 ||
         page_count > ADDRESS_SPACE_TLB_PAGE_LIMIT) {
-        vm_switch_root(root);
+        vm_switch_root(kernel_global ? vm_get_root_phys() : root);
         local->tlb_local_flush_count++;
     } else {
         for (uint32_t page = 0; page < page_count; page++) {
@@ -549,7 +553,7 @@ int smp_tlb_shootdown(AddressSpace* space,
     if (acknowledged_mask != 0) {
         *acknowledged_mask = 0;
     }
-    if (space == 0 || space->root_phys == 0 || generation == 0 ||
+    if ((space != 0 && space->root_phys == 0) || generation == 0 ||
         operation_token == 0) {
         return 0;
     }
@@ -584,8 +588,8 @@ int smp_tlb_shootdown(AddressSpace* space,
     const uint32_t current_bit = 1u << current->logical_id;
     if ((target_mask & current_bit) != 0) {
         flush_loaded_address_space(current,
-                                   space->identity,
-                                   space->root_phys,
+                                   space != 0 ? space->identity : 0,
+                                   space != 0 ? space->root_phys : 0,
                                    address,
                                    page_count,
                                    full_flush,
@@ -623,8 +627,8 @@ int smp_tlb_shootdown(AddressSpace* space,
         if (!success) {
             break;
         }
-        target->tlb_request_identity = space->identity;
-        target->tlb_request_root = space->root_phys;
+        target->tlb_request_identity = space != 0 ? space->identity : 0;
+        target->tlb_request_root = space != 0 ? space->root_phys : 0;
         target->tlb_request_generation = generation;
         target->tlb_request_token = operation_token;
         target->tlb_request_address = address;
@@ -682,6 +686,34 @@ int smp_tlb_shootdown(AddressSpace* space,
     }
     return success && (acknowledged & target_mask) == target_mask;
 #endif
+}
+
+int smp_kernel_tlb_shootdown(uint64_t address, uint32_t page_count) {
+    if (page_count == 0) return 1;
+    uint32_t target_mask = 0;
+    const CpuTopologyStats* topology = cpu_topology_stats();
+    if (topology == 0 || topology->record_count == 0) return 0;
+    for (uint32_t logical_id = 0;
+         logical_id < topology->record_count && logical_id < 32u;
+         logical_id++) {
+        const CpuRecord* record = cpu_record(logical_id);
+        CpuLocal* local = cpu_local_by_id(logical_id);
+        if (record != 0 && local != 0 &&
+            record->lifecycle == CPU_STATE_ONLINE &&
+            __atomic_load_n(&local->online, __ATOMIC_ACQUIRE)) {
+            target_mask |= 1u << logical_id;
+        }
+    }
+    if (target_mask == 0) return 0;
+    const uint64_t generation =
+        __atomic_add_fetch(&kernel_tlb_generation, 1u, __ATOMIC_RELAXED);
+    const uint64_t token =
+        __atomic_add_fetch(&kernel_tlb_operation_token, 1u, __ATOMIC_RELAXED);
+    uint32_t acknowledged = 0;
+    return smp_tlb_shootdown(0, address, page_count, 0,
+                             generation != 0 ? generation : 1u,
+                             token != 0 ? token : 1u,
+                             target_mask, &acknowledged);
 }
 
 void smp_tlb_shootdown_handler() {

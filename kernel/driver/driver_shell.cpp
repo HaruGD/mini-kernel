@@ -1,4 +1,5 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
 #include "fs/vfs.h"
@@ -89,6 +90,16 @@ void command_drivers() {
     print_hex32(resource_stats.active);
     print(" resource_high=");
     print_hex32(resource_stats.high_water);
+    DriverVaStats va_stats;
+    driver_image_va_get_stats(&va_stats);
+    print(" image_va_active=");
+    print_hex32(va_stats.active);
+    print(" image_va_free_pages=");
+    print_hex64(va_stats.free_pages);
+    print(" image_va_largest=");
+    print_hex64(va_stats.largest_free_pages);
+    print(" image_va_quarantine=");
+    print_hex32(va_stats.quarantined);
     print("\n===============");
 }
 

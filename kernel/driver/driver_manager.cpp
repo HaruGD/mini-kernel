@@ -1,5 +1,6 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
+#include "kernel/driver/driver_va.h"
 #include "kernel/kutil64.h"
 
 static DriverRecord g_drivers[DRIVER_MAX_RECORDS];
@@ -37,6 +38,7 @@ void driver_manager_init() {
         clear_driver_record(&g_drivers[i]);
     }
     driver_resource_init();
+    driver_image_va_init();
     driver_manager_binding_init();
     driver_irq_init();
     driver_export_init();

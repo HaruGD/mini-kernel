@@ -1,6 +1,8 @@
 #include "kernel/driver/driver_manager.h"
+#include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
+#include "kernel/smp.h"
 #include "kernel/mm/vm.h"
 #include "kernel/mm/pmm.h"
 
@@ -24,11 +26,6 @@ static const uint32_t DRV_KNOWN_BOOT_MODES =
     DRV_BOOT_RECOVERY;
 
 static const char DRV_LOCAL_TEST_KEY_ID[] = "OS64 local test key";
-
-#define DRIVER_SECTION_MAP_BASE  0x0000000070000000ULL
-#define DRIVER_SECTION_MAP_LIMIT 0x0000000078000000ULL
-
-static uint64_t g_driver_section_next_virtual = DRIVER_SECTION_MAP_BASE;
 
 static int range_inside(uint64_t offset, uint64_t size, uint64_t file_size) {
     if (size == 0) {
@@ -116,28 +113,52 @@ static int relocation_type_supported(uint32_t type) {
     return type == DRV_RELOC_ABS64 || type == DRV_RELOC_REL32;
 }
 
-static void free_section_pages(DriverLoadedSection* section) {
+static int free_section_pages(DriverIdentity owner,
+                              DriverLoadedSection* section) {
     if (section == 0 || section->base == 0) {
-        return;
+        return DRIVER_LOAD_OK;
     }
 
     if (section->page_count == 0) {
         delete[] section->base;
         section->base = 0;
-        return;
+        return DRIVER_LOAD_OK;
     }
 
     uint64_t base = (uint64_t)(uintptr_t)section->base;
-    vm_unmap_free_range(base, section->page_count);
+    DriverVaHandle va = {section->va_slot, section->va_generation};
+    const uint32_t unmapped = vm_unmap_free_range(base, section->page_count);
+    if (unmapped != section->page_count ||
+        !smp_kernel_tlb_shootdown(base, section->page_count)) {
+        driver_image_va_quarantine(owner, va);
+        section->base = 0;
+        section->page_count = 0;
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    }
+    int result = driver_resource_release(owner, section->resource,
+                                         DRIVER_RESOURCE_IMAGE);
+    if (result == DRIVER_LOAD_OK) {
+        result = driver_image_va_release(owner, va);
+    }
 
     section->base = 0;
     section->page_count = 0;
+    section->resource = driver_resource_invalid();
+    section->va_slot = DRIVER_IDENTITY_INVALID_SLOT;
+    section->va_generation = 0;
+    return result;
 }
 
-static uint8_t* allocate_section_pages(uint64_t memory_size, uint32_t* out_page_count) {
+static uint8_t* allocate_section_pages(DriverIdentity owner,
+                                       uint64_t memory_size,
+                                       uint32_t* out_page_count,
+                                       DriverVaHandle* out_va,
+                                       DriverResourceHandle* out_resource) {
     if (out_page_count != 0) {
         *out_page_count = 0;
     }
+    if (out_va != 0) *out_va = driver_image_va_invalid();
+    if (out_resource != 0) *out_resource = driver_resource_invalid();
 
     uint64_t alloc_size = memory_size == 0 ? 1 : memory_size;
     uint64_t page_count64 = align_up_u64(alloc_size, VM_PAGE_SIZE) / VM_PAGE_SIZE;
@@ -145,9 +166,19 @@ static uint8_t* allocate_section_pages(uint64_t memory_size, uint32_t* out_page_
         return 0;
     }
 
-    uint64_t region = align_up_u64(g_driver_section_next_virtual, VM_PAGE_SIZE);
     uint64_t region_size = page_count64 * VM_PAGE_SIZE;
-    if (region + region_size > DRIVER_SECTION_MAP_LIMIT) {
+    DriverVaHandle va;
+    uint64_t region = 0;
+    if (driver_image_va_allocate(owner, (uint32_t)page_count64,
+                                 &va, &region) != DRIVER_LOAD_OK) {
+        return 0;
+    }
+    DriverResourceHandle resource;
+    if (driver_resource_register(owner, driver_device_identity_invalid(),
+                                 DRIVER_RESOURCE_IMAGE, 0, region,
+                                 region_size, "drv-image", &resource) !=
+        DRIVER_LOAD_OK) {
+        driver_image_va_release(owner, va);
         return 0;
     }
 
@@ -156,13 +187,17 @@ static uint8_t* allocate_section_pages(uint64_t memory_size, uint32_t* out_page_
                                   region_size,
                                   VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE,
                                   &mapped_pages)) {
+        smp_kernel_tlb_shootdown(region, (uint32_t)page_count64);
+        driver_resource_release(owner, resource, DRIVER_RESOURCE_IMAGE);
+        driver_image_va_release(owner, va);
         return 0;
     }
 
-    g_driver_section_next_virtual = region + region_size;
     if (out_page_count != 0) {
         *out_page_count = mapped_pages;
     }
+    if (out_va != 0) *out_va = va;
+    if (out_resource != 0) *out_resource = resource;
     return (uint8_t*)(uintptr_t)region;
 }
 
@@ -223,16 +258,22 @@ static const DrvDependency* drv_dependency_at(const uint8_t* image, const DrvHea
     return (const DrvDependency*)(image + header->manifest_offset + sizeof(DrvManifest) + (uint64_t)index * sizeof(DrvDependency));
 }
 
-static void free_loaded_image(DriverLoadedImage* loaded) {
+static int free_loaded_image(DriverLoadedImage* loaded) {
     if (loaded == 0) {
-        return;
+        return DRIVER_LOAD_OK;
     }
+    int result = DRIVER_LOAD_OK;
     for (uint32_t i = 0; i < loaded->section_count && i < DRIVER_MAX_LOADED_SECTIONS; i++) {
         if (loaded->sections[i].base != 0) {
-            free_section_pages(&loaded->sections[i]);
+            int section_result = free_section_pages(loaded->owner,
+                                                    &loaded->sections[i]);
+            if (result == DRIVER_LOAD_OK && section_result != DRIVER_LOAD_OK) {
+                result = section_result;
+            }
         }
     }
     delete loaded;
+    return result;
 }
 
 static int validate_section_ranges(const uint8_t* image, const DrvHeader* header, uint64_t size) {
@@ -565,13 +606,17 @@ int driver_manager_validate_drv_image(const uint8_t* image, uint64_t size) {
     return validate_signature(image, header, size);
 }
 
-static int load_sections(const uint8_t* image, const DrvHeader* header, DriverLoadedImage* loaded) {
+static int load_sections(const uint8_t* image, const DrvHeader* header,
+                         DriverLoadedImage* loaded) {
     loaded->section_count = header->section_count;
     for (uint32_t i = 0; i < header->section_count; i++) {
         const DrvSection* section = drv_section_at(image, header, i);
         uint64_t memory_size = section->memory_size == 0 ? 1 : section->memory_size;
         uint32_t page_count = 0;
-        uint8_t* memory = allocate_section_pages(memory_size, &page_count);
+        DriverVaHandle va;
+        DriverResourceHandle resource;
+        uint8_t* memory = allocate_section_pages(loaded->owner, memory_size,
+                                                 &page_count, &va, &resource);
         if (memory == 0) {
             driver_manager_set_last_error(DRIVER_LOAD_OUT_OF_MEMORY, "section", 0, section->name, i, memory_size);
             return DRIVER_LOAD_OUT_OF_MEMORY;
@@ -586,6 +631,9 @@ static int load_sections(const uint8_t* image, const DrvHeader* header, DriverLo
         loaded->sections[i].size = memory_size;
         loaded->sections[i].page_count = page_count;
         loaded->sections[i].kind = section->kind;
+        loaded->sections[i].resource = resource;
+        loaded->sections[i].va_slot = va.slot;
+        loaded->sections[i].va_generation = va.generation;
         copy_string64(loaded->sections[i].name, sizeof(loaded->sections[i].name), section->name);
     }
     return DRIVER_LOAD_OK;
@@ -894,6 +942,12 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
         return DRIVER_LOAD_OUT_OF_MEMORY;
     }
     bytes_zero((uint8_t*)loaded, sizeof(DriverLoadedImage));
+    loaded->owner = driver_manager_identity_from_name(manifest->name);
+    if (!driver_identity_is_valid(loaded->owner)) {
+        delete loaded;
+        driver_manager_set_state(manifest->name, DRIVER_STATE_FAILED);
+        return DRIVER_LOAD_STALE_IDENTITY;
+    }
 
     int result = load_sections(image, header, loaded);
     if (result == DRIVER_LOAD_OK) {
@@ -940,7 +994,12 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
             driver_manager_set_instance(manifest->name, 0);
             driver_manager_set_state(manifest->name, failure_state_for_result(result));
         }
-        free_loaded_image(loaded);
+        int free_result = free_loaded_image(loaded);
+        if (free_result != DRIVER_LOAD_OK) {
+            driver_manager_set_last_error(free_result, "image-unmap",
+                                          manifest->name, "quarantined",
+                                          0, 0);
+        }
     }
 
     return result;

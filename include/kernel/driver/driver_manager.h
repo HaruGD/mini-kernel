@@ -81,6 +81,8 @@ struct DriverResourceHandle {
     uint32_t generation;
 };
 
+struct DriverVaHandle;
+
 struct DrvManifest;
 struct PCIDeviceInfo;
 
@@ -91,6 +93,9 @@ struct DriverLoadedSection {
     uint64_t size;
     uint32_t page_count;
     uint32_t kind;
+    DriverResourceHandle resource;
+    uint32_t va_slot;
+    uint32_t va_generation;
     char name[16];
 };
 
@@ -108,6 +113,7 @@ struct DriverResolvedDependency {
 };
 
 struct DriverLoadedImage {
+    DriverIdentity owner;
     uint32_t section_count;
     uint32_t import_count;
     uint32_t dependency_count;
