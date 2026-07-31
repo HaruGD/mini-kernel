@@ -127,9 +127,9 @@ static int free_section_pages(DriverIdentity owner,
 
     uint64_t base = (uint64_t)(uintptr_t)section->base;
     DriverVaHandle va = {section->va_slot, section->va_generation};
-    const uint32_t unmapped = vm_unmap_free_range(base, section->page_count);
-    if (unmapped != section->page_count ||
-        !smp_kernel_tlb_shootdown(base, section->page_count)) {
+    const uint32_t unmapped =
+        vm_unmap_free_range_tlb_safe(base, section->page_count);
+    if (unmapped != section->page_count) {
         driver_image_va_quarantine(owner, va);
         section->base = 0;
         section->page_count = 0;

@@ -2,6 +2,9 @@
 
 #include "kernel/mm/arch_vm.h"
 #include "kernel/mm/pmm.h"
+#include "kernel/smp.h"
+
+#define VM_TLB_RETIRE_CHUNK_PAGES 64u
 
 static uint64_t align_down_page(uint64_t value) {
     return value & ~(VM_PAGE_SIZE - 1ULL);
@@ -222,6 +225,42 @@ extern "C" uint32_t vm_unmap_free_range(uint64_t virt, uint32_t page_count) {
         }
     }
     return unmapped;
+}
+
+extern "C" uint32_t vm_unmap_free_range_tlb_safe(uint64_t virt,
+                                                   uint32_t page_count) {
+    const uint64_t begin = align_down_page(virt);
+    uint32_t retired = 0;
+    while (retired < page_count) {
+        uint32_t chunk = page_count - retired;
+        if (chunk > VM_TLB_RETIRE_CHUNK_PAGES) {
+            chunk = VM_TLB_RETIRE_CHUNK_PAGES;
+        }
+        uint64_t physical[VM_TLB_RETIRE_CHUNK_PAGES] = {};
+        uint32_t unmapped = 0;
+        const uint64_t chunk_begin =
+            begin + (uint64_t)retired * VM_PAGE_SIZE;
+        for (; unmapped < chunk; unmapped++) {
+            const uint64_t address =
+                chunk_begin + (uint64_t)unmapped * VM_PAGE_SIZE;
+            physical[unmapped] = vm_get_phys(address) &
+                                 ~(VM_PAGE_SIZE - 1ULL);
+            if (physical[unmapped] == 0 || !vm_unmap_page(address)) {
+                break;
+            }
+        }
+        if (unmapped == 0) break;
+        if (!smp_kernel_tlb_shootdown(chunk_begin, unmapped)) {
+            /* The physical pages and VA stay quarantined after failed ack. */
+            break;
+        }
+        for (uint32_t page = 0; page < unmapped; page++) {
+            pmm_free_block((void*)(uintptr_t)physical[page]);
+        }
+        retired += unmapped;
+        if (unmapped != chunk) break;
+    }
+    return retired;
 }
 
 extern "C" uint32_t vm_unmap_free_range_in_root(uint64_t root_phys, uint64_t virt, uint32_t page_count) {

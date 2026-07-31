@@ -24,10 +24,9 @@ static int free_loaded_image(DriverLoadedImage* loaded) {
             DriverVaHandle va = {loaded->sections[i].va_slot,
                                  loaded->sections[i].va_generation};
             const uint32_t unmapped =
-                vm_unmap_free_range(base, loaded->sections[i].page_count);
-            if (unmapped != loaded->sections[i].page_count ||
-                !smp_kernel_tlb_shootdown(base,
-                                          loaded->sections[i].page_count)) {
+                vm_unmap_free_range_tlb_safe(
+                    base, loaded->sections[i].page_count);
+            if (unmapped != loaded->sections[i].page_count) {
                 driver_image_va_quarantine(loaded->owner, va);
                 result = DRIVER_LOAD_RESOURCE_DENIED;
             } else {

@@ -572,7 +572,7 @@ all32:
 ./build/pmm.o: ./kernel/mm/pmm.cpp ./include/kernel/mm/pmm.h ./include/kernel/boot_info.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/vm.o: ./kernel/mm/vm.cpp ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h ./include/kernel/mm/arch_vm.h
+./build/vm.o: ./kernel/mm/vm.cpp ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h ./include/kernel/mm/arch_vm.h ./include/kernel/smp.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/address_space.o: ./kernel/mm/address_space.cpp ./include/kernel/mm/address_space.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h

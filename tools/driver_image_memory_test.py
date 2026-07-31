@@ -31,16 +31,19 @@ def main() -> int:
     require(loader, "VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE", "RW/NX data flags")
     require(smp, "const int kernel_global = identity == 0 && root == 0;",
             "kernel-global TLB request")
-    require_order(loader, ["vm_unmap_free_range(base, section->page_count)",
-                           "smp_kernel_tlb_shootdown(base, section->page_count)",
+    require_order(loader, ["vm_unmap_free_range_tlb_safe(base, section->page_count)",
                            "driver_resource_release(owner, section->resource",
                            "driver_image_va_release(owner, va)"],
                   "loader rollback")
-    require_order(unload, ["vm_unmap_free_range(base, loaded->sections[i].page_count)",
-                           "smp_kernel_tlb_shootdown(base,",
+    require_order(unload, ["vm_unmap_free_range_tlb_safe(",
                            "driver_resource_release(",
                            "driver_image_va_release(loaded->owner, va)"],
                   "unload")
+    vm = (ROOT / "kernel/mm/vm.cpp").read_text(encoding="utf-8")
+    require_order(vm, ["vm_unmap_page(address)",
+                       "smp_kernel_tlb_shootdown(chunk_begin, unmapped)",
+                       "pmm_free_block((void*)(uintptr_t)physical[page])"],
+                  "deferred physical-page retirement")
     print("driver image W^X, guard, rollback, and TLB reuse contract OK")
     return 0
 
