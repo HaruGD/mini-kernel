@@ -21,7 +21,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | --- | --- | --- | --- | --- | --- |
 | 5A: Desktop session and layer policy | Planned | - | - | - | P5-R01, P5-R02 |
 | 5B: Pointer and interactive windows | Planned | - | - | - | P5-R03, P5-R04 |
-| 5C: Graphics, fonts, and widget toolkit | Planned | - | - | - | P5-R05, P5-R06 |
+| 5C: Graphics, fonts, images, and widget toolkit | Planned | - | - | - | P5-R05, P5-R06 |
 | 5D: GUI terminal | Planned | - | - | - | P5-R07 |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |

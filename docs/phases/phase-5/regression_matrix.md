@@ -13,7 +13,7 @@ empty target.
 | P5-R02 | 5A | Desktop, normal, panel, and overlay layers enforce exact authority and z-order. | `make test-desktop-layers` | Ordinary clients cannot select privileged layers; clipping, overlap, teardown, and session rollover preserve order and resources. | Planned |
 | P5-R03 | 5B | Pointer input has one owner, bounded coordinates, temporal focus, and capture. | `make test-pointer-routing` | Motion/button/wheel, screen edges, click focus, overlapping hit tests, capture loss, stale targets, and queue overflow are correct. | Planned |
 | P5-R04 | 5B | Interactive decorations perform atomic, server-authoritative window operations. | `make test-window-interaction` | Drag, edge/corner resize, close, minimize, maximize, restore, cancellation, and client failure never expose partial geometry. | Planned |
-| P5-R05 | 5C | Alpha, font, clipping, layout, and damage primitives are bounded and deterministic. | `make test-ui-rendering` | Golden pixel/geometry cases, malformed UTF-8, clipping edges, overflow, resize, and full-repaint fallback pass. | Planned |
+| P5-R05 | 5C | Alpha, font, native/BMP/PNG image, clipping, scaling, layout, and damage primitives are bounded and deterministic. | `make test-image-codecs`; `make test-ui-rendering` | Positive and malformed image fixtures, decode/work budgets, golden pixels, alpha/scaling, malformed UTF-8, clipping edges, overflow, resize, and full-repaint fallback pass. | Planned |
 | P5-R06 | 5C | Public widgets preserve input, focus, state, and cleanup contracts. | `make test-widget-sdk` | Restricted clients operate every baseline widget through public SDKs with no raw display/input access or resource drift. | Planned |
 | P5-R07 | 5D | A GUI terminal owns a bounded terminal stream and one child-shell lifecycle. | `make test-gui-terminal` | Command input/output, ANSI baseline, scrollback, resize, backpressure, hangup, child fault, and repeated teardown pass. | Planned |
 | P5-R08 | 5E | The desktop shell discovers, launches, activates, minimizes, and restores applications. | `make test-desktop-shell` | Background/panel persistence, launcher/task state, shortcuts, desktop restart, and surviving applications remain coherent. | Planned |
@@ -44,7 +44,11 @@ resource, lock, queue, or ownership drift blocks completion.
 
 - stale session/window/process/thread/handle generations;
 - unauthorized layer, focus, capture, settings, power, and file operations;
-- pointer coordinate, geometry, stride, alpha, text, layout, and size overflow;
+- pointer coordinate, geometry, surface/image stride, alpha, text, layout, and
+  size overflow;
+- truncated/oversized image headers, unsupported BMP/PNG variants, invalid PNG
+  chunk/CRC/filter/DEFLATE streams, decompression bombs, partial publication,
+  and image-buffer ownership errors;
 - queue full, partial IPC transaction, peer exit, restart exhaustion, and
   dependency failure;
 - invalid UTF-8, terminal control sequence, path, directory entry, settings
@@ -58,8 +62,9 @@ resource, lock, queue, or ownership drift blocks completion.
 ## Evidence Rules
 
 - host tests may close parsers and isolated state machines, but QEMU execution
-  is mandatory for pointer delivery, display pixels, session recovery, PTY
-  scheduling, file operations, SMP races, and shutdown.
+  is mandatory for decoded image presentation, pointer delivery, display
+  pixels, session recovery, PTY scheduling, file operations, SMP races, and
+  shutdown.
 - each focused row must pass independently before the aggregate can count.
 - screenshots may supplement evidence but cannot replace exact state, pixel,
   lifecycle, and resource assertions.

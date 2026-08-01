@@ -28,7 +28,7 @@ into the kernel.
 ```text
 5A session and layer policy
   -> 5B pointer and interactive windows
-  -> 5C graphics, fonts, and widget toolkit
+  -> 5C graphics, fonts, images, and widget toolkit
   -> 5D GUI terminal
   -> 5E desktop shell
   -> 5F file manager
@@ -62,7 +62,8 @@ Deliver:
 
 - an initial PS/2 mouse path with bounded motion, buttons, and wheel events;
 - pointer coordinate accumulation and screen-edge clamping;
-- a compositor cursor plane or equivalent topmost bounded cursor path;
+- a compositor cursor plane or equivalent topmost bounded cursor path, using a
+  built-in validated native image asset before the general decoder is ready;
 - top-to-bottom hit testing with hidden, clipped, and destroyed-window rules;
 - click focus, raise, pointer capture, and capture cancellation on teardown;
 - server-authoritative title bars, close/minimize/maximize controls, drag, and
@@ -74,13 +75,25 @@ duplicate delivery, out-of-bounds geometry, stuck capture, or resource drift.
 
 USB HID remains part of the parallel xHCI hardware track.
 
-## 5C: Graphics, Fonts, And Widget Toolkit
+## 5C: Graphics, Fonts, Images, And Widget Toolkit
 
 Deliver:
 
 - bounded source-over alpha blending and clipping;
 - a built-in bitmap font first, with UTF-8 decoding and replacement behavior
   but no initial complex-script shaping requirement;
+- one versioned native `.osimg` format with bounded dimensions, explicit pixel
+  format, stride, payload length, and premultiplied-alpha rules;
+- a host build tool that converts project PNG assets to `.osimg`, so boot and
+  essential desktop artwork do not depend on a complex runtime decoder;
+- a user-space `libimage` loader/decoder boundary that reads through VFS and
+  never parses untrusted image data in the kernel, `displayd`, or `windowd`;
+- checked uncompressed 24/32-bit BMP decoding followed by bounded PNG decoding
+  with chunk, CRC, DEFLATE output, filter, dimension, stride, allocation, and
+  total-work limits;
+- common decoded BGRA/premultiplied-alpha image buffers and draw APIs for
+  source rectangles, clipping, nearest-neighbor scaling, optional bounded
+  bilinear scaling, and damage calculation;
 - shared drawing primitives, theme values, and damage-aware repaint;
 - labels, buttons, text fields, check boxes, lists, menus, scroll containers,
   and simple horizontal/vertical layout;
@@ -89,9 +102,16 @@ Deliver:
 - a public user library rather than application copies of private rendering
   code.
 
+Image parsing and rendering must reject truncated headers, unsupported format
+variants, integer overflow, decompression expansion beyond declared budgets,
+invalid stride/payload combinations, and partial decode without publishing an
+image. The caller retains ownership of input bytes; the returned decoded image
+has one explicit owner and destructor.
+
 Exit gate: a restricted sample application builds only against public SDKs,
-renders and operates every baseline widget, resizes, and exits with exact
-surface, handle, heap, and process cleanup.
+loads native/BMP/PNG positive fixtures, rejects malformed fixtures, renders
+scaled and alpha-composited images, operates every baseline widget, resizes,
+and exits with exact surface, image-buffer, handle, heap, and process cleanup.
 
 ## 5D: GUI Terminal
 
@@ -138,6 +158,8 @@ Deliver:
 
 - `desktopd` background and panel surfaces;
 - application launcher and installed-application discovery;
+- wallpaper plus launcher, task, status, and application icons loaded through
+  the Phase 5C image APIs;
 - task list, active-window indication, activation, minimize, and restore;
 - clock and bounded system status;
 - keyboard window switching and secure, reserved global shortcuts;
@@ -158,8 +180,9 @@ Deliver the required SDK/VFS contracts first:
 - file-open dispatch and application association lookup.
 
 Then deliver `files.elf` with path navigation, list/icon presentation,
-selection, file operations, progress/error dialogs, and user folders such as
-Desktop, Documents, Downloads, and Pictures.
+selection, file operations, progress/error dialogs, bounded image preview and
+thumbnail generation through `libimage`, and user folders such as Desktop,
+Documents, Downloads, and Pictures.
 
 Exit gate: normal, empty, large, malformed, disappearing, read-only, and
 failure-injected directories remain responsive and preserve filesystem and
@@ -224,6 +247,8 @@ history record immutable completion evidence.
 
 - separate compositor process and GPU-accelerated composition;
 - advanced animation, shadows, color management, and HDR;
+- JPEG, GIF, WebP, SVG, animated-image, and color-profile decoding beyond the
+  native/BMP/PNG baseline;
 - complex-script shaping, full IME, accessibility, and localization;
 - clipboard and drag-and-drop beyond any explicitly added bounded baseline;
 - multi-user login and remote sessions;

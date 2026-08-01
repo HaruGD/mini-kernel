@@ -37,7 +37,8 @@ The current stack intentionally does not yet provide:
 
 - pointer hardware, cursor composition, hit testing, or capture;
 - interactive decorations, title bars, drag, or pointer resize;
-- alpha composition, general fonts, widgets, layout, or themes;
+- alpha composition, general fonts, image loading/decoding, widgets, layout,
+  or themes;
 - a session supervisor or persistent desktop shell;
 - a GUI terminal or PTY-style terminal transport;
 - a file manager or the required directory/stat/mutation VFS SDK;

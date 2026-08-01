@@ -32,6 +32,7 @@ which the user can:
 
 - move, resize, focus, minimize, maximize, and close windows with a pointer;
 - launch applications from a desktop panel and application launcher;
+- display validated image assets for cursors, icons, controls, and wallpaper;
 - use a graphical terminal backed by a normal user shell;
 - browse and modify files with a graphical file manager;
 - change bounded system and desktop settings and request shutdown or reboot;
@@ -57,8 +58,9 @@ kernel and drivers
 
 Phase 5 includes a native desktop foundation, not a finished consumer OS. It
 does not require a separate compositor process, GPU acceleration, full Unicode
-shaping, a production package manager, multi-user login, networking, audio,
-USB, native GPU drivers, or the future Windows GUI domain.
+shaping, JPEG/WebP/GIF/SVG coverage, a production package manager, multi-user
+login, networking, audio, USB, native GPU drivers, or the future Windows GUI
+domain.
 
 The parallel hardware roadmap may advance independently. A production file
 manager eventually needs persistent storage hardware, but its UI and VFS

@@ -281,7 +281,8 @@ Planned work:
 - [ ] 5A: Desktop session supervision and privileged layer policy
 - [ ] 5B: Pointer routing, cursor, hit testing, capture, and interactive window
   decorations
-- [ ] 5C: Alpha, fonts, drawing primitives, layout, and baseline widget toolkit
+- [ ] 5C: Alpha, fonts, native/BMP/PNG image assets and user-space decoding,
+  drawing primitives, layout, and baseline widget toolkit
 - [ ] 5D: GUI terminal with a bounded PTY-like user-shell transport
 - [ ] Memory scalability gate: replace the fixed 512 MiB PMM ceiling before
   file-manager and multi-application closure work
