@@ -58,6 +58,34 @@ typedef struct os64_driver_dma_buffer {
 
 #define OS64_DMA_TRUSTED_DIRECT 1u
 #define OS64_DMA_REQUIRE_ISOLATION 2u
+#define OS64_DMA_TO_DEVICE 1u
+#define OS64_DMA_FROM_DEVICE 2u
+#define OS64_DMA_BIDIRECTIONAL 3u
+#define OS64_DMA_MAX_SOURCES 16u
+#define OS64_DMA_MAX_SEGMENTS 32u
+
+typedef struct os64_driver_dma_mapping_handle {
+    os64_u32 slot;
+    os64_u32 generation;
+} os64_driver_dma_mapping_handle;
+
+typedef struct os64_driver_dma_source {
+    os64_driver_allocation_handle allocation;
+    os64_u64 offset;
+    os64_u64 length;
+} os64_driver_dma_source;
+
+typedef struct os64_driver_dma_segment {
+    os64_driver_dma_address address;
+    os64_u64 length;
+} os64_driver_dma_segment;
+
+typedef struct os64_driver_dma_mapping {
+    os64_driver_dma_mapping_handle handle;
+    os64_u32 segment_count;
+    os64_u32 direction;
+    os64_driver_dma_segment segments[OS64_DMA_MAX_SEGMENTS];
+} os64_driver_dma_mapping;
 
 #define OS64_MMIO_DEVICE_UC 1u
 #define OS64_MMIO_WRITE_COMBINING 2u
@@ -134,6 +162,10 @@ typedef os64_i64 (*os64_dma_set_mask_fn)(os64_driver_device_handle device, os64_
 typedef os64_i64 (*os64_dma_enable_bus_mastering_fn)(os64_driver_device_handle device);
 typedef os64_i64 (*os64_dma_alloc_coherent_fn)(os64_driver_device_handle device, os64_u64 size, os64_u64 alignment, os64_u64 boundary, os64_driver_dma_buffer* out);
 typedef os64_i64 (*os64_dma_free_coherent_fn)(os64_driver_dma_handle handle);
+typedef os64_i64 (*os64_dma_map_buffer_fn)(os64_driver_device_handle device, os64_driver_allocation_handle allocation, os64_u64 offset, os64_u64 length, os64_u64 direction, os64_driver_dma_mapping* out);
+typedef os64_i64 (*os64_dma_map_sg_fn)(os64_driver_device_handle device, const os64_driver_dma_source* sources, os64_u64 source_count, os64_u64 direction, os64_driver_dma_mapping* out);
+typedef os64_i64 (*os64_dma_sync_fn)(os64_driver_dma_mapping_handle handle);
+typedef os64_i64 (*os64_dma_unmap_fn)(os64_driver_dma_mapping_handle handle);
 typedef os64_u64 (*os64_irq_handler_fn)(os64_u64 irq);
 typedef os64_i64 (*os64_irq_register_fn)(os64_u64 irq, os64_irq_handler_fn handler);
 typedef os64_i64 (*os64_irq_unregister_fn)(os64_u64 irq, os64_irq_handler_fn handler);
@@ -176,6 +208,11 @@ extern os64_dma_set_mask_fn kernel__dma_set_mask;
 extern os64_dma_enable_bus_mastering_fn kernel__dma_enable_bus_mastering;
 extern os64_dma_alloc_coherent_fn kernel__dma_alloc_coherent;
 extern os64_dma_free_coherent_fn kernel__dma_free_coherent;
+extern os64_dma_map_buffer_fn kernel__dma_map_buffer;
+extern os64_dma_map_sg_fn kernel__dma_map_sg;
+extern os64_dma_sync_fn kernel__dma_sync_for_cpu;
+extern os64_dma_sync_fn kernel__dma_sync_for_device;
+extern os64_dma_unmap_fn kernel__dma_unmap;
 extern os64_irq_register_fn kernel__irq_register;
 extern os64_irq_unregister_fn kernel__irq_unregister;
 extern os64_vfs_open_fn kernel__vfs_open;
@@ -303,6 +340,26 @@ static inline os64_i64 os64_dma_alloc_coherent(os64_driver_device_handle device,
 
 static inline os64_i64 os64_dma_free_coherent(os64_driver_dma_handle handle) {
     return kernel__dma_free_coherent(handle);
+}
+
+static inline os64_i64 os64_dma_map_buffer(os64_driver_device_handle device, os64_driver_allocation_handle allocation, os64_u64 offset, os64_u64 length, os64_u64 direction, os64_driver_dma_mapping* out) {
+    return kernel__dma_map_buffer(device, allocation, offset, length, direction, out);
+}
+
+static inline os64_i64 os64_dma_map_sg(os64_driver_device_handle device, const os64_driver_dma_source* sources, os64_u64 source_count, os64_u64 direction, os64_driver_dma_mapping* out) {
+    return kernel__dma_map_sg(device, sources, source_count, direction, out);
+}
+
+static inline os64_i64 os64_dma_sync_for_cpu(os64_driver_dma_mapping_handle handle) {
+    return kernel__dma_sync_for_cpu(handle);
+}
+
+static inline os64_i64 os64_dma_sync_for_device(os64_driver_dma_mapping_handle handle) {
+    return kernel__dma_sync_for_device(handle);
+}
+
+static inline os64_i64 os64_dma_unmap(os64_driver_dma_mapping_handle handle) {
+    return kernel__dma_unmap(handle);
 }
 
 static inline os64_i64 os64_irq_register(os64_u64 irq, os64_irq_handler_fn handler) {

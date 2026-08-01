@@ -42,8 +42,24 @@ struct DmaBufferRecord {
     uint64_t charged_size;
 };
 
+struct DmaMappingRecord {
+    uint8_t active;
+    uint8_t direction;
+    uint8_t sync_state;
+    uint8_t source_count;
+    uint32_t generation;
+    DriverIdentity owner;
+    DriverDeviceIdentity device;
+    DriverResourceHandle resource;
+    uint32_t domain_slot;
+    uint32_t segment_count;
+    DriverAllocationHandle sources[DRIVER_DMA_MAX_SOURCES];
+    DriverDmaSegment segments[DRIVER_DMA_MAX_SEGMENTS];
+};
+
 static DmaDomainRecord g_domains[DRIVER_MAX_DMA_DOMAINS];
 static DmaBufferRecord g_buffers[DRIVER_MAX_DMA_BUFFERS];
+static DmaMappingRecord g_mappings[DRIVER_MAX_DMA_MAPPINGS];
 static uint64_t g_dma_va[(DMA_ARENA_PAGES + 63u) / 64u];
 static DriverDmaStats g_dma_stats;
 static KernelSpinlock g_dma_lock =
@@ -132,6 +148,10 @@ void driver_dma_init() {
     for (uint32_t i = 0; i < DRIVER_MAX_DMA_BUFFERS; i++) {
         uint32_t generation = g_buffers[i].generation;
         g_buffers[i] = {}; g_buffers[i].generation = generation;
+    }
+    for (uint32_t i = 0; i < DRIVER_MAX_DMA_MAPPINGS; i++) {
+        uint32_t generation = g_mappings[i].generation;
+        g_mappings[i] = {}; g_mappings[i].generation = generation;
     }
     for (uint32_t i = 0; i < (DMA_ARENA_PAGES + 63u) / 64u; i++)
         g_dma_va[i] = 0;
@@ -416,6 +436,234 @@ int driver_dma_free_coherent(DriverIdentity owner, DriverDmaHandle handle) {
     return DRIVER_LOAD_OK;
 }
 
+static int valid_direction(uint32_t direction) {
+    return direction == DRIVER_DMA_TO_DEVICE ||
+           direction == DRIVER_DMA_FROM_DEVICE ||
+           direction == DRIVER_DMA_BIDIRECTIONAL;
+}
+
+static int append_range_segments(DriverAllocationHandle allocation,
+                                 const DriverPinnedAllocation* pinned,
+                                 uint64_t mask, DriverDmaSegment* segments,
+                                 uint32_t* segment_count) {
+    uint64_t remaining = pinned->size;
+    uintptr_t cursor = (uintptr_t)pinned->address;
+    while (remaining != 0) {
+        const uint64_t page_offset = cursor & (VM_PAGE_SIZE - 1u);
+        uint64_t chunk = VM_PAGE_SIZE - page_offset;
+        if (chunk > remaining) chunk = remaining;
+        uint64_t physical;
+#ifdef OS64_DRIVER_HOST_TEST
+        const uint64_t page = ((uint64_t)cursor / VM_PAGE_SIZE) & 0xFFFFu;
+        physical = 0x00400000ULL +
+            (uint64_t)allocation.slot * 0x40000ULL + page * 0x2000ULL +
+            page_offset;
+#else
+        physical = vm_get_phys((uint64_t)cursor);
+#endif
+        if (physical == 0 || physical > mask || chunk - 1u > mask - physical)
+            return DRIVER_LOAD_DMA_MASK;
+        if (*segment_count != 0) {
+            DriverDmaSegment* previous = &segments[*segment_count - 1u];
+            if (previous->address.value + previous->length == physical) {
+                previous->length += chunk;
+                cursor += chunk; remaining -= chunk;
+                continue;
+            }
+        }
+        if (*segment_count >= DRIVER_DMA_MAX_SEGMENTS)
+            return DRIVER_LOAD_NO_SLOT;
+        segments[*segment_count].address = {physical};
+        segments[*segment_count].length = chunk;
+        (*segment_count)++;
+        cursor += chunk;
+        remaining -= chunk;
+    }
+    return DRIVER_LOAD_OK;
+}
+
+int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
+                      const DriverDmaSource* sources, uint32_t source_count,
+                      uint32_t direction, DriverDmaMapping* out) {
+    if (out) *out = {};
+    if (!out || !sources || source_count == 0 ||
+        source_count > DRIVER_DMA_MAX_SOURCES || !valid_direction(direction))
+        return DRIVER_LOAD_BAD_HEADER;
+    DmaDomainRecord domain_snapshot;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&g_dma_lock, &token))
+        return DRIVER_LOAD_DMA_DENIED;
+    DmaDomainRecord* domain = domain_for(owner, device);
+    if (!domain || domain->mask_bits == 0) {
+        kernel_spinlock_release(&g_dma_lock, &token);
+        return DRIVER_LOAD_DMA_DENIED;
+    }
+    domain_snapshot = *domain;
+    kernel_spinlock_release(&g_dma_lock, &token);
+
+    DriverPinnedAllocation pinned[DRIVER_DMA_MAX_SOURCES] = {};
+    DriverDmaSegment segments[DRIVER_DMA_MAX_SEGMENTS] = {};
+    uint32_t pinned_count = 0;
+    uint32_t segment_count = 0;
+    int result = DRIVER_LOAD_OK;
+    for (; pinned_count < source_count; pinned_count++) {
+        const DriverDmaSource* source = &sources[pinned_count];
+        result = driver_allocation_pin(owner, source->allocation,
+                                       source->offset, source->length,
+                                       &pinned[pinned_count]);
+        if (result != DRIVER_LOAD_OK) break;
+        result = append_range_segments(source->allocation,
+                                       &pinned[pinned_count],
+                                       mask_limit(domain_snapshot.mask_bits),
+                                       segments, &segment_count);
+        if (result != DRIVER_LOAD_OK) { pinned_count++; break; }
+    }
+    if (result != DRIVER_LOAD_OK) {
+        while (pinned_count != 0) {
+            pinned_count--;
+            driver_allocation_unpin(owner, sources[pinned_count].allocation);
+        }
+        if (result == DRIVER_LOAD_NO_SLOT) g_dma_stats.segment_overflow++;
+        else if (result == DRIVER_LOAD_DMA_MASK) g_dma_stats.mask_rejections++;
+        return result;
+    }
+
+    if (!kernel_spinlock_acquire(&g_dma_lock, &token)) {
+        for (uint32_t i = 0; i < source_count; i++)
+            driver_allocation_unpin(owner, sources[i].allocation);
+        return DRIVER_LOAD_DMA_DENIED;
+    }
+    domain = domain_for(owner, device);
+    uint32_t slot = DRIVER_MAX_DMA_MAPPINGS;
+    for (uint32_t i = 0; i < DRIVER_MAX_DMA_MAPPINGS; i++)
+        if (!g_mappings[i].active) { slot = i; break; }
+    if (!domain || slot == DRIVER_MAX_DMA_MAPPINGS) {
+        kernel_spinlock_release(&g_dma_lock, &token);
+        for (uint32_t i = 0; i < source_count; i++)
+            driver_allocation_unpin(owner, sources[i].allocation);
+        return DRIVER_LOAD_NO_SLOT;
+    }
+    DmaMappingRecord* mapping = &g_mappings[slot];
+    uint32_t generation = next_generation(mapping->generation);
+    *mapping = {};
+    mapping->generation = generation;
+    mapping->owner = owner; mapping->device = device;
+    mapping->direction = (uint8_t)direction;
+    mapping->sync_state = 1;
+    mapping->source_count = (uint8_t)source_count;
+    mapping->domain_slot = (uint32_t)(domain - g_domains);
+    mapping->segment_count = segment_count;
+    uint64_t total = 0;
+    for (uint32_t i = 0; i < source_count; i++) {
+        mapping->sources[i] = sources[i].allocation;
+        total += sources[i].length;
+    }
+    for (uint32_t i = 0; i < segment_count; i++)
+        mapping->segments[i] = segments[i];
+    int rr = driver_resource_register(owner, device, DRIVER_RESOURCE_DMA,
+                                      direction, slot, total,
+                                      "dma_stream", &mapping->resource);
+    if (rr != DRIVER_LOAD_OK) {
+        *mapping = {}; mapping->generation = generation;
+        kernel_spinlock_release(&g_dma_lock, &token);
+        for (uint32_t i = 0; i < source_count; i++)
+            driver_allocation_unpin(owner, sources[i].allocation);
+        return rr;
+    }
+    mapping->active = 1;
+    domain->mapping_count++;
+    g_dma_stats.streaming_mappings++;
+    g_dma_stats.pinned_sources += source_count;
+    g_dma_stats.streaming_maps++;
+    out->handle = {slot, generation};
+    out->segment_count = segment_count; out->direction = direction;
+    for (uint32_t i = 0; i < segment_count; i++) out->segments[i] = segments[i];
+    kernel_spinlock_release(&g_dma_lock, &token);
+    return DRIVER_LOAD_OK;
+}
+
+int driver_dma_map_buffer(DriverIdentity owner, DriverDeviceIdentity device,
+                          DriverAllocationHandle allocation, uint64_t offset,
+                          uint64_t length, uint32_t direction,
+                          DriverDmaMapping* out) {
+    DriverDmaSource source = {allocation, offset, length};
+    return driver_dma_map_sg(owner, device, &source, 1, direction, out);
+}
+
+static DmaMappingRecord* mapping_for(DriverIdentity owner,
+                                     DriverDmaMappingHandle handle) {
+    if (handle.slot >= DRIVER_MAX_DMA_MAPPINGS || handle.generation == 0) return 0;
+    DmaMappingRecord* mapping = &g_mappings[handle.slot];
+    if (!mapping->active || mapping->generation != handle.generation ||
+        !driver_identity_equal(mapping->owner, owner)) return 0;
+    return mapping;
+}
+
+int driver_dma_sync_for_cpu(DriverIdentity owner,
+                            DriverDmaMappingHandle handle) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&g_dma_lock, &token)) return DRIVER_LOAD_DMA_DENIED;
+    DmaMappingRecord* mapping = mapping_for(owner, handle);
+    if (!mapping || mapping->direction == DRIVER_DMA_TO_DEVICE ||
+        mapping->sync_state != 1) {
+        g_dma_stats.sync_rejections++;
+        kernel_spinlock_release(&g_dma_lock, &token);
+        return DRIVER_LOAD_DMA_SYNC;
+    }
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    mapping->sync_state = 2;
+    g_dma_stats.sync_for_cpu++;
+    kernel_spinlock_release(&g_dma_lock, &token);
+    return DRIVER_LOAD_OK;
+}
+
+int driver_dma_sync_for_device(DriverIdentity owner,
+                               DriverDmaMappingHandle handle) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&g_dma_lock, &token)) return DRIVER_LOAD_DMA_DENIED;
+    DmaMappingRecord* mapping = mapping_for(owner, handle);
+    if (!mapping || mapping->sync_state != 2) {
+        g_dma_stats.sync_rejections++;
+        kernel_spinlock_release(&g_dma_lock, &token);
+        return DRIVER_LOAD_DMA_SYNC;
+    }
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    mapping->sync_state = 1;
+    g_dma_stats.sync_for_device++;
+    kernel_spinlock_release(&g_dma_lock, &token);
+    return DRIVER_LOAD_OK;
+}
+
+int driver_dma_unmap(DriverIdentity owner, DriverDmaMappingHandle handle) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&g_dma_lock, &token)) return DRIVER_LOAD_DMA_DENIED;
+    DmaMappingRecord* mapping = mapping_for(owner, handle);
+    if (!mapping) {
+        g_dma_stats.stale_rejections++;
+        kernel_spinlock_release(&g_dma_lock, &token);
+        return DRIVER_LOAD_DMA_DENIED;
+    }
+    if (mapping->direction != DRIVER_DMA_TO_DEVICE && mapping->sync_state != 2) {
+        g_dma_stats.sync_rejections++;
+        kernel_spinlock_release(&g_dma_lock, &token);
+        return DRIVER_LOAD_DMA_SYNC;
+    }
+    DmaMappingRecord snapshot = *mapping;
+    mapping->active = 0;
+    DmaDomainRecord* domain = &g_domains[snapshot.domain_slot];
+    if (domain->mapping_count) domain->mapping_count--;
+    g_dma_stats.streaming_mappings--;
+    g_dma_stats.pinned_sources -= snapshot.source_count;
+    g_dma_stats.streaming_unmaps++;
+    uint32_t generation = mapping->generation;
+    *mapping = {}; mapping->generation = generation;
+    kernel_spinlock_release(&g_dma_lock, &token);
+    driver_resource_release(owner, snapshot.resource, DRIVER_RESOURCE_DMA);
+    for (uint32_t i = 0; i < snapshot.source_count; i++)
+        driver_allocation_unpin(owner, snapshot.sources[i]);
+    return DRIVER_LOAD_OK;
+}
+
 static int current_owner(DriverIdentity* out) {
     DriverExecutionContext context;
     if (!driver_execution_current(&context) ||
@@ -450,9 +698,57 @@ int driver_dma_free_coherent_current(DriverDmaHandle handle) {
     DriverIdentity owner; return current_owner(&owner) ?
         driver_dma_free_coherent(owner, handle) : DRIVER_LOAD_CONTEXT_DENIED;
 }
+int driver_dma_map_buffer_current(DriverDeviceIdentity device,
+                                  DriverAllocationHandle allocation,
+                                  uint64_t offset, uint64_t length,
+                                  uint32_t direction, DriverDmaMapping* out) {
+    DriverIdentity owner; return current_owner(&owner) ?
+        driver_dma_map_buffer(owner, device, allocation, offset, length,
+                              direction, out) : DRIVER_LOAD_CONTEXT_DENIED;
+}
+int driver_dma_map_sg_current(DriverDeviceIdentity device,
+                              const DriverDmaSource* sources,
+                              uint32_t source_count, uint32_t direction,
+                              DriverDmaMapping* out) {
+    DriverIdentity owner; return current_owner(&owner) ?
+        driver_dma_map_sg(owner, device, sources, source_count, direction, out) :
+        DRIVER_LOAD_CONTEXT_DENIED;
+}
+int driver_dma_sync_for_cpu_current(DriverDmaMappingHandle handle) {
+    DriverIdentity owner; return current_owner(&owner) ?
+        driver_dma_sync_for_cpu(owner, handle) : DRIVER_LOAD_CONTEXT_DENIED;
+}
+int driver_dma_sync_for_device_current(DriverDmaMappingHandle handle) {
+    DriverIdentity owner; return current_owner(&owner) ?
+        driver_dma_sync_for_device(owner, handle) : DRIVER_LOAD_CONTEXT_DENIED;
+}
+int driver_dma_unmap_current(DriverDmaMappingHandle handle) {
+    DriverIdentity owner; return current_owner(&owner) ?
+        driver_dma_unmap(owner, handle) : DRIVER_LOAD_CONTEXT_DENIED;
+}
 
 uint32_t driver_dma_release_owner(DriverIdentity owner) {
     uint32_t released = 0;
+    for (;;) {
+        DriverDmaMappingHandle handle = {DRIVER_IDENTITY_INVALID_SLOT, 0};
+        uint32_t direction = 0;
+        KernelSpinlockToken token;
+        if (!kernel_spinlock_acquire(&g_dma_lock, &token)) break;
+        for (uint32_t i = 0; i < DRIVER_MAX_DMA_MAPPINGS; i++) {
+            if (g_mappings[i].active &&
+                driver_identity_equal(g_mappings[i].owner, owner)) {
+                handle = {i, g_mappings[i].generation};
+                direction = g_mappings[i].direction;
+                break;
+            }
+        }
+        kernel_spinlock_release(&g_dma_lock, &token);
+        if (handle.slot == DRIVER_IDENTITY_INVALID_SLOT) break;
+        if (direction != DRIVER_DMA_TO_DEVICE)
+            driver_dma_sync_for_cpu(owner, handle);
+        if (driver_dma_unmap(owner, handle) != DRIVER_LOAD_OK) break;
+        released++;
+    }
     for (;;) {
         DriverDmaHandle handle = driver_dma_invalid();
         KernelSpinlockToken token;

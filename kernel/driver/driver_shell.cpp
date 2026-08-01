@@ -130,6 +130,10 @@ void command_drivers() {
     print_hex64(dma_stats.coherent_bytes);
     print(" dma_quarantine=");
     print_hex32(dma_stats.quarantined_buffers);
+    print(" dma_streaming=");
+    print_hex32(dma_stats.streaming_mappings);
+    print(" dma_pinned=");
+    print_hex32(dma_stats.pinned_sources);
     print("\n===============");
 }
 

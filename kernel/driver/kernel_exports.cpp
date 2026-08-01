@@ -195,6 +195,36 @@ extern "C" int64_t driver_dma_free_coherent_handle(DriverDmaHandle handle) {
     return driver_dma_free_coherent_current(handle);
 }
 
+extern "C" int64_t driver_dma_map_buffer_handle(
+    DriverDeviceIdentity device, DriverAllocationHandle allocation,
+    uint64_t offset, uint64_t length, uint64_t direction,
+    DriverDmaMapping* out) {
+    return driver_dma_map_buffer_current(device, allocation, offset, length,
+                                         (uint32_t)direction, out);
+}
+
+extern "C" int64_t driver_dma_map_sg_handle(
+    DriverDeviceIdentity device, const DriverDmaSource* sources,
+    uint64_t source_count, uint64_t direction, DriverDmaMapping* out) {
+    if (source_count > UINT32_MAX) return DRIVER_LOAD_BAD_HEADER;
+    return driver_dma_map_sg_current(device, sources, (uint32_t)source_count,
+                                     (uint32_t)direction, out);
+}
+
+extern "C" int64_t driver_dma_sync_for_cpu_handle(
+    DriverDmaMappingHandle handle) {
+    return driver_dma_sync_for_cpu_current(handle);
+}
+
+extern "C" int64_t driver_dma_sync_for_device_handle(
+    DriverDmaMappingHandle handle) {
+    return driver_dma_sync_for_device_current(handle);
+}
+
+extern "C" int64_t driver_dma_unmap_handle(DriverDmaMappingHandle handle) {
+    return driver_dma_unmap_current(handle);
+}
+
 extern "C" int64_t driver_irq_register(uint64_t irq, DriverIrqHandler handler) {
     if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     const char* driver_name = driver_manager_current_lifecycle_driver();
@@ -292,6 +322,11 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "dma_enable_bus_mastering", (void*)driver_dma_enable_bus_mastering_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_DMA);
     driver_export_register("kernel", "dma_alloc_coherent", (void*)driver_dma_alloc_coherent_handle, DRV_PERMISSION_DMA);
     driver_export_register("kernel", "dma_free_coherent", (void*)driver_dma_free_coherent_handle, DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_map_buffer", (void*)driver_dma_map_buffer_handle, DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_map_sg", (void*)driver_dma_map_sg_handle, DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_sync_for_cpu", (void*)driver_dma_sync_for_cpu_handle, DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_sync_for_device", (void*)driver_dma_sync_for_device_handle, DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_unmap", (void*)driver_dma_unmap_handle, DRV_PERMISSION_DMA);
     driver_export_register("kernel", "irq_register", (void*)driver_irq_register, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "irq_unregister", (void*)driver_irq_unregister, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "vfs_open", (void*)driver_vfs_open, DRV_PERMISSION_VFS);

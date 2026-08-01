@@ -74,6 +74,8 @@ void driver_image_va_init(){} void driver_irq_init(){} void driver_export_init()
 int driver_execution_current(DriverExecutionContext*){return 0;}
 int driver_execution_enter(DriverIdentity,uint32_t,DriverExecutionToken*t){if(t)t->active=1;return 0;}
 void driver_execution_leave(DriverExecutionToken*){}
+int driver_allocation_pin(DriverIdentity,DriverAllocationHandle,uint64_t,uint64_t,DriverPinnedAllocation*){return -1;}
+int driver_allocation_unpin(DriverIdentity,DriverAllocationHandle){return -1;}
 '''
 def main():
     with tempfile.TemporaryDirectory(prefix="os64_dma_") as t:

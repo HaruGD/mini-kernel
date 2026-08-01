@@ -5,6 +5,7 @@ static const char probe_message[] OS64_EXPORT = "pci_probe_c.drv pci_read_config
 static const char bind_message[] OS64_EXPORT = "pci_probe_c.drv bound Bochs VGA";
 static const char mmio_message[] OS64_EXPORT = "pci_probe_c.drv mapped BAR capability";
 static const char dma_message[] OS64_EXPORT = "pci_probe_c.drv coherent DMA capability OK";
+static const char stream_message[] OS64_EXPORT = "pci_probe_c.drv streaming DMA capability OK";
 
 os64_u64 driver_entry(void) {
     os64_klog(entry_message);
@@ -45,6 +46,21 @@ os64_u64 driver_probe_pci(const os64_pci_device_info* device) {
                     ((volatile unsigned char*)buffer.cpu_address)[0] = 0x5A;
                     os64_dma_free_coherent(buffer.handle);
                     os64_klog(dma_message);
+                }
+                os64_driver_allocation source;
+                if (os64_drv_alloc(5000, 4096,
+                                   OS64_DRV_ALLOC_ZERO | OS64_DRV_ALLOC_PAGES,
+                                   "dma_source", &source) == 0) {
+                    os64_driver_dma_mapping stream;
+                    if (os64_dma_map_buffer(device_handle, source.handle,
+                                            0, 5000,
+                                            OS64_DMA_FROM_DEVICE,
+                                            &stream) == 0 &&
+                        os64_dma_sync_for_cpu(stream.handle) == 0 &&
+                        os64_dma_unmap(stream.handle) == 0) {
+                        os64_klog(stream_message);
+                    }
+                    os64_drv_free(source.handle);
                 }
             }
         }

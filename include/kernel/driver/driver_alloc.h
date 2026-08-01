@@ -31,6 +31,13 @@ struct DriverAllocationResult {
     uint64_t size;
 };
 
+struct DriverPinnedAllocation {
+    void* address;
+    uint64_t size;
+    uint32_t flags;
+    uint32_t pin_count;
+};
+
 struct DriverExecutionContext {
     DriverIdentity owner;
     uint32_t kind;
@@ -61,6 +68,8 @@ struct DriverAllocationStats {
     uint64_t owner_rejections;
     uint64_t backing_failures;
     uint64_t exhaustion_failures;
+    uint64_t pinned_ranges;
+    uint64_t pinned_free_rejections;
 };
 
 void driver_allocation_init();
@@ -82,6 +91,11 @@ int driver_allocation_create_current(uint64_t size, uint64_t alignment,
                                      uint32_t flags, const char* tag,
                                      DriverAllocationResult* out);
 int driver_allocation_release_current(DriverAllocationHandle handle);
+int driver_allocation_pin(DriverIdentity owner, DriverAllocationHandle handle,
+                          uint64_t offset, uint64_t length,
+                          DriverPinnedAllocation* out);
+int driver_allocation_unpin(DriverIdentity owner,
+                            DriverAllocationHandle handle);
 uint32_t driver_allocation_release_owner(DriverIdentity owner);
 uint32_t driver_allocation_owner_count(DriverIdentity owner);
 void driver_allocation_get_stats(DriverAllocationStats* out);

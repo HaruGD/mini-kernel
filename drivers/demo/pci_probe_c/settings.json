@@ -12,6 +12,8 @@
   "exports": [],
   "imports": {
     "kernel.klog": [],
+    "kernel.drv_alloc": [],
+    "kernel.drv_free": [],
     "kernel.pci_read_config32": ["PCI"],
     "kernel.pci_get_bar": ["PCI"],
     "kernel.pci_bind_device_handle": ["PCI"],
@@ -21,6 +23,9 @@
     "kernel.dma_prepare_device": ["PCI", "DMA"],
     "kernel.dma_set_mask": ["DMA"],
     "kernel.dma_alloc_coherent": ["DMA"],
-    "kernel.dma_free_coherent": ["DMA"]
+    "kernel.dma_free_coherent": ["DMA"],
+    "kernel.dma_map_buffer": ["DMA"],
+    "kernel.dma_sync_for_cpu": ["DMA"],
+    "kernel.dma_unmap": ["DMA"]
   }
 }

@@ -39,6 +39,7 @@ struct DriverAllocationRecord {
     uint32_t page_index;
     uint32_t page_count;
     uint32_t atomic_slot;
+    uint32_t pin_count;
     char tag[24];
 };
 
@@ -538,6 +539,11 @@ int driver_allocation_release(DriverIdentity owner, uint32_t context,
         kernel_spinlock_release(&g_allocation_lock, &token);
         return DRIVER_LOAD_CONTEXT_DENIED;
     }
+    if (record->pin_count != 0) {
+        g_stats.pinned_free_rejections++;
+        kernel_spinlock_release(&g_allocation_lock, &token);
+        return DRIVER_LOAD_ALLOCATION_DENIED;
+    }
     DriverAllocationRecord snapshot = *record;
     record->state = ALLOCATION_RELEASING;
     kernel_spinlock_release(&g_allocation_lock, &token);
@@ -607,6 +613,49 @@ int driver_allocation_release_current(DriverAllocationHandle handle) {
     DriverExecutionContext context;
     if (!driver_execution_current(&context)) return DRIVER_LOAD_CONTEXT_DENIED;
     return driver_allocation_release(context.owner, context.kind, handle);
+}
+
+int driver_allocation_pin(DriverIdentity owner, DriverAllocationHandle handle,
+                          uint64_t offset, uint64_t length,
+                          DriverPinnedAllocation* out) {
+    if (out != 0) *out = {};
+    if (out == 0 || length == 0 || offset > UINT64_MAX - length)
+        return DRIVER_LOAD_BAD_HEADER;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&g_allocation_lock, &token))
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    DriverAllocationRecord* record = resolve_locked(owner, handle);
+    if (record == 0 || (record->flags & DRIVER_ALLOC_ATOMIC) != 0 ||
+        offset > record->requested_size ||
+        length > record->requested_size - offset ||
+        record->pin_count == UINT32_MAX) {
+        kernel_spinlock_release(&g_allocation_lock, &token);
+        return DRIVER_LOAD_ALLOCATION_DENIED;
+    }
+    record->pin_count++;
+    g_stats.pinned_ranges++;
+    out->address = (void*)((uintptr_t)record->address + offset);
+    out->size = length;
+    out->flags = record->flags;
+    out->pin_count = record->pin_count;
+    kernel_spinlock_release(&g_allocation_lock, &token);
+    return DRIVER_LOAD_OK;
+}
+
+int driver_allocation_unpin(DriverIdentity owner,
+                            DriverAllocationHandle handle) {
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&g_allocation_lock, &token))
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    DriverAllocationRecord* record = resolve_locked(owner, handle);
+    if (record == 0 || record->pin_count == 0) {
+        kernel_spinlock_release(&g_allocation_lock, &token);
+        return DRIVER_LOAD_ALLOCATION_DENIED;
+    }
+    record->pin_count--;
+    if (g_stats.pinned_ranges != 0) g_stats.pinned_ranges--;
+    kernel_spinlock_release(&g_allocation_lock, &token);
+    return DRIVER_LOAD_OK;
 }
 
 uint32_t driver_allocation_release_owner(DriverIdentity owner) {
