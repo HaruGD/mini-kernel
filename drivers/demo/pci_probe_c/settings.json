@@ -6,7 +6,7 @@
   "description": "Sample driver exercising PCI binding and BAR capability exports.",
   "domain": "demo",
   "entry": "driver_entry",
-  "permissions": ["PCI", "MMIO", "DMA"],
+  "permissions": ["PCI", "MMIO", "DMA", "INTERRUPT"],
   "boot_modes": ["NORMAL"],
   "dependencies": [],
   "exports": [],
@@ -20,6 +20,8 @@
     "kernel.pci_map_bar_handle": ["PCI", "MMIO"],
     "kernel.pci_unmap_bar_handle": ["PCI", "MMIO"],
     "kernel.mmio_barrier_handle": ["MMIO"],
+    "kernel.mmio_read_handle": ["MMIO"],
+    "kernel.mmio_write_handle": ["MMIO"],
     "kernel.dma_prepare_device": ["PCI", "DMA"],
     "kernel.dma_set_mask": ["DMA"],
     "kernel.dma_enable_bus_mastering": ["PCI", "DMA"],
@@ -27,7 +29,10 @@
     "kernel.dma_alloc_coherent": ["DMA"],
     "kernel.dma_free_coherent": ["DMA"],
     "kernel.dma_map_buffer": ["DMA"],
+    "kernel.dma_map_sg": ["DMA"],
     "kernel.dma_sync_for_cpu": ["DMA"],
-    "kernel.dma_unmap": ["DMA"]
+    "kernel.dma_unmap": ["DMA"],
+    "kernel.irq_register": ["INTERRUPT"],
+    "kernel.irq_unregister": ["INTERRUPT"]
   }
 }

@@ -4,6 +4,7 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/cpu_local.h"
 #include "kernel/smp.h"
+#include "arch/x86_64/apic.h"
 
 extern "C" {
     #include "arch/x86_64/io.h"
@@ -39,6 +40,18 @@ extern "C" void irq_smp_reschedule_asm();
 extern "C" void irq_smp_tlb_shootdown_asm();
 extern "C" void irq_pic_spurious7_asm();
 extern "C" void irq_pic_spurious15_asm();
+extern "C" void irq_generic_2_asm();
+extern "C" void irq_generic_3_asm();
+extern "C" void irq_generic_4_asm();
+extern "C" void irq_generic_5_asm();
+extern "C" void irq_generic_6_asm();
+extern "C" void irq_generic_8_asm();
+extern "C" void irq_generic_9_asm();
+extern "C" void irq_generic_10_asm();
+extern "C" void irq_generic_11_asm();
+extern "C" void irq_generic_12_asm();
+extern "C" void irq_generic_13_asm();
+extern "C" void irq_generic_14_asm();
 extern "C" void user_test_asm();
 extern "C" void user_exit_asm();
 extern "C" void syscall_asm();
@@ -94,7 +107,19 @@ extern "C" void idt64_init() {
     set_idt64_gate(14, (uint64_t)isr_page_fault_asm);
     set_idt64_gate(32, (uint64_t)irq_timer_asm);
     set_idt64_gate(33, (uint64_t)irq_keyboard_asm);
+    set_idt64_gate(34, (uint64_t)irq_generic_2_asm);
+    set_idt64_gate(35, (uint64_t)irq_generic_3_asm);
+    set_idt64_gate(36, (uint64_t)irq_generic_4_asm);
+    set_idt64_gate(37, (uint64_t)irq_generic_5_asm);
+    set_idt64_gate(38, (uint64_t)irq_generic_6_asm);
     set_idt64_gate(39, (uint64_t)irq_pic_spurious7_asm);
+    set_idt64_gate(40, (uint64_t)irq_generic_8_asm);
+    set_idt64_gate(41, (uint64_t)irq_generic_9_asm);
+    set_idt64_gate(42, (uint64_t)irq_generic_10_asm);
+    set_idt64_gate(43, (uint64_t)irq_generic_11_asm);
+    set_idt64_gate(44, (uint64_t)irq_generic_12_asm);
+    set_idt64_gate(45, (uint64_t)irq_generic_13_asm);
+    set_idt64_gate(46, (uint64_t)irq_generic_14_asm);
     set_idt64_gate(47, (uint64_t)irq_pic_spurious15_asm);
     set_idt64_gate(255, (uint64_t)irq_spurious_asm);
     set_idt64_gate(SMP_STARTUP_PING_VECTOR,
@@ -249,6 +274,19 @@ extern "C" void spurious_interrupt_handler64() {
     spurious_count++;
     if (spurious_count == 1) {
         klog_write(KLOG_WARN, "interrupt", "spurious APIC interrupt");
+    }
+}
+
+extern "C" void generic_external_interrupt_handler64(uint64_t irq) {
+    if (irq >= INTERRUPT_EXTERNAL_IRQ_COUNT) return;
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) local->interrupt_depth++;
+    if (interrupt_controller_claim_external_irq((uint8_t)irq)) {
+        driver_irq_dispatch((uint32_t)irq);
+    }
+    interrupt_controller_eoi((uint8_t)irq);
+    if (cpu_local_validate(local) && local->interrupt_depth != 0) {
+        local->interrupt_depth--;
     }
 }
 

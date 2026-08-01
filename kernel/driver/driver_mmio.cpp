@@ -4,6 +4,10 @@
 #include "kernel/mm/vm.h"
 #include "kernel/pci.h"
 #include "kernel/spinlock.h"
+#include "kernel/fault_injection.h"
+
+extern int kernel_fault_injection_should_fail(uint32_t point)
+    __attribute__((weak));
 
 #define MMIO_ARENA_PAGES ((DRIVER_MMIO_ARENA_LIMIT - DRIVER_MMIO_ARENA_BASE) / VM_PAGE_SIZE)
 
@@ -183,8 +187,15 @@ int driver_mmio_map(DriverIdentity owner, DriverDeviceIdentity device,
         }
     }
     uint32_t slot = DRIVER_MAX_MMIO_MAPPINGS;
-    for (uint32_t i = 0; i < DRIVER_MAX_MMIO_MAPPINGS; i++)
-        if (!g_mmio[i].active && !g_mmio[i].quarantined) { slot = i; break; }
+    const int inject_record = kernel_fault_injection_should_fail != 0 &&
+        kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_MMIO_RECORD);
+    if (!inject_record)
+        for (uint32_t i = 0; i < DRIVER_MAX_MMIO_MAPPINGS; i++)
+            if (!g_mmio[i].active && !g_mmio[i].quarantined) {
+                slot = i;
+                break;
+            }
     uint32_t first_page = 0;
     if (slot == DRIVER_MAX_MMIO_MAPPINGS ||
         !reserve_pages(page_count, &first_page)) {
@@ -213,7 +224,10 @@ int driver_mmio_map(DriverIdentity owner, DriverDeviceIdentity device,
     const uint64_t aligned_physical = physical - page_offset;
     uint32_t mapped = 0;
     for (; mapped < page_count; mapped++) {
-        if (!vm_map_page(record->virtual_base + (uint64_t)mapped * VM_PAGE_SIZE,
+        if ((kernel_fault_injection_should_fail != 0 &&
+             kernel_fault_injection_should_fail(
+                 KERNEL_FAULT_POINT_DRIVER_PAGE_MAP)) ||
+            !vm_map_page(record->virtual_base + (uint64_t)mapped * VM_PAGE_SIZE,
                          aligned_physical + (uint64_t)mapped * VM_PAGE_SIZE,
                          VM_FLAG_WRITABLE | VM_FLAG_CACHE_DISABLE |
                          VM_FLAG_WRITE_THROUGH | VM_FLAG_NO_EXECUTE)) break;

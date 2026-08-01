@@ -1,7 +1,11 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/driver_va.h"
+#include "kernel/fault_injection.h"
 #include "kernel/kutil64.h"
+
+extern int kernel_fault_injection_should_fail(uint32_t point)
+    __attribute__((weak));
 
 static DriverRecord g_drivers[DRIVER_MAX_RECORDS];
 static DriverLoadDiagnostics g_last_error;
@@ -350,13 +354,20 @@ int driver_manager_wait_quiesced(DriverIdentity owner, uint32_t spin_limit) {
     }
     DriverQuiesceSlot* slot = &g_quiesce[owner.slot];
     __atomic_add_fetch(&g_quiesce_waits, 1u, __ATOMIC_RELAXED);
+    const int injected = kernel_fault_injection_should_fail != 0 &&
+        (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_DRIVER_QUIESCE) ||
+         (__atomic_load_n(&slot->irqs, __ATOMIC_ACQUIRE) != 0 &&
+          kernel_fault_injection_should_fail(
+              KERNEL_FAULT_POINT_DRIVER_IRQ_DRAIN)));
+    if (injected) spin_limit = 0;
     for (uint32_t spin = 0; spin < spin_limit; spin++) {
         if (__atomic_load_n(&slot->in_flight, __ATOMIC_ACQUIRE) == 0) {
             return DRIVER_LOAD_OK;
         }
         __asm__ volatile("pause" : : : "memory");
     }
-    if (__atomic_load_n(&slot->in_flight, __ATOMIC_ACQUIRE) == 0) {
+    if (!injected &&
+        __atomic_load_n(&slot->in_flight, __ATOMIC_ACQUIRE) == 0) {
         return DRIVER_LOAD_OK;
     }
     __atomic_store_n(&slot->quarantined, 1u, __ATOMIC_RELEASE);

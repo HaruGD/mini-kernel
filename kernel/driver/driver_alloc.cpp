@@ -371,9 +371,12 @@ int driver_allocation_create(DriverIdentity owner, uint32_t context,
         return DRIVER_LOAD_RESOURCE_DENIED;
     }
     int reserve_error = DRIVER_LOAD_NO_SLOT;
-    DriverAllocationRecord* record = reserve_record_locked(
-        owner, context, size, alignment, flags, tag, charged_size,
-        &reserve_error);
+    DriverAllocationRecord* record =
+        kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_ALLOC_RECORD)
+        ? 0
+        : reserve_record_locked(owner, context, size, alignment, flags, tag,
+                                charged_size, &reserve_error);
     if (record == 0) {
         kernel_spinlock_release(&g_allocation_lock, &token);
         return reserve_error;
@@ -385,7 +388,10 @@ int driver_allocation_create(DriverIdentity owner, uint32_t context,
     uint32_t atomic_slot = DRIVER_ATOMIC_SLOT_COUNT;
     uint32_t page_index = 0;
     const int inject_backing_failure = kernel_fault_injection_should_fail(
-        KERNEL_FAULT_POINT_DRIVER_ALLOC);
+        KERNEL_FAULT_POINT_DRIVER_ALLOC) ||
+        (((flags & DRIVER_ALLOC_PAGES) != 0) &&
+         kernel_fault_injection_should_fail(
+             KERNEL_FAULT_POINT_DRIVER_PAGE_RUN));
 
     if ((flags & DRIVER_ALLOC_ATOMIC) != 0) {
         for (uint32_t i = 0;

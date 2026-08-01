@@ -33,6 +33,18 @@ global irq_smp_reschedule_asm
 global irq_smp_tlb_shootdown_asm
 global irq_pic_spurious7_asm
 global irq_pic_spurious15_asm
+global irq_generic_2_asm
+global irq_generic_3_asm
+global irq_generic_4_asm
+global irq_generic_5_asm
+global irq_generic_6_asm
+global irq_generic_8_asm
+global irq_generic_9_asm
+global irq_generic_10_asm
+global irq_generic_11_asm
+global irq_generic_12_asm
+global irq_generic_13_asm
+global irq_generic_14_asm
 global user_test_asm
 global user_exit_asm
 global syscall_asm
@@ -50,6 +62,7 @@ extern smp_reschedule_interrupt_handler64
 extern smp_tlb_shootdown_interrupt_handler64
 extern local_timer_handler64
 extern pic_spurious_interrupt_handler64
+extern generic_external_interrupt_handler64
 extern user_test_interrupt_handler64
 extern user_exit_interrupt_handler64
 extern syscall_dispatch64
@@ -194,6 +207,30 @@ irq_timer_asm:
     add rsp, 8
     POP_GPRS
     iretq
+
+%macro IRQ_GENERIC 1
+irq_generic_%1_asm:
+    PUSH_GPRS
+    sub rsp, 8
+    mov rdi, %1
+    call generic_external_interrupt_handler64
+    add rsp, 8
+    POP_GPRS
+    iretq
+%endmacro
+
+IRQ_GENERIC 2
+IRQ_GENERIC 3
+IRQ_GENERIC 4
+IRQ_GENERIC 5
+IRQ_GENERIC 6
+IRQ_GENERIC 8
+IRQ_GENERIC 9
+IRQ_GENERIC 10
+IRQ_GENERIC 11
+IRQ_GENERIC 12
+IRQ_GENERIC 13
+IRQ_GENERIC 14
 
 irq_spurious_asm:
     PUSH_GPRS

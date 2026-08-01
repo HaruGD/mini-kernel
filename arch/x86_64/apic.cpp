@@ -176,6 +176,11 @@ static int ioapic_route(uint8_t irq, uint8_t vector, const AcpiState* acpi) {
     uint32_t low = vector;
     uint16_t polarity = flags & 0x3u;
     uint16_t trigger = (flags >> 2) & 0x3u;
+    if (iso == 0 && irq >= 2u) {
+        /* Legacy PCI INTx is active-low and level-triggered. */
+        polarity = 3u;
+        trigger = 3u;
+    }
     if (polarity == 3u) {
         low |= 1u << 13;
     }
@@ -383,6 +388,15 @@ int interrupt_controller_claim_external_irq(uint8_t irq) {
         return 0;
     }
     __atomic_add_fetch(&irq_accepted[irq], 1u, __ATOMIC_RELAXED);
+    return 1;
+}
+
+int interrupt_controller_route_external_irq(uint8_t irq, uint8_t vector) {
+    if (irq >= INTERRUPT_EXTERNAL_IRQ_COUNT || vector < 32u) return 0;
+    if (controller_mode == INTERRUPT_CONTROLLER_APIC && ioapic != 0) {
+        return ioapic_route(irq, vector, acpi_state());
+    }
+    __atomic_store_n(&irq_owner_cpu[irq], 0u, __ATOMIC_RELEASE);
     return 1;
 }
 

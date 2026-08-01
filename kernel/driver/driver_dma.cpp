@@ -5,6 +5,10 @@
 #include "kernel/mm/vm.h"
 #include "kernel/pci.h"
 #include "kernel/spinlock.h"
+#include "kernel/fault_injection.h"
+
+extern int kernel_fault_injection_should_fail(uint32_t point)
+    __attribute__((weak));
 #ifdef OS64_DRIVER_HOST_TEST
 #include <stdlib.h>
 #endif
@@ -195,8 +199,12 @@ int driver_dma_prepare_device(DriverIdentity owner, DriverDeviceIdentity device,
         return DRIVER_LOAD_OK;
     }
     uint32_t slot = DRIVER_MAX_DMA_DOMAINS;
-    for (uint32_t i = 0; i < DRIVER_MAX_DMA_DOMAINS; i++)
-        if (!g_domains[i].active) { slot = i; break; }
+    const int inject_domain = kernel_fault_injection_should_fail != 0 &&
+        kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_DMA_DOMAIN);
+    if (!inject_domain)
+        for (uint32_t i = 0; i < DRIVER_MAX_DMA_DOMAINS; i++)
+            if (!g_domains[i].active) { slot = i; break; }
     if (slot == DRIVER_MAX_DMA_DOMAINS) {
         kernel_spinlock_release(&g_dma_lock, &token);
         return DRIVER_LOAD_NO_SLOT;
@@ -310,8 +318,15 @@ int driver_dma_alloc_coherent(DriverIdentity owner,
         return DRIVER_LOAD_ALLOCATION_BUDGET;
     }
     uint32_t slot = DRIVER_MAX_DMA_BUFFERS;
-    for (uint32_t i = 0; i < DRIVER_MAX_DMA_BUFFERS; i++)
-        if (!g_buffers[i].active && !g_buffers[i].quarantined) { slot = i; break; }
+    const int inject_record = kernel_fault_injection_should_fail != 0 &&
+        kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_DMA_RECORD);
+    if (!inject_record)
+        for (uint32_t i = 0; i < DRIVER_MAX_DMA_BUFFERS; i++)
+            if (!g_buffers[i].active && !g_buffers[i].quarantined) {
+                slot = i;
+                break;
+            }
     const uint32_t pages = (uint32_t)(charged / VM_PAGE_SIZE);
     uint32_t first_page = 0;
     if (slot == DRIVER_MAX_DMA_BUFFERS || !reserve_va(pages, &first_page)) {
@@ -331,14 +346,20 @@ int driver_dma_alloc_coherent(DriverIdentity owner,
 #else
     uint32_t alignment_pages = alignment <= VM_PAGE_SIZE ? 1u :
         (uint32_t)(alignment / VM_PAGE_SIZE);
-    physical = (uint64_t)(uintptr_t)pmm_alloc_blocks_constrained(
-        pages, alignment_pages, boundary, mask_limit(domain->mask_bits));
+    if (kernel_fault_injection_should_fail == 0 ||
+        !kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_PAGE_RUN))
+        physical = (uint64_t)(uintptr_t)pmm_alloc_blocks_constrained(
+            pages, alignment_pages, boundary, mask_limit(domain->mask_bits));
     cpu = (void*)(uintptr_t)(DRIVER_DMA_ARENA_BASE +
                             (uint64_t)first_page * VM_PAGE_SIZE);
     if (physical != 0) {
         uint32_t mapped = 0;
         for (; mapped < pages; mapped++)
-            if (!vm_map_page((uint64_t)(uintptr_t)cpu +
+            if ((kernel_fault_injection_should_fail != 0 &&
+                 kernel_fault_injection_should_fail(
+                     KERNEL_FAULT_POINT_DRIVER_PAGE_MAP)) ||
+                !vm_map_page((uint64_t)(uintptr_t)cpu +
                              (uint64_t)mapped * VM_PAGE_SIZE,
                              physical + (uint64_t)mapped * VM_PAGE_SIZE,
                              VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE)) break;
@@ -562,8 +583,14 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
     }
     DriverDmaBuffer bounce = {};
     if (result == DRIVER_LOAD_OK && need_bounce) {
-        result = driver_dma_alloc_coherent(owner, device, total, VM_PAGE_SIZE,
-                                           0, &bounce);
+        if (kernel_fault_injection_should_fail != 0 &&
+            kernel_fault_injection_should_fail(
+                KERNEL_FAULT_POINT_DRIVER_DMA_BOUNCE)) {
+            result = DRIVER_LOAD_OUT_OF_MEMORY;
+        } else {
+            result = driver_dma_alloc_coherent(owner, device, total,
+                                               VM_PAGE_SIZE, 0, &bounce);
+        }
         if (result == DRIVER_LOAD_OK) {
             segments[0].address = bounce.dma_address;
             segments[0].length = total;
@@ -598,8 +625,12 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
     }
     domain = domain_for(owner, device);
     uint32_t slot = DRIVER_MAX_DMA_MAPPINGS;
-    for (uint32_t i = 0; i < DRIVER_MAX_DMA_MAPPINGS; i++)
-        if (!g_mappings[i].active) { slot = i; break; }
+    const int inject_mapping = kernel_fault_injection_should_fail != 0 &&
+        kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_DMA_RECORD);
+    if (!inject_mapping)
+        for (uint32_t i = 0; i < DRIVER_MAX_DMA_MAPPINGS; i++)
+            if (!g_mappings[i].active) { slot = i; break; }
     if (!domain || slot == DRIVER_MAX_DMA_MAPPINGS) {
         kernel_spinlock_release(&g_dma_lock, &token);
         if (bounce.handle.generation)

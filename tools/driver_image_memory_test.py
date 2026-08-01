@@ -26,6 +26,8 @@ def main() -> int:
         raise SystemExit("monotonic driver image cursor is still present")
     require(va_header, "DRIVER_IMAGE_VA_GUARD_PAGES 1u", "guard-page policy")
     require(loader, "VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE", "initial RW/NX mapping")
+    require(loader, "KERNEL_FAULT_POINT_DRIVER_IMAGE_PAGE",
+            "image-page fault injection")
     require(loader, "if (section->kind == DRV_SECTION_CODE)", "code protection")
     require(loader, "flags = 0;", "RX code flags")
     require(loader, "VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE", "RW/NX data flags")

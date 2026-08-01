@@ -8,6 +8,7 @@
 #include "kernel/smp.h"
 #include "kernel/mm/vm.h"
 #include "kernel/mm/pmm.h"
+#include "kernel/fault_injection.h"
 
 extern "C" {
     #include "kernel/mm/heap.h"
@@ -187,7 +188,9 @@ static uint8_t* allocate_section_pages(DriverIdentity owner,
     }
 
     uint32_t mapped_pages = 0;
-    if (!vm_alloc_map_range(region,
+    if (kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_IMAGE_PAGE) ||
+        !vm_alloc_map_range(region,
                                   region_size,
                                   VM_FLAG_WRITABLE | VM_FLAG_NO_EXECUTE,
                                   &mapped_pages)) {

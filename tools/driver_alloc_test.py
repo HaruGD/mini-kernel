@@ -65,6 +65,17 @@ int main() {
                                     pages.handle) == 0);
 
     kernel_fault_injection_reset();
+    check(kernel_fault_injection_arm(
+        KERNEL_FAULT_POINT_DRIVER_ALLOC_RECORD, 0));
+    check(driver_allocation_create(alpha, DRIVER_CONTEXT_THREAD_SLEEPABLE,
+                                   64, 16, 0, "fault-record", &pages) ==
+          DRIVER_LOAD_NO_SLOT);
+    check(kernel_fault_injection_arm(
+        KERNEL_FAULT_POINT_DRIVER_PAGE_RUN, 0));
+    check(driver_allocation_create(alpha, DRIVER_CONTEXT_THREAD_SLEEPABLE,
+                                   5000, 4096, DRIVER_ALLOC_PAGES,
+                                   "fault-run", &pages) ==
+          DRIVER_LOAD_OUT_OF_MEMORY);
     check(kernel_fault_injection_arm(KERNEL_FAULT_POINT_DRIVER_ALLOC, 0));
     check(driver_allocation_create(alpha, DRIVER_CONTEXT_THREAD_SLEEPABLE,
                                    5000, 4096, DRIVER_ALLOC_PAGES,

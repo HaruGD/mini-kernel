@@ -2,8 +2,41 @@
 #include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
+#ifndef OS64_HOST_TEST
+#include "arch/x86_64/apic.h"
+#endif
 
 static DriverIrqHookRecord g_irq_hooks[DRIVER_MAX_IRQ_HOOKS];
+
+#ifndef OS64_HOST_TEST
+static int irq_has_hook(uint32_t irq) {
+    for (uint32_t i = 0; i < DRIVER_MAX_IRQ_HOOKS; i++)
+        if (g_irq_hooks[i].active && g_irq_hooks[i].irq == irq) return 1;
+    return 0;
+}
+#endif
+
+static int activate_irq_line(uint32_t irq) {
+#ifdef OS64_HOST_TEST
+    (void)irq;
+    return 1;
+#else
+    if (!interrupt_controller_route_external_irq((uint8_t)irq,
+                                                  (uint8_t)(32u + irq)))
+        return 0;
+    interrupt_controller_set_mask((uint8_t)irq, 0);
+    return 1;
+#endif
+}
+
+static void deactivate_irq_line_if_unused(uint32_t irq) {
+#ifndef OS64_HOST_TEST
+    if (irq >= 2 && !irq_has_hook(irq))
+        interrupt_controller_set_mask((uint8_t)irq, 1);
+#else
+    (void)irq;
+#endif
+}
 
 static void clear_irq_hook(DriverIrqHookRecord* hook) {
     if (hook == 0) {
@@ -79,6 +112,12 @@ int driver_irq_register_handler(const char* driver_name, uint32_t irq, DriverIrq
             clear_irq_hook(hook);
             return resource_result;
         }
+        if (!activate_irq_line(irq)) {
+            driver_resource_release(owner, hook->resource,
+                                    DRIVER_RESOURCE_IRQ_HOOK);
+            clear_irq_hook(hook);
+            return DRIVER_LOAD_IRQ_DENIED;
+        }
         return DRIVER_LOAD_OK;
     }
 
@@ -101,6 +140,7 @@ int driver_irq_unregister_handler(const char* driver_name, uint32_t irq, DriverI
                                     hook->resource,
                                     DRIVER_RESOURCE_IRQ_HOOK);
             clear_irq_hook(hook);
+            deactivate_irq_line_if_unused(irq);
             return DRIVER_LOAD_OK;
         }
     }
@@ -111,14 +151,19 @@ void driver_irq_unregister_module(const char* name) {
     if (name == 0) {
         return;
     }
+    uint16_t touched = 0;
     for (uint32_t i = 0; i < DRIVER_MAX_IRQ_HOOKS; i++) {
         if (g_irq_hooks[i].active && strcmp64(g_irq_hooks[i].driver, name) == 0) {
+            touched |= (uint16_t)(1u << g_irq_hooks[i].irq);
             driver_resource_release(g_irq_hooks[i].owner,
                                     g_irq_hooks[i].resource,
                                     DRIVER_RESOURCE_IRQ_HOOK);
             clear_irq_hook(&g_irq_hooks[i]);
         }
     }
+    for (uint32_t irq = 2; irq < 16; irq++)
+        if ((touched & (uint16_t)(1u << irq)) != 0)
+            deactivate_irq_line_if_unused(irq);
 }
 
 void driver_irq_dispatch(uint32_t irq) {

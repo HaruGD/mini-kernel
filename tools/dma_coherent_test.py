@@ -7,6 +7,7 @@ SOURCE = r'''
 #include "kernel/driver/driver_dma.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/pci.h"
+#include "kernel/fault_injection.h"
 static int failures;
 #define check(v) do { if (!(v)) failures++; } while (0)
 static DrvManifest manifest(const char* name) {
@@ -29,11 +30,16 @@ int main() {
     check(driver_dma_enable_bus_mastering(a,dev)==DRIVER_LOAD_DMA_DENIED);
     DriverDmaDomainHandle domain;
     check(driver_dma_prepare_device(a,dev,DRIVER_DMA_POLICY_REQUIRE_ISOLATION,&domain)==DRIVER_LOAD_DMA_ISOLATION);
+    kernel_fault_injection_reset();
+    check(kernel_fault_injection_arm(KERNEL_FAULT_POINT_DRIVER_DMA_DOMAIN,0));
+    check(driver_dma_prepare_device(a,dev,DRIVER_DMA_POLICY_TRUSTED_DIRECT,&domain)==DRIVER_LOAD_NO_SLOT);
     check(driver_dma_prepare_device(a,dev,DRIVER_DMA_POLICY_TRUSTED_DIRECT,&domain)==0);
     check(driver_dma_set_mask(a,dev,16)==DRIVER_LOAD_DMA_MASK);
     check(driver_dma_enable_bus_mastering(a,dev)==DRIVER_LOAD_DMA_DENIED);
     check(driver_dma_set_mask(a,dev,32)==0);
     DriverDmaBuffer buffer;
+    check(kernel_fault_injection_arm(KERNEL_FAULT_POINT_DRIVER_DMA_RECORD,0));
+    check(driver_dma_alloc_coherent(a,dev,5000,8192,65536,&buffer)==DRIVER_LOAD_NO_SLOT);
     check(driver_dma_alloc_coherent(a,dev,5000,8192,65536,&buffer)==0);
     check(buffer.cpu_address && buffer.size==5000 && buffer.page_count==2);
     check((buffer.dma_address.value & 8191u)==0);
@@ -80,7 +86,7 @@ int driver_allocation_unpin(DriverIdentity,DriverAllocationHandle){return -1;}
 def main():
     with tempfile.TemporaryDirectory(prefix="os64_dma_") as t:
         p=Path(t); (p/"test.cpp").write_text(textwrap.dedent(SOURCE)); (p/"stubs.cpp").write_text(textwrap.dedent(STUBS))
-        cmd=["g++","-std=c++17","-Wall","-Wextra","-Werror","-DOS64_HOST_TEST","-DOS64_DRIVER_HOST_TEST","-I",str(ROOT/"include"),str(ROOT/"kernel/sync/spinlock.cpp"),str(ROOT/"kernel/driver/driver_manager.cpp"),str(ROOT/"kernel/driver/driver_resource.cpp"),str(ROOT/"kernel/driver/driver_binding.cpp"),str(ROOT/"kernel/driver/driver_dma.cpp"),str(p/"test.cpp"),str(p/"stubs.cpp"),"-o",str(p/"test")]
+        cmd=["g++","-std=c++17","-Wall","-Wextra","-Werror","-DOS64_HOST_TEST","-DOS64_DRIVER_HOST_TEST","-I",str(ROOT/"include"),str(ROOT/"kernel/sync/spinlock.cpp"),str(ROOT/"kernel/driver/driver_manager.cpp"),str(ROOT/"kernel/driver/driver_resource.cpp"),str(ROOT/"kernel/driver/driver_binding.cpp"),str(ROOT/"kernel/driver/driver_dma.cpp"),str(ROOT/"kernel/debug/fault_injection.cpp"),str(p/"test.cpp"),str(p/"stubs.cpp"),"-o",str(p/"test")]
         subprocess.run(cmd,check=True); subprocess.run([str(p/"test")],check=True)
     print("coherent DMA address, mask, budget, and domain test OK"); return 0
 if __name__=="__main__": raise SystemExit(main())

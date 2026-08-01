@@ -2,6 +2,10 @@
 
 #include "kernel/mm/vm.h"
 #include "kernel/spinlock.h"
+#include "kernel/fault_injection.h"
+
+extern int kernel_fault_injection_should_fail(uint32_t point)
+    __attribute__((weak));
 
 struct DriverVaExtent {
     uint64_t base;
@@ -141,10 +145,14 @@ int driver_image_va_allocate(DriverIdentity owner,
         return DRIVER_LOAD_RESOURCE_DENIED;
     }
     DriverVaRecord* record = 0;
-    for (uint32_t i = 0; i < DRIVER_IMAGE_VA_MAX_ALLOCATIONS; i++) {
-        if (!g_allocations[i].active) {
-            record = &g_allocations[i];
-            break;
+    if (kernel_fault_injection_should_fail == 0 ||
+        !kernel_fault_injection_should_fail(
+            KERNEL_FAULT_POINT_DRIVER_VA_RECORD)) {
+        for (uint32_t i = 0; i < DRIVER_IMAGE_VA_MAX_ALLOCATIONS; i++) {
+            if (!g_allocations[i].active) {
+                record = &g_allocations[i];
+                break;
+            }
         }
     }
     uint32_t extent_index = DRIVER_IMAGE_VA_MAX_EXTENTS;

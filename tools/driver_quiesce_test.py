@@ -12,6 +12,7 @@ SOURCE = r'''
 #include <thread>
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/drv_format.h"
+#include "kernel/fault_injection.h"
 
 static int failures;
 int events[16];
@@ -67,6 +68,18 @@ int main() {
           stats.quarantines == 1);
 
     check(driver_manager_unregister("alpha") == 0);
+    DriverLoadedImage* fault_image = new DriverLoadedImage{};
+    DriverIdentity fault;
+    ready("fault", fault_image, &fault);
+    check(driver_manager_begin_quiesce(fault) == 0);
+    kernel_fault_injection_reset();
+    check(kernel_fault_injection_arm(
+        KERNEL_FAULT_POINT_DRIVER_QUIESCE, 0));
+    check(driver_manager_wait_quiesced(fault, 32) ==
+          DRIVER_LOAD_QUIESCE_TIMEOUT);
+    check(driver_manager_wait_quiesced(fault, 32) == 0);
+    delete fault_image;
+    check(driver_manager_unregister("fault") == 0);
     DriverLoadedImage* reused_image = new DriverLoadedImage{};
     DriverIdentity reused;
     ready("alpha", reused_image, &reused);
@@ -159,6 +172,7 @@ def main() -> int:
             str(ROOT / "kernel/driver/driver_manager.cpp"),
             str(ROOT / "kernel/driver/driver_resource.cpp"),
             str(ROOT / "kernel/driver/driver_unload.cpp"),
+            str(ROOT / "kernel/debug/fault_injection.cpp"),
             str(path / "test.cpp"), str(path / "stubs.cpp"),
             "-pthread", "-o", str(binary),
         ], check=True)

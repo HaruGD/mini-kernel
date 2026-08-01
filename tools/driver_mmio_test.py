@@ -12,6 +12,7 @@ SOURCE = r'''
 #include "kernel/driver/driver_mmio.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/pci.h"
+#include "kernel/fault_injection.h"
 
 static int failures;
 #define check(value) do { if (!(value)) { failures++; \
@@ -45,6 +46,12 @@ int main() {
     check(driver_manager_bound_pci_identity(alpha, pci, &device));
 
     DriverMmioMapping first, shared;
+    kernel_fault_injection_reset();
+    check(kernel_fault_injection_arm(
+        KERNEL_FAULT_POINT_DRIVER_MMIO_RECORD, 0));
+    check(driver_mmio_map(alpha, device, 0, 3, 8192,
+                          DRIVER_MMIO_CACHE_DEVICE_UC, &first) ==
+          DRIVER_LOAD_NO_SLOT);
     check(driver_mmio_map(alpha, device, 0, 3, 8192,
                           DRIVER_MMIO_CACHE_DEVICE_UC, &first) == 0);
     check(driver_mmio_map(alpha, device, 0, 3, 8192,
@@ -163,6 +170,7 @@ def main() -> int:
             str(ROOT / "kernel/driver/driver_resource.cpp"),
             str(ROOT / "kernel/driver/driver_binding.cpp"),
             str(ROOT / "kernel/driver/driver_mmio.cpp"),
+            str(ROOT / "kernel/debug/fault_injection.cpp"),
             str(source), str(stubs), "-o", str(binary)
         ], check=True)
         subprocess.run([str(binary)], check=True)

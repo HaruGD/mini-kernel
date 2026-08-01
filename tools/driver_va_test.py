@@ -12,6 +12,7 @@ SOURCE = r"""
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
+#include "kernel/fault_injection.h"
 
 static int failures;
 static void check(int condition) { if (!condition) failures++; }
@@ -36,6 +37,14 @@ int main() {
     DriverIdentity beta = driver_manager_identity_from_name("beta");
     const uint64_t base = 0x100000ULL;
     check(driver_image_va_reset_for_test(base, base + 16 * 4096, 1));
+
+    DriverVaHandle injected;
+    uint64_t injected_base = 0;
+    kernel_fault_injection_reset();
+    check(kernel_fault_injection_arm(
+        KERNEL_FAULT_POINT_DRIVER_VA_RECORD, 0));
+    check(driver_image_va_allocate(alpha, 1, &injected, &injected_base) ==
+          DRIVER_LOAD_OUT_OF_MEMORY);
 
     DriverVaHandle first, second, reused;
     uint64_t first_base = 0, second_base = 0, reused_base = 0;
@@ -75,7 +84,7 @@ int main() {
     driver_image_va_get_stats(&stats);
     check(stats.quarantined == 1 && stats.active == 1);
     check(stats.free_pages == 12);
-    check(stats.exhaustion_failures == 1);
+    check(stats.exhaustion_failures == 2);
     return failures == 0 ? 0 : 1;
 }
 """
@@ -115,6 +124,7 @@ def main() -> int:
             str(ROOT / "kernel/sync/spinlock.cpp"),
             str(ROOT / "kernel/driver/driver_manager.cpp"),
             str(ROOT / "kernel/driver/driver_va.cpp"),
+            str(ROOT / "kernel/debug/fault_injection.cpp"),
             str(source), str(stubs), "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True)

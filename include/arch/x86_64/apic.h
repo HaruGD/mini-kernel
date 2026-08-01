@@ -44,6 +44,7 @@ int interrupt_controller_calibrate_local_timer(
     LocalApicTimerCalibration* calibration);
 void interrupt_controller_stop_local_timer();
 int interrupt_controller_claim_external_irq(uint8_t irq);
+int interrupt_controller_route_external_irq(uint8_t irq, uint8_t vector);
 void interrupt_controller_get_ownership_stats(InterruptOwnershipStats* stats);
 
 #endif
