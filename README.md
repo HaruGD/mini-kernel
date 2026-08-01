@@ -198,9 +198,12 @@ make test-services
 
 Phase 3 is closed with bounded IPC and service discovery. Service Manager v2
 now adds supervised lifecycle and permissions above that Phase 3 foundation,
-and the input/display user-space services. Phase 4 compositor/window work and
-Phase 4.5/4.6 threading/SMP work are complete. Phase 4.7 now specifies the
-driver-memory and DMA foundation that may proceed beside Phase 5 desktop work.
+and the input/display user-space services. Phase 4 compositor/window work,
+Phase 4.5/4.6 threading/SMP work, and Phase 4.7 driver-memory/DMA work are
+complete. The bounded driver runtime now has owned allocation, MMIO,
+coherent/streaming/SG DMA, quiescent unload, QEMU EDU device evidence, fault
+rollback, and soak closure. Phase 5 desktop work may proceed while later
+hardware work adds a remapping IOMMU backend and production drivers.
 
 Test ACPI power-off in an isolated QEMU instance:
 

@@ -23,21 +23,22 @@ the Phase 4.7 contracts.
 
 ## Current Status
 
-Phase 4.7A through 4.7G completed on 2026-08-01. In addition to generation
+Phase 4.7A through 4.7H completed on 2026-08-01. In addition to generation
 ownership, reusable image VA, and owned allocations, commits `e00cb72`,
 `257526f`, `94202fe`, and `39e53f3` provide capability-scoped BAR mappings,
 coherent DMA, streaming/scatter-gather mappings, trusted-direct domains, and
 an actual QEMU EDU DMA round trip. Commit `1314b15` adds quiescent unload with
 generation-owned execution pins, new-entry rejection, bus-master shutdown,
-bounded drain, and timeout quarantine. Phase 4.7H fault/device/soak closure
-remains planned.
+bounded drain, and timeout quarantine. Commit `1a4907f` closes the phase with
+expanded deterministic failure injection, generic PCI INTx routing, checked
+QEMU EDU IRQ/coherent/streaming/SG transfers, and a drift-free 60-second
+four-vCPU driver/GUI churn soak.
 
 The entry system already provides page-separated `.drv` images with
 `CODE=RX`, `RODATA=R/NX`, and `DATA/BSS=RW/NX`, package validation,
 dependency-aware unload denial, PCI binding, IRQ registration, and section
-page release. It does not yet provide a remapping IOMMU backend or complete
-quiescent device-resource teardown. The present direct DMA backend is
-explicitly trusted-only and never reports isolation.
+page release. It does not yet provide a remapping IOMMU backend. The present
+direct DMA backend is explicitly trusted-only and never reports isolation.
 
 ## Intended Result
 

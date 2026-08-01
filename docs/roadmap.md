@@ -255,15 +255,15 @@ Progress:
   TLB-safe virtual address intervals
 - [x] 4.7C: Add tagged driver-owned heap/page allocations, budgets, and
   sleepable/atomic/IRQ context rules
-- [ ] 4.7D: Replace packaged-driver raw MMIO addresses with bound BAR mapping
+- [x] 4.7D: Replace packaged-driver raw MMIO addresses with bound BAR mapping
   handles, checked offsets, cache policy, unmap, and VA reuse
-- [ ] 4.7E: Add distinct CPU/physical/DMA address types, DMA masks, coherent
+- [x] 4.7E: Add distinct CPU/physical/DMA address types, DMA masks, coherent
   allocation, bounce fallback, and bus-master ordering
-- [ ] 4.7F: Add streaming and scatter/gather DMA, cache-sync semantics, and
+- [x] 4.7F: Add streaming and scatter/gather DMA, cache-sync semantics, and
   IOMMU-ready domain/fail-closed isolation policy
-- [ ] 4.7G: Quiesce IRQ, work, exported calls, bus mastering, DMA, and MMIO
+- [x] 4.7G: Quiesce IRQ, work, exported calls, bus mastering, DMA, and MMIO
   before automatic resource cleanup and code unmap
-- [ ] 4.7H: Pass deterministic failure injection, QEMU DMA-device checks,
+- [x] 4.7H: Pass deterministic failure injection, QEMU DMA-device checks,
   required driver churn soak, clean aggregate, and inherited closure
 
 ## Phase 5: Desktop Foundation
@@ -279,7 +279,7 @@ Progress:
 
 This track may progress beside GUI work, but DMA infrastructure comes first.
 
-- [ ] Complete Phase 4.7 driver-memory and DMA foundation
+- [x] Complete Phase 4.7 driver-memory and DMA foundation
 - [ ] Add hardware IOMMU remapping and fault-reporting backend
 - [ ] USB xHCI host controller
 - [ ] USB enumeration and hub support

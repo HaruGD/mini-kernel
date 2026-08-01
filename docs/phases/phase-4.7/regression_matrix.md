@@ -1,11 +1,10 @@
 # Phase 4.7 Regression Matrix
 
 This matrix defines the evidence required to close driver memory and DMA.
-Every target prefixed `Reserved:` is a planned name only. It must be replaced
-with a real command after implementation and a passing run.
-
-The future aggregate name is `make test-phase47`. It must invoke real focused
-targets and must not be an empty or documentation-only target.
+All reserved targets were replaced by real commands before closure. The
+`make test-phase47` aggregate invokes the focused, fault, QEMU device, and
+required 60-second soak targets; it is not an empty or documentation-only
+target.
 
 ## Matrix
 
@@ -22,8 +21,8 @@ targets and must not be an empty or documentation-only target.
 | P47-R09 | 4.7F | Streaming and scatter/gather mappings pin exact ranges for one device, direction, and sync lifetime. | `make test-dma-streaming`; `make test-uefi-smoke` | Fragmented/coalesced mappings, segment limits, offset overflow, premature free, sync-order violations, duplicate unmap, and cleanup are deterministic. | Complete |
 | P47-R10 | 4.7F | DMA domains distinguish remapped isolation from trusted direct fallback. | `make test-dma-domain` | `REQUIRE_ISOLATION` fails without an IOMMU; direct mode enforces mask/ownership and never claims isolation. | Complete |
 | P47-R11 | 4.7G | Unload quiesces all execution and device access before revoking resources or code. | `make test-driver-quiesce`; `make test-uefi-smoke` | New entry is rejected; IRQ/work/export pins drain; bus mastering stops; DMA/MMIO/allocations release in order; timeout quarantines instead of freeing live state. | Complete |
-| P47-R12 | 4.7H | A QEMU DMA-capable PCI device performs checked MMIO, IRQ, coherent, streaming, and SG round trips. | Reserved: `make test-driver-dma-device` | One/four-vCPU sessions complete exact data checks and interrupt acknowledgements with no raw-address ABI use, fault, stale completion, or resource drift. | Planned |
-| P47-R13 | 4.7H | Repeated driver-memory churn and every inherited gate pass together. | Reserved: `make test-driver-memory-soak`; future `make test-phase47`; existing `make test-driver-regression`, `make test-phase46`, and `make test-closure` | Minimum 60-second one/four-vCPU churn reports cycles and identical warmed/final driver/page/VA/MMIO/DMA/IRQ/process/thread resources; clean aggregate and inherited suites pass. | Planned |
+| P47-R12 | 4.7H | A QEMU DMA-capable PCI device performs checked MMIO, IRQ, coherent, streaming, and SG round trips. | `make test-driver-dma-device` | One/four-vCPU sessions complete exact data checks and interrupt acknowledgements with no raw-address ABI use, fault, stale completion, or resource drift. | Complete |
+| P47-R13 | 4.7H | Repeated driver-memory churn and every inherited gate pass together. | `make test-driver-memory-faults`; `make test-driver-memory-soak`; `make test-phase47`; existing `make test-driver-regression`, `make test-phase46`, and `make test-closure` | Minimum 60-second four-vCPU churn reports cycles and identical warmed/final driver/page/VA/MMIO/DMA/IRQ/process/thread resources; clean aggregate and inherited suites pass. | Complete |
 
 ## Mandatory Negative Coverage
 

@@ -26,13 +26,14 @@ coverage, and a separate evidence commit.
 | 4.7E: Coherent DMA and address model | Complete | 2026-08-01 | 2026-08-01 | `257526f`, `39e53f3` | P47-R08 |
 | 4.7F: Streaming DMA, scatter/gather, and domain policy | Complete | 2026-08-01 | 2026-08-01 | `94202fe`, `39e53f3`, `4019a2d` | P47-R09, P47-R10 |
 | 4.7G: Quiescent unload and automatic cleanup | Complete | 2026-08-01 | 2026-08-01 | `1314b15` | P47-R11 |
-| 4.7H: Fault injection, device smoke, soak, and closure | Planned | - | - | - | P47-R12, P47-R13 |
+| 4.7H: Fault injection, device smoke, soak, and closure | Complete | 2026-08-01 | 2026-08-01 | `1a4907f` | P47-R12, P47-R13 |
 
-Current status: Phase 4.7A through 4.7G are complete. Packaged drivers now use
+Current status: Phase 4.7A through 4.7H are complete. Packaged drivers now use
 generation-owned allocation, MMIO, coherent DMA, streaming DMA, SG, and
 domain handles. The trusted direct backend is functional but not isolated;
 quiescent unload now closes entry before draining calls, IRQ, work, and DMA
-pins. Phase 4.7H certification is next.
+pins. Deterministic fault rollback, real QEMU EDU device transfers, multicore
+execution, and the required 60-second drift-free soak close Phase 4.7.
 
 ## Implementation Order
 
@@ -314,8 +315,8 @@ For each subphase:
 
 ### Remaining
 
-- 4.7H still owns EDU interrupt/streaming/SG device completion, fault
-  injection, four-vCPU churn, and the required 60-second closure soak.
+- Hardware-remapped IOMMU isolation remains later hardware-track work; the
+  Phase 4.7 trusted-direct fallback continues to report no isolation.
 
 ## 4.7G: Quiescent Unload And Automatic Cleanup
 
@@ -363,9 +364,63 @@ For each subphase:
 
 ### Remaining
 
-- 4.7H certifies the complete runtime with device IRQ/streaming/SG evidence,
-  expanded failure injection, one/four-vCPU races, 60-second churn, and every
-  inherited closure gate.
+- Phase 4.7H closure certification is recorded below.
+
+## 4.7H: Fault Injection, Device Smoke, Soak, And Closure
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commit: `1a4907f`
+
+### Delivered
+
+- Added generic PCI INTx IDT/APIC routing and generation-owned IRQ admission,
+  dispatch, acknowledgement, masking, and unregister behavior.
+- Extended deterministic driver-memory fault injection across VA records,
+  image pages, allocation records, page runs, MMIO records/maps, DMA records,
+  bounce buffers, DMA domains, IRQ drain, and quiesce drain paths.
+- Upgraded the packaged QEMU EDU driver to execute checked coherent,
+  streaming FROM_DEVICE, and two-source SG TO_DEVICE transfers. Clean one- and
+  four-vCPU sessions also require a real interrupt completion and device
+  acknowledgement.
+- Added bounded rollback/retry checks for every new failure point, a QEMU
+  diagnostic fault run, one/four-vCPU device smoke, and a four-vCPU 60-second
+  driver/GUI churn soak.
+- Added `test-phase47` as the nonempty aggregate of every Phase 4.7 focused,
+  fault, device, and soak target.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-driver-memory-faults` | PASS | Every host-reachable allocation/mapping failure rolled back and the same operation succeeded on retry |
+| `make test-driver-dma-device` | PASS | Clean one- and four-vCPU QEMU EDU sessions completed IRQ acknowledgement plus exact 512-byte coherent, streaming, and two-source SG data checks |
+| `make test-driver-memory-soak` | PASS | Four-vCPU QEMU ran for 60 seconds with 18 driver reload cycles and 28 GUI cycles; warmed and final resource snapshots were identical |
+| `make test-phase47` | PASS | P47-R01 through P47-R13 focused, diagnostic-QEMU, device, and soak gates passed in one aggregate run |
+| `make test-driver-regression` | PASS | Driver policy/build/handoff, UEFI smoke, SDK 91/91, and the inherited driver R01-R12 matrix passed |
+| `make test-phase46` | PASS | One/two/four-vCPU topology, concurrent execution, remote wake, TLB shootdown, IRQ ownership, fault injection, and one/four-vCPU 60-second soaks passed |
+| `make test-closure` | PASS | ABI freeze, driver, graphics, window, GUI recovery, fault, soak, boot, input, IPC, and service closure targets passed |
+
+### Resource Accounting
+
+- The 60-second soak warmed/final system snapshot was exactly
+  `(cpus=4, processes=21, windows=1, surfaces=4, pmm_free=26898,
+  heap_used=1946016, heap_mapped=1982464)`.
+- The warmed/final driver snapshot was exactly
+  `(resources=43, bindings=2, drivers=1, image_sections=37,
+  image_pages=33, image_va_free=32668, mmio_active=0,
+  mmio_free_pages=16384, dma_domains=2)` with zero active allocations,
+  coherent buffers, streaming maps, pinned ranges, quiescing drivers,
+  in-flight pins, timeouts, and quarantines.
+- The soak observed no unexplained process, thread, page, heap, surface,
+  binding, MMIO, DMA, IRQ, or driver-generation drift.
+
+### Remaining
+
+- No Phase 4.7 work remains. Full VT-d/AMD-Vi remapping, interrupt remapping,
+  and production storage/USB/network/audio/GPU drivers remain later roadmap
+  work.
 
 ## Evidence Record Template
 
