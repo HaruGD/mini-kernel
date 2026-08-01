@@ -130,6 +130,7 @@ int driver_dma_map_sg_current(DriverDeviceIdentity device,
 int driver_dma_sync_for_cpu_current(DriverDmaMappingHandle handle);
 int driver_dma_sync_for_device_current(DriverDmaMappingHandle handle);
 int driver_dma_unmap_current(DriverDmaMappingHandle handle);
+uint32_t driver_dma_quiesce_owner(DriverIdentity owner);
 uint32_t driver_dma_release_owner(DriverIdentity owner);
 uint32_t driver_dma_owner_count(DriverIdentity owner);
 void driver_dma_get_stats(DriverDmaStats* out);

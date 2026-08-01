@@ -131,20 +131,18 @@ void driver_irq_dispatch(uint32_t irq) {
         if (!hook->active || hook->irq != irq || hook->handler == 0) {
             continue;
         }
-        if (!driver_manager_identity_is_live(hook->owner)) {
-            continue;
-        }
-        const DriverRecord* owner = driver_manager_find(hook->driver);
-        if (owner == 0 || owner->state != DRIVER_STATE_READY) {
+        DriverIdentity owner = hook->owner;
+        DriverIrqHandler handler = hook->handler;
+        if (!driver_manager_identity_is_live(owner)) {
             continue;
         }
         hook->call_count++;
         DriverExecutionToken context_token = {};
-        if (driver_execution_enter(hook->owner, DRIVER_CONTEXT_IRQ,
+        if (driver_execution_enter(owner, DRIVER_CONTEXT_IRQ,
                                    &context_token) != DRIVER_LOAD_OK) {
             continue;
         }
-        hook->handler(irq);
+        handler(irq);
         driver_execution_leave(&context_token);
     }
 }

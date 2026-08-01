@@ -133,8 +133,9 @@ int driver_allocation_handle_is_valid(DriverAllocationHandle handle) {
     return handle.slot < DRIVER_MAX_ALLOCATIONS && handle.generation != 0;
 }
 
-int driver_execution_enter(DriverIdentity owner, uint32_t kind,
-                           DriverExecutionToken* token) {
+static int driver_execution_enter_common(DriverIdentity owner, uint32_t kind,
+                                         DriverExecutionToken* token,
+                                         int quiesce_entry) {
     if (token == 0 || !driver_manager_identity_is_live(owner) ||
         kind < DRIVER_CONTEXT_THREAD_SLEEPABLE ||
         kind > DRIVER_CONTEXT_EMERGENCY) {
@@ -143,6 +144,15 @@ int driver_execution_enter(DriverIdentity owner, uint32_t kind,
     uint32_t cpu_slot = 0;
     DriverExecutionContext* current = current_context_slot(&cpu_slot);
     if (current == 0) return DRIVER_LOAD_CONTEXT_DENIED;
+    *token = {};
+    token->activity.owner = driver_identity_invalid();
+    if (!quiesce_entry) {
+        const uint32_t activity = kind == DRIVER_CONTEXT_IRQ
+            ? DRIVER_ACTIVITY_IRQ : DRIVER_ACTIVITY_CALL;
+        int pin_result = driver_manager_activity_pin(owner, activity,
+                                                     &token->activity);
+        if (pin_result != DRIVER_LOAD_OK) return pin_result;
+    }
     token->previous = *current;
     token->cpu_slot = cpu_slot;
     token->active = 1;
@@ -152,6 +162,19 @@ int driver_execution_enter(DriverIdentity owner, uint32_t kind,
     return DRIVER_LOAD_OK;
 }
 
+int driver_execution_enter(DriverIdentity owner, uint32_t kind,
+                           DriverExecutionToken* token) {
+    return driver_execution_enter_common(owner, kind, token, 0);
+}
+
+int driver_execution_enter_quiesce(DriverIdentity owner, uint32_t kind,
+                                   DriverExecutionToken* token) {
+    if (!driver_manager_identity_is_live(owner)) {
+        return DRIVER_LOAD_CONTEXT_DENIED;
+    }
+    return driver_execution_enter_common(owner, kind, token, 1);
+}
+
 void driver_execution_leave(DriverExecutionToken* token) {
     if (token == 0 || !token->active) return;
     uint32_t cpu_slot = 0;
@@ -159,6 +182,7 @@ void driver_execution_leave(DriverExecutionToken* token) {
     if (current != 0 && cpu_slot == token->cpu_slot) {
         *current = token->previous;
     }
+    driver_manager_activity_unpin(&token->activity);
     token->active = 0;
 }
 

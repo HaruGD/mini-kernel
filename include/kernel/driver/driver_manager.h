@@ -58,6 +58,12 @@
 #define DRIVER_LOAD_DMA_MASK          -28
 #define DRIVER_LOAD_DMA_SYNC          -29
 #define DRIVER_LOAD_DMA_ISOLATION     -30
+#define DRIVER_LOAD_QUIESCE_TIMEOUT   -31
+
+#define DRIVER_ACTIVITY_CALL 1u
+#define DRIVER_ACTIVITY_IRQ  2u
+#define DRIVER_ACTIVITY_WORK 3u
+#define DRIVER_ACTIVITY_DMA  4u
 
 #define DRIVER_MAX_LOADED_SECTIONS 16
 #define DRIVER_MAX_RESOLVED_IMPORTS 32
@@ -166,6 +172,28 @@ struct DriverLoadDiagnostics {
     char name[48];
 };
 
+struct DriverActivityToken {
+    DriverIdentity owner;
+    uint32_t kind;
+    uint8_t active;
+    uint8_t reserved[3];
+};
+
+struct DriverQuiesceStats {
+    uint32_t in_flight;
+    uint32_t calls;
+    uint32_t irqs;
+    uint32_t work;
+    uint32_t dma;
+    uint32_t quiescing;
+    uint64_t pins;
+    uint64_t unpins;
+    uint64_t rejected_entries;
+    uint64_t waits;
+    uint64_t timeouts;
+    uint64_t quarantines;
+};
+
 struct DriverBindingRecord {
     uint8_t active;
     uint8_t kind;
@@ -241,6 +269,12 @@ DriverIdentity driver_manager_identity_from_name(const char* name);
 int driver_manager_identity_is_live(DriverIdentity identity);
 int driver_manager_identity_accepts_resources(DriverIdentity identity);
 int driver_manager_set_state_identity(DriverIdentity identity, uint32_t state);
+int driver_manager_activity_pin(DriverIdentity owner, uint32_t kind,
+                                DriverActivityToken* token);
+void driver_manager_activity_unpin(DriverActivityToken* token);
+int driver_manager_begin_quiesce(DriverIdentity owner);
+int driver_manager_wait_quiesced(DriverIdentity owner, uint32_t spin_limit);
+void driver_manager_quiesce_get_stats(DriverQuiesceStats* out);
 const char* driver_state_name(uint32_t state);
 const char* driver_kind_name(uint32_t kind);
 void driver_manager_set_lifecycle_driver(const char* name);

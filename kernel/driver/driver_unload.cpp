@@ -59,9 +59,9 @@ static int call_driver_exit(const DriverRecord* record, DriverLoadedImage* loade
 
     DriverLifecycleFn exit_fn = (DriverLifecycleFn)loaded->exit;
     DriverExecutionToken context_token = {};
-    if (driver_execution_enter(loaded->owner,
-                               DRIVER_CONTEXT_THREAD_SLEEPABLE,
-                               &context_token) != DRIVER_LOAD_OK) {
+    if (driver_execution_enter_quiesce(loaded->owner,
+                                      DRIVER_CONTEXT_THREAD_SLEEPABLE,
+                                      &context_token) != DRIVER_LOAD_OK) {
         return DRIVER_LOAD_CONTEXT_DENIED;
     }
     driver_manager_set_lifecycle_driver(record->name);
@@ -156,24 +156,31 @@ int driver_manager_unload(const char* name) {
     }
 
     DriverRecord snapshot = *record;
-    if (snapshot.state == DRIVER_STATE_READY ||
-        snapshot.state == DRIVER_STATE_LINKED) {
-        DriverIdentity identity = {snapshot.slot, snapshot.generation};
-        int state_result = driver_manager_set_state_identity(
-            identity, DRIVER_STATE_QUIESCING);
-        if (state_result != DRIVER_LOAD_OK) {
-            return state_result;
-        }
-    }
-    DriverLoadedImage* loaded = (DriverLoadedImage*)snapshot.instance;
-    int exit_result = call_driver_exit(&snapshot, loaded);
-    if (exit_result != DRIVER_LOAD_OK) {
-        driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);
-        return exit_result;
+    DriverIdentity identity = {snapshot.slot, snapshot.generation};
+    int state_result = driver_manager_begin_quiesce(identity);
+    if (state_result != DRIVER_LOAD_OK) {
+        return state_result;
     }
 
-    driver_export_unregister_module(snapshot.name);
+    DriverLoadedImage* loaded = (DriverLoadedImage*)snapshot.instance;
     driver_irq_unregister_module(snapshot.name);
+    if (driver_dma_quiesce_owner(identity) != 0) {
+        driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);
+        driver_manager_set_last_error(DRIVER_LOAD_RESOURCE_DENIED, "unload",
+                                      snapshot.name, "bus-master-active", 0, 0);
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    }
+    int wait_result = driver_manager_wait_quiesced(identity, 10000000u);
+    if (wait_result != DRIVER_LOAD_OK) {
+        driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);
+        driver_manager_set_last_error(wait_result, "unload", snapshot.name,
+                                      "in-flight-quarantine", 0, 0);
+        return wait_result;
+    }
+
+    int exit_result = call_driver_exit(&snapshot, loaded);
+
+    driver_export_unregister_module(snapshot.name);
     driver_dma_release_owner(loaded->owner);
     if (driver_dma_owner_count(loaded->owner) != 0) {
         driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);
@@ -204,6 +211,11 @@ int driver_manager_unload(const char* name) {
         return free_result;
     }
     driver_manager_unregister(snapshot.name);
+    if (exit_result != DRIVER_LOAD_OK) {
+        driver_manager_set_last_error(exit_result, "unload", snapshot.name,
+                                      "driver_exit", 0, 0);
+        return exit_result;
+    }
     return DRIVER_LOAD_OK;
 }
 

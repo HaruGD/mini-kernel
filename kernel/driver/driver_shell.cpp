@@ -134,6 +134,14 @@ void command_drivers() {
     print_hex32(dma_stats.streaming_mappings);
     print(" dma_pinned=");
     print_hex32(dma_stats.pinned_sources);
+    DriverQuiesceStats quiesce_stats;
+    driver_manager_quiesce_get_stats(&quiesce_stats);
+    print(" drv_inflight=");
+    print_hex32(quiesce_stats.in_flight);
+    print(" drv_quiescing=");
+    print_hex32(quiesce_stats.quiescing);
+    print(" drv_quiesce_timeouts=");
+    print_hex64(quiesce_stats.timeouts);
     print("\n===============");
 }
 
@@ -162,6 +170,7 @@ static const char* drv_load_result_name(int result) {
     if (result == DRIVER_LOAD_CONTEXT_DENIED) return "context_denied";
     if (result == DRIVER_LOAD_ALLOCATION_BUDGET) return "allocation_budget";
     if (result == DRIVER_LOAD_ALLOCATION_DENIED) return "allocation_denied";
+    if (result == DRIVER_LOAD_QUIESCE_TIMEOUT) return "quiesce_timeout";
     return "unknown";
 }
 

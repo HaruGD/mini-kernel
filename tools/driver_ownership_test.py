@@ -192,8 +192,10 @@ void copy_string64(char* out, uint32_t capacity, const char* text) {
 
 uint32_t pci_get_device_count() { return 0; }
 const PCIDeviceInfo* pci_get_device(uint32_t) { return 0; }
-int driver_execution_enter(DriverIdentity, uint32_t,
+int driver_execution_enter(DriverIdentity owner, uint32_t,
                            DriverExecutionToken* token) {
+    if (!driver_manager_identity_accepts_resources(owner))
+        return DRIVER_LOAD_STATE_DENIED;
     if (token) token->active = 1;
     return DRIVER_LOAD_OK;
 }

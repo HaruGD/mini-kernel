@@ -46,6 +46,7 @@ struct DriverExecutionContext {
 
 struct DriverExecutionToken {
     DriverExecutionContext previous;
+    DriverActivityToken activity;
     uint32_t cpu_slot;
     uint8_t active;
     uint8_t reserved[3];
@@ -77,6 +78,8 @@ DriverAllocationHandle driver_allocation_invalid();
 int driver_allocation_handle_is_valid(DriverAllocationHandle handle);
 int driver_execution_enter(DriverIdentity owner, uint32_t kind,
                            DriverExecutionToken* token);
+int driver_execution_enter_quiesce(DriverIdentity owner, uint32_t kind,
+                                   DriverExecutionToken* token);
 void driver_execution_leave(DriverExecutionToken* token);
 int driver_execution_current(DriverExecutionContext* out);
 int driver_execution_require_sleepable();

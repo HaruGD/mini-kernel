@@ -7,6 +7,25 @@ static DriverRecord g_drivers[DRIVER_MAX_RECORDS];
 static DriverLoadDiagnostics g_last_error;
 static char g_lifecycle_driver[32];
 
+struct DriverQuiesceSlot {
+    volatile uint32_t generation;
+    volatile uint32_t accepting;
+    volatile uint32_t in_flight;
+    volatile uint32_t calls;
+    volatile uint32_t irqs;
+    volatile uint32_t work;
+    volatile uint32_t dma;
+    volatile uint32_t quarantined;
+};
+
+static DriverQuiesceSlot g_quiesce[DRIVER_MAX_RECORDS];
+static volatile uint64_t g_quiesce_pins;
+static volatile uint64_t g_quiesce_unpins;
+static volatile uint64_t g_quiesce_rejections;
+static volatile uint64_t g_quiesce_waits;
+static volatile uint64_t g_quiesce_timeouts;
+static volatile uint64_t g_quiesce_quarantines;
+
 static uint32_t next_generation(uint32_t generation) {
     generation++;
     return generation != 0 ? generation : 1u;
@@ -23,16 +42,37 @@ static void clear_driver_record(DriverRecord* record) {
     record->name[0] = '\0';
     record->version[0] = '\0';
     record->instance = 0;
+    if (record->slot < DRIVER_MAX_RECORDS) {
+        __atomic_store_n(&g_quiesce[record->slot].accepting, 0u,
+                         __ATOMIC_RELEASE);
+    }
 }
 
 static void activate_driver_record(DriverRecord* record) {
     record->generation = next_generation(record->generation);
+    DriverQuiesceSlot* quiesce = &g_quiesce[record->slot];
+    __atomic_store_n(&quiesce->generation, record->generation,
+                     __ATOMIC_RELAXED);
+    __atomic_store_n(&quiesce->in_flight, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&quiesce->calls, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&quiesce->irqs, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&quiesce->work, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&quiesce->dma, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&quiesce->quarantined, 0u, __ATOMIC_RELAXED);
+    __atomic_store_n(&quiesce->accepting, 1u, __ATOMIC_RELEASE);
     record->active = 1;
     record->state = DRIVER_STATE_REGISTERED;
 }
 
 void driver_manager_init() {
+    g_quiesce_pins = 0;
+    g_quiesce_unpins = 0;
+    g_quiesce_rejections = 0;
+    g_quiesce_waits = 0;
+    g_quiesce_timeouts = 0;
+    g_quiesce_quarantines = 0;
     for (uint32_t i = 0; i < DRIVER_MAX_RECORDS; i++) {
+        g_quiesce[i] = {};
         g_drivers[i].slot = i;
         g_drivers[i].generation = 0;
         clear_driver_record(&g_drivers[i]);
@@ -210,8 +250,148 @@ int driver_manager_set_state_identity(DriverIdentity identity, uint32_t state) {
                                       state);
         return DRIVER_LOAD_STATE_DENIED;
     }
-    record->state = (uint8_t)state;
+    __atomic_store_n(&record->state, (uint8_t)state, __ATOMIC_RELEASE);
     return DRIVER_LOAD_OK;
+}
+
+static volatile uint32_t* activity_counter(DriverQuiesceSlot* slot,
+                                           uint32_t kind) {
+    if (kind == DRIVER_ACTIVITY_CALL) return &slot->calls;
+    if (kind == DRIVER_ACTIVITY_IRQ) return &slot->irqs;
+    if (kind == DRIVER_ACTIVITY_WORK) return &slot->work;
+    if (kind == DRIVER_ACTIVITY_DMA) return &slot->dma;
+    return 0;
+}
+
+int driver_manager_activity_pin(DriverIdentity owner, uint32_t kind,
+                                DriverActivityToken* token) {
+    if (token != 0) {
+        *token = {};
+        token->owner = driver_identity_invalid();
+    }
+    if (token == 0 || !driver_identity_is_valid(owner) ||
+        kind < DRIVER_ACTIVITY_CALL || kind > DRIVER_ACTIVITY_DMA) {
+        return DRIVER_LOAD_CONTEXT_DENIED;
+    }
+    DriverQuiesceSlot* slot = &g_quiesce[owner.slot];
+    volatile uint32_t* category = activity_counter(slot, kind);
+    if (__atomic_load_n(&slot->generation, __ATOMIC_ACQUIRE) !=
+            owner.generation ||
+        __atomic_load_n(&slot->accepting, __ATOMIC_ACQUIRE) == 0) {
+        __atomic_add_fetch(&g_quiesce_rejections, 1u, __ATOMIC_RELAXED);
+        return DRIVER_LOAD_STATE_DENIED;
+    }
+
+    __atomic_add_fetch(&slot->in_flight, 1u, __ATOMIC_ACQ_REL);
+    __atomic_add_fetch(category, 1u, __ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    const DriverRecord* record = &g_drivers[owner.slot];
+    const uint32_t state = __atomic_load_n(&record->state, __ATOMIC_ACQUIRE);
+    if (__atomic_load_n(&slot->accepting, __ATOMIC_ACQUIRE) == 0 ||
+        !driver_manager_identity_is_live(owner) ||
+        (state != DRIVER_STATE_LOADING && state != DRIVER_STATE_LINKED &&
+         state != DRIVER_STATE_READY)) {
+        __atomic_sub_fetch(category, 1u, __ATOMIC_RELAXED);
+        __atomic_sub_fetch(&slot->in_flight, 1u, __ATOMIC_RELEASE);
+        __atomic_add_fetch(&g_quiesce_rejections, 1u, __ATOMIC_RELAXED);
+        return DRIVER_LOAD_STATE_DENIED;
+    }
+
+    token->owner = owner;
+    token->kind = kind;
+    token->active = 1;
+    __atomic_add_fetch(&g_quiesce_pins, 1u, __ATOMIC_RELAXED);
+    return DRIVER_LOAD_OK;
+}
+
+void driver_manager_activity_unpin(DriverActivityToken* token) {
+    if (token == 0 || !token->active ||
+        !driver_identity_is_valid(token->owner)) return;
+    DriverQuiesceSlot* slot = &g_quiesce[token->owner.slot];
+    volatile uint32_t* category = activity_counter(slot, token->kind);
+    if (category != 0 &&
+        __atomic_load_n(&slot->generation, __ATOMIC_ACQUIRE) ==
+            token->owner.generation) {
+        __atomic_sub_fetch(category, 1u, __ATOMIC_RELAXED);
+        __atomic_sub_fetch(&slot->in_flight, 1u, __ATOMIC_RELEASE);
+        __atomic_add_fetch(&g_quiesce_unpins, 1u, __ATOMIC_RELAXED);
+    }
+    token->active = 0;
+}
+
+int driver_manager_begin_quiesce(DriverIdentity owner) {
+    if (!driver_manager_identity_is_live(owner)) {
+        return DRIVER_LOAD_STALE_IDENTITY;
+    }
+    DriverQuiesceSlot* slot = &g_quiesce[owner.slot];
+    if (__atomic_load_n(&slot->generation, __ATOMIC_ACQUIRE) !=
+        owner.generation) return DRIVER_LOAD_STALE_IDENTITY;
+
+    __atomic_store_n(&slot->accepting, 0u, __ATOMIC_RELEASE);
+    const uint32_t state =
+        __atomic_load_n(&g_drivers[owner.slot].state, __ATOMIC_ACQUIRE);
+    if (state == DRIVER_STATE_QUIESCING || state == DRIVER_STATE_FAILED ||
+        state == DRIVER_STATE_REJECTED) return DRIVER_LOAD_OK;
+    if (state != DRIVER_STATE_READY && state != DRIVER_STATE_LINKED) {
+        __atomic_store_n(&slot->accepting, 1u, __ATOMIC_RELEASE);
+        return DRIVER_LOAD_STATE_DENIED;
+    }
+    int result = driver_manager_set_state_identity(owner,
+                                                    DRIVER_STATE_QUIESCING);
+    if (result != DRIVER_LOAD_OK) {
+        __atomic_store_n(&slot->accepting, 1u, __ATOMIC_RELEASE);
+    }
+    return result;
+}
+
+int driver_manager_wait_quiesced(DriverIdentity owner, uint32_t spin_limit) {
+    if (!driver_manager_identity_is_live(owner)) {
+        return DRIVER_LOAD_STALE_IDENTITY;
+    }
+    DriverQuiesceSlot* slot = &g_quiesce[owner.slot];
+    __atomic_add_fetch(&g_quiesce_waits, 1u, __ATOMIC_RELAXED);
+    for (uint32_t spin = 0; spin < spin_limit; spin++) {
+        if (__atomic_load_n(&slot->in_flight, __ATOMIC_ACQUIRE) == 0) {
+            return DRIVER_LOAD_OK;
+        }
+        __asm__ volatile("pause" : : : "memory");
+    }
+    if (__atomic_load_n(&slot->in_flight, __ATOMIC_ACQUIRE) == 0) {
+        return DRIVER_LOAD_OK;
+    }
+    __atomic_store_n(&slot->quarantined, 1u, __ATOMIC_RELEASE);
+    __atomic_add_fetch(&g_quiesce_timeouts, 1u, __ATOMIC_RELAXED);
+    __atomic_add_fetch(&g_quiesce_quarantines, 1u, __ATOMIC_RELAXED);
+    return DRIVER_LOAD_QUIESCE_TIMEOUT;
+}
+
+void driver_manager_quiesce_get_stats(DriverQuiesceStats* out) {
+    if (out == 0) return;
+    *out = {};
+    for (uint32_t i = 0; i < DRIVER_MAX_RECORDS; i++) {
+        out->in_flight +=
+            __atomic_load_n(&g_quiesce[i].in_flight, __ATOMIC_ACQUIRE);
+        out->calls += __atomic_load_n(&g_quiesce[i].calls,
+                                     __ATOMIC_RELAXED);
+        out->irqs += __atomic_load_n(&g_quiesce[i].irqs,
+                                    __ATOMIC_RELAXED);
+        out->work += __atomic_load_n(&g_quiesce[i].work,
+                                    __ATOMIC_RELAXED);
+        out->dma += __atomic_load_n(&g_quiesce[i].dma,
+                                   __ATOMIC_RELAXED);
+        if (__atomic_load_n(&g_quiesce[i].accepting, __ATOMIC_ACQUIRE) == 0 &&
+            __atomic_load_n(&g_drivers[i].active, __ATOMIC_ACQUIRE)) {
+            out->quiescing++;
+        }
+    }
+    out->pins = __atomic_load_n(&g_quiesce_pins, __ATOMIC_RELAXED);
+    out->unpins = __atomic_load_n(&g_quiesce_unpins, __ATOMIC_RELAXED);
+    out->rejected_entries =
+        __atomic_load_n(&g_quiesce_rejections, __ATOMIC_RELAXED);
+    out->waits = __atomic_load_n(&g_quiesce_waits, __ATOMIC_RELAXED);
+    out->timeouts = __atomic_load_n(&g_quiesce_timeouts, __ATOMIC_RELAXED);
+    out->quarantines =
+        __atomic_load_n(&g_quiesce_quarantines, __ATOMIC_RELAXED);
 }
 
 int driver_manager_set_state(const char* name, uint32_t state) {
