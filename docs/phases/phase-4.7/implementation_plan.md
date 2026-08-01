@@ -94,10 +94,9 @@ drv_alloc_pages(page_count, alignment, flags) -> page handle + CPU pointer
 - unload reports and then reclaims ordinary owned allocations only after
   quiescence. DMA resources follow stricter device-stop ordering.
 
-Legacy `kmalloc/kfree` imports are retained temporarily for linked core
-drivers and migration, but new packaged hardware drivers use the owned API.
-Closure records every remaining legacy user; unrestricted legacy imports are
-removed from the external `.drv` ABI once migration completes.
+Linked kernel code retains its internal heap API. Packaged hardware drivers
+use owned handles exclusively; unrestricted `kmalloc/kfree` imports are not
+part of the external `.drv` ABI.
 
 ### Allocation And Execution Context
 

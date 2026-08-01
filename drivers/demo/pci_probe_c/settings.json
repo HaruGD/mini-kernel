@@ -15,7 +15,6 @@
     "kernel.drv_alloc": [],
     "kernel.drv_free": [],
     "kernel.pci_read_config32": ["PCI"],
-    "kernel.pci_get_bar": ["PCI"],
     "kernel.pci_bind_device_handle": ["PCI"],
     "kernel.pci_map_bar_handle": ["PCI", "MMIO"],
     "kernel.pci_unmap_bar_handle": ["PCI", "MMIO"],
@@ -33,6 +32,7 @@
     "kernel.dma_sync_for_cpu": ["DMA"],
     "kernel.dma_unmap": ["DMA"],
     "kernel.irq_register": ["INTERRUPT"],
-    "kernel.irq_unregister": ["INTERRUPT"]
+    "kernel.irq_unregister": ["INTERRUPT"],
+    "kernel.irq_wait_once": ["INTERRUPT"]
   }
 }

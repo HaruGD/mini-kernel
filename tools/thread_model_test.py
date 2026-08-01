@@ -47,8 +47,8 @@ int main() {
     main_thread->context->timeslice_ticks = 3;
     check(process->timeslice_ticks == 3);
 
-    Thread* extra[3];
-    for (uint32_t i = 0; i < 3; i++) {
+    Thread* extra[THREADS_PER_PROCESS_MAX - 1];
+    for (uint32_t i = 0; i < THREADS_PER_PROCESS_MAX - 1; i++) {
         extra[i] = allocate_thread_record(process, 0);
         check(extra[i] != 0);
         check(extra[i]->owner == process);

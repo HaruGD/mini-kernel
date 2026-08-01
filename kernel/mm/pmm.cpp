@@ -208,18 +208,12 @@ static int init_from_e820_64(const BootInfo* boot_info) {
     return 1;
 }
 
-static void init_fallback64() {
-    for (uint32_t i = 0; i < PMM_BITMAP_SIZE; i++) {
-        memory_bitmap64[i] = 0;
-    }
-    free_blocks64 = PMM_TOTAL_BLOCKS;
-    mark_range_used64(0, LOW_MEMORY_RESERVE_SIZE);
-}
-
 extern "C" void pmm_init(const BootInfo* boot_info) {
     reset_stats64();
     if (!init_from_e820_64(boot_info)) {
-        init_fallback64();
+        /* A fabricated all-free map can overwrite firmware, the kernel, or
+         * devices. Invalid boot memory metadata therefore fails closed. */
+        mark_all_used64();
     }
     update_peak_used_blocks64();
 }

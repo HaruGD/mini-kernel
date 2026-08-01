@@ -107,7 +107,9 @@ def main() -> int:
                                stderr=subprocess.STDOUT)
     try:
         wait_for("OS64>", 20)
-        for warm_run in range(9):
+        # Exercise every reusable process/address-space record before taking
+        # the baseline now that the process table has 16 slots.
+        for warm_run in range(17):
             output = send_command(process, "run uthread_c.elf")
             if "[THREAD] PASS" not in output or "failures=0" not in output:
                 raise RuntimeError(
@@ -124,7 +126,7 @@ def main() -> int:
         if baseline != final:
             raise RuntimeError(f"thread resource drift: {baseline} -> {final}")
         if baseline_sched != final_sched or final_sched[0] != 0 or not (
-            1 <= final_sched[1] <= 8
+            1 <= final_sched[1] <= 16
         ):
             raise RuntimeError(
                 f"thread scheduler drift: {baseline_sched} -> {final_sched}"
@@ -143,8 +145,8 @@ def main() -> int:
         variables.unlink(missing_ok=True)
 
     text = SERIAL.read_text(errors="replace") if SERIAL.exists() else ""
-    if text.count("[THREAD] PASS") != 10 or \
-            text.count("status=64,65,66 failures=0") != 10:
+    if text.count("[THREAD] PASS") != 18 or \
+            text.count("status=64,65,66 failures=0") != 18:
         print(f"thread smoke failed; see {SERIAL}", file=sys.stderr)
         return 1
     for line in text.splitlines():

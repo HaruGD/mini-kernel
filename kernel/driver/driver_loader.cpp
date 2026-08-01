@@ -910,7 +910,6 @@ static int call_driver_entry(const DrvManifest* manifest, DriverLoadedImage* loa
     driver_manager_set_lifecycle_driver(0);
     driver_execution_leave(&context_token);
     if (entry_result != 0) {
-        driver_manager_set_state(manifest->name, DRIVER_STATE_FAILED);
         driver_manager_set_last_error(DRIVER_LOAD_ENTRY_FAILED, "entry", manifest->name, manifest->entry_symbol, 0, entry_result);
         return DRIVER_LOAD_ENTRY_FAILED;
     }
@@ -1000,12 +999,30 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
         result = call_driver_entry(manifest, loaded);
     }
     if (result == DRIVER_LOAD_OK) {
-        driver_manager_probe_loaded_driver(manifest->name, loaded);
+        result = driver_manager_probe_loaded_driver(manifest->name, loaded);
     }
     if (result != DRIVER_LOAD_OK) {
+        driver_manager_abort_load(loaded->owner,
+                                  failure_state_for_result(result));
+        driver_irq_unregister_module(manifest->name);
+        int rollback_result = DRIVER_LOAD_OK;
+        if (driver_dma_quiesce_owner(loaded->owner) != 0) {
+            rollback_result = DRIVER_LOAD_RESOURCE_DENIED;
+        }
+        int wait_result = driver_manager_wait_quiesced(loaded->owner,
+                                                       10000000u);
+        if (wait_result != DRIVER_LOAD_OK) rollback_result = wait_result;
+        if (rollback_result != DRIVER_LOAD_OK) {
+            driver_manager_set_last_error(rollback_result, "rollback",
+                                          manifest->name,
+                                          "in-flight-quarantine", 0,
+                                          (uint64_t)(uint32_t)result);
+            return rollback_result;
+        }
         driver_export_unregister_module(manifest->name);
         driver_dma_release_owner(loaded->owner);
         driver_mmio_release_owner(loaded->owner);
+        driver_manager_unbind_module(manifest->name);
         driver_allocation_release_owner(loaded->owner);
         if (registered) {
             driver_manager_set_instance(manifest->name, 0);

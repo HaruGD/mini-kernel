@@ -273,6 +273,7 @@ int driver_manager_activity_pin(DriverIdentity owner, uint32_t kind,
                                 DriverActivityToken* token);
 void driver_manager_activity_unpin(DriverActivityToken* token);
 int driver_manager_begin_quiesce(DriverIdentity owner);
+int driver_manager_abort_load(DriverIdentity owner, uint32_t failure_state);
 int driver_manager_wait_quiesced(DriverIdentity owner, uint32_t spin_limit);
 void driver_manager_quiesce_get_stats(DriverQuiesceStats* out);
 const char* driver_state_name(uint32_t state);
@@ -354,7 +355,7 @@ int driver_irq_unregister_handler(const char* driver_name, uint32_t irq, DriverI
 void driver_irq_unregister_module(const char* name);
 void driver_irq_dispatch(uint32_t irq);
 uint32_t driver_irq_hook_count();
-const DriverIrqHookRecord* driver_irq_hook_get(uint32_t index);
+int driver_irq_hook_get(uint32_t index, DriverIrqHookRecord* out);
 void driver_irq_init();
 
 void command_drivers();

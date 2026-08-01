@@ -185,9 +185,8 @@ For each subphase:
   context rejects every ordinary driver allocation operation.
 - PCI probe callbacks also enter the owning driver's sleepable context before
   using PCI imports; a UEFI negative run caught and verified this boundary.
-- Restricted VFS driver imports and legacy `kmalloc` to sleepable driver
-  execution. Legacy `kmalloc/kfree` symbols remain temporarily available for
-  migration, while new code uses owned handles.
+- Restricted VFS imports to sleepable driver execution and moved packaged
+  drivers to generation-owned allocation handles.
 - Added deterministic allocation backing fault injection, page-allocation
   rollback, zero-on-request and confidentiality clearing, automatic ordinary
   allocation reclamation after quiescing, and quarantine-on-TLB-failure.
@@ -421,6 +420,43 @@ For each subphase:
 - No Phase 4.7 work remains. Full VT-d/AMD-Vi remapping, interrupt remapping,
   and production storage/USB/network/audio/GPU drivers remain later roadmap
   work.
+
+## Post-Closure Corrective Audit
+
+- Status: Complete
+- Date: 2026-08-01
+
+### Corrected
+
+- Serialized IRQ hook publication, snapshot diagnostics, dispatch pinning,
+  stable shared-line routing, and removal. QEMU EDU now tests immediate INTx
+  delivery/ACK independently from DMA data transfer, including reload cycles.
+- Made load failure and PCI probe failure observable and transactional:
+  admission closes, IRQ and DMA activity drains, then exports, DMA, MMIO,
+  bindings, allocations, and image mappings are reclaimed. Timeout retains a
+  quarantined image.
+- Removed packaged-driver `kmalloc/kfree`, raw PCI configuration write,
+  raw memory-space enable, and raw bind imports. Mutating hardware access now
+  proceeds through owner-generation handles.
+- Raised the physical-memory ceiling to 512 MiB, expanded capacity to 16
+  processes and eight threads per process, and kept nested execution depth
+  bounded independently from the global thread table.
+- Corrected the user CRT SysV stack alignment exposed by the wider thread
+  test; main plus seven workers now execute without aligned-SIMD GPFs.
+- Made invalid physical-memory metadata fail closed, bounded boot reserved
+  range iteration, enabled kernel frame pointers, selected BSP/AP/thread/IST
+  stack bounds for panic traces, and made first-panic ownership atomic.
+- Added `test-current-closure`, which aggregates the legacy closure suite with
+  complete Phase 4.6 and Phase 4.7 gates.
+
+### Corrective Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-phase47` | PASS | 18 driver reloads and 38 GUI cycles over 60 seconds; warmed/final PMM, heap, image VA, MMIO, DMA, IRQ, and quiesce state matched |
+| Phase 4.6 focused aggregate | PASS | topology 1/2/4 vCPU, emergency IST, execution, remote wake, TLB, IRQ ownership, fault injection, services/GUI/input, and 1/4-vCPU 60-second thread soaks passed |
+| `python3 tools/thread_smoke.py` | PASS | 18 runs of main plus seven workers; final scheduler queue zero and warmed/final resources identical |
+| `python3 tools/service_soak.py --duration 60` | PASS | 42 service health/restart cycles with no resource or lock drift |
 
 ## Evidence Record Template
 

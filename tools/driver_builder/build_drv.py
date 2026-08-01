@@ -235,10 +235,6 @@ def parse_elf(path: Path) -> tuple[bytes, list[ElfSection], list[ElfSymbol], int
 def parse_import_symbol(name: str) -> tuple[str, str]:
     if name == "klog":
         return "kernel", "klog"
-    if name == "kmalloc":
-        return "kernel", "kmalloc"
-    if name == "kfree":
-        return "kernel", "kfree"
     if "__" in name:
         module, imported = name.split("__", 1)
         return module, imported

@@ -1,12 +1,14 @@
 #include <os64/os64.h>
 
-static volatile uint32_t worker_counts[3];
-static volatile uint32_t worker_identity_ok[3];
+#define THREAD_TEST_WORKERS 7u
+
+static volatile uint32_t worker_counts[THREAD_TEST_WORKERS];
+static volatile uint32_t worker_identity_ok[THREAD_TEST_WORKERS];
 
 static long thread_worker(void* argument) {
     uint32_t index = (uint32_t)(uintptr_t)argument;
     OsThreadIdentity self;
-    if (index < 3 && os_thread_self(&self) == OS_OK &&
+    if (index < THREAD_TEST_WORKERS && os_thread_self(&self) == OS_OK &&
         self.tid != 0 && self.generation != 0) {
         worker_identity_ok[index] = 1;
     }
@@ -23,8 +25,8 @@ static long thread_worker(void* argument) {
 
 int main(void) {
     OsThreadIdentity main_identity;
-    OsThreadIdentity workers[3];
-    uint32_t statuses[3] = {0, 0, 0};
+    OsThreadIdentity workers[THREAD_TEST_WORKERS];
+    uint32_t statuses[THREAD_TEST_WORKERS] = {0};
     uint32_t first_counts[3] = {0, 0, 0};
     uint32_t failures = 0;
 
@@ -36,7 +38,7 @@ int main(void) {
         failures++;
     }
 
-    for (uint32_t i = 0; i < 3; i++) {
+    for (uint32_t i = 0; i < THREAD_TEST_WORKERS; i++) {
         if (os_thread_create(thread_worker,
                              (void*)(uintptr_t)i,
                              OS_THREAD_STACK_DEFAULT,
@@ -53,7 +55,7 @@ int main(void) {
         failures++;
     }
 
-    for (uint32_t i = 0; i < 3; i++) {
+    for (uint32_t i = 0; i < THREAD_TEST_WORKERS; i++) {
         if (workers[i].tid == 0 ||
             os_thread_join(workers[i], &statuses[i]) != OS_OK) {
             failures++;
@@ -63,7 +65,7 @@ int main(void) {
             worker_identity_ok[i] != 1u) {
             failures++;
         }
-        first_counts[i] = worker_counts[i];
+        if (i < 3) first_counts[i] = worker_counts[i];
         if (os_thread_join(workers[i], 0) != OS_ERR_NOT_FOUND) {
             failures++;
         }

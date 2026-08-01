@@ -5,33 +5,21 @@
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/kernel_exports.h"
 #include "kernel/kutil64.h"
+#include "kernel/cpu_local.h"
 #include "drivers/gop.h"
+#include "drivers/pit.h"
 #include "kernel/pci.h"
 #include "drivers/ata.h"
 #include "fs/vfs.h"
-#include <stddef.h>
-
-extern "C" {
-    #include "kernel/mm/heap.h"
-}
 
 extern ATADriver ata;
+extern PIT pit;
 
 extern "C" void driver_klog(const char* text) {
     if (!driver_execution_runtime_allowed()) return;
     print("\n[drv] ");
     print(text != 0 ? text : "(null)");
     print("\n");
-}
-
-extern "C" void* driver_kmalloc(uint64_t size) {
-    if (!driver_execution_require_sleepable()) return 0;
-    return kmalloc((size_t)size);
-}
-
-extern "C" void driver_kfree(void* ptr) {
-    if (!driver_execution_require_sleepable()) return;
-    kfree(ptr);
 }
 
 extern "C" int64_t driver_owned_alloc(uint64_t size, uint64_t alignment,
@@ -70,11 +58,6 @@ extern "C" uint32_t driver_pci_read_config32(uint64_t bus, uint64_t device, uint
     return pci_read_config32(bus, device, function, offset);
 }
 
-extern "C" void driver_pci_write_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset, uint32_t value) {
-    if (!driver_execution_require_sleepable()) return;
-    pci_write_config32(bus, device, function, offset, value);
-}
-
 extern "C" uint64_t driver_pci_device_count() {
     if (!driver_execution_require_sleepable()) return 0;
     return pci_get_device_count();
@@ -93,35 +76,6 @@ extern "C" int64_t driver_pci_get_device(uint64_t index, PCIDeviceInfo* out) {
 extern "C" int64_t driver_pci_find_device(uint64_t vendor_id, uint64_t device_id, PCIDeviceInfo* out) {
     if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     return pci_find_device((uint16_t)vendor_id, (uint16_t)device_id, out) ? 0 : -1;
-}
-
-extern "C" int64_t driver_pci_get_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out) {
-    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
-    return pci_get_bar(device, (uint32_t)bar_index, out) ? 0 : -1;
-}
-
-extern "C" void* driver_pci_map_bar(const PCIDeviceInfo* device, uint64_t bar_index, PCIBarInfo* out) {
-    if (!driver_execution_require_sleepable()) return 0;
-    return pci_map_bar(device, (uint32_t)bar_index, out);
-}
-
-extern "C" int64_t driver_pci_enable_memory_space(const PCIDeviceInfo* device) {
-    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
-    return pci_enable_memory_space(device) ? 0 : -1;
-}
-
-extern "C" int64_t driver_pci_enable_bus_mastering(const PCIDeviceInfo* device) {
-    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
-    return pci_enable_bus_mastering(device) ? 0 : -1;
-}
-
-extern "C" int64_t driver_pci_bind_device(const PCIDeviceInfo* device, uint64_t flags) {
-    if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
-    const char* driver_name = driver_manager_current_lifecycle_driver();
-    if (driver_name == 0) {
-        return DRIVER_LOAD_BIND_DENIED;
-    }
-    return driver_manager_bind_pci(driver_name, device, (uint32_t)flags);
 }
 
 extern "C" int64_t driver_pci_bind_device_handle(
@@ -248,14 +202,25 @@ extern "C" int64_t driver_irq_unregister(uint64_t irq, DriverIrqHandler handler)
     return driver_irq_unregister_handler(driver_name, (uint32_t)irq, handler);
 }
 
-extern "C" uint32_t driver_mmio_read32(uint64_t address) {
-    if (!driver_execution_runtime_allowed()) return 0;
-    return *(volatile uint32_t*)(uintptr_t)address;
-}
-
-extern "C" void driver_mmio_write32(uint64_t address, uint32_t value) {
-    if (!driver_execution_runtime_allowed()) return;
-    *(volatile uint32_t*)(uintptr_t)address = value;
+extern "C" int64_t driver_irq_wait_once() {
+    if (!driver_execution_require_sleepable())
+        return DRIVER_LOAD_CONTEXT_DENIED;
+    uint64_t flags = 0;
+    __asm__ volatile("pushfq; pop %0" : "=r"(flags));
+    CpuLocal* local = cpu_local_current();
+    if (!cpu_local_validate(local) || local->held_lock_depth != 0 ||
+        local->preemption_disable_count != 0)
+        return DRIVER_LOAD_CONTEXT_DENIED;
+    __atomic_add_fetch(&local->preemption_disable_count, 1u,
+                       __ATOMIC_ACQ_REL);
+    const uint64_t start_tick = pit.get_tick64();
+    do {
+        __asm__ volatile("sti; hlt; cli" : : : "memory");
+    } while (pit.get_tick64() == start_tick);
+    __atomic_sub_fetch(&local->preemption_disable_count, 1u,
+                       __ATOMIC_RELEASE);
+    if ((flags & (1u << 9)) != 0) __asm__ volatile("sti" : : : "memory");
+    return DRIVER_LOAD_OK;
 }
 
 extern "C" int64_t driver_vfs_open(const char* path, uint64_t mode) {
@@ -300,8 +265,6 @@ extern "C" int64_t driver_block_write_sector(uint64_t lba, const void* buffer) {
 
 void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "klog", (void*)driver_klog, 0);
-    driver_export_register("kernel", "kmalloc", (void*)driver_kmalloc, 0);
-    driver_export_register("kernel", "kfree", (void*)driver_kfree, 0);
     driver_export_register("kernel", "drv_alloc", (void*)driver_owned_alloc, 0);
     driver_export_register("kernel", "drv_free", (void*)driver_owned_free, 0);
     driver_export_register("kernel", "gop_get_info", (void*)driver_gop_get_info, DRV_PERMISSION_DISPLAY);
@@ -309,13 +272,9 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "gop_putpixel", (void*)driver_gop_putpixel, DRV_PERMISSION_DISPLAY);
     driver_export_register("kernel", "gop_fill_rect", (void*)driver_gop_fill_rect, DRV_PERMISSION_DISPLAY);
     driver_export_register("kernel", "pci_read_config32", (void*)driver_pci_read_config32, DRV_PERMISSION_PCI);
-    driver_export_register("kernel", "pci_write_config32", (void*)driver_pci_write_config32, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_device_count", (void*)driver_pci_device_count, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_get_device", (void*)driver_pci_get_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_find_device", (void*)driver_pci_find_device, DRV_PERMISSION_PCI);
-    driver_export_register("kernel", "pci_get_bar", (void*)driver_pci_get_bar, DRV_PERMISSION_PCI);
-    driver_export_register("kernel", "pci_enable_memory_space", (void*)driver_pci_enable_memory_space, DRV_PERMISSION_PCI);
-    driver_export_register("kernel", "pci_bind_device", (void*)driver_pci_bind_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_bind_device_handle", (void*)driver_pci_bind_device_handle, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_map_bar_handle", (void*)driver_pci_map_bar_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "pci_unmap_bar_handle", (void*)driver_pci_unmap_bar_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
@@ -335,6 +294,7 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "dma_unmap", (void*)driver_dma_unmap_handle, DRV_PERMISSION_DMA);
     driver_export_register("kernel", "irq_register", (void*)driver_irq_register, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "irq_unregister", (void*)driver_irq_unregister, DRV_PERMISSION_INTERRUPT);
+    driver_export_register("kernel", "irq_wait_once", (void*)driver_irq_wait_once, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "vfs_open", (void*)driver_vfs_open, DRV_PERMISSION_VFS);
     driver_export_register("kernel", "vfs_read", (void*)driver_vfs_read, DRV_PERMISSION_VFS);
     driver_export_register("kernel", "vfs_write", (void*)driver_vfs_write, DRV_PERMISSION_VFS);

@@ -21,7 +21,10 @@ static uint32_t irq_calls = 0;
 static volatile uint32_t concurrent_failures = 0;
 
 static void check(int condition) { if (!condition) failures++; }
-static uint64_t test_irq(uint64_t irq) { irq_calls += (uint32_t)irq; return 0; }
+static uint64_t test_irq(uint64_t irq) {
+    __atomic_add_fetch(&irq_calls, (uint32_t)irq, __ATOMIC_RELAXED);
+    return 0;
+}
 static uint64_t test_export() { return 0x47A; }
 
 static DrvManifest manifest(const char* name, uint32_t permissions) {
@@ -87,6 +90,34 @@ int main() {
     check(driver_irq_register_handler("alpha", 5, test_irq, 0) == DRIVER_LOAD_OK);
     driver_irq_dispatch(5);
     check(irq_calls == 5 && driver_irq_hook_count() == 1);
+    std::thread irq_dispatcher([&]() {
+        for (uint32_t cycle = 0; cycle < 2000; cycle++)
+            driver_irq_dispatch(5);
+    });
+    std::thread irq_mutator([&]() {
+        for (uint32_t cycle = 0; cycle < 200; cycle++) {
+            if (driver_irq_unregister_handler("alpha", 5, test_irq) !=
+                    DRIVER_LOAD_OK ||
+                driver_irq_register_handler("alpha", 5, test_irq, 0) !=
+                    DRIVER_LOAD_OK)
+                __atomic_add_fetch(&concurrent_failures, 1u,
+                                   __ATOMIC_RELAXED);
+        }
+    });
+    std::thread irq_observer([&]() {
+        for (uint32_t cycle = 0; cycle < 2000; cycle++) {
+            DriverIrqHookRecord snapshot = {};
+            if (driver_irq_hook_get(0, &snapshot) &&
+                (snapshot.active != 1 || snapshot.irq != 5))
+                __atomic_add_fetch(&concurrent_failures, 1u,
+                                   __ATOMIC_RELAXED);
+        }
+    });
+    irq_dispatcher.join();
+    irq_mutator.join();
+    irq_observer.join();
+    check(concurrent_failures == 0);
+    check(driver_irq_hook_count() == 1);
     check(driver_export_register("alpha", "ping", (void*)test_export, 0) == DRIVER_LOAD_OK);
     check(driver_export_resolve("alpha", "ping", 0) == (void*)test_export);
 
@@ -105,8 +136,10 @@ int main() {
                                    DRIVER_RESOURCE_ALLOCATION, 0, 0, 1,
                                    "late", &denied) == DRIVER_LOAD_STATE_DENIED);
     check(driver_export_resolve("alpha", "ping", 0) == 0);
+    uint32_t irq_calls_before_quiesce =
+        __atomic_load_n(&irq_calls, __ATOMIC_RELAXED);
     driver_irq_dispatch(5);
-    check(irq_calls == 5);
+    check(irq_calls == irq_calls_before_quiesce);
 
     driver_export_unregister_module("alpha");
     driver_irq_unregister_module("alpha");

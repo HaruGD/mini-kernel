@@ -348,6 +348,28 @@ int driver_manager_begin_quiesce(DriverIdentity owner) {
     return result;
 }
 
+int driver_manager_abort_load(DriverIdentity owner, uint32_t failure_state) {
+    if (!driver_manager_identity_is_live(owner)) {
+        return DRIVER_LOAD_STALE_IDENTITY;
+    }
+    DriverQuiesceSlot* slot = &g_quiesce[owner.slot];
+    if (__atomic_load_n(&slot->generation, __ATOMIC_ACQUIRE) !=
+        owner.generation) return DRIVER_LOAD_STALE_IDENTITY;
+
+    __atomic_store_n(&slot->accepting, 0u, __ATOMIC_RELEASE);
+    const uint32_t state =
+        __atomic_load_n(&g_drivers[owner.slot].state, __ATOMIC_ACQUIRE);
+    uint32_t target = failure_state;
+    if (target != DRIVER_STATE_FAILED && target != DRIVER_STATE_REJECTED)
+        target = DRIVER_STATE_FAILED;
+    /* Once executable code was linked or entered, retain a failure record
+     * rather than describing a runtime rollback as a manifest rejection. */
+    if (state == DRIVER_STATE_LINKED || state == DRIVER_STATE_READY ||
+        state == DRIVER_STATE_QUIESCING) target = DRIVER_STATE_FAILED;
+    if (state == target) return DRIVER_LOAD_OK;
+    return driver_manager_set_state_identity(owner, target);
+}
+
 int driver_manager_wait_quiesced(DriverIdentity owner, uint32_t spin_limit) {
     if (!driver_manager_identity_is_live(owner)) {
         return DRIVER_LOAD_STALE_IDENTITY;

@@ -1,17 +1,21 @@
 #include "kernel/boot_info.h"
+#include "kernel/cpu_local.h"
 #include "kernel/klog.h"
 #include "kernel/ksh64.h"
 #include "kernel/kutil64.h"
 #include "kernel/panic.h"
+#include "kernel/thread.h"
 
-static int panic_active = 0;
+static volatile uint32_t panic_active = 0;
 
 static const BootReservedRange* kernel_stack_range() {
     const BootInfo* boot_info = kernel_boot_info();
     if (boot_info == 0 || boot_info->size < sizeof(BootInfo)) {
         return 0;
     }
-    for (uint32_t i = 0; i < boot_info->reserved_range_count; i++) {
+    uint32_t count = boot_info->reserved_range_count;
+    if (count > BOOT_RESERVED_RANGE_MAX) count = BOOT_RESERVED_RANGE_MAX;
+    for (uint32_t i = 0; i < count; i++) {
         if (boot_info->reserved_ranges[i].type == BOOT_RESERVED_RANGE_KERNEL_STACK) {
             return &boot_info->reserved_ranges[i];
         }
@@ -64,21 +68,70 @@ static void print_registers(const PanicInterruptInfo* info) {
     print("\n");
 }
 
+static int stack_contains(uint64_t base, uint64_t end, uint64_t address) {
+    return end > base && address >= base && address <= end - 16u;
+}
+
+static int current_stack_bounds(uint64_t rbp, uint64_t* base,
+                                uint64_t* end) {
+    CpuLocal* local = cpu_local_current();
+    if (cpu_local_validate(local)) {
+        if (stack_contains(local->nmi_stack_base, local->nmi_stack_top, rbp)) {
+            *base = local->nmi_stack_base;
+            *end = local->nmi_stack_top;
+            return 1;
+        }
+        if (stack_contains(local->double_fault_stack_base,
+                           local->double_fault_stack_top, rbp)) {
+            *base = local->double_fault_stack_base;
+            *end = local->double_fault_stack_top;
+            return 1;
+        }
+        Thread* thread = local->current_thread;
+        if (thread != 0 && thread->context != 0 &&
+            thread->context->kernel_stack_page_count != 0) {
+            uint64_t thread_base = thread->context->kernel_stack_base;
+            uint64_t thread_end = thread_base +
+                (uint64_t)thread->context->kernel_stack_page_count * 4096u;
+            if (stack_contains(thread_base, thread_end, rbp)) {
+                *base = thread_base;
+                *end = thread_end;
+                return 1;
+            }
+        }
+        if (stack_contains(local->kernel_stack_base, local->kernel_stack_top,
+                           rbp)) {
+            *base = local->kernel_stack_base;
+            *end = local->kernel_stack_top;
+            return 1;
+        }
+    }
+    const BootReservedRange* fallback = kernel_stack_range();
+    if (fallback != 0 && fallback->size >= 16u &&
+        fallback->base + fallback->size >= fallback->base &&
+        stack_contains(fallback->base, fallback->base + fallback->size, rbp)) {
+        *base = fallback->base;
+        *end = fallback->base + fallback->size;
+        return 1;
+    }
+    return 0;
+}
+
 static void print_stack_trace(uint64_t rip, uint64_t rbp) {
     print("Stack trace:\n");
     print("  ");
     print_hex64(rip);
     print("\n");
 
-    const BootReservedRange* stack = kernel_stack_range();
-    if (stack == 0 || stack->size < 16) {
+    uint64_t stack_base = 0;
+    uint64_t stack_end = 0;
+    if (!current_stack_bounds(rbp, &stack_base, &stack_end)) {
         print("  (kernel stack range unavailable)\n");
         return;
     }
 
-    uint64_t stack_end = stack->base + stack->size;
     for (uint32_t depth = 1; depth < 16; depth++) {
-        if (rbp < stack->base || rbp > stack_end - 16 || (rbp & 7u) != 0) {
+        if (rbp < stack_base || rbp > stack_end - 16 || (rbp & 7u) != 0) {
             break;
         }
         const uint64_t* frame = (const uint64_t*)(uintptr_t)rbp;
@@ -99,12 +152,11 @@ static void print_stack_trace(uint64_t rip, uint64_t rbp) {
 
 [[noreturn]] void kernel_panic(const char* reason, const PanicInterruptInfo* info) {
     __asm__ volatile("cli");
-    if (panic_active) {
+    if (__atomic_exchange_n(&panic_active, 1u, __ATOMIC_ACQ_REL) != 0) {
         while (1) {
             __asm__ volatile("hlt");
         }
     }
-    panic_active = 1;
     klog_set_capture_enabled(0);
 
     print("\n\n========================================\n");

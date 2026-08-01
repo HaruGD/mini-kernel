@@ -5,7 +5,7 @@
 #include "kernel/boot_info.h"
 
 #define PMM_PAGE_SIZE 4096
-#define PMM_MAX_RAM_SIZE (128 * 1024 * 1024)
+#define PMM_MAX_RAM_SIZE (512 * 1024 * 1024)
 #define PMM_TOTAL_BLOCKS (PMM_MAX_RAM_SIZE / PMM_PAGE_SIZE)
 #define PMM_BITMAP_SIZE (PMM_TOTAL_BLOCKS / 8)
 

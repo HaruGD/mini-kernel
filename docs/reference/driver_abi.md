@@ -223,7 +223,7 @@ Execution-context policy is explicit:
   atomic slots assigned to that driver;
 - NMI/double-fault emergency context cannot call the ordinary driver memory
   runtime;
-- VFS imports and legacy `kmalloc` require a sleepable driver context.
+- VFS imports require a sleepable driver context.
 
 Unload enters quiescing state, stops new IRQ delivery, then automatically
 reclaims remaining ordinary owned allocations before executable image pages
@@ -231,9 +231,9 @@ are removed. A page whose TLB retirement cannot be acknowledged is
 quarantined rather than reused. Ordinary diagnostics expose counts and bytes,
 not addresses.
 
-The legacy `kmalloc` and `kfree` imports remain temporarily for compatibility.
-They do not provide generation ownership and are not the API for new packaged
-hardware drivers.
+Raw `kmalloc` and `kfree` are not exported to packaged drivers. Packaged
+drivers must use the generation-owned allocation handles; linked kernel code
+may continue to use the kernel heap internally.
 
 ## Validation
 
@@ -328,12 +328,14 @@ Drivers that request `INTERRUPT` permission may import:
 
 - `kernel.irq_register`
 - `kernel.irq_unregister`
+- `kernel.irq_wait_once`
 
 The active helper header exposes these as:
 
 ```c
 os64_irq_register(irq, handler);
 os64_irq_unregister(irq, handler);
+os64_irq_wait_once();
 ```
 
 Current IRQ ABI rules:
@@ -343,6 +345,9 @@ Current IRQ ABI rules:
 - IRQ0 is dispatched from the PIT timer handler.
 - IRQ1 is dispatched from the keyboard handler.
 - hooks are removed automatically on driver unload.
+- `irq_wait_once` is sleepable probe/self-test support: it waits for one
+  interrupt with scheduler preemption suppressed, rejects atomic/IRQ/locked
+  callers, and never replaces a driver's normal asynchronous completion path.
 - `irq_timer_c.drv` is the current smoke driver for this path.
 
 ## Unload And Reload
@@ -353,37 +358,53 @@ Rules:
 
 - kernel-linked driver packages cannot be unloaded
 - a module with ready dependents cannot be unloaded
-- `driver_exit()` is called first when it exists
-- exports are removed on unload
+- admission closes before teardown and IRQ hooks are unpublished first
+- bus mastering is disabled and all in-flight calls/IRQs/DMA pins drain
+- `driver_exit()` runs only after quiescence
+- exports, DMA, MMIO, device bindings, and owned allocations are revoked in
+  that order before executable image pages are retired
 - the driver record is removed after unload succeeds
 
 Reload is implemented as unload followed by load of the same package image.
+Entry or probe failure uses the same admission, IRQ, DMA, MMIO, binding,
+allocation, and image rollback discipline; a drain timeout quarantines the
+image instead of freeing code that a CPU may still execute.
 
 ## Kernel Exports
 
 The current kernel export set is:
 
 - `kernel.klog`
-- `kernel.kmalloc`
-- `kernel.kfree`
+- `kernel.drv_alloc`
+- `kernel.drv_free`
 - `kernel.gop_get_info`
 - `kernel.gop_clear`
 - `kernel.gop_putpixel`
 - `kernel.gop_fill_rect`
 - `kernel.pci_read_config32`
-- `kernel.pci_write_config32`
 - `kernel.pci_device_count`
 - `kernel.pci_get_device`
 - `kernel.pci_find_device`
-- `kernel.pci_get_bar`
-- `kernel.pci_map_bar`
-- `kernel.pci_enable_memory_space`
-- `kernel.pci_enable_bus_mastering`
-- `kernel.pci_bind_device`
+- `kernel.pci_bind_device_handle`
+- `kernel.pci_map_bar_handle`
+- `kernel.pci_unmap_bar_handle`
+- `kernel.mmio_read_handle`
+- `kernel.mmio_write_handle`
+- `kernel.mmio_barrier_handle`
+- `kernel.dma_prepare_device`
+- `kernel.dma_set_mask`
+- `kernel.dma_enable_bus_mastering`
+- `kernel.dma_disable_bus_mastering`
+- `kernel.dma_alloc_coherent`
+- `kernel.dma_free_coherent`
+- `kernel.dma_map_buffer`
+- `kernel.dma_map_sg`
+- `kernel.dma_sync_for_cpu`
+- `kernel.dma_sync_for_device`
+- `kernel.dma_unmap`
 - `kernel.irq_register`
 - `kernel.irq_unregister`
-- `kernel.mmio_read32`
-- `kernel.mmio_write32`
+- `kernel.irq_wait_once`
 - `kernel.vfs_open`
 - `kernel.vfs_read`
 - `kernel.vfs_write`
@@ -391,10 +412,11 @@ The current kernel export set is:
 - `kernel.block_read_sector`
 - `kernel.block_write_sector`
 
-These are the current ABI surface for hardware-oriented drivers.
-
-`kernel.pci_map_bar` returns a kernel virtual address for an MMIO BAR and
-requires both `PCI` and `MMIO` permission bits.
+These are the current ABI surface for hardware-oriented drivers. Raw PCI
+configuration writes, raw BAR mapping, raw MMIO addresses, and unowned heap
+pointers are deliberately absent. State-changing PCI/MMIO/DMA operations
+require a live device, mapping, allocation, or DMA handle owned by the calling
+driver generation.
 
 `kernel.gop_*` functions expose the active UEFI GOP framebuffer as a display
 service for GUI-style drivers.

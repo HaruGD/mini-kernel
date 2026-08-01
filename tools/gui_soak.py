@@ -120,7 +120,7 @@ def run(duration: float) -> int:
 
         # Fill bounded process-result history and warm persistent GUI/service
         # allocations before the measured baseline.
-        for _ in range(10):
+        for _ in range(20):
             gui_cycle(process)
         churn_window_stack(process, True)
         for _ in range(2):

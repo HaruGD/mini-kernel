@@ -94,6 +94,12 @@ def reload_driver(process: subprocess.Popen) -> None:
         raise RuntimeError(f"binding survived unload:\n{after_unload}")
     loaded = command(process, "drvload pci_probe_c.drv")
     require(loaded, "DRV load OK")
+    if "QEMU EDU IRQ completion OK" not in loaded:
+        intctl = command(process, "intctl")
+        irqhooks = command(process, "irqhooks")
+        raise RuntimeError(
+            "reloaded driver did not complete INTx:\n"
+            f"{loaded}\n{intctl}\n{irqhooks}")
     require(loaded, "QEMU EDU DMA round trip OK")
     require(loaded, "QEMU EDU streaming DMA round trip OK")
     require(loaded, "QEMU EDU SG DMA round trip OK")
@@ -137,7 +143,10 @@ def run(duration: float) -> int:
                 "[usvcctl] start window OK")
         for _ in range(2):
             reload_driver(process)
-        for _ in range(10):
+        # Warm every reusable process/address-space record after the Phase 4.7
+        # capacity increase; otherwise the first measured cycle legitimately
+        # initializes one more three-page page-table root.
+        for _ in range(20):
             gui_cycle(process)
             gui_cycles += 1
         baseline = snapshot(process)
@@ -160,8 +169,9 @@ def run(duration: float) -> int:
                 "order_violations=0x0000000000000000 recursion_violations=0x0000000000000000 release_violations=0x0000000000000000")
         log = serial_bytes().decode(errors="replace")
         if "KERNEL PANIC" in log or "CPU EMERGENCY" in log or \
-                "result=quiesce_timeout" in log:
-            raise RuntimeError("fatal or quiesce-timeout path observed")
+                "result=quiesce_timeout" in log or \
+                "QEMU EDU IRQ completion timeout" in log:
+            raise RuntimeError("fatal, IRQ-timeout, or quiesce-timeout path observed")
     finally:
         if process.poll() is None:
             try:

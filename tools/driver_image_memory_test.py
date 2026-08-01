@@ -21,6 +21,7 @@ def main() -> int:
     unload = (ROOT / "kernel/driver/driver_unload.cpp").read_text(encoding="utf-8")
     va_header = (ROOT / "include/kernel/driver/driver_va.h").read_text(encoding="utf-8")
     smp = (ROOT / "kernel/cpu/smp.cpp").read_text(encoding="utf-8")
+    exports = (ROOT / "kernel/driver/kernel_exports.cpp").read_text(encoding="utf-8")
 
     if "g_driver_section_next_virtual" in loader:
         raise SystemExit("monotonic driver image cursor is still present")
@@ -41,11 +42,31 @@ def main() -> int:
                            "driver_resource_release(",
                            "driver_image_va_release(loaded->owner, va)"],
                   "unload")
+    probe_marker = "result = driver_manager_probe_loaded_driver"
+    require(loader, probe_marker, "probe failure propagation")
+    rollback = loader[loader.find(probe_marker):]
+    require_order(rollback, ["driver_manager_abort_load(",
+                             "driver_irq_unregister_module(",
+                             "driver_dma_quiesce_owner(",
+                             "driver_manager_wait_quiesced(",
+                             "driver_export_unregister_module(",
+                             "driver_dma_release_owner(",
+                             "driver_mmio_release_owner(",
+                             "driver_manager_unbind_module(",
+                             "driver_allocation_release_owner(",
+                             "free_loaded_image(loaded)"],
+                  "partial-load resource rollback")
     vm = (ROOT / "kernel/mm/vm.cpp").read_text(encoding="utf-8")
     require_order(vm, ["vm_unmap_page(address)",
                        "smp_kernel_tlb_shootdown(chunk_begin, unmapped)",
                        "pmm_free_block((void*)(uintptr_t)physical[page])"],
                   "deferred physical-page retirement")
+    for forbidden in ("kmalloc", "kfree", "pci_write_config32",
+                      "pci_get_bar", "pci_enable_memory_space",
+                      "pci_bind_device", "mmio_read32", "mmio_write32"):
+        registration = f'driver_export_register("kernel", "{forbidden}"'
+        if registration in exports:
+            raise SystemExit(f"unsafe packaged-driver export remains: {forbidden}")
     print("driver image W^X, guard, rollback, and TLB reuse contract OK")
     return 0
 

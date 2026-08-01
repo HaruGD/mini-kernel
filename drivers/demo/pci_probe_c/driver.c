@@ -18,17 +18,23 @@ static const char qemu_destination_failure[] OS64_EXPORT = "pci_probe_c.drv QEMU
 static const char qemu_irq_failure[] OS64_EXPORT = "pci_probe_c.drv QEMU EDU IRQ registration denied";
 static const char qemu_bus_failure[] OS64_EXPORT = "pci_probe_c.drv QEMU EDU bus mastering denied";
 static const char qemu_irq_completion_failure[] OS64_EXPORT = "pci_probe_c.drv QEMU EDU IRQ completion timeout";
+static const char qemu_irq_mmio_failure[] OS64_EXPORT = "pci_probe_c.drv QEMU EDU IRQ MMIO denied";
+static const char qemu_irq_status_failure[] OS64_EXPORT = "pci_probe_c.drv QEMU EDU IRQ status empty";
 
 static os64_driver_mmio_handle edu_irq_mmio;
 static volatile os64_u32 edu_irq_count;
+static volatile os64_u32 edu_irq_mmio_denied;
+static volatile os64_u32 edu_irq_status_empty;
 
 static os64_u64 edu_irq_handler(os64_u64 irq) {
     os64_u64 status = 0;
     (void)irq;
-    if (os64_mmio_read(edu_irq_mmio, 0x24, 4, &status) == 0 && status != 0) {
+    int result = os64_mmio_read(edu_irq_mmio, 0x24, 4, &status);
+    if (result == 0 && status != 0) {
         os64_mmio_write(edu_irq_mmio, 0x64, 4, status);
         edu_irq_count++;
-    }
+    } else if (result != 0) edu_irq_mmio_denied++;
+    else edu_irq_status_empty++;
     return 0;
 }
 
@@ -37,6 +43,19 @@ static int wait_edu_dma(os64_driver_mmio_handle mmio) {
         os64_u64 command = 0;
         if (os64_mmio_read(mmio, 0x98, 4, &command) != 0) return 0;
         if ((command & 1u) == 0) return 1;
+    }
+    return 0;
+}
+
+static int wait_edu_irq(os64_driver_mmio_handle mmio, os64_u32 before) {
+    for (os64_u32 spin = 0; spin < 32u; spin++) {
+        os64_u64 status = 0;
+        if (edu_irq_count != before) return 1;
+        /* Yield to interrupt delivery without allowing this sleepable probe
+         * invocation to be preempted in the middle of its kernel call. */
+        if (os64_irq_wait_once() != 0) return 0;
+        if (os64_mmio_read(mmio, 0x24, 4, &status) != 0) return 0;
+        if (edu_irq_count != before) return 1;
     }
     return 0;
 }
@@ -51,9 +70,15 @@ static int run_edu_dma(os64_driver_mmio_handle mmio, os64_u64 source,
         os64_mmio_write(mmio, 0x98, 4, command) != 0 ||
         !wait_edu_dma(mmio)) return 0;
     if (!expect_irq) return 1;
-    for (os64_u32 spin = 0; spin < 1000000u; spin++)
-        if (edu_irq_count != before) return 1;
-    return 0;
+    return wait_edu_irq(mmio, before);
+}
+
+static int raise_edu_irq(os64_driver_mmio_handle mmio) {
+    os64_u32 before = edu_irq_count;
+    /* QEMU EDU's dedicated interrupt-raise register avoids its 100 ms DMA
+     * completion timer making a kernel-side driver self-test timing-sensitive. */
+    if (os64_mmio_write(mmio, 0x60, 4, 0x200u) != 0) return 0;
+    return wait_edu_irq(mmio, before);
 }
 
 static void probe_qemu_edu(const os64_pci_device_info* device) {
@@ -92,6 +117,8 @@ static void probe_qemu_edu(const os64_pci_device_info* device) {
         ((unsigned char*)source.cpu_address)[i] = (unsigned char)(i ^ 0xA5u);
     edu_irq_mmio = mmio.handle;
     edu_irq_count = 0;
+    edu_irq_mmio_denied = 0;
+    edu_irq_status_empty = 0;
     os64_mmio_write(mmio.handle, 0x64, 4, 0xFFFFFFFFu);
     int irq_registered = device->irq_line < 16 &&
         os64_irq_register(device->irq_line, edu_irq_handler) == 0;
@@ -100,21 +127,19 @@ static void probe_qemu_edu(const os64_pci_device_info* device) {
     int irq_passed = 0;
     int bus_ready = os64_dma_enable_bus_mastering(dev) == 0;
     if (!bus_ready) os64_klog(qemu_bus_failure);
-    int interrupt_dma = bus_ready && irq_registered &&
-        run_edu_dma(mmio.handle, source.dma_address.value, 0x40000, 512,
-                    5, 1);
-    if (bus_ready && irq_registered && !interrupt_dma)
+    irq_passed = bus_ready && irq_registered && raise_edu_irq(mmio.handle);
+    if (bus_ready && irq_registered && !irq_passed) {
         os64_klog(qemu_irq_completion_failure);
-    if (!interrupt_dma && bus_ready) {
-        os64_mmio_write(mmio.handle, 0x64, 4, 0xFFFFFFFFu);
-        interrupt_dma = run_edu_dma(mmio.handle, source.dma_address.value,
-                                    0x40000, 512, 1, 0);
+        if (edu_irq_mmio_denied != 0) os64_klog(qemu_irq_mmio_failure);
+        if (edu_irq_status_empty != 0) os64_klog(qemu_irq_status_failure);
     }
+    int interrupt_dma = bus_ready &&
+        run_edu_dma(mmio.handle, source.dma_address.value,
+                    0x40000, 512, 1, 0);
     if (interrupt_dma &&
         run_edu_dma(mmio.handle, 0x40000,
                     destination.dma_address.value, 512, 3, 0)) {
         passed = 1;
-        irq_passed = edu_irq_count != 0;
         for (os64_u32 i = 0; i < 512; i++) {
             if (((unsigned char*)destination.cpu_address)[i] !=
                 (unsigned char)(i ^ 0xA5u)) {
@@ -232,18 +257,14 @@ os64_u64 driver_probe_pci(const os64_pci_device_info* device) {
         os64_driver_device_handle device_handle;
         if (os64_pci_bind_device_handle(device, 0, &device_handle) == 0) {
             os64_klog(bind_message);
-            os64_pci_bar_info bar;
-            if (os64_pci_get_bar(device, 0, &bar) == 0 && bar.size != 0) {
-                os64_driver_mmio_mapping mapping;
-                os64_u64 length = bar.size < 16 ? bar.size : 16;
-                if (os64_pci_map_bar_handle(device_handle, 0, 0, length,
-                                             OS64_MMIO_DEVICE_UC,
-                                             &mapping) == 0) {
-                    os64_mmio_barrier(mapping.handle,
-                                      OS64_MMIO_BARRIER_FULL);
-                    os64_pci_unmap_bar_handle(mapping.handle);
-                    os64_klog(mmio_message);
-                }
+            os64_driver_mmio_mapping mapping;
+            if (os64_pci_map_bar_handle(device_handle, 0, 0, 16,
+                                         OS64_MMIO_DEVICE_UC,
+                                         &mapping) == 0) {
+                os64_mmio_barrier(mapping.handle,
+                                  OS64_MMIO_BARRIER_FULL);
+                os64_pci_unmap_bar_handle(mapping.handle);
+                os64_klog(mmio_message);
             }
             os64_driver_dma_domain_handle domain;
             if (os64_dma_prepare_device(device_handle,

@@ -81,7 +81,7 @@ def main() -> int:
                                stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:
         wait_for("OS64>", 25)
-        for _ in range(8):
+        for _ in range(16):
             output = send_command(process, "run usdk_c.elf surface-leak")
             if "[usurface-leak] mapped exit" not in output:
                 raise RuntimeError("mapped-exit marker missing")

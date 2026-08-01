@@ -42,7 +42,9 @@ static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
     }
 
     int ok = 1;
-    for (uint32_t i = 0; i < boot_info->reserved_range_count; i++) {
+    uint32_t count = boot_info->reserved_range_count;
+    if (count > BOOT_RESERVED_RANGE_MAX) count = BOOT_RESERVED_RANGE_MAX;
+    for (uint32_t i = 0; i < count; i++) {
         const BootReservedRange* range = &boot_info->reserved_ranges[i];
         if (range->type == BOOT_RESERVED_RANGE_KERNEL ||
             range->type == BOOT_RESERVED_RANGE_FRAMEBUFFER) {
@@ -55,7 +57,9 @@ static int protect_boot_reserved_ranges(const BootInfo* boot_info) {
             range->type == BOOT_RESERVED_RANGE_BOOT_INFO) {
             flags |= VM_FLAG_WRITABLE;
         }
-        if (!remap_range_identity(range->base, range->base + range->size, flags)) {
+        uint64_t end = range->base + range->size;
+        if (end < range->base ||
+            !remap_range_identity(range->base, end, flags)) {
             ok = 0;
         }
     }

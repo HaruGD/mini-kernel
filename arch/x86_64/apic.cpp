@@ -492,7 +492,7 @@ void interrupt_controller_print() {
         print_hex32(lapic_read(0x110));
         print(" lapic_irr32=");
         print_hex32(lapic_read(0x210));
-        for (uint32_t irq = 0; irq < 2; irq++) {
+        for (uint32_t irq = 0; irq < INTERRUPT_EXTERNAL_IRQ_COUNT; irq++) {
             if (irq_gsi[irq] == 0xFFFFFFFFu) {
                 continue;
             }

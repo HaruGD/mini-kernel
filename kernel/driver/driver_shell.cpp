@@ -214,10 +214,11 @@ void command_irqhooks() {
     print("\ncount=");
     print_hex32(count);
     for (uint32_t i = 0; i < count; i++) {
-        const DriverIrqHookRecord* hook = driver_irq_hook_get(i);
-        if (hook == 0) {
+        DriverIrqHookRecord snapshot;
+        if (!driver_irq_hook_get(i, &snapshot)) {
             continue;
         }
+        const DriverIrqHookRecord* hook = &snapshot;
         print("\n[");
         print_hex32(i);
         print("] irq=");

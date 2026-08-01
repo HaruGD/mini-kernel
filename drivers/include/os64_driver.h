@@ -133,8 +133,6 @@ typedef struct os64_pci_device_info {
 } os64_pci_device_info;
 
 typedef void (*os64_klog_fn)(const char* text);
-typedef void* (*os64_kmalloc_fn)(os64_u64 size);
-typedef void (*os64_kfree_fn)(void* ptr);
 typedef os64_i64 (*os64_drv_alloc_fn)(os64_u64 size, os64_u64 alignment,
                                       os64_u64 flags, const char* tag,
                                       os64_driver_allocation* out);
@@ -144,13 +142,9 @@ typedef void (*os64_gop_clear_fn)(os64_u32 color);
 typedef void (*os64_gop_putpixel_fn)(os64_u32 x, os64_u32 y, os64_u32 color);
 typedef void (*os64_gop_fill_rect_fn)(os64_u32 x, os64_u32 y, os64_u32 width, os64_u32 height, os64_u32 color);
 typedef os64_u32 (*os64_pci_read_config32_fn)(os64_u64 bus, os64_u64 device, os64_u64 function, os64_u64 offset);
-typedef void (*os64_pci_write_config32_fn)(os64_u64 bus, os64_u64 device, os64_u64 function, os64_u64 offset, os64_u32 value);
 typedef os64_u64 (*os64_pci_device_count_fn)(void);
 typedef os64_i64 (*os64_pci_get_device_fn)(os64_u64 index, os64_pci_device_info* out);
 typedef os64_i64 (*os64_pci_find_device_fn)(os64_u64 vendor_id, os64_u64 device_id, os64_pci_device_info* out);
-typedef os64_i64 (*os64_pci_get_bar_fn)(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out);
-typedef os64_i64 (*os64_pci_enable_memory_space_fn)(const os64_pci_device_info* device);
-typedef os64_i64 (*os64_pci_bind_device_fn)(const os64_pci_device_info* device, os64_u64 flags);
 typedef os64_i64 (*os64_pci_bind_device_handle_fn)(const os64_pci_device_info* device, os64_u64 flags, os64_driver_device_handle* out);
 typedef os64_i64 (*os64_pci_map_bar_handle_fn)(os64_driver_device_handle device, os64_u64 bar_index, os64_u64 offset, os64_u64 length, os64_u64 cache_policy, os64_driver_mmio_mapping* out);
 typedef os64_i64 (*os64_pci_unmap_bar_handle_fn)(os64_driver_mmio_handle handle);
@@ -170,6 +164,7 @@ typedef os64_i64 (*os64_dma_unmap_fn)(os64_driver_dma_mapping_handle handle);
 typedef os64_u64 (*os64_irq_handler_fn)(os64_u64 irq);
 typedef os64_i64 (*os64_irq_register_fn)(os64_u64 irq, os64_irq_handler_fn handler);
 typedef os64_i64 (*os64_irq_unregister_fn)(os64_u64 irq, os64_irq_handler_fn handler);
+typedef os64_i64 (*os64_irq_wait_once_fn)(void);
 typedef os64_i64 (*os64_vfs_open_fn)(const char* path, os64_u64 mode);
 typedef os64_i64 (*os64_vfs_read_fn)(os64_u64 fd, void* buffer, os64_u64 size);
 typedef os64_i64 (*os64_vfs_write_fn)(os64_u64 fd, const void* buffer, os64_u64 size);
@@ -182,8 +177,6 @@ extern "C" {
 #endif
 
 extern os64_klog_fn kernel__klog;
-extern os64_kmalloc_fn kernel__kmalloc;
-extern os64_kfree_fn kernel__kfree;
 extern os64_drv_alloc_fn kernel__drv_alloc;
 extern os64_drv_free_fn kernel__drv_free;
 extern os64_gop_get_info_fn kernel__gop_get_info;
@@ -191,13 +184,9 @@ extern os64_gop_clear_fn kernel__gop_clear;
 extern os64_gop_putpixel_fn kernel__gop_putpixel;
 extern os64_gop_fill_rect_fn kernel__gop_fill_rect;
 extern os64_pci_read_config32_fn kernel__pci_read_config32;
-extern os64_pci_write_config32_fn kernel__pci_write_config32;
 extern os64_pci_device_count_fn kernel__pci_device_count;
 extern os64_pci_get_device_fn kernel__pci_get_device;
 extern os64_pci_find_device_fn kernel__pci_find_device;
-extern os64_pci_get_bar_fn kernel__pci_get_bar;
-extern os64_pci_enable_memory_space_fn kernel__pci_enable_memory_space;
-extern os64_pci_bind_device_fn kernel__pci_bind_device;
 extern os64_pci_bind_device_handle_fn kernel__pci_bind_device_handle;
 extern os64_pci_map_bar_handle_fn kernel__pci_map_bar_handle;
 extern os64_pci_unmap_bar_handle_fn kernel__pci_unmap_bar_handle;
@@ -217,6 +206,7 @@ extern os64_dma_sync_fn kernel__dma_sync_for_device;
 extern os64_dma_unmap_fn kernel__dma_unmap;
 extern os64_irq_register_fn kernel__irq_register;
 extern os64_irq_unregister_fn kernel__irq_unregister;
+extern os64_irq_wait_once_fn kernel__irq_wait_once;
 extern os64_vfs_open_fn kernel__vfs_open;
 extern os64_vfs_read_fn kernel__vfs_read;
 extern os64_vfs_write_fn kernel__vfs_write;
@@ -232,14 +222,6 @@ extern os64_block_write_sector_fn kernel__block_write_sector;
 
 static inline void os64_klog(const char* text) {
     kernel__klog(text);
-}
-
-static inline void* os64_kmalloc(os64_u64 size) {
-    return kernel__kmalloc(size);
-}
-
-static inline void os64_kfree(void* ptr) {
-    kernel__kfree(ptr);
 }
 
 static inline os64_i64 os64_drv_alloc(os64_u64 size, os64_u64 alignment,
@@ -272,10 +254,6 @@ static inline os64_u32 os64_pci_read_config32(os64_u64 bus, os64_u64 device, os6
     return kernel__pci_read_config32(bus, device, function, offset);
 }
 
-static inline void os64_pci_write_config32(os64_u64 bus, os64_u64 device, os64_u64 function, os64_u64 offset, os64_u32 value) {
-    kernel__pci_write_config32(bus, device, function, offset, value);
-}
-
 static inline os64_u64 os64_pci_device_count(void) {
     return kernel__pci_device_count();
 }
@@ -286,18 +264,6 @@ static inline os64_i64 os64_pci_get_device(os64_u64 index, os64_pci_device_info*
 
 static inline os64_i64 os64_pci_find_device(os64_u64 vendor_id, os64_u64 device_id, os64_pci_device_info* out) {
     return kernel__pci_find_device(vendor_id, device_id, out);
-}
-
-static inline os64_i64 os64_pci_get_bar(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out) {
-    return kernel__pci_get_bar(device, bar_index, out);
-}
-
-static inline os64_i64 os64_pci_enable_memory_space(const os64_pci_device_info* device) {
-    return kernel__pci_enable_memory_space(device);
-}
-
-static inline os64_i64 os64_pci_bind_device(const os64_pci_device_info* device, os64_u64 flags) {
-    return kernel__pci_bind_device(device, flags);
 }
 
 static inline os64_i64 os64_pci_bind_device_handle(const os64_pci_device_info* device, os64_u64 flags, os64_driver_device_handle* out) {
@@ -374,6 +340,10 @@ static inline os64_i64 os64_irq_register(os64_u64 irq, os64_irq_handler_fn handl
 
 static inline os64_i64 os64_irq_unregister(os64_u64 irq, os64_irq_handler_fn handler) {
     return kernel__irq_unregister(irq, handler);
+}
+
+static inline os64_i64 os64_irq_wait_once(void) {
+    return kernel__irq_wait_once();
 }
 
 static inline os64_i64 os64_vfs_open(const char* path, os64_u64 mode) {

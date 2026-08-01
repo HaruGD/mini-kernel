@@ -103,7 +103,7 @@ def main() -> int:
     )
     try:
         wait_for("OS64>", 25)
-        for _ in range(9):
+        for _ in range(17):
             require(send_command(process, "run uthread_c.elf"), "[THREAD] PASS")
         baseline = resources(process)
 

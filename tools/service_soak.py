@@ -99,7 +99,9 @@ def run(duration: float) -> int:
         wait_for("OS64>", 25)
         require(send_command(process, "run usoak_c.elf"), "[usoak] scheduler churn OK")
         require(send_command(process, "run uping_c.elf"), "[uping] IPC roundtrip OK")
-        for _ in range(2):
+        # Fill the expanded reusable process/address-space table before the
+        # resource baseline so first-use page-table roots are not leak drift.
+        for _ in range(4):
             require(send_command(process, "service start input"), "[usvcctl] start input OK")
             require(send_command(process, "service start display"), "[usvcctl] start display OK")
             require(send_command(process, "service health input"), "[usvcctl] health input OK")
