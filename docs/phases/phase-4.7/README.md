@@ -23,12 +23,14 @@ the Phase 4.7 contracts.
 
 ## Current Status
 
-Phase 4.7A through 4.7F completed on 2026-08-01. In addition to generation
+Phase 4.7A through 4.7G completed on 2026-08-01. In addition to generation
 ownership, reusable image VA, and owned allocations, commits `e00cb72`,
 `257526f`, `94202fe`, and `39e53f3` provide capability-scoped BAR mappings,
 coherent DMA, streaming/scatter-gather mappings, trusted-direct domains, and
-an actual QEMU EDU DMA round trip. Phase 4.7G quiescent unload is next; 4.7H
-fault/soak closure remains planned.
+an actual QEMU EDU DMA round trip. Commit `1314b15` adds quiescent unload with
+generation-owned execution pins, new-entry rejection, bus-master shutdown,
+bounded drain, and timeout quarantine. Phase 4.7H fault/device/soak closure
+remains planned.
 
 The entry system already provides page-separated `.drv` images with
 `CODE=RX`, `RODATA=R/NX`, and `DATA/BSS=RW/NX`, package validation,

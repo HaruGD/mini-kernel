@@ -25,13 +25,14 @@ coverage, and a separate evidence commit.
 | 4.7D: Capability-scoped MMIO | Complete | 2026-08-01 | 2026-08-01 | `e00cb72`, `257526f` | P47-R06, P47-R07 |
 | 4.7E: Coherent DMA and address model | Complete | 2026-08-01 | 2026-08-01 | `257526f`, `39e53f3` | P47-R08 |
 | 4.7F: Streaming DMA, scatter/gather, and domain policy | Complete | 2026-08-01 | 2026-08-01 | `94202fe`, `39e53f3`, `4019a2d` | P47-R09, P47-R10 |
-| 4.7G: Quiescent unload and automatic cleanup | Planned | - | - | - | P47-R11 |
+| 4.7G: Quiescent unload and automatic cleanup | Complete | 2026-08-01 | 2026-08-01 | `1314b15` | P47-R11 |
 | 4.7H: Fault injection, device smoke, soak, and closure | Planned | - | - | - | P47-R12, P47-R13 |
 
-Current status: Phase 4.7A through 4.7F are complete. Packaged drivers now use
+Current status: Phase 4.7A through 4.7G are complete. Packaged drivers now use
 generation-owned allocation, MMIO, coherent DMA, streaming DMA, SG, and
 domain handles. The trusted direct backend is functional but not isolated;
-Phase 4.7G quiescent unload is next.
+quiescent unload now closes entry before draining calls, IRQ, work, and DMA
+pins. Phase 4.7H certification is next.
 
 ## Implementation Order
 
@@ -313,9 +314,58 @@ For each subphase:
 
 ### Remaining
 
-- 4.7G must make the complete unload path quiescent under IRQ/work/DMA races.
 - 4.7H still owns EDU interrupt/streaming/SG device completion, fault
   injection, four-vCPU churn, and the required 60-second closure soak.
+
+## 4.7G: Quiescent Unload And Automatic Cleanup
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commit: `1314b15`
+
+### Delivered
+
+- Added generation-owned call, IRQ, work, and DMA activity pins with a
+  close-admission/recheck protocol that resolves the entry-versus-quiesce
+  race without holding a lock across the drain wait.
+- Made driver execution entry automatically pin ordinary calls and IRQs;
+  IRQ dispatch snapshots the callback before admission so unregister cannot
+  invalidate an already admitted return path.
+- Reordered unload to enter `QUIESCING`, reject new entry, unregister IRQ
+  admission, disable every owned PCI bus master, drain all execution pins,
+  invoke the privileged exit path, and release DMA, MMIO, bindings,
+  allocations, and executable image pages in dependency order.
+- Added a bounded wait. Timeout retains the driver and its resources in a
+  failed/quarantined state instead of freeing code that can still execute.
+- Added address-free in-flight, quiescing, and timeout diagnostics.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-driver-quiesce` | PASS | Four activity kinds drained exactly; new entry and stale generation were rejected; an intentional timeout quarantined state; four host threads crossed the admission boundary without a residual pin; teardown order was exact |
+| `make test-driver-ownership test-driver-alloc test-driver-context` | PASS | Existing lifecycle, 4,000 resource cycles, allocation ownership, IRQ reserve, and execution-context contracts remained green |
+| `make test-driver-mmio test-dma-coherent test-dma-streaming test-dma-domain` | PASS | MMIO, coherent/streaming/SG DMA, bounce, pin, sync, mask, and direct-domain contracts remained green |
+| `make -j4 uefi` | PASS | Kernel, packaged drivers, root image, and UEFI image rebuilt with the quiesce boundary |
+| `make test-uefi-smoke` | PASS | Automatic/manual package lifecycle, QEMU EDU DMA, services, GUI, and kernel/user regression commands completed without panic or quarantine |
+
+### Resource Accounting
+
+- Focused timeout case: four admitted pins, four exact unpins, one rejected
+  post-quiesce entry, one timeout, and one retained quarantine record.
+- Successful retry after drain observed zero call, IRQ, work, DMA, and total
+  in-flight pins.
+- Four host workers completed at least 1,000 admitted work-pin cycles before
+  the gate closed; no entry succeeded after quiescence.
+- UEFI lifecycle returned transient MMIO, coherent DMA, streaming DMA,
+  allocation, and pin counts to zero.
+
+### Remaining
+
+- 4.7H certifies the complete runtime with device IRQ/streaming/SG evidence,
+  expanded failure injection, one/four-vCPU races, 60-second churn, and every
+  inherited closure gate.
 
 ## Evidence Record Template
 
