@@ -69,3 +69,8 @@ links and test references remain stable from the project root.
   [implementation plan](phases/phase-4.7/implementation_plan.md),
   [live progress](phases/phase-4.7/progress.md),
   [regression matrix](phases/phase-4.7/regression_matrix.md)
+- Phase 5: [overview](phases/phase-5/README.md),
+  [entry baseline](phases/phase-5/entry_baseline.md),
+  [implementation plan](phases/phase-5/implementation_plan.md),
+  [live progress](phases/phase-5/progress.md),
+  [regression matrix](phases/phase-5/regression_matrix.md)

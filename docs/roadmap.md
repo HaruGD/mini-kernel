@@ -268,12 +268,36 @@ Progress:
 
 ## Phase 5: Desktop Foundation
 
-- [ ] GUI terminal
-- [ ] Desktop background
-- [ ] Panel and application launcher
-- [ ] File manager
-- [ ] Settings and shutdown UI
-- [ ] Windows-style installed system layout and package conventions
+Detailed planning and live evidence:
+
+- [Phase 5 overview](phases/phase-5/README.md)
+- [Entry baseline](phases/phase-5/entry_baseline.md)
+- [Implementation plan](phases/phase-5/implementation_plan.md)
+- [Regression matrix](phases/phase-5/regression_matrix.md)
+- [Progress ledger](phases/phase-5/progress.md)
+
+Planned work:
+
+- [ ] 5A: Desktop session supervision and privileged layer policy
+- [ ] 5B: Pointer routing, cursor, hit testing, capture, and interactive window
+  decorations
+- [ ] 5C: Alpha, fonts, drawing primitives, layout, and baseline widget toolkit
+- [ ] 5D: GUI terminal with a bounded PTY-like user-shell transport
+- [ ] Memory scalability gate: replace the fixed 512 MiB PMM ceiling before
+  file-manager and multi-application closure work
+- [ ] 5E: Desktop background, panel, launcher, task list, and window switching
+- [ ] 5F: VFS desktop APIs and graphical file manager
+- [ ] 5G: Versioned settings service, settings UI, notifications, and power UI
+- [ ] 5H: Windows-style user-visible installed system layout, application
+  manifests, icons, permissions, associations, and per-user state
+- [ ] 5I: Deterministic failure injection, one/four-vCPU desktop regression,
+  required 60-second soak, inherited closure, and history evidence
+
+The first desktop keeps composition inside `windowd`. A separate compositor
+process is deferred until the session, toolkit, application, and recovery
+contracts are stable. `desktopd`, the terminal, file manager, and settings UI
+remain user processes; the kernel console remains the boot, diagnostic, panic,
+and bounded recovery path.
 
 ## Parallel Hardware Track
 
