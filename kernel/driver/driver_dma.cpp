@@ -251,6 +251,22 @@ int driver_dma_enable_bus_mastering(DriverIdentity owner,
     return DRIVER_LOAD_OK;
 }
 
+int driver_dma_disable_bus_mastering(DriverIdentity owner,
+                                     DriverDeviceIdentity device) {
+    const PCIDeviceInfo* pci = resolve_pci(owner, device);
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&g_dma_lock, &token))
+        return DRIVER_LOAD_DMA_DENIED;
+    DmaDomainRecord* domain = domain_for(owner, device);
+    if (!pci || !domain || !pci_disable_bus_mastering(pci)) {
+        kernel_spinlock_release(&g_dma_lock, &token);
+        return DRIVER_LOAD_DMA_DENIED;
+    }
+    domain->bus_mastering = 0;
+    kernel_spinlock_release(&g_dma_lock, &token);
+    return DRIVER_LOAD_OK;
+}
+
 static uint64_t owner_bytes(DriverIdentity owner) {
     uint64_t bytes = 0;
     for (uint32_t i = 0; i < DRIVER_MAX_DMA_BUFFERS; i++)
@@ -684,6 +700,11 @@ int driver_dma_set_mask_current(DriverDeviceIdentity device, uint32_t bits) {
 int driver_dma_enable_bus_mastering_current(DriverDeviceIdentity device) {
     DriverIdentity owner; return current_owner(&owner) ?
         driver_dma_enable_bus_mastering(owner, device) :
+        DRIVER_LOAD_CONTEXT_DENIED;
+}
+int driver_dma_disable_bus_mastering_current(DriverDeviceIdentity device) {
+    DriverIdentity owner; return current_owner(&owner) ?
+        driver_dma_disable_bus_mastering(owner, device) :
         DRIVER_LOAD_CONTEXT_DENIED;
 }
 int driver_dma_alloc_coherent_current(DriverDeviceIdentity device,

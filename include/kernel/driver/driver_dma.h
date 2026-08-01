@@ -88,6 +88,8 @@ int driver_dma_set_mask(DriverIdentity owner, DriverDeviceIdentity device,
                         uint32_t bits);
 int driver_dma_enable_bus_mastering(DriverIdentity owner,
                                     DriverDeviceIdentity device);
+int driver_dma_disable_bus_mastering(DriverIdentity owner,
+                                     DriverDeviceIdentity device);
 int driver_dma_alloc_coherent(DriverIdentity owner,
                               DriverDeviceIdentity device,
                               uint64_t size, uint64_t alignment,
@@ -110,6 +112,7 @@ int driver_dma_prepare_device_current(DriverDeviceIdentity device,
                                       DriverDmaDomainHandle* out_domain);
 int driver_dma_set_mask_current(DriverDeviceIdentity device, uint32_t bits);
 int driver_dma_enable_bus_mastering_current(DriverDeviceIdentity device);
+int driver_dma_disable_bus_mastering_current(DriverDeviceIdentity device);
 int driver_dma_alloc_coherent_current(DriverDeviceIdentity device,
                                       uint64_t size, uint64_t alignment,
                                       uint64_t boundary,

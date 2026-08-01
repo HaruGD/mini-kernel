@@ -160,6 +160,7 @@ typedef os64_i64 (*os64_mmio_barrier_handle_fn)(os64_driver_mmio_handle handle, 
 typedef os64_i64 (*os64_dma_prepare_device_fn)(os64_driver_device_handle device, os64_u64 policy, os64_driver_dma_domain_handle* out);
 typedef os64_i64 (*os64_dma_set_mask_fn)(os64_driver_device_handle device, os64_u64 bits);
 typedef os64_i64 (*os64_dma_enable_bus_mastering_fn)(os64_driver_device_handle device);
+typedef os64_i64 (*os64_dma_disable_bus_mastering_fn)(os64_driver_device_handle device);
 typedef os64_i64 (*os64_dma_alloc_coherent_fn)(os64_driver_device_handle device, os64_u64 size, os64_u64 alignment, os64_u64 boundary, os64_driver_dma_buffer* out);
 typedef os64_i64 (*os64_dma_free_coherent_fn)(os64_driver_dma_handle handle);
 typedef os64_i64 (*os64_dma_map_buffer_fn)(os64_driver_device_handle device, os64_driver_allocation_handle allocation, os64_u64 offset, os64_u64 length, os64_u64 direction, os64_driver_dma_mapping* out);
@@ -206,6 +207,7 @@ extern os64_mmio_barrier_handle_fn kernel__mmio_barrier_handle;
 extern os64_dma_prepare_device_fn kernel__dma_prepare_device;
 extern os64_dma_set_mask_fn kernel__dma_set_mask;
 extern os64_dma_enable_bus_mastering_fn kernel__dma_enable_bus_mastering;
+extern os64_dma_disable_bus_mastering_fn kernel__dma_disable_bus_mastering;
 extern os64_dma_alloc_coherent_fn kernel__dma_alloc_coherent;
 extern os64_dma_free_coherent_fn kernel__dma_free_coherent;
 extern os64_dma_map_buffer_fn kernel__dma_map_buffer;
@@ -332,6 +334,10 @@ static inline os64_i64 os64_dma_set_mask(os64_driver_device_handle device, os64_
 
 static inline os64_i64 os64_dma_enable_bus_mastering(os64_driver_device_handle device) {
     return kernel__dma_enable_bus_mastering(device);
+}
+
+static inline os64_i64 os64_dma_disable_bus_mastering(os64_driver_device_handle device) {
+    return kernel__dma_disable_bus_mastering(device);
 }
 
 static inline os64_i64 os64_dma_alloc_coherent(os64_driver_device_handle device, os64_u64 size, os64_u64 alignment, os64_u64 boundary, os64_driver_dma_buffer* out) {

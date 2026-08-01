@@ -184,6 +184,11 @@ extern "C" int64_t driver_dma_enable_bus_mastering_handle(
     return driver_dma_enable_bus_mastering_current(device);
 }
 
+extern "C" int64_t driver_dma_disable_bus_mastering_handle(
+    DriverDeviceIdentity device) {
+    return driver_dma_disable_bus_mastering_current(device);
+}
+
 extern "C" int64_t driver_dma_alloc_coherent_handle(
     DriverDeviceIdentity device, uint64_t size, uint64_t alignment,
     uint64_t boundary, DriverDmaBuffer* out) {
@@ -320,6 +325,7 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "dma_prepare_device", (void*)driver_dma_prepare_device_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_DMA);
     driver_export_register("kernel", "dma_set_mask", (void*)driver_dma_set_mask_handle, DRV_PERMISSION_DMA);
     driver_export_register("kernel", "dma_enable_bus_mastering", (void*)driver_dma_enable_bus_mastering_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_disable_bus_mastering", (void*)driver_dma_disable_bus_mastering_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_DMA);
     driver_export_register("kernel", "dma_alloc_coherent", (void*)driver_dma_alloc_coherent_handle, DRV_PERMISSION_DMA);
     driver_export_register("kernel", "dma_free_coherent", (void*)driver_dma_free_coherent_handle, DRV_PERMISSION_DMA);
     driver_export_register("kernel", "dma_map_buffer", (void*)driver_dma_map_buffer_handle, DRV_PERMISSION_DMA);

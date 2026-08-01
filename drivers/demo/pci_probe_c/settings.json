@@ -22,6 +22,8 @@
     "kernel.mmio_barrier_handle": ["MMIO"],
     "kernel.dma_prepare_device": ["PCI", "DMA"],
     "kernel.dma_set_mask": ["DMA"],
+    "kernel.dma_enable_bus_mastering": ["PCI", "DMA"],
+    "kernel.dma_disable_bus_mastering": ["PCI", "DMA"],
     "kernel.dma_alloc_coherent": ["DMA"],
     "kernel.dma_free_coherent": ["DMA"],
     "kernel.dma_map_buffer": ["DMA"],
