@@ -61,6 +61,7 @@ struct DriverDmaStats {
     uint32_t quarantined_buffers;
     uint32_t streaming_mappings;
     uint32_t pinned_sources;
+    uint32_t bounce_mappings;
     uint64_t coherent_bytes;
     uint64_t peak_bytes;
     uint64_t allocations;

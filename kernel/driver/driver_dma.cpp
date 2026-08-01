@@ -54,7 +54,12 @@ struct DmaMappingRecord {
     uint32_t domain_slot;
     uint32_t segment_count;
     DriverAllocationHandle sources[DRIVER_DMA_MAX_SOURCES];
+    void* source_addresses[DRIVER_DMA_MAX_SOURCES];
+    uint64_t source_lengths[DRIVER_DMA_MAX_SOURCES];
     DriverDmaSegment segments[DRIVER_DMA_MAX_SEGMENTS];
+    DriverDmaHandle bounce;
+    void* bounce_cpu;
+    uint64_t bounce_size;
 };
 
 static DmaDomainRecord g_domains[DRIVER_MAX_DMA_DOMAINS];
@@ -471,7 +476,7 @@ static int append_range_segments(DriverAllocationHandle allocation,
         uint64_t physical;
 #ifdef OS64_DRIVER_HOST_TEST
         const uint64_t page = ((uint64_t)cursor / VM_PAGE_SIZE) & 0xFFFFu;
-        physical = 0x00400000ULL +
+        physical = 0x02000000ULL +
             (uint64_t)allocation.slot * 0x40000ULL + page * 0x2000ULL +
             page_offset;
 #else
@@ -505,6 +510,14 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
     if (!out || !sources || source_count == 0 ||
         source_count > DRIVER_DMA_MAX_SOURCES || !valid_direction(direction))
         return DRIVER_LOAD_BAD_HEADER;
+    uint64_t total = 0;
+    for (uint32_t i = 0; i < source_count; i++) {
+        if (sources[i].length == 0 || total > UINT64_MAX - sources[i].length)
+            return DRIVER_LOAD_BAD_HEADER;
+        total += sources[i].length;
+    }
+    if (total > DRIVER_DMA_OWNER_BUDGET)
+        return DRIVER_LOAD_ALLOCATION_BUDGET;
     DmaDomainRecord domain_snapshot;
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&g_dma_lock, &token))
@@ -522,17 +535,46 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
     uint32_t pinned_count = 0;
     uint32_t segment_count = 0;
     int result = DRIVER_LOAD_OK;
+    int need_bounce = 0;
     for (; pinned_count < source_count; pinned_count++) {
         const DriverDmaSource* source = &sources[pinned_count];
         result = driver_allocation_pin(owner, source->allocation,
                                        source->offset, source->length,
                                        &pinned[pinned_count]);
         if (result != DRIVER_LOAD_OK) break;
-        result = append_range_segments(source->allocation,
-                                       &pinned[pinned_count],
-                                       mask_limit(domain_snapshot.mask_bits),
-                                       segments, &segment_count);
-        if (result != DRIVER_LOAD_OK) { pinned_count++; break; }
+        if (!need_bounce) {
+            result = append_range_segments(source->allocation,
+                                           &pinned[pinned_count],
+                                           mask_limit(domain_snapshot.mask_bits),
+                                           segments, &segment_count);
+            if (result == DRIVER_LOAD_DMA_MASK) {
+                need_bounce = 1;
+                result = DRIVER_LOAD_OK;
+                segment_count = 0;
+            } else if (result != DRIVER_LOAD_OK) {
+                pinned_count++;
+                break;
+            }
+        }
+    }
+    DriverDmaBuffer bounce = {};
+    if (result == DRIVER_LOAD_OK && need_bounce) {
+        result = driver_dma_alloc_coherent(owner, device, total, VM_PAGE_SIZE,
+                                           0, &bounce);
+        if (result == DRIVER_LOAD_OK) {
+            segments[0].address = bounce.dma_address;
+            segments[0].length = total;
+            segment_count = 1;
+            if (direction != DRIVER_DMA_FROM_DEVICE) {
+                uint64_t copied = 0;
+                for (uint32_t source = 0; source < source_count; source++) {
+                    for (uint64_t byte = 0; byte < pinned[source].size; byte++)
+                        ((uint8_t*)bounce.cpu_address)[copied + byte] =
+                            ((uint8_t*)pinned[source].address)[byte];
+                    copied += pinned[source].size;
+                }
+            }
+        }
     }
     if (result != DRIVER_LOAD_OK) {
         while (pinned_count != 0) {
@@ -545,6 +587,8 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
     }
 
     if (!kernel_spinlock_acquire(&g_dma_lock, &token)) {
+        if (bounce.handle.generation)
+            driver_dma_free_coherent(owner, bounce.handle);
         for (uint32_t i = 0; i < source_count; i++)
             driver_allocation_unpin(owner, sources[i].allocation);
         return DRIVER_LOAD_DMA_DENIED;
@@ -555,6 +599,8 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
         if (!g_mappings[i].active) { slot = i; break; }
     if (!domain || slot == DRIVER_MAX_DMA_MAPPINGS) {
         kernel_spinlock_release(&g_dma_lock, &token);
+        if (bounce.handle.generation)
+            driver_dma_free_coherent(owner, bounce.handle);
         for (uint32_t i = 0; i < source_count; i++)
             driver_allocation_unpin(owner, sources[i].allocation);
         return DRIVER_LOAD_NO_SLOT;
@@ -569,19 +615,24 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
     mapping->source_count = (uint8_t)source_count;
     mapping->domain_slot = (uint32_t)(domain - g_domains);
     mapping->segment_count = segment_count;
-    uint64_t total = 0;
     for (uint32_t i = 0; i < source_count; i++) {
         mapping->sources[i] = sources[i].allocation;
-        total += sources[i].length;
+        mapping->source_addresses[i] = pinned[i].address;
+        mapping->source_lengths[i] = pinned[i].size;
     }
     for (uint32_t i = 0; i < segment_count; i++)
         mapping->segments[i] = segments[i];
+    mapping->bounce = bounce.handle;
+    mapping->bounce_cpu = bounce.cpu_address;
+    mapping->bounce_size = bounce.size;
     int rr = driver_resource_register(owner, device, DRIVER_RESOURCE_DMA,
                                       direction, slot, total,
                                       "dma_stream", &mapping->resource);
     if (rr != DRIVER_LOAD_OK) {
         *mapping = {}; mapping->generation = generation;
         kernel_spinlock_release(&g_dma_lock, &token);
+        if (bounce.handle.generation)
+            driver_dma_free_coherent(owner, bounce.handle);
         for (uint32_t i = 0; i < source_count; i++)
             driver_allocation_unpin(owner, sources[i].allocation);
         return rr;
@@ -590,6 +641,7 @@ int driver_dma_map_sg(DriverIdentity owner, DriverDeviceIdentity device,
     domain->mapping_count++;
     g_dma_stats.streaming_mappings++;
     g_dma_stats.pinned_sources += source_count;
+    if (bounce.handle.generation) g_dma_stats.bounce_mappings++;
     g_dma_stats.streaming_maps++;
     out->handle = {slot, generation};
     out->segment_count = segment_count; out->direction = direction;
@@ -627,6 +679,15 @@ int driver_dma_sync_for_cpu(DriverIdentity owner,
         return DRIVER_LOAD_DMA_SYNC;
     }
     __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    if (mapping->bounce.generation != 0) {
+        uint64_t copied = 0;
+        for (uint32_t source = 0; source < mapping->source_count; source++) {
+            for (uint64_t byte = 0; byte < mapping->source_lengths[source]; byte++)
+                ((uint8_t*)mapping->source_addresses[source])[byte] =
+                    ((uint8_t*)mapping->bounce_cpu)[copied + byte];
+            copied += mapping->source_lengths[source];
+        }
+    }
     mapping->sync_state = 2;
     g_dma_stats.sync_for_cpu++;
     kernel_spinlock_release(&g_dma_lock, &token);
@@ -644,6 +705,16 @@ int driver_dma_sync_for_device(DriverIdentity owner,
         return DRIVER_LOAD_DMA_SYNC;
     }
     __atomic_thread_fence(__ATOMIC_RELEASE);
+    if (mapping->bounce.generation != 0 &&
+        mapping->direction != DRIVER_DMA_FROM_DEVICE) {
+        uint64_t copied = 0;
+        for (uint32_t source = 0; source < mapping->source_count; source++) {
+            for (uint64_t byte = 0; byte < mapping->source_lengths[source]; byte++)
+                ((uint8_t*)mapping->bounce_cpu)[copied + byte] =
+                    ((uint8_t*)mapping->source_addresses[source])[byte];
+            copied += mapping->source_lengths[source];
+        }
+    }
     mapping->sync_state = 1;
     g_dma_stats.sync_for_device++;
     kernel_spinlock_release(&g_dma_lock, &token);
@@ -670,6 +741,7 @@ int driver_dma_unmap(DriverIdentity owner, DriverDmaMappingHandle handle) {
     if (domain->mapping_count) domain->mapping_count--;
     g_dma_stats.streaming_mappings--;
     g_dma_stats.pinned_sources -= snapshot.source_count;
+    if (snapshot.bounce.generation != 0) g_dma_stats.bounce_mappings--;
     g_dma_stats.streaming_unmaps++;
     uint32_t generation = mapping->generation;
     *mapping = {}; mapping->generation = generation;
@@ -677,6 +749,8 @@ int driver_dma_unmap(DriverIdentity owner, DriverDmaMappingHandle handle) {
     driver_resource_release(owner, snapshot.resource, DRIVER_RESOURCE_DMA);
     for (uint32_t i = 0; i < snapshot.source_count; i++)
         driver_allocation_unpin(owner, snapshot.sources[i]);
+    if (snapshot.bounce.generation != 0)
+        driver_dma_free_coherent(owner, snapshot.bounce);
     return DRIVER_LOAD_OK;
 }
 
