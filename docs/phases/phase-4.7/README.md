@@ -23,20 +23,19 @@ the Phase 4.7 contracts.
 
 ## Current Status
 
-Phase 4.7A through 4.7C completed on 2026-08-01 with implementation commits
-`ddb0772`, `e93813a`, and corrective commit `89be05e`. Driver and bound-device identities include
-generations, while `.drv` image sections now use reusable owned VA intervals,
-two-sided guard pages, final W^X protection, and acknowledged kernel-global
-TLB invalidation before reuse. Commits `39c440e`, `f1875a3`, and `fe6afbf` add owned allocation handles,
-budgets, an atomic reserve, and checked execution contexts. Phase 4.7D is next;
-later reserved test targets remain plans rather than executed evidence.
+Phase 4.7A through 4.7F completed on 2026-08-01. In addition to generation
+ownership, reusable image VA, and owned allocations, commits `e00cb72`,
+`257526f`, `94202fe`, and `39e53f3` provide capability-scoped BAR mappings,
+coherent DMA, streaming/scatter-gather mappings, trusted-direct domains, and
+an actual QEMU EDU DMA round trip. Phase 4.7G quiescent unload is next; 4.7H
+fault/soak closure remains planned.
 
 The entry system already provides page-separated `.drv` images with
 `CODE=RX`, `RODATA=R/NX`, and `DATA/BSS=RW/NX`, package validation,
 dependency-aware unload denial, PCI binding, IRQ registration, and section
-page release. It does not yet provide reusable MMIO virtual-address
-allocation, handle-scoped MMIO, DMA mapping, IOMMU domains, or complete
-quiescent device-resource teardown.
+page release. It does not yet provide a remapping IOMMU backend or complete
+quiescent device-resource teardown. The present direct DMA backend is
+explicitly trusted-only and never reports isolation.
 
 ## Intended Result
 

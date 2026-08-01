@@ -22,16 +22,16 @@ coverage, and a separate evidence commit.
 | 4.7A: Ownership and lifetime contracts | Complete | 2026-08-01 | 2026-08-01 | `ddb0772` | P47-R01 |
 | 4.7B: Reusable driver virtual address space | Complete | 2026-08-01 | 2026-08-01 | `e93813a`, `89be05e` | P47-R02, P47-R03 |
 | 4.7C: Owned allocation and execution contexts | Complete | 2026-08-01 | 2026-08-01 | `39c440e`, `f1875a3`, `fe6afbf` | P47-R04, P47-R05 |
-| 4.7D: Capability-scoped MMIO | Planned | - | - | - | P47-R06, P47-R07 |
-| 4.7E: Coherent DMA and address model | Planned | - | - | - | P47-R08 |
-| 4.7F: Streaming DMA, scatter/gather, and domain policy | Planned | - | - | - | P47-R09, P47-R10 |
+| 4.7D: Capability-scoped MMIO | Complete | 2026-08-01 | 2026-08-01 | `e00cb72`, `257526f` | P47-R06, P47-R07 |
+| 4.7E: Coherent DMA and address model | Complete | 2026-08-01 | 2026-08-01 | `257526f`, `39e53f3` | P47-R08 |
+| 4.7F: Streaming DMA, scatter/gather, and domain policy | Complete | 2026-08-01 | 2026-08-01 | `94202fe`, `39e53f3`, `4019a2d` | P47-R09, P47-R10 |
 | 4.7G: Quiescent unload and automatic cleanup | Planned | - | - | - | P47-R11 |
 | 4.7H: Fault injection, device smoke, soak, and closure | Planned | - | - | - | P47-R12, P47-R13 |
 
-Current status: Phase 4.7A through 4.7C are complete. Driver images use safe
-reusable VA, and packaged drivers now have generation-owned heap/page/atomic
-allocation handles with budgets and checked sleepable/atomic/IRQ/emergency
-contexts. Phase 4.7D is next.
+Current status: Phase 4.7A through 4.7F are complete. Packaged drivers now use
+generation-owned allocation, MMIO, coherent DMA, streaming DMA, SG, and
+domain handles. The trusted direct backend is functional but not isolated;
+Phase 4.7G quiescent unload is next.
 
 ## Implementation Order
 
@@ -223,6 +223,99 @@ For each subphase:
 
 - 4.7D builds BAR-scoped MMIO handles and a reusable NX MMIO VA arena on top
   of these owner, context, resource, and deferred-retirement contracts.
+
+## 4.7D: Capability-Scoped MMIO
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commits: `e00cb72`, `257526f`
+
+### Delivered
+
+- Replaced packaged-driver raw BAR pointers and raw-address reads/writes with
+  binding-, owner-, and generation-checked handles.
+- Added 8/16/32/64-bit alignment and range validation, UC-only initial cache
+  policy, compatible mapping references, barriers, automatic owner revoke,
+  and a reusable 64 MiB NX MMIO VA arena.
+- Split handle revocation from TLB acknowledgement so no MMIO allocator lock
+  is held while waiting for other CPUs.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-driver-mmio` | PASS | Wrong owner/device/generation, I/O BAR, overflow, alignment, range, cache, stale and double-unmap cases were rejected |
+| `make test-pci-mmio-va` | PASS | One shared handle reference and 256 mixed subrange map/unmap cycles returned all 16,384 arena pages |
+| `make test-uefi-smoke` | PASS | Packaged PCI sample mapped and revoked a real QEMU VGA BAR capability; `mmio_active=0`, `mmio_free_pages=0x4000`, quarantine zero |
+
+## 4.7E: Coherent DMA And Address Model
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commits: `257526f`, `39e53f3`
+
+### Delivered
+
+- Froze distinct CPU pointer and device-visible DMA address types and added
+  generation-owned domain and coherent-buffer handles.
+- Added 24-64-bit masks, physical alignment/boundary constraints, zero-filled
+  NX pages, 4 MiB per-owner and 16 MiB global budgets, constrained low-memory
+  allocation, and bus-master enable/disable ordering.
+- Added trusted-direct domains that explicitly report no isolation;
+  `REQUIRE_ISOLATION` fails closed without a remapping backend.
+- Added QEMU EDU hardware evidence: 256 bytes completed
+  `RAM -> EDU internal buffer -> RAM` and matched byte-for-byte.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-dma-coherent` | PASS | Mask, zeroing, 8 KiB alignment, 64 KiB boundary, budget, wrong-owner, stale, bus-master ordering and automatic cleanup passed |
+| `make test-uefi-smoke` | PASS | EDU BAR and DMA handles completed the physical round trip; final coherent buffers/bytes/quarantine were `0/0/0` |
+
+### Resource Accounting
+
+- QEMU smoke retains two live trusted-direct domains for the two bound sample
+  devices while the driver is active; transient coherent buffers, bytes,
+  MMIO mappings, and quarantine all return to zero.
+- No output exposes CPU virtual, physical, or DMA addresses through ordinary
+  driver diagnostics.
+
+## 4.7F: Streaming DMA, Scatter/Gather, And Domain Policy
+
+- Status: Complete
+- Started: 2026-08-01
+- Completed: 2026-08-01
+- Implementation commits: `94202fe`, `39e53f3`, `4019a2d`
+
+### Delivered
+
+- Added exact owned-allocation pin/unpin lifetime, TO/FROM/BIDIRECTIONAL
+  direction state, explicit CPU/device synchronization, and stale/double
+  unmap rejection.
+- Added bounded 16-source/32-segment SG generation with adjacent physical
+  coalescing and a bounded coherent bounce mapping when a direct segment
+  cannot satisfy the device mask.
+- Source free is denied while pinned. Automatic owner cleanup synchronizes
+  receive mappings, unmaps streaming/SG mappings, releases bounce/coherent
+  buffers, disables bus mastering, and then removes direct domains.
+
+### Verification
+
+| Command | Result | Measured evidence |
+| --- | --- | --- |
+| `make test-dma-streaming` | PASS | Four buffer/SG mappings covered all directions, sync violations, pinned free, stale unmap, 32-segment overflow, 24-bit bounce fallback, and zero final pins/maps |
+| `make test-dma-domain` | PASS | Isolation-required policy failed closed and trusted direct mode never claimed isolation |
+| `make test-driver-alloc test-driver-mmio` | PASS | Allocation pin additions and prior MMIO ownership/reuse contracts remained green |
+| `make test-uefi-smoke` | PASS | Packaged driver completed real page-backed streaming map/sync/unmap/free plus EDU coherent DMA; final streaming/pinned counts were `0/0` |
+
+### Remaining
+
+- 4.7G must make the complete unload path quiescent under IRQ/work/DMA races.
+- 4.7H still owns EDU interrupt/streaming/SG device completion, fault
+  injection, four-vCPU churn, and the required 60-second closure soak.
 
 ## Evidence Record Template
 
