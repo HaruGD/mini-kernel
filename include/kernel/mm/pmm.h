@@ -28,6 +28,9 @@ extern "C" {
 void pmm_init(const BootInfo* boot_info);
 void* pmm_alloc_block();
 void* pmm_alloc_blocks(uint32_t count);
+void* pmm_alloc_blocks_constrained(uint32_t count, uint32_t alignment_blocks,
+                                   uint64_t boundary_bytes,
+                                   uint64_t maximum_address);
 void pmm_free_block(void* addr);
 void pmm_free_blocks(void* addr, uint32_t count);
 uint32_t pmm_get_total_block_count();

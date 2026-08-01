@@ -1,6 +1,8 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_va.h"
 #include "kernel/driver/driver_alloc.h"
+#include "kernel/driver/driver_mmio.h"
+#include "kernel/driver/driver_dma.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
 #include "fs/vfs.h"
@@ -28,6 +30,7 @@ static void print_permission_names(uint32_t permissions) {
         {0x00000020, "INPUT"},
         {0x00000040, "TIMER"},
         {0x00000080, "DISPLAY"},
+        {0x00000100, "DMA"},
     };
 
     for (uint32_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
@@ -109,6 +112,24 @@ void command_drivers() {
     print_hex64(allocation_stats.active_bytes);
     print(" alloc_quarantine=");
     print_hex32(allocation_stats.quarantined);
+    DriverMmioStats mmio_stats;
+    driver_mmio_get_stats(&mmio_stats);
+    print(" mmio_active=");
+    print_hex32(mmio_stats.active);
+    print(" mmio_free_pages=");
+    print_hex32(mmio_stats.free_pages);
+    print(" mmio_quarantine_pages=");
+    print_hex32(mmio_stats.quarantined_pages);
+    DriverDmaStats dma_stats;
+    driver_dma_get_stats(&dma_stats);
+    print(" dma_domains=");
+    print_hex32(dma_stats.domains);
+    print(" dma_coherent=");
+    print_hex32(dma_stats.coherent_buffers);
+    print(" dma_bytes=");
+    print_hex64(dma_stats.coherent_bytes);
+    print(" dma_quarantine=");
+    print_hex32(dma_stats.quarantined_buffers);
     print("\n===============");
 }
 

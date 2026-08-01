@@ -56,6 +56,7 @@ def permission_names(value: int) -> str:
         (0x00000020, "INPUT"),
         (0x00000040, "TIMER"),
         (0x00000080, "DISPLAY"),
+        (0x00000100, "DMA"),
     ]
     text = [name for bit, name in names if value & bit]
     return "|".join(text) if text else "-"

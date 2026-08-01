@@ -1,6 +1,7 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/driver_mmio.h"
+#include "kernel/driver/driver_dma.h"
 #include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
@@ -20,7 +21,8 @@ static const uint32_t DRV_KNOWN_PERMISSIONS =
     DRV_PERMISSION_VFS |
     DRV_PERMISSION_INPUT |
     DRV_PERMISSION_TIMER |
-    DRV_PERMISSION_DISPLAY;
+    DRV_PERMISSION_DISPLAY |
+    DRV_PERMISSION_DMA;
 
 static const uint32_t DRV_KNOWN_BOOT_MODES =
     DRV_BOOT_NORMAL |
@@ -999,6 +1001,7 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
     }
     if (result != DRIVER_LOAD_OK) {
         driver_export_unregister_module(manifest->name);
+        driver_dma_release_owner(loaded->owner);
         driver_mmio_release_owner(loaded->owner);
         driver_allocation_release_owner(loaded->owner);
         if (registered) {

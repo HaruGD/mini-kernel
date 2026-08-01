@@ -173,6 +173,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     driver_manager_init();
     driver_allocation_init();
     driver_mmio_init();
+    driver_dma_init();
     service_registry_init();
     process_system_init();
     driver_manager_register_kernel_exports();
@@ -213,12 +214,12 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     int smp_ready = apic_ready && smp_start_application_processors();
     driver_manager_activate_linked_kernel();
     __asm__ volatile("sti");
+    int smp_execution_ready =
+        smp_ready && smp_release_scheduler_execution();
     driver_manager_activate_linked_runtime();
     uint32_t runtime_packaged_drivers = diagnostic_mode
         ? 0
         : driver_manager_activate_packaged_runtime();
-    int smp_execution_ready =
-        smp_ready && smp_release_scheduler_execution();
     uint32_t autoloaded_drivers = boot_packaged_drivers +
         kernel_packaged_drivers + runtime_packaged_drivers;
 

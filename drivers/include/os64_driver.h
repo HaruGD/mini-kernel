@@ -35,6 +35,30 @@ typedef struct os64_driver_mmio_mapping {
     os64_u64 length;
 } os64_driver_mmio_mapping;
 
+typedef struct os64_driver_dma_domain_handle {
+    os64_u32 slot;
+    os64_u32 generation;
+} os64_driver_dma_domain_handle;
+
+typedef struct os64_driver_dma_handle {
+    os64_u32 slot;
+    os64_u32 generation;
+} os64_driver_dma_handle;
+
+typedef struct os64_driver_dma_address { os64_u64 value; } os64_driver_dma_address;
+
+typedef struct os64_driver_dma_buffer {
+    os64_driver_dma_handle handle;
+    void* cpu_address;
+    os64_driver_dma_address dma_address;
+    os64_u64 size;
+    os64_u32 page_count;
+    os64_u32 reserved;
+} os64_driver_dma_buffer;
+
+#define OS64_DMA_TRUSTED_DIRECT 1u
+#define OS64_DMA_REQUIRE_ISOLATION 2u
+
 #define OS64_MMIO_DEVICE_UC 1u
 #define OS64_MMIO_WRITE_COMBINING 2u
 #define OS64_MMIO_BARRIER_READ 1u
@@ -98,7 +122,6 @@ typedef os64_i64 (*os64_pci_get_device_fn)(os64_u64 index, os64_pci_device_info*
 typedef os64_i64 (*os64_pci_find_device_fn)(os64_u64 vendor_id, os64_u64 device_id, os64_pci_device_info* out);
 typedef os64_i64 (*os64_pci_get_bar_fn)(const os64_pci_device_info* device, os64_u64 bar_index, os64_pci_bar_info* out);
 typedef os64_i64 (*os64_pci_enable_memory_space_fn)(const os64_pci_device_info* device);
-typedef os64_i64 (*os64_pci_enable_bus_mastering_fn)(const os64_pci_device_info* device);
 typedef os64_i64 (*os64_pci_bind_device_fn)(const os64_pci_device_info* device, os64_u64 flags);
 typedef os64_i64 (*os64_pci_bind_device_handle_fn)(const os64_pci_device_info* device, os64_u64 flags, os64_driver_device_handle* out);
 typedef os64_i64 (*os64_pci_map_bar_handle_fn)(os64_driver_device_handle device, os64_u64 bar_index, os64_u64 offset, os64_u64 length, os64_u64 cache_policy, os64_driver_mmio_mapping* out);
@@ -106,6 +129,11 @@ typedef os64_i64 (*os64_pci_unmap_bar_handle_fn)(os64_driver_mmio_handle handle)
 typedef os64_i64 (*os64_mmio_read_handle_fn)(os64_driver_mmio_handle handle, os64_u64 offset, os64_u64 width, os64_u64* out);
 typedef os64_i64 (*os64_mmio_write_handle_fn)(os64_driver_mmio_handle handle, os64_u64 offset, os64_u64 width, os64_u64 value);
 typedef os64_i64 (*os64_mmio_barrier_handle_fn)(os64_driver_mmio_handle handle, os64_u64 direction);
+typedef os64_i64 (*os64_dma_prepare_device_fn)(os64_driver_device_handle device, os64_u64 policy, os64_driver_dma_domain_handle* out);
+typedef os64_i64 (*os64_dma_set_mask_fn)(os64_driver_device_handle device, os64_u64 bits);
+typedef os64_i64 (*os64_dma_enable_bus_mastering_fn)(os64_driver_device_handle device);
+typedef os64_i64 (*os64_dma_alloc_coherent_fn)(os64_driver_device_handle device, os64_u64 size, os64_u64 alignment, os64_u64 boundary, os64_driver_dma_buffer* out);
+typedef os64_i64 (*os64_dma_free_coherent_fn)(os64_driver_dma_handle handle);
 typedef os64_u64 (*os64_irq_handler_fn)(os64_u64 irq);
 typedef os64_i64 (*os64_irq_register_fn)(os64_u64 irq, os64_irq_handler_fn handler);
 typedef os64_i64 (*os64_irq_unregister_fn)(os64_u64 irq, os64_irq_handler_fn handler);
@@ -136,7 +164,6 @@ extern os64_pci_get_device_fn kernel__pci_get_device;
 extern os64_pci_find_device_fn kernel__pci_find_device;
 extern os64_pci_get_bar_fn kernel__pci_get_bar;
 extern os64_pci_enable_memory_space_fn kernel__pci_enable_memory_space;
-extern os64_pci_enable_bus_mastering_fn kernel__pci_enable_bus_mastering;
 extern os64_pci_bind_device_fn kernel__pci_bind_device;
 extern os64_pci_bind_device_handle_fn kernel__pci_bind_device_handle;
 extern os64_pci_map_bar_handle_fn kernel__pci_map_bar_handle;
@@ -144,6 +171,11 @@ extern os64_pci_unmap_bar_handle_fn kernel__pci_unmap_bar_handle;
 extern os64_mmio_read_handle_fn kernel__mmio_read_handle;
 extern os64_mmio_write_handle_fn kernel__mmio_write_handle;
 extern os64_mmio_barrier_handle_fn kernel__mmio_barrier_handle;
+extern os64_dma_prepare_device_fn kernel__dma_prepare_device;
+extern os64_dma_set_mask_fn kernel__dma_set_mask;
+extern os64_dma_enable_bus_mastering_fn kernel__dma_enable_bus_mastering;
+extern os64_dma_alloc_coherent_fn kernel__dma_alloc_coherent;
+extern os64_dma_free_coherent_fn kernel__dma_free_coherent;
 extern os64_irq_register_fn kernel__irq_register;
 extern os64_irq_unregister_fn kernel__irq_unregister;
 extern os64_vfs_open_fn kernel__vfs_open;
@@ -225,10 +257,6 @@ static inline os64_i64 os64_pci_enable_memory_space(const os64_pci_device_info* 
     return kernel__pci_enable_memory_space(device);
 }
 
-static inline os64_i64 os64_pci_enable_bus_mastering(const os64_pci_device_info* device) {
-    return kernel__pci_enable_bus_mastering(device);
-}
-
 static inline os64_i64 os64_pci_bind_device(const os64_pci_device_info* device, os64_u64 flags) {
     return kernel__pci_bind_device(device, flags);
 }
@@ -255,6 +283,26 @@ static inline os64_i64 os64_mmio_write(os64_driver_mmio_handle handle, os64_u64 
 
 static inline os64_i64 os64_mmio_barrier(os64_driver_mmio_handle handle, os64_u64 direction) {
     return kernel__mmio_barrier_handle(handle, direction);
+}
+
+static inline os64_i64 os64_dma_prepare_device(os64_driver_device_handle device, os64_u64 policy, os64_driver_dma_domain_handle* out) {
+    return kernel__dma_prepare_device(device, policy, out);
+}
+
+static inline os64_i64 os64_dma_set_mask(os64_driver_device_handle device, os64_u64 bits) {
+    return kernel__dma_set_mask(device, bits);
+}
+
+static inline os64_i64 os64_dma_enable_bus_mastering(os64_driver_device_handle device) {
+    return kernel__dma_enable_bus_mastering(device);
+}
+
+static inline os64_i64 os64_dma_alloc_coherent(os64_driver_device_handle device, os64_u64 size, os64_u64 alignment, os64_u64 boundary, os64_driver_dma_buffer* out) {
+    return kernel__dma_alloc_coherent(device, size, alignment, boundary, out);
+}
+
+static inline os64_i64 os64_dma_free_coherent(os64_driver_dma_handle handle) {
+    return kernel__dma_free_coherent(handle);
 }
 
 static inline os64_i64 os64_irq_register(os64_u64 irq, os64_irq_handler_fn handler) {

@@ -51,6 +51,7 @@ int pci_get_bar(const PCIDeviceInfo* device, uint32_t bar_index, PCIBarInfo* out
 void* pci_map_bar(const PCIDeviceInfo* device, uint32_t bar_index, PCIBarInfo* out);
 int pci_enable_memory_space(const PCIDeviceInfo* device);
 int pci_enable_bus_mastering(const PCIDeviceInfo* device);
+int pci_disable_bus_mastering(const PCIDeviceInfo* device);
 
 uint32_t pci_read_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset);
 void pci_write_config32(uint64_t bus, uint64_t device, uint64_t function, uint64_t offset, uint32_t value);

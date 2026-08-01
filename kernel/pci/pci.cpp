@@ -399,6 +399,16 @@ int pci_enable_bus_mastering(const PCIDeviceInfo* device_info) {
     return pci_update_command_bits(device_info, 0x0004U);
 }
 
+int pci_disable_bus_mastering(const PCIDeviceInfo* device_info) {
+    if (device_info == 0) return 0;
+    uint32_t value = pci_read_config32(device_info->bus, device_info->device,
+                                       device_info->function, 0x04);
+    value &= ~0x0004U;
+    pci_write_config32(device_info->bus, device_info->device,
+                       device_info->function, 0x04, value);
+    return 1;
+}
+
 static const char* pci_class_name(uint8_t class_code, uint8_t subclass) {
     if (class_code == 0x01U && subclass == 0x06U) return "SATA";
     if (class_code == 0x01U && subclass == 0x01U) return "IDE";

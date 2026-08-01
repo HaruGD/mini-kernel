@@ -1,6 +1,7 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/driver_mmio.h"
+#include "kernel/driver/driver_dma.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/kernel_exports.h"
 #include "kernel/kutil64.h"
@@ -168,6 +169,32 @@ extern "C" int64_t driver_mmio_barrier_handle(DriverMmioHandle handle,
     return driver_mmio_barrier_current(handle, (uint32_t)direction);
 }
 
+extern "C" int64_t driver_dma_prepare_device_handle(
+    DriverDeviceIdentity device, uint64_t policy, DriverDmaDomainHandle* out) {
+    return driver_dma_prepare_device_current(device, (uint32_t)policy, out);
+}
+
+extern "C" int64_t driver_dma_set_mask_handle(DriverDeviceIdentity device,
+                                                uint64_t bits) {
+    return driver_dma_set_mask_current(device, (uint32_t)bits);
+}
+
+extern "C" int64_t driver_dma_enable_bus_mastering_handle(
+    DriverDeviceIdentity device) {
+    return driver_dma_enable_bus_mastering_current(device);
+}
+
+extern "C" int64_t driver_dma_alloc_coherent_handle(
+    DriverDeviceIdentity device, uint64_t size, uint64_t alignment,
+    uint64_t boundary, DriverDmaBuffer* out) {
+    return driver_dma_alloc_coherent_current(device, size, alignment,
+                                             boundary, out);
+}
+
+extern "C" int64_t driver_dma_free_coherent_handle(DriverDmaHandle handle) {
+    return driver_dma_free_coherent_current(handle);
+}
+
 extern "C" int64_t driver_irq_register(uint64_t irq, DriverIrqHandler handler) {
     if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     const char* driver_name = driver_manager_current_lifecycle_driver();
@@ -253,7 +280,6 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "pci_find_device", (void*)driver_pci_find_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_get_bar", (void*)driver_pci_get_bar, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_enable_memory_space", (void*)driver_pci_enable_memory_space, DRV_PERMISSION_PCI);
-    driver_export_register("kernel", "pci_enable_bus_mastering", (void*)driver_pci_enable_bus_mastering, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_bind_device", (void*)driver_pci_bind_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_bind_device_handle", (void*)driver_pci_bind_device_handle, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_map_bar_handle", (void*)driver_pci_map_bar_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
@@ -261,6 +287,11 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "mmio_read_handle", (void*)driver_mmio_read_handle, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "mmio_write_handle", (void*)driver_mmio_write_handle, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "mmio_barrier_handle", (void*)driver_mmio_barrier_handle, DRV_PERMISSION_MMIO);
+    driver_export_register("kernel", "dma_prepare_device", (void*)driver_dma_prepare_device_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_set_mask", (void*)driver_dma_set_mask_handle, DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_enable_bus_mastering", (void*)driver_dma_enable_bus_mastering_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_alloc_coherent", (void*)driver_dma_alloc_coherent_handle, DRV_PERMISSION_DMA);
+    driver_export_register("kernel", "dma_free_coherent", (void*)driver_dma_free_coherent_handle, DRV_PERMISSION_DMA);
     driver_export_register("kernel", "irq_register", (void*)driver_irq_register, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "irq_unregister", (void*)driver_irq_unregister, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "vfs_open", (void*)driver_vfs_open, DRV_PERMISSION_VFS);

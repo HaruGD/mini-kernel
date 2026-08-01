@@ -1,6 +1,7 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_alloc.h"
 #include "kernel/driver/driver_mmio.h"
+#include "kernel/driver/driver_dma.h"
 #include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
@@ -173,6 +174,13 @@ int driver_manager_unload(const char* name) {
 
     driver_export_unregister_module(snapshot.name);
     driver_irq_unregister_module(snapshot.name);
+    driver_dma_release_owner(loaded->owner);
+    if (driver_dma_owner_count(loaded->owner) != 0) {
+        driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);
+        driver_manager_set_last_error(DRIVER_LOAD_RESOURCE_DENIED, "unload",
+                                      snapshot.name, "dma-quarantined", 0, 0);
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    }
     driver_mmio_release_owner(loaded->owner);
     if (driver_mmio_owner_count(loaded->owner) != 0) {
         driver_manager_set_state(snapshot.name, DRIVER_STATE_FAILED);

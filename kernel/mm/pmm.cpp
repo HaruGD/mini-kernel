@@ -304,6 +304,50 @@ extern "C" void* pmm_alloc_blocks(uint32_t count) {
     return 0;
 }
 
+extern "C" void* pmm_alloc_blocks_constrained(uint32_t count,
+                                                 uint32_t alignment_blocks,
+                                                 uint64_t boundary_bytes,
+                                                 uint64_t maximum_address) {
+    alloc_requests64++;
+    alloc_contiguous_requests64++;
+    if (count == 0 || alignment_blocks == 0 ||
+        (alignment_blocks & (alignment_blocks - 1u)) != 0 ||
+        count > free_blocks64 || count > PMM_TOTAL_BLOCKS) {
+        alloc_failures64++;
+        return 0;
+    }
+    if (kernel_fault_injection_should_fail(KERNEL_FAULT_POINT_PMM)) {
+        alloc_failures64++;
+        return 0;
+    }
+    const uint64_t bytes = (uint64_t)count * PMM_PAGE_SIZE;
+    for (uint32_t start = 0; start + count <= PMM_TOTAL_BLOCKS; start++) {
+        alloc_scan_steps64++;
+        if ((start & (alignment_blocks - 1u)) != 0) continue;
+        const uint64_t address = (uint64_t)start * PMM_PAGE_SIZE;
+        if (address > maximum_address || bytes - 1u > maximum_address - address)
+            break;
+        if (boundary_bytes != 0 &&
+            address / boundary_bytes != (address + bytes - 1u) / boundary_bytes)
+            continue;
+        uint32_t available = 0;
+        while (available < count && !mmap_test64(start + available)) {
+            available++;
+            alloc_scan_steps64++;
+        }
+        if (available != count) {
+            start += available;
+            continue;
+        }
+        for (uint32_t i = 0; i < count; i++) mark_block_used64(start + i);
+        next_free_hint64 = start + count;
+        if (next_free_hint64 >= PMM_TOTAL_BLOCKS) next_free_hint64 = 0;
+        return (void*)(uintptr_t)address;
+    }
+    alloc_failures64++;
+    return 0;
+}
+
 extern "C" void pmm_free_block(void* addr) {
     free_requests64++;
     uintptr_t block = (uintptr_t)addr / PMM_PAGE_SIZE;

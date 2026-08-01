@@ -274,33 +274,6 @@ int driver_mmio_map_current(DriverDeviceIdentity device, uint32_t bar_index,
                            cache_policy, out);
 }
 
-static int retire_locked(MmioRecord* record) {
-#ifndef OS64_DRIVER_HOST_TEST
-    if (vm_unmap_range_tlb_safe(record->virtual_base, record->page_count) !=
-        record->page_count) {
-        record->active = 0;
-        record->quarantined = 1;
-        for (uint32_t i = 0; i < record->page_count; i++) {
-            bit_set(g_mmio_pages, record->first_page + i, 0);
-            bit_set(g_mmio_quarantine, record->first_page + i, 1);
-        }
-        g_mmio_stats.active--;
-        g_mmio_stats.quarantined_pages += record->page_count;
-        return DRIVER_LOAD_RESOURCE_DENIED;
-    }
-#endif
-    release_pages(record->first_page, record->page_count);
-    g_mmio_stats.free_pages += record->page_count;
-    g_mmio_stats.active--;
-    g_mmio_stats.unmaps++;
-    driver_resource_release(record->owner, record->resource,
-                            DRIVER_RESOURCE_MMIO);
-    const uint32_t generation = record->generation;
-    *record = {};
-    record->generation = generation;
-    return DRIVER_LOAD_OK;
-}
-
 int driver_mmio_unmap(DriverIdentity owner, DriverMmioHandle handle) {
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&g_mmio_lock, &token))
@@ -319,9 +292,36 @@ int driver_mmio_unmap(DriverIdentity owner, DriverMmioHandle handle) {
         kernel_spinlock_release(&g_mmio_lock, &token);
         return DRIVER_LOAD_OK;
     }
-    int result = retire_locked(record);
+    MmioRecord snapshot = *record;
+    record->active = 0;
+    record->quarantined = 1;
+    g_mmio_stats.active--;
     kernel_spinlock_release(&g_mmio_lock, &token);
-    return result;
+#ifndef OS64_DRIVER_HOST_TEST
+    if (vm_unmap_range_tlb_safe(snapshot.virtual_base, snapshot.page_count) !=
+        snapshot.page_count) {
+        if (!kernel_spinlock_acquire(&g_mmio_lock, &token))
+            return DRIVER_LOAD_RESOURCE_DENIED;
+        for (uint32_t i = 0; i < snapshot.page_count; i++) {
+            bit_set(g_mmio_pages, snapshot.first_page + i, 0);
+            bit_set(g_mmio_quarantine, snapshot.first_page + i, 1);
+        }
+        g_mmio_stats.quarantined_pages += snapshot.page_count;
+        kernel_spinlock_release(&g_mmio_lock, &token);
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    }
+#endif
+    driver_resource_release(owner, snapshot.resource, DRIVER_RESOURCE_MMIO);
+    if (!kernel_spinlock_acquire(&g_mmio_lock, &token))
+        return DRIVER_LOAD_RESOURCE_DENIED;
+    release_pages(snapshot.first_page, snapshot.page_count);
+    g_mmio_stats.free_pages += snapshot.page_count;
+    g_mmio_stats.unmaps++;
+    const uint32_t generation = record->generation;
+    *record = {};
+    record->generation = generation;
+    kernel_spinlock_release(&g_mmio_lock, &token);
+    return DRIVER_LOAD_OK;
 }
 
 int driver_mmio_unmap_current(DriverMmioHandle handle) {
@@ -421,16 +421,24 @@ int driver_mmio_barrier_current(DriverMmioHandle handle, uint32_t direction) {
 }
 
 uint32_t driver_mmio_release_owner(DriverIdentity owner) {
-    KernelSpinlockToken token;
-    if (!kernel_spinlock_acquire(&g_mmio_lock, &token)) return 0;
     uint32_t released = 0;
-    for (uint32_t i = 0; i < DRIVER_MAX_MMIO_MAPPINGS; i++) {
-        if (g_mmio[i].active && driver_identity_equal(g_mmio[i].owner, owner)) {
-            g_mmio[i].references = 1;
-            if (retire_locked(&g_mmio[i]) == DRIVER_LOAD_OK) released++;
+    for (;;) {
+        DriverMmioHandle handle = driver_mmio_invalid();
+        KernelSpinlockToken token;
+        if (!kernel_spinlock_acquire(&g_mmio_lock, &token)) break;
+        for (uint32_t i = 0; i < DRIVER_MAX_MMIO_MAPPINGS; i++) {
+            if (g_mmio[i].active &&
+                driver_identity_equal(g_mmio[i].owner, owner)) {
+                g_mmio[i].references = 1;
+                handle = {i, g_mmio[i].generation};
+                break;
+            }
         }
+        kernel_spinlock_release(&g_mmio_lock, &token);
+        if (handle.slot == DRIVER_IDENTITY_INVALID_SLOT) break;
+        if (driver_mmio_unmap(owner, handle) != DRIVER_LOAD_OK) break;
+        released++;
     }
-    kernel_spinlock_release(&g_mmio_lock, &token);
     return released;
 }
 
