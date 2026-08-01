@@ -1,5 +1,6 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_alloc.h"
+#include "kernel/driver/driver_mmio.h"
 #include "kernel/driver/driver_va.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/kutil64.h"
@@ -998,6 +999,7 @@ int driver_manager_load_drv_image(const uint8_t* image, uint64_t size) {
     }
     if (result != DRIVER_LOAD_OK) {
         driver_export_unregister_module(manifest->name);
+        driver_mmio_release_owner(loaded->owner);
         driver_allocation_release_owner(loaded->owner);
         if (registered) {
             driver_manager_set_instance(manifest->name, 0);

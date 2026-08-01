@@ -24,6 +24,7 @@ extern "C" {
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_alloc.h"
+#include "kernel/driver/driver_mmio.h"
 #include "kernel/pci.h"
 #include "kernel/kernel_diag.h"
 #include "kernel/graphics/display_backend.h"

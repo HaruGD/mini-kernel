@@ -57,7 +57,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -93,6 +93,7 @@ KERNEL64_OBJECTS = \
 	./build/driver_resource64.o \
 	./build/driver_va64.o \
 	./build/driver_alloc64.o \
+	./build/driver_mmio64.o \
 	./build/driver_exports64.o \
 	./build/driver_binding64.o \
 	./build/driver_irq64.o \
@@ -324,6 +325,12 @@ test-driver-alloc:
 test-driver-context:
 	python3 ./tools/driver_context_test.py
 
+test-driver-mmio:
+	python3 ./tools/driver_mmio_test.py
+
+test-pci-mmio-va:
+	python3 ./tools/driver_mmio_test.py
+
 test-driver-layout: test-driver-policy
 	python3 ./tools/driver_layout_test.py
 
@@ -477,6 +484,9 @@ all32:
 ./build/driver_alloc64.o: ./kernel/driver/driver_alloc.cpp ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/driver_manager.h ./include/kernel/spinlock.h ./include/kernel/mm/vm.h ./include/kernel/fault_injection.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
+./build/driver_mmio64.o: ./kernel/driver/driver_mmio.cpp ./include/kernel/driver/driver_mmio.h ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_alloc.h ./include/kernel/mm/vm.h ./include/kernel/pci.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
 ./build/driver_exports64.o: ./kernel/driver/driver_exports.cpp ./include/kernel/driver/driver_manager.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
@@ -489,7 +499,7 @@ all32:
 ./build/driver_loader64.o: ./kernel/driver/driver_loader.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/drv_format.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/driver_unload64.o: ./kernel/driver/driver_unload.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/drv_format.h
+./build/driver_unload64.o: ./kernel/driver/driver_unload.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/driver_mmio.h ./include/kernel/driver/drv_format.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/driver_builtin64.o: $(GENERATED_LINKED_DRIVER_REGISTRY) ./include/kernel/driver/driver_manager.h ./include/kernel/driver/drv_format.h
@@ -501,7 +511,7 @@ all32:
 ./build/driver_shell64.o: ./kernel/driver/driver_shell.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_alloc.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
-./build/kernel_exports64.o: ./kernel/driver/kernel_exports.cpp ./include/kernel/driver/kernel_exports.h ./include/kernel/driver/driver_manager.h ./include/kernel/pci.h ./include/arch/x86_64/io.h ./include/drivers/ata.h ./include/drivers/gop.h ./include/fs/vfs.h
+./build/kernel_exports64.o: ./kernel/driver/kernel_exports.cpp ./include/kernel/driver/kernel_exports.h ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_mmio.h ./include/kernel/pci.h ./include/arch/x86_64/io.h ./include/drivers/ata.h ./include/drivers/gop.h ./include/fs/vfs.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/driver/kernel_exports.cpp -o $@
 
 ./build/pci64.o: ./kernel/pci/pci.cpp ./include/kernel/pci.h

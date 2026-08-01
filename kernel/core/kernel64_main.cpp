@@ -172,6 +172,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     display_backend_init();
     driver_manager_init();
     driver_allocation_init();
+    driver_mmio_init();
     service_registry_init();
     process_system_init();
     driver_manager_register_kernel_exports();

@@ -51,6 +51,13 @@
 #define DRIVER_LOAD_CONTEXT_DENIED   -21
 #define DRIVER_LOAD_ALLOCATION_BUDGET -22
 #define DRIVER_LOAD_ALLOCATION_DENIED -23
+#define DRIVER_LOAD_MMIO_DENIED       -24
+#define DRIVER_LOAD_MMIO_RANGE        -25
+#define DRIVER_LOAD_MMIO_CACHE        -26
+#define DRIVER_LOAD_DMA_DENIED        -27
+#define DRIVER_LOAD_DMA_MASK          -28
+#define DRIVER_LOAD_DMA_SYNC          -29
+#define DRIVER_LOAD_DMA_ISOLATION     -30
 
 #define DRIVER_MAX_LOADED_SECTIONS 16
 #define DRIVER_MAX_RESOLVED_IMPORTS 32
@@ -301,6 +308,12 @@ DriverDeviceIdentity driver_device_identity_invalid();
 int driver_device_identity_is_valid(DriverDeviceIdentity identity);
 int driver_manager_device_identity_is_live(DriverDeviceIdentity identity,
                                            DriverIdentity owner);
+int driver_manager_device_identity_resolve(DriverDeviceIdentity identity,
+                                           DriverIdentity owner,
+                                           DriverBindingRecord* out);
+int driver_manager_bound_pci_identity(DriverIdentity owner,
+                                      const PCIDeviceInfo* device,
+                                      DriverDeviceIdentity* out);
 
 int driver_irq_register_handler(const char* driver_name, uint32_t irq, DriverIrqHandler handler, uint32_t flags);
 int driver_irq_unregister_handler(const char* driver_name, uint32_t irq, DriverIrqHandler handler);

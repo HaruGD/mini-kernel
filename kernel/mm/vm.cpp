@@ -263,6 +263,31 @@ extern "C" uint32_t vm_unmap_free_range_tlb_safe(uint64_t virt,
     return retired;
 }
 
+extern "C" uint32_t vm_unmap_range_tlb_safe(uint64_t virt,
+                                               uint32_t page_count) {
+    const uint64_t begin = align_down_page(virt);
+    uint32_t retired = 0;
+    while (retired < page_count) {
+        uint32_t chunk = page_count - retired;
+        if (chunk > VM_TLB_RETIRE_CHUNK_PAGES) {
+            chunk = VM_TLB_RETIRE_CHUNK_PAGES;
+        }
+        uint32_t unmapped = 0;
+        const uint64_t chunk_begin = begin +
+            (uint64_t)retired * VM_PAGE_SIZE;
+        for (; unmapped < chunk; unmapped++) {
+            const uint64_t address = chunk_begin +
+                (uint64_t)unmapped * VM_PAGE_SIZE;
+            if (vm_get_phys(address) == 0 || !vm_unmap_page(address)) break;
+        }
+        if (unmapped == 0) break;
+        if (!smp_kernel_tlb_shootdown(chunk_begin, unmapped)) break;
+        retired += unmapped;
+        if (unmapped != chunk) break;
+    }
+    return retired;
+}
+
 extern "C" uint32_t vm_unmap_free_range_in_root(uint64_t root_phys, uint64_t virt, uint32_t page_count) {
     uint64_t begin = align_down_page(virt);
     uint32_t unmapped = 0;

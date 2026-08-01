@@ -5,6 +5,8 @@
 #include "kernel/pci.h"
 
 static DriverBindingRecord g_bindings[DRIVER_MAX_BINDINGS];
+static int same_pci_device(const DriverBindingRecord* binding,
+                           const PCIDeviceInfo* device);
 
 typedef uint64_t (*DriverPciProbeFn)(const PCIDeviceInfo* device);
 
@@ -57,6 +59,32 @@ int driver_manager_device_identity_is_live(DriverDeviceIdentity identity,
     const DriverBindingRecord* binding = &g_bindings[identity.slot];
     return binding->active && binding->generation == identity.generation &&
            driver_identity_equal(binding->owner, owner);
+}
+
+int driver_manager_device_identity_resolve(DriverDeviceIdentity identity,
+                                           DriverIdentity owner,
+                                           DriverBindingRecord* out) {
+    if (out == 0 ||
+        !driver_manager_device_identity_is_live(identity, owner)) return 0;
+    *out = g_bindings[identity.slot];
+    return 1;
+}
+
+int driver_manager_bound_pci_identity(DriverIdentity owner,
+                                      const PCIDeviceInfo* device,
+                                      DriverDeviceIdentity* out) {
+    if (out != 0) *out = driver_device_identity_invalid();
+    if (device == 0 || out == 0 ||
+        !driver_manager_identity_is_live(owner)) return 0;
+    for (uint32_t i = 0; i < DRIVER_MAX_BINDINGS; i++) {
+        if (same_pci_device(&g_bindings[i], device) &&
+            driver_identity_equal(g_bindings[i].owner, owner)) {
+            out->slot = g_bindings[i].slot;
+            out->generation = g_bindings[i].generation;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int same_pci_device(const DriverBindingRecord* binding, const PCIDeviceInfo* device) {

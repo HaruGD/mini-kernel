@@ -3,16 +3,20 @@
   "name": "pci_probe_c",
   "display_name": "PCI probe C sample driver",
   "version": "0.1.0",
-  "description": "Sample driver exercising PCI discovery and binding exports.",
+  "description": "Sample driver exercising PCI binding and BAR capability exports.",
   "domain": "demo",
   "entry": "driver_entry",
-  "permissions": ["PCI"],
+  "permissions": ["PCI", "MMIO"],
   "boot_modes": ["NORMAL"],
   "dependencies": [],
   "exports": [],
   "imports": {
     "kernel.klog": [],
     "kernel.pci_read_config32": ["PCI"],
-    "kernel.pci_bind_device": ["PCI"]
+    "kernel.pci_get_bar": ["PCI"],
+    "kernel.pci_bind_device_handle": ["PCI"],
+    "kernel.pci_map_bar_handle": ["PCI", "MMIO"],
+    "kernel.pci_unmap_bar_handle": ["PCI", "MMIO"],
+    "kernel.mmio_barrier_handle": ["MMIO"]
   }
 }

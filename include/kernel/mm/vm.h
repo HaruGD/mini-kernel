@@ -38,6 +38,7 @@ int vm_protect_range(uint64_t virt, uint64_t size, uint64_t flags);
 int vm_alloc_map_range(uint64_t virt, uint64_t size, uint64_t flags, uint32_t* out_page_count);
 uint32_t vm_unmap_free_range(uint64_t virt, uint32_t page_count);
 uint32_t vm_unmap_free_range_tlb_safe(uint64_t virt, uint32_t page_count);
+uint32_t vm_unmap_range_tlb_safe(uint64_t virt, uint32_t page_count);
 uint64_t vm_get_phys(uint64_t virt);
 uint64_t vm_get_flags(uint64_t virt);
 void vm_flush_page(uint64_t virt);

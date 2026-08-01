@@ -1,5 +1,6 @@
 #include "kernel/driver/driver_manager.h"
 #include "kernel/driver/driver_alloc.h"
+#include "kernel/driver/driver_mmio.h"
 #include "kernel/driver/drv_format.h"
 #include "kernel/driver/kernel_exports.h"
 #include "kernel/kutil64.h"
@@ -122,6 +123,51 @@ extern "C" int64_t driver_pci_bind_device(const PCIDeviceInfo* device, uint64_t 
     return driver_manager_bind_pci(driver_name, device, (uint32_t)flags);
 }
 
+extern "C" int64_t driver_pci_bind_device_handle(
+    const PCIDeviceInfo* device, uint64_t flags, DriverDeviceIdentity* out) {
+    if (out != 0) *out = driver_device_identity_invalid();
+    if (!driver_execution_require_sleepable() || out == 0)
+        return DRIVER_LOAD_CONTEXT_DENIED;
+    DriverExecutionContext context;
+    if (!driver_execution_current(&context)) return DRIVER_LOAD_CONTEXT_DENIED;
+    const char* driver_name = driver_manager_current_lifecycle_driver();
+    if (driver_name == 0) return DRIVER_LOAD_BIND_DENIED;
+    int result = driver_manager_bind_pci(driver_name, device, (uint32_t)flags);
+    if (result != DRIVER_LOAD_OK) return result;
+    return driver_manager_bound_pci_identity(context.owner, device, out)
+        ? DRIVER_LOAD_OK : DRIVER_LOAD_BIND_DENIED;
+}
+
+extern "C" int64_t driver_pci_map_bar_handle(
+    DriverDeviceIdentity device, uint64_t bar_index, uint64_t offset,
+    uint64_t length, uint64_t cache_policy, DriverMmioMapping* out) {
+    return driver_mmio_map_current(device, (uint32_t)bar_index, offset, length,
+                                   (uint32_t)cache_policy, out);
+}
+
+extern "C" int64_t driver_pci_unmap_bar_handle(DriverMmioHandle handle) {
+    return driver_mmio_unmap_current(handle);
+}
+
+extern "C" int64_t driver_mmio_read_handle(DriverMmioHandle handle,
+                                              uint64_t offset,
+                                              uint64_t width,
+                                              uint64_t* out) {
+    return driver_mmio_read_current(handle, offset, (uint32_t)width, out);
+}
+
+extern "C" int64_t driver_mmio_write_handle(DriverMmioHandle handle,
+                                               uint64_t offset,
+                                               uint64_t width,
+                                               uint64_t value) {
+    return driver_mmio_write_current(handle, offset, (uint32_t)width, value);
+}
+
+extern "C" int64_t driver_mmio_barrier_handle(DriverMmioHandle handle,
+                                                 uint64_t direction) {
+    return driver_mmio_barrier_current(handle, (uint32_t)direction);
+}
+
 extern "C" int64_t driver_irq_register(uint64_t irq, DriverIrqHandler handler) {
     if (!driver_execution_require_sleepable()) return DRIVER_LOAD_CONTEXT_DENIED;
     const char* driver_name = driver_manager_current_lifecycle_driver();
@@ -206,14 +252,17 @@ void driver_manager_register_kernel_exports() {
     driver_export_register("kernel", "pci_get_device", (void*)driver_pci_get_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_find_device", (void*)driver_pci_find_device, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_get_bar", (void*)driver_pci_get_bar, DRV_PERMISSION_PCI);
-    driver_export_register("kernel", "pci_map_bar", (void*)driver_pci_map_bar, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "pci_enable_memory_space", (void*)driver_pci_enable_memory_space, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_enable_bus_mastering", (void*)driver_pci_enable_bus_mastering, DRV_PERMISSION_PCI);
     driver_export_register("kernel", "pci_bind_device", (void*)driver_pci_bind_device, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_bind_device_handle", (void*)driver_pci_bind_device_handle, DRV_PERMISSION_PCI);
+    driver_export_register("kernel", "pci_map_bar_handle", (void*)driver_pci_map_bar_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
+    driver_export_register("kernel", "pci_unmap_bar_handle", (void*)driver_pci_unmap_bar_handle, DRV_PERMISSION_PCI | DRV_PERMISSION_MMIO);
+    driver_export_register("kernel", "mmio_read_handle", (void*)driver_mmio_read_handle, DRV_PERMISSION_MMIO);
+    driver_export_register("kernel", "mmio_write_handle", (void*)driver_mmio_write_handle, DRV_PERMISSION_MMIO);
+    driver_export_register("kernel", "mmio_barrier_handle", (void*)driver_mmio_barrier_handle, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "irq_register", (void*)driver_irq_register, DRV_PERMISSION_INTERRUPT);
     driver_export_register("kernel", "irq_unregister", (void*)driver_irq_unregister, DRV_PERMISSION_INTERRUPT);
-    driver_export_register("kernel", "mmio_read32", (void*)driver_mmio_read32, DRV_PERMISSION_MMIO);
-    driver_export_register("kernel", "mmio_write32", (void*)driver_mmio_write32, DRV_PERMISSION_MMIO);
     driver_export_register("kernel", "vfs_open", (void*)driver_vfs_open, DRV_PERMISSION_VFS);
     driver_export_register("kernel", "vfs_read", (void*)driver_vfs_read, DRV_PERMISSION_VFS);
     driver_export_register("kernel", "vfs_write", (void*)driver_vfs_write, DRV_PERMISSION_VFS);
