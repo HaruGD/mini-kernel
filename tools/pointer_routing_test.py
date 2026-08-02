@@ -122,6 +122,12 @@ def main() -> int:
     assert "window_interaction_hit_test" in windowd
     assert "OS_WINDOW_EVENT_CLOSE_REQUEST" in windowd
     assert "draw_cursor" in windowd
+    run_script = (ROOT / "run.sh").read_text()
+    realish_script = (ROOT / "run_realish.sh").read_text()
+    assert "grab-on-hover=on" in run_script
+    assert "REALISH_USB_MOUSE=${REALISH_USB_MOUSE:-0}" in realish_script
+    assert "using default PS/2 mouse path" in realish_script
+    assert "USB_INPUT_DEVICES=(-device usb-tablet" not in realish_script
     print("pointer service/driver integration source checks OK")
     return 0
 

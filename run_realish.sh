@@ -16,6 +16,11 @@ QEMU_CPU=${QEMU_CPU:-max}
 QEMU_MEM=${QEMU_MEM:-8G}
 QEMU_VGA=${QEMU_VGA:-std}
 REALISH_USB_KBD=${REALISH_USB_KBD:-0}
+REALISH_USB_MOUSE=${REALISH_USB_MOUSE:-0}
+
+if [[ "$QEMU_DISPLAY" == gtk* && "$QEMU_DISPLAY" != *grab-on-hover* ]]; then
+  QEMU_DISPLAY="$QEMU_DISPLAY,grab-on-hover=on"
+fi
 
 if [ -n "${QEMU_SERIAL:-}" ]; then
   SERIAL_TARGET=$QEMU_SERIAL
@@ -34,6 +39,7 @@ echo "[realish] memory: $QEMU_MEM"
 echo "[realish] cpu: $QEMU_CPU"
 echo "[realish] vga: $QEMU_VGA"
 echo "[realish] usb keyboard: $REALISH_USB_KBD"
+echo "[realish] usb mouse: $REALISH_USB_MOUSE"
 echo "[realish] display: $QEMU_DISPLAY"
 echo "[realish] serial: $SERIAL_TARGET"
 if [ "$SERIAL_TARGET" != "stdio" ]; then
@@ -41,11 +47,16 @@ if [ "$SERIAL_TARGET" != "stdio" ]; then
 fi
 echo "[realish] qemu log: $QEMU_LOG"
 
-USB_INPUT_DEVICES=(-device usb-tablet,bus=xhci.0)
+USB_INPUT_DEVICES=()
 if [ "$REALISH_USB_KBD" = "1" ]; then
   USB_INPUT_DEVICES+=(-device usb-kbd,bus=xhci.0)
 else
   echo "[realish] using default PS/2 keyboard path for current OS keyboard driver"
+fi
+if [ "$REALISH_USB_MOUSE" = "1" ]; then
+  USB_INPUT_DEVICES+=(-device usb-tablet,bus=xhci.0)
+else
+  echo "[realish] using default PS/2 mouse path for current OS mouse driver"
 fi
 
 qemu-system-x86_64 \

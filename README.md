@@ -314,7 +314,11 @@ Run a more real-hardware-like QEMU profile:
 
 This uses Q35, 8GB RAM, xHCI USB, e1000e networking, UEFI, and separate logs under `logs/serial_q35_8g.log` and `logs/qemu_q35_8g.log`.
 
-The current OS keyboard driver is PS/2-based, so this profile keeps QEMU's default PS/2 keyboard path by default. Use `REALISH_USB_KBD=1 ./run_realish.sh` only when testing future USB HID keyboard support.
+The current OS keyboard and mouse drivers are PS/2-based, so this profile
+keeps QEMU's default PS/2 input devices by default. GTK runs with
+`grab-on-hover=on` so relative mouse motion reaches the guest; press
+`Ctrl+Alt+G` to release the pointer manually. Use `REALISH_USB_KBD=1` or
+`REALISH_USB_MOUSE=1` only when testing future USB HID support.
 
 ## Boot Layout
 

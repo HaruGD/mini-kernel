@@ -12,6 +12,9 @@ SERIAL_LOG=$LOG_DIR/serial_uefi_run.log
 QEMU_LOG=$LOG_DIR/qemu_uefi_run.log
 QEMU_DISPLAY=${QEMU_DISPLAY:-gtk}
 SERIAL_TARGET=${QEMU_SERIAL:-file:$SERIAL_LOG}
+if [[ "$QEMU_DISPLAY" == gtk* && "$QEMU_DISPLAY" != *grab-on-hover* ]]; then
+  QEMU_DISPLAY="$QEMU_DISPLAY,grab-on-hover=on"
+fi
 if [ "$QEMU_DISPLAY" = "none" ] && [ -z "${QEMU_SERIAL:-}" ]; then
   SERIAL_TARGET=stdio
 fi
