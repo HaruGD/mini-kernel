@@ -22,10 +22,11 @@ desktop protocol and recovery behavior are stable.
 
 ## Current Status
 
-Phase 5A through 5C are complete. OS64 now has a supervised desktop session,
-enforced desktop/normal/panel/overlay policy, PS/2 pointer routing and
-interactive decorated windows, plus public image, UTF-8 text, drawing, and
-widget SDKs. Phase 5D, the GUI terminal, is next.
+Phase 5A and 5B are complete. The 5C image, UTF-8 text, drawing, and widget SDK
+foundation is implemented, but interactive review reopened its exit gate for
+distinct lowercase glyphs, a visible text caret, and client-side responsive
+surface/layout replacement after window resize. These 5C.1 items must close
+before Phase 5D, the GUI terminal, begins.
 
 ## Intended Result
 

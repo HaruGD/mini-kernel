@@ -21,7 +21,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | --- | --- | --- | --- | --- | --- |
 | 5A: Desktop session and layer policy | Complete | 2026-08-02 | 2026-08-02 | `88a16ea` | P5-R01, P5-R02 |
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
-| 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-02 | `a13b5a8` | P5-R05, P5-R06 |
+| 5C: Graphics, fonts, images, and widget toolkit | In progress | 2026-08-02 | - | `a13b5a8` (foundation) | P5-R05, P5-R06 |
 | 5D: GUI terminal | Planned | - | - | - | P5-R07 |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
@@ -30,7 +30,8 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: 5A, 5B, and 5C are complete. Phase 5D may begin.
+Current status: 5A and 5B are complete. The 5C foundation exists, but 5C.1
+responsive rendering completion is active and blocks entry into 5D.
 
 ## Completed Evidence
 
@@ -48,7 +49,7 @@ Current status: 5A, 5B, and 5C are complete. Phase 5D may begin.
 - QEMU exercised PS/2 motion, button delivery, focus, capture, title-bar drag,
   edge resize, controls, cursor ordering, and exact active-resource cleanup.
 
-### 5C: Graphics, Fonts, Images, And Widget Toolkit
+### 5C Foundation Evidence
 
 - `make test-phase5c` passed native `.osimg`, BMP, and PNG positive and
   malformed fixtures; deterministic conversion; alpha/scaling pixels;
@@ -58,6 +59,26 @@ Current status: 5A, 5B, and 5C are complete. Phase 5D may begin.
   baseline widget, and released its process, surface, mapping, and handles.
 - `make test-user-sdk`, `make test-window-sdk`, and `make test-window-input`
   passed as affected inherited regression.
+
+This evidence remains valid for the implemented foundation, but does not close
+5C after interactive review found that lowercase input was stored correctly
+and then rendered as uppercase, and that the sample application did not
+replace its surface or recompute its layout after configure events.
+
+## Active 5C.1 Completion Work
+
+- add distinct lowercase and required ASCII punctuation glyphs;
+- render a visible caret in the focused text field;
+- handle configure events with allocate-before-publish surface replacement;
+- recompute bounded widget/image layout for the new client size;
+- preserve requested image aspect ratios;
+- test minimum/overflow sizes, resize storms, allocation failure, stale
+  configure events, and exact resource cleanup in host and QEMU paths.
+
+The current GOP logical display remains fixed at its selected boot mode. QEMU
+viewport zoom is only presentation scaling. Resolution-aware desktop layout
+belongs to 5E, persistent supported-mode selection to 5G, and true runtime
+mode switching to a future mode-setting display backend.
 
 ## Recording Workflow
 
@@ -74,9 +95,9 @@ For each subphase:
 ## Planned Order
 
 ```text
-5A -> 5B -> 5C -> 5D -> 5E -> 5F -> 5G -> 5H -> 5I
-                         |
-                         `-- memory scalability must close before 5F
+5A -> 5B -> 5C -> 5C.1 -> 5D -> 5E -> 5F -> 5G -> 5H -> 5I
+                                  |
+                                  `-- memory scalability must close before 5F
 ```
 
 ## Planning Record

@@ -29,6 +29,7 @@ into the kernel.
 5A session and layer policy
   -> 5B pointer and interactive windows
   -> 5C graphics, fonts, images, and widget toolkit
+  -> 5C.1 responsive rendering completion
   -> 5D GUI terminal
   -> 5E desktop shell
   -> 5F file manager
@@ -113,7 +114,47 @@ loads native/BMP/PNG positive fixtures, rejects malformed fixtures, renders
 scaled and alpha-composited images, operates every baseline widget, resizes,
 and exits with exact surface, image-buffer, handle, heap, and process cleanup.
 
+### 5C.1: Responsive Rendering Completion
+
+Interactive use after the initial 5C implementation exposed two exit-gate
+gaps. They must close before 5D begins:
+
+- preserve lowercase keyboard characters through rendering by adding distinct
+  `a-z` bitmap glyphs instead of mapping them to `A-Z`;
+- complete the baseline ASCII punctuation set required by paths and shell
+  commands, and draw a visible text-field caret;
+- handle each validated `OS_WINDOW_EVENT_CONFIGURE` in the public application
+  path;
+- allocate the replacement surface before publication, atomically attach it,
+  recompute the widget layout from the new client area, repaint, and release
+  the old mapping and surface exactly once;
+- define minimum client dimensions and bounded behavior for resize storms,
+  allocation failure, stale configure generations, and zero/overflow sizes;
+- preserve image aspect ratio where requested rather than blindly stretching
+  artwork independently on each axis;
+- add host golden-glyph/layout tests and a QEMU drag-resize test with exact
+  final surface, mapping, handle, heap, and process accounting.
+
+The initial server-side scaled presentation remains useful during a live drag,
+but it is temporary feedback, not the application's committed layout. The
+client must redraw at the final configured size.
+
+Display sizing is split deliberately:
+
+- QEMU viewport scaling may enlarge the fixed framebuffer for convenience,
+  but does not change the OS display mode;
+- 5E makes the desktop background, panel, and work area react to the logical
+  display dimensions reported by the display service;
+- 5G may expose persistent boot-time mode selection where the boot/display
+  backend supports it;
+- true runtime mode switching and hotplug require a mode-setting backend such
+  as a future `virtio-gpu` or native GPU driver and are not claimed by GOP.
+
 ## 5D: GUI Terminal
+
+Entry condition: 5C.1 is complete. Terminal rows/columns and its child stream
+cannot have correct resize semantics while client surface replacement,
+responsive layout, and lowercase rendering remain incomplete.
 
 Deliver:
 
