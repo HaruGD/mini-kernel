@@ -149,13 +149,13 @@ int main(void) {
     fill(front_pixels, 12, 0x00CC3311u);
     fill(screen, 48, 0x00DEADBEu);
     WindowCompositorSource sources[OS_WINDOW_MAX_WINDOWS] = {0};
-    sources[back->window_id - 1] = (WindowCompositorSource){back_pixels, 5};
-    sources[front->window_id - 1] = (WindowCompositorSource){front_pixels, 4};
+    sources[back->window_id - 1] = (WindowCompositorSource){back_pixels, 5, 5, 4};
+    sources[front->window_id - 1] = (WindowCompositorSource){front_pixels, 4, 4, 3};
     uint32_t underlay_pixels[48];
     for (uint32_t i = 0; i < 48; i++) {
         underlay_pixels[i] = 0x00010000u + i;
     }
-    WindowCompositorSource underlay = {underlay_pixels, 8};
+    WindowCompositorSource underlay = {underlay_pixels, 8, 8, 6};
     WindowDamageAccumulator damage;
     window_damage_init(&damage, 8, 6);
     window_damage_full(&damage);

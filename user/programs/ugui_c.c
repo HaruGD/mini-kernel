@@ -110,6 +110,33 @@ int main(void) {
             return 1;
         }
         last_sequence = event.event_sequence;
+        if (event.command == OS_WINDOW_EVENT_POINTER &&
+            event.input.type == OS_INPUT_EVENT_POINTER &&
+            event.input.data.pointer.type == OS_POINTER_EVENT_BUTTON_DOWN) {
+            os_printf("[ugui] pointer down x=%d y=%d buttons=0x%x\n",
+                      event.input.data.pointer.x,
+                      event.input.data.pointer.y,
+                      event.input.data.pointer.buttons);
+            continue;
+        }
+        if (event.command == OS_WINDOW_EVENT_CONFIGURE) {
+            if (os_window_get_info(&window, &info) < 0) {
+                os_puts("[ugui] configure information failed");
+                os_window_destroy(&window);
+                return 1;
+            }
+            os_printf("[ugui] configured %d,%d %ux%u\n",
+                      info.x, info.y, info.width, info.height);
+            continue;
+        }
+        if (event.command == OS_WINDOW_EVENT_CLOSE_REQUEST) {
+            if (os_window_destroy(&window) < 0) {
+                os_puts("[ugui] pointer close failed");
+                return 1;
+            }
+            os_puts("[ugui] pointer lifecycle OK");
+            return 0;
+        }
         if (event.command != OS_WINDOW_EVENT_KEY ||
             event.input.type != OS_INPUT_EVENT_KEY ||
             event.input.data.key.type != OS_KEY_EVENT_DOWN) {

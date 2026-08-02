@@ -5,6 +5,7 @@
     { "name": "gop", "path": "display/gop", "enabled": true, "artifact": "linked", "load_stage": "boot", "load_policy": "automatic" },
     { "name": "fat32", "path": "fs/fat32", "enabled": true, "artifact": "linked", "load_stage": "kernel", "load_policy": "automatic" },
     { "name": "keyboard", "path": "input/ps2_keyboard", "enabled": true, "artifact": "linked", "load_stage": "kernel", "load_policy": "automatic" },
+    { "name": "mouse", "path": "input/ps2_mouse", "enabled": true, "artifact": "linked", "load_stage": "kernel", "load_policy": "automatic" },
     { "name": "pit", "path": "timer/pit", "enabled": true, "artifact": "linked", "load_stage": "kernel", "load_policy": "automatic" },
     { "name": "terminal", "path": "display/terminal", "enabled": true, "artifact": "linked", "load_stage": "boot", "load_policy": "automatic" },
     { "name": "consumer_c", "path": "demo/consumer_c", "enabled": true, "artifact": "drv", "load_stage": "runtime", "load_policy": "automatic" },

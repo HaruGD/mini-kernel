@@ -176,7 +176,7 @@ static int ioapic_route(uint8_t irq, uint8_t vector, const AcpiState* acpi) {
     uint32_t low = vector;
     uint16_t polarity = flags & 0x3u;
     uint16_t trigger = (flags >> 2) & 0x3u;
-    if (iso == 0 && irq >= 2u) {
+    if (iso == 0 && irq >= 2u && irq != 12u) {
         /* Legacy PCI INTx is active-low and level-triggered. */
         polarity = 3u;
         trigger = 3u;

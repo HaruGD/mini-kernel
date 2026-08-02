@@ -189,6 +189,82 @@ static void fill_rect(uint32_t* destination,
     }
 }
 
+static void fill_intersection(uint32_t* destination,
+                              uint32_t stride,
+                              OsRect rect,
+                              OsRect clip,
+                              uint32_t color) {
+    OsRect result;
+    int64_t left, top, right, bottom;
+    if (!rect_bounds(clip, &left, &top, &right, &bottom) ||
+        !rect_clip(rect, left, top, right, bottom, &result)) return;
+    fill_rect(destination, stride, result, color);
+}
+
+static void draw_decorations(uint32_t* destination,
+                             uint32_t stride,
+                             const WindowEntry* window,
+                             OsRect dirty) {
+    if (!window->decorated) return;
+    OsRect frame = window_state_frame_rect(window);
+    fill_intersection(destination, stride, frame, dirty, OS_RGB(35, 40, 52));
+    OsRect title = {window->x, frame.y, (int32_t)window->width,
+                    (int32_t)OS_WINDOW_DECORATION_TITLE_HEIGHT};
+    fill_intersection(destination, stride, title, dirty, OS_RGB(48, 78, 128));
+    int32_t size = (int32_t)OS_WINDOW_DECORATION_BUTTON_SIZE;
+    int32_t top = window->y - (int32_t)OS_WINDOW_DECORATION_TITLE_HEIGHT + 3;
+    int32_t right = window->x + (int32_t)window->width - 3;
+    OsRect close = {right - size, top, size, size};
+    OsRect maximize = {right - size * 2 - 2, top, size, size};
+    OsRect minimize = {right - size * 3 - 4, top, size, size};
+    fill_intersection(destination, stride, minimize, dirty, OS_RGB(90, 108, 132));
+    fill_intersection(destination, stride, maximize, dirty, OS_RGB(74, 132, 94));
+    fill_intersection(destination, stride, close, dirty, OS_RGB(190, 66, 72));
+}
+
+static long draw_window_stack(uint32_t* destination,
+                              uint32_t destination_stride,
+                              const WindowTable* table,
+                              const WindowCompositorSource* sources,
+                              OsRect dirty) {
+    for (uint32_t z = 0; z < table->count; z++) {
+        uint32_t slot = table->z_slots[z];
+        if (slot >= OS_WINDOW_MAX_WINDOWS) return OS_ERR_BAD_BUFFER;
+        const WindowEntry* window = &table->entries[slot];
+        const WindowCompositorSource* source = &sources[slot];
+        if (!window->active || !window->visible || source->pixels == 0 ||
+            source->width == 0 || source->height == 0 ||
+            source->stride_pixels < source->width) continue;
+        draw_decorations(destination, destination_stride, window, dirty);
+        OsRect window_rect = window_state_screen_rect(window);
+        int64_t left = dirty.x > window_rect.x ? dirty.x : window_rect.x;
+        int64_t top = dirty.y > window_rect.y ? dirty.y : window_rect.y;
+        int64_t dirty_right = (int64_t)dirty.x + dirty.width;
+        int64_t dirty_bottom = (int64_t)dirty.y + dirty.height;
+        int64_t window_right = (int64_t)window_rect.x + window_rect.width;
+        int64_t window_bottom = (int64_t)window_rect.y + window_rect.height;
+        int64_t right = dirty_right < window_right ? dirty_right : window_right;
+        int64_t bottom = dirty_bottom < window_bottom ? dirty_bottom : window_bottom;
+        if (right <= left || bottom <= top) continue;
+        for (int64_t y = top; y < bottom; y++) {
+            uint32_t* destination_row = destination +
+                (uint32_t)y * destination_stride + (uint32_t)left;
+            uint32_t source_y = (uint32_t)(((uint64_t)(y - window->y) *
+                                            source->height) / window->height);
+            if (source_y >= source->height) source_y = source->height - 1u;
+            const uint32_t* source_row = source->pixels +
+                source_y * source->stride_pixels;
+            for (int64_t x = left; x < right; x++) {
+                uint32_t source_x = (uint32_t)(((uint64_t)(x - window->x) *
+                                                source->width) / window->width);
+                if (source_x >= source->width) source_x = source->width - 1u;
+                destination_row[x - left] = source_row[source_x] & 0x00FFFFFFu;
+            }
+        }
+    }
+    return OS_SUCCESS;
+}
+
 long window_compositor_compose(uint32_t* destination,
                                uint32_t destination_stride,
                                uint32_t screen_width,
@@ -209,43 +285,9 @@ long window_compositor_compose(uint32_t* destination,
             continue;
         }
         fill_rect(destination, destination_stride, dirty, background);
-        for (uint32_t z = 0; z < table->count; z++) {
-            uint32_t slot = table->z_slots[z];
-            if (slot >= OS_WINDOW_MAX_WINDOWS) {
-                return OS_ERR_BAD_BUFFER;
-            }
-            const WindowEntry* window = &table->entries[slot];
-            const WindowCompositorSource* source = &sources[slot];
-            if (!window->active || !window->visible || source->pixels == 0 ||
-                source->stride_pixels < window->width) {
-                continue;
-            }
-            OsRect window_rect = window_state_screen_rect(window);
-            int64_t left = dirty.x > window_rect.x ? dirty.x : window_rect.x;
-            int64_t top = dirty.y > window_rect.y ? dirty.y : window_rect.y;
-            int64_t dirty_right = (int64_t)dirty.x + dirty.width;
-            int64_t dirty_bottom = (int64_t)dirty.y + dirty.height;
-            int64_t window_right = (int64_t)window_rect.x + window_rect.width;
-            int64_t window_bottom = (int64_t)window_rect.y + window_rect.height;
-            int64_t right = dirty_right < window_right ? dirty_right : window_right;
-            int64_t bottom = dirty_bottom < window_bottom ? dirty_bottom : window_bottom;
-            if (right <= left || bottom <= top) {
-                continue;
-            }
-            uint32_t source_x = (uint32_t)(left - window->x);
-            uint32_t source_y = (uint32_t)(top - window->y);
-            uint32_t copy_width = (uint32_t)(right - left);
-            uint32_t copy_height = (uint32_t)(bottom - top);
-            for (uint32_t y = 0; y < copy_height; y++) {
-                uint32_t* destination_row = destination +
-                    (uint32_t)(top + y) * destination_stride + (uint32_t)left;
-                const uint32_t* source_row = source->pixels +
-                    (source_y + y) * source->stride_pixels + source_x;
-                for (uint32_t x = 0; x < copy_width; x++) {
-                    destination_row[x] = source_row[x] & 0x00FFFFFFu;
-                }
-            }
-        }
+        long result = draw_window_stack(destination, destination_stride,
+                                        table, sources, dirty);
+        if (result < 0) return result;
     }
     return OS_SUCCESS;
 }
@@ -282,43 +324,9 @@ long window_compositor_compose_underlay(
                 destination_row[x] = underlay_row[x] & 0x00FFFFFFu;
             }
         }
-        for (uint32_t z = 0; z < table->count; z++) {
-            uint32_t slot = table->z_slots[z];
-            if (slot >= OS_WINDOW_MAX_WINDOWS) {
-                return OS_ERR_BAD_BUFFER;
-            }
-            const WindowEntry* window = &table->entries[slot];
-            const WindowCompositorSource* source = &sources[slot];
-            if (!window->active || !window->visible || source->pixels == 0 ||
-                source->stride_pixels < window->width) {
-                continue;
-            }
-            OsRect window_rect = window_state_screen_rect(window);
-            int64_t left = dirty.x > window_rect.x ? dirty.x : window_rect.x;
-            int64_t top = dirty.y > window_rect.y ? dirty.y : window_rect.y;
-            int64_t dirty_right = (int64_t)dirty.x + dirty.width;
-            int64_t dirty_bottom = (int64_t)dirty.y + dirty.height;
-            int64_t window_right = (int64_t)window_rect.x + window_rect.width;
-            int64_t window_bottom = (int64_t)window_rect.y + window_rect.height;
-            int64_t right = dirty_right < window_right ? dirty_right : window_right;
-            int64_t bottom = dirty_bottom < window_bottom ? dirty_bottom : window_bottom;
-            if (right <= left || bottom <= top) {
-                continue;
-            }
-            uint32_t source_x = (uint32_t)(left - window->x);
-            uint32_t source_y = (uint32_t)(top - window->y);
-            uint32_t copy_width = (uint32_t)(right - left);
-            uint32_t copy_height = (uint32_t)(bottom - top);
-            for (uint32_t y = 0; y < copy_height; y++) {
-                uint32_t* destination_row = destination +
-                    (uint32_t)(top + y) * destination_stride + (uint32_t)left;
-                const uint32_t* source_row = source->pixels +
-                    (source_y + y) * source->stride_pixels + source_x;
-                for (uint32_t x = 0; x < copy_width; x++) {
-                    destination_row[x] = source_row[x] & 0x00FFFFFFu;
-                }
-            }
-        }
+        long result = draw_window_stack(destination, destination_stride,
+                                        table, sources, dirty);
+        if (result < 0) return result;
     }
     return OS_SUCCESS;
 }

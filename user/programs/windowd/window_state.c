@@ -9,7 +9,8 @@ static int identity_equal(OsProcessIdentity left, OsProcessIdentity right) {
 
 int window_state_layer_flags_valid(uint32_t flags) {
     uint32_t selected = flags & OS_WINDOW_FLAG_LAYER_MASK;
-    return (flags & ~OS_WINDOW_FLAG_LAYER_MASK) == 0 &&
+    return (flags & ~(OS_WINDOW_FLAG_LAYER_MASK |
+                      OS_WINDOW_FLAG_DECORATED)) == 0 &&
            (selected == 0 || (selected & (selected - 1u)) == 0);
 }
 
@@ -50,10 +51,17 @@ void window_state_init(WindowTable* table) {
         entry->accepted_content_generation = 0;
         entry->visible = 0;
         entry->layer = OS_WINDOW_LAYER_NORMAL;
+        entry->decorated = 0;
+        entry->minimized = 0;
+        entry->maximized = 0;
         entry->x = 0;
         entry->y = 0;
         entry->width = 0;
         entry->height = 0;
+        entry->restore_x = 0;
+        entry->restore_y = 0;
+        entry->restore_width = 0;
+        entry->restore_height = 0;
         entry->owner.pid = 0;
         entry->owner.generation = 0;
         table->z_slots[i] = 0;
@@ -112,10 +120,17 @@ WindowEntry* window_state_commit_create_layer(WindowTable* table,
         entry->accepted_content_generation = content_generation;
         entry->visible = 1;
         entry->layer = layer;
+        entry->decorated = 0;
+        entry->minimized = 0;
+        entry->maximized = 0;
         entry->x = x;
         entry->y = y;
         entry->width = width;
         entry->height = height;
+        entry->restore_x = x;
+        entry->restore_y = y;
+        entry->restore_width = width;
+        entry->restore_height = height;
         entry->owner = owner;
         uint32_t at = table->count;
         while (at != 0) {
@@ -237,9 +252,34 @@ void window_state_set_visible(WindowTable* table,
         return;
     }
     entry->visible = visible ? 1u : 0u;
+    if (entry->visible) entry->minimized = 0;
     if (entry->visible && raise) {
         window_state_raise(table, entry);
     }
+}
+
+void window_state_set_decorated(WindowEntry* entry, uint32_t decorated) {
+    if (entry != 0 && entry->active) {
+        entry->decorated = decorated ? 1u : 0u;
+    }
+}
+
+OsRect window_state_frame_rect(const WindowEntry* entry) {
+    OsRect rect = {0, 0, 0, 0};
+    if (entry == 0 || !entry->active || entry->width > INT32_MAX ||
+        entry->height > INT32_MAX) return rect;
+    rect.x = entry->x;
+    rect.y = entry->y;
+    rect.width = (int32_t)entry->width;
+    rect.height = (int32_t)entry->height;
+    if (entry->decorated) {
+        rect.x -= (int32_t)OS_WINDOW_DECORATION_BORDER;
+        rect.y -= (int32_t)OS_WINDOW_DECORATION_TITLE_HEIGHT;
+        rect.width += (int32_t)(OS_WINDOW_DECORATION_BORDER * 2u);
+        rect.height += (int32_t)(OS_WINDOW_DECORATION_TITLE_HEIGHT +
+                                 OS_WINDOW_DECORATION_BORDER);
+    }
+    return rect;
 }
 
 void window_state_move(WindowEntry* entry, int32_t x, int32_t y) {
@@ -278,10 +318,17 @@ void window_state_destroy(WindowTable* table, WindowEntry* entry) {
     entry->accepted_content_generation = 0;
     entry->visible = 0;
     entry->layer = OS_WINDOW_LAYER_NORMAL;
+    entry->decorated = 0;
+    entry->minimized = 0;
+    entry->maximized = 0;
     entry->x = 0;
     entry->y = 0;
     entry->width = 0;
     entry->height = 0;
+    entry->restore_x = 0;
+    entry->restore_y = 0;
+    entry->restore_width = 0;
+    entry->restore_height = 0;
     entry->owner.pid = 0;
     entry->owner.generation = 0;
 }

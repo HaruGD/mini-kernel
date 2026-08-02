@@ -21,6 +21,8 @@ typedef struct WindowDamageAccumulator {
 typedef struct WindowCompositorSource {
     const uint32_t* pixels;
     uint32_t stride_pixels;
+    uint32_t width;
+    uint32_t height;
 } WindowCompositorSource;
 
 void window_damage_init(WindowDamageAccumulator* damage,

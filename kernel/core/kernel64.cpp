@@ -14,6 +14,7 @@ extern "C" {
 #include "drivers/terminal.h"
 #include "drivers/ata.h"
 #include "drivers/keyboard.h"
+#include "drivers/mouse.h"
 #include "drivers/pit.h"
 #include "fat32.h"
 #include "fs/vfs.h"
@@ -57,6 +58,7 @@ extern "C" {
 Terminal terminal;
 ATADriver ata;
 KeyboardDriver keyboard;
+Ps2MouseDriver mouse;
 PIT pit;
 FAT32Driver fat32(&ata);
 FAT32Driver ramdisk_fat32((uint8_t*)0, 0);

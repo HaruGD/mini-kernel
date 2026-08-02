@@ -43,6 +43,8 @@ typedef struct OsWindow {
     uint32_t visible;
     uint32_t focused;
     uint32_t layer;
+    uint32_t frame_width;
+    uint32_t frame_height;
 } OsWindow;
 
 void os_window_init(OsWindow* window);

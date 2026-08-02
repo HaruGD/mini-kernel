@@ -57,7 +57,7 @@ DRIVER_ABI_FIXTURES = ./bin/hello.drv ./bin/provider.drv ./bin/consumer.drv
 ROOT_DRIVER_PACKAGES = $(DRIVER_PACKAGES) $(DRIVER_ABI_FIXTURES)
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -396,6 +396,15 @@ test-desktop-session: uefi
 
 test-phase5a: test-desktop-layers test-desktop-session
 
+test-pointer-routing: uefi
+	python3 ./tools/pointer_routing_test.py
+	python3 ./tools/pointer_qemu_smoke.py
+
+test-window-interaction:
+	python3 ./tools/window_interaction_test.py
+
+test-phase5b: test-pointer-routing test-window-interaction
+
 test-service-registry:
 	python3 ./tools/service_registry_test.py
 test-service-smoke: uefi
@@ -601,6 +610,12 @@ all32:
 
 ./build/keyboard64.o: ./drivers/input/ps2_keyboard/keyboard.cpp ./include/drivers/keyboard.h ./include/kernel/input/input_events.h ./include/os64/input_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/mouse64.o: ./drivers/input/ps2_mouse/mouse.cpp ./include/drivers/mouse.h ./include/kernel/input/input_events.h ./include/os64/input_types.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/mouse_packet64.o: ./drivers/input/ps2_mouse/mouse_packet.c ./include/drivers/mouse.h ./include/os64/input_types.h
+	$(HOST64_CC) $(HOST64_CFLAGS) -Os -c $< -o $@
 
 ./build/pit64.o: ./drivers/timer/pit/pit.cpp
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@

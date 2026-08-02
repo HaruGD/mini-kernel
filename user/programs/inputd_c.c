@@ -21,7 +21,7 @@ static void send_status_reply(OsProcessIdentity target,
     reply.request_id = request != 0 ? request->request_id : 0;
     reply.abi_version = OS64_SERVICE_PROTOCOL_ABI_VERSION;
     reply.ready = result == OS_SUCCESS ? 1u : 0u;
-    reply.capabilities = OS_SERVICE_CAP_KEYBOARD;
+    reply.capabilities = OS_SERVICE_CAP_KEYBOARD | OS_SERVICE_CAP_POINTER;
     reply.reserved = dropped_events;
 
     OsIpcMessage message;
@@ -89,7 +89,8 @@ static long refresh_window_owner(void) {
 
 static void forward_event(const OsInputEvent* event) {
     if (event == 0 || event->size != sizeof(*event) ||
-        event->type != OS_INPUT_EVENT_KEY) {
+        (event->type != OS_INPUT_EVENT_KEY &&
+         event->type != OS_INPUT_EVENT_POINTER)) {
         return;
     }
     if (refresh_window_owner() < 0) {

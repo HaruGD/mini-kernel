@@ -13,10 +13,17 @@ typedef struct WindowEntry {
     uint32_t accepted_content_generation;
     uint32_t visible;
     uint32_t layer;
+    uint32_t decorated;
+    uint32_t minimized;
+    uint32_t maximized;
     int32_t x;
     int32_t y;
     uint32_t width;
     uint32_t height;
+    int32_t restore_x;
+    int32_t restore_y;
+    uint32_t restore_width;
+    uint32_t restore_height;
     OsProcessIdentity owner;
 } WindowEntry;
 
@@ -78,5 +85,7 @@ uint32_t window_state_slot(const WindowTable* table, const WindowEntry* entry);
 uint32_t window_state_layer_from_flags(uint32_t flags);
 int window_state_layer_flags_valid(uint32_t flags);
 int window_state_accepts_focus(const WindowEntry* entry);
+void window_state_set_decorated(WindowEntry* entry, uint32_t decorated);
+OsRect window_state_frame_rect(const WindowEntry* entry);
 
 #endif

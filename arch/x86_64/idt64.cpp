@@ -282,6 +282,7 @@ extern "C" void generic_external_interrupt_handler64(uint64_t irq) {
     CpuLocal* local = cpu_local_current();
     if (cpu_local_validate(local)) local->interrupt_depth++;
     if (interrupt_controller_claim_external_irq((uint8_t)irq)) {
+        if (irq == 12u) mouse_handler64();
         driver_irq_dispatch((uint32_t)irq);
     }
     interrupt_controller_eoi((uint8_t)irq);

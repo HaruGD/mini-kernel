@@ -43,6 +43,7 @@ uint32_t pic_spurious_irq7_count();
 uint32_t pic_spurious_irq15_count();
 
 void keyboard_handler64();
+void mouse_handler64();
 uint64_t timer_handler64();
 uint64_t local_timer_handler64();
 void user_test_interrupt_handler64();

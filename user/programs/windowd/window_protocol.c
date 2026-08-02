@@ -17,7 +17,8 @@ static int surface_fields_valid(uint32_t width,
 
 static int create_flags_valid(uint32_t flags) {
     uint32_t selected = flags & OS_WINDOW_FLAG_LAYER_MASK;
-    return (flags & ~OS_WINDOW_FLAG_LAYER_MASK) == 0 &&
+    return (flags & ~(OS_WINDOW_FLAG_LAYER_MASK |
+                      OS_WINDOW_FLAG_DECORATED)) == 0 &&
            (selected == 0 || (selected & (selected - 1u)) == 0);
 }
 

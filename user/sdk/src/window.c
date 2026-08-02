@@ -205,7 +205,7 @@ long os_window_create(OsWindow* window,
                       uint32_t width,
                       uint32_t height) {
     return os_window_create_layer(window, x, y, width, height,
-                                  OS_WINDOW_FLAG_NONE);
+                                  OS_WINDOW_FLAG_DECORATED);
 }
 
 long os_window_create_layer(OsWindow* window,
@@ -216,7 +216,8 @@ long os_window_create_layer(OsWindow* window,
                             uint32_t layer_flags) {
     uint32_t selected = layer_flags & OS_WINDOW_FLAG_LAYER_MASK;
     if (window == 0 ||
-        (layer_flags & ~OS_WINDOW_FLAG_LAYER_MASK) != 0 ||
+        (layer_flags & ~(OS_WINDOW_FLAG_LAYER_MASK |
+                         OS_WINDOW_FLAG_DECORATED)) != 0 ||
         (selected != 0 && (selected & (selected - 1u)) != 0) ||
         ((width == 0 || height == 0) &&
          selected != OS_WINDOW_FLAG_LAYER_DESKTOP)) {
@@ -281,6 +282,8 @@ long os_window_create_layer(OsWindow* window,
     window->x = x;
     window->y = y;
     window->visible = 1;
+    window->frame_width = width;
+    window->frame_height = height;
     window->layer = selected == OS_WINDOW_FLAG_LAYER_DESKTOP
         ? OS_WINDOW_LAYER_DESKTOP
         : selected == OS_WINDOW_FLAG_LAYER_PANEL
@@ -576,6 +579,8 @@ long os_window_resize(OsWindow* window, uint32_t width, uint32_t height) {
     window->pixels = pixels;
     window->surface_info = info;
     window->content_generation = content_generation;
+    window->frame_width = width;
+    window->frame_height = height;
     return OS_SUCCESS;
 }
 
@@ -588,20 +593,20 @@ long os_window_get_info(OsWindow* window, OsWindowInfo* info) {
     if (result < 0 || reply.window_id != window->window_id ||
         reply.window_generation != window->window_generation ||
         reply.width == 0 || reply.height == 0 ||
-        reply.stride_pixels < reply.width ||
+        reply.stride_pixels < window->surface_info.width ||
         reply.content_generation == 0) {
         return result < 0 ? result : OS_ERR_BAD_BUFFER;
     }
     window->x = reply.x;
     window->y = reply.y;
-    window->surface_info.width = reply.width;
-    window->surface_info.height = reply.height;
     window->surface_info.stride_pixels = reply.stride_pixels;
     window->surface_info.pixel_format = reply.pixel_format;
     window->content_generation = reply.content_generation;
     window->visible = reply.visible;
     window->focused = reply.focused;
     window->layer = reply.flags;
+    window->frame_width = reply.width;
+    window->frame_height = reply.height;
     os_memset(info, 0, sizeof(*info));
     info->size = sizeof(*info);
     info->abi_version = OS64_WINDOW_CLIENT_ABI_VERSION;
@@ -609,8 +614,8 @@ long os_window_get_info(OsWindow* window, OsWindowInfo* info) {
     info->window_generation = window->window_generation;
     info->x = window->x;
     info->y = window->y;
-    info->width = window->surface_info.width;
-    info->height = window->surface_info.height;
+    info->width = window->frame_width;
+    info->height = window->frame_height;
     info->stride_pixels = window->surface_info.stride_pixels;
     info->pixel_format = window->surface_info.pixel_format;
     info->content_generation = window->content_generation;
@@ -644,11 +649,26 @@ static long receive_event(OsWindow* window, OsWindowEvent* event) {
         (event->command != OS_WINDOW_EVENT_FOCUS_IN &&
          event->command != OS_WINDOW_EVENT_FOCUS_OUT &&
          event->command != OS_WINDOW_EVENT_KEY &&
-         event->command != OS_WINDOW_EVENT_POINTER)) {
+         event->command != OS_WINDOW_EVENT_POINTER &&
+         event->command != OS_WINDOW_EVENT_CLOSE_REQUEST &&
+         event->command != OS_WINDOW_EVENT_CONFIGURE &&
+         event->command != OS_WINDOW_EVENT_MINIMIZED &&
+         event->command != OS_WINDOW_EVENT_MAXIMIZED &&
+         event->command != OS_WINDOW_EVENT_RESTORED)) {
         return OS_ERR_BAD_BUFFER;
     }
     if (event->command == OS_WINDOW_EVENT_FOCUS_IN) window->focused = 1;
     if (event->command == OS_WINDOW_EVENT_FOCUS_OUT) window->focused = 0;
+    if (event->command == OS_WINDOW_EVENT_MINIMIZED) {
+        window->visible = 0;
+        window->focused = 0;
+    }
+    if (event->command == OS_WINDOW_EVENT_CONFIGURE ||
+        event->command == OS_WINDOW_EVENT_MAXIMIZED ||
+        event->command == OS_WINDOW_EVENT_RESTORED) {
+        OsWindowInfo ignored;
+        (void)os_window_get_info(window, &ignored);
+    }
     return OS_SUCCESS;
 }
 

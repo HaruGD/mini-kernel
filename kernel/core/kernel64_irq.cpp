@@ -24,6 +24,10 @@ extern "C" void keyboard_handler64() {
     }
 }
 
+extern "C" void mouse_handler64() {
+    mouse.handle();
+}
+
 extern "C" int user_input_active64() {
     return display_session_gui_active() || current_process() != 0 ||
            process_focused() != 0;

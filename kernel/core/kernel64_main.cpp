@@ -215,6 +215,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     input_events_init();
     keyboard.init();
     pit.init();
+    mouse.init();
     int smp_ready = apic_ready && smp_start_application_processors();
     driver_manager_activate_linked_kernel();
     __asm__ volatile("sti");

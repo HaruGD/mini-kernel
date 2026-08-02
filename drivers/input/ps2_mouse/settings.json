@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "name": "mouse",
+  "display_name": "PS/2 mouse driver",
+  "version": "1.0.0",
+  "description": "Bounded interrupt-driven PS/2 pointer driver.",
+  "domain": "input",
+  "permissions": ["INPUT", "INTERRUPT"],
+  "dependencies": [],
+  "exports": [],
+  "linked": {
+    "priority": 41,
+    "state": "ready",
+    "instance": "&mouse",
+    "includes": ["drivers/mouse.h"],
+    "externs": ["extern Ps2MouseDriver mouse;"],
+    "objects": ["./build/mouse64.o", "./build/mouse_packet64.o"]
+  }
+}

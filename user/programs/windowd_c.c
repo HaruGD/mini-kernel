@@ -2,6 +2,7 @@
 
 #include "windowd/window_compositor.h"
 #include "windowd/window_input_router.h"
+#include "windowd/window_interaction.h"
 #include "windowd/window_protocol.h"
 #include "windowd/window_state.h"
 
@@ -38,6 +39,7 @@ typedef struct WindowDamageTransaction {
 
 static WindowTable window_table;
 static WindowInputRouter input_router;
+static WindowInteraction interaction;
 static WindowSurfaceSlot window_surfaces[OS_WINDOW_MAX_WINDOWS];
 static WindowCompositorSource compositor_sources[OS_WINDOW_MAX_WINDOWS];
 static WindowDamageAccumulator screen_damage;
@@ -55,6 +57,42 @@ static WindowCompositorSource console_underlay;
 static uint32_t gui_session_generation;
 static uint32_t next_frame_generation;
 static uint32_t pending_full_frame;
+
+#define WINDOW_CURSOR_WIDTH 12
+#define WINDOW_CURSOR_HEIGHT 18
+
+static OsRect cursor_rect(void) {
+    OsRect rect = {interaction.pointer_x, interaction.pointer_y,
+                   WINDOW_CURSOR_WIDTH, WINDOW_CURSOR_HEIGHT};
+    return rect;
+}
+
+static void draw_cursor(void) {
+    static const uint16_t rows[WINDOW_CURSOR_HEIGHT] = {
+        0x001u, 0x003u, 0x007u, 0x00Fu, 0x01Fu, 0x03Fu,
+        0x07Fu, 0x0FFu, 0x1FFu, 0x3FFu, 0x7FFu, 0x0FFu,
+        0x19Bu, 0x319u, 0x610u, 0xC10u, 0x800u, 0x000u,
+    };
+    static const uint16_t fill[WINDOW_CURSOR_HEIGHT] = {
+        0x000u, 0x001u, 0x003u, 0x007u, 0x00Fu, 0x01Fu,
+        0x03Fu, 0x07Fu, 0x0FFu, 0x1FFu, 0x07Eu, 0x066u,
+        0x042u, 0x210u, 0x410u, 0x000u, 0x000u, 0x000u,
+    };
+    if (composite_pixels == 0) return;
+    for (int32_t y = 0; y < WINDOW_CURSOR_HEIGHT; y++) {
+        int32_t sy = interaction.pointer_y + y;
+        if (sy < 0 || (uint32_t)sy >= display_info.height) continue;
+        for (int32_t x = 0; x < WINDOW_CURSOR_WIDTH; x++) {
+            if ((rows[y] & (1u << x)) == 0) continue;
+            int32_t sx = interaction.pointer_x + x;
+            if (sx < 0 || (uint32_t)sx >= display_info.width) continue;
+            composite_pixels[(uint32_t)sy * composite_info.stride_pixels +
+                             (uint32_t)sx] =
+                (fill[y] & (1u << x)) != 0 ? OS_RGB(245, 248, 252)
+                                            : OS_RGB(8, 10, 14);
+        }
+    }
+}
 
 static int identity_equal(OsProcessIdentity left, OsProcessIdentity right) {
     return left.pid != 0 && left.pid == right.pid && left.generation != 0 &&
@@ -205,6 +243,8 @@ static void release_window_surface(uint32_t slot) {
               sizeof(window_surfaces[slot].info));
     compositor_sources[slot].pixels = 0;
     compositor_sources[slot].stride_pixels = 0;
+    compositor_sources[slot].width = 0;
+    compositor_sources[slot].height = 0;
 }
 
 static void install_window_surface(uint32_t slot,
@@ -216,6 +256,8 @@ static void install_window_surface(uint32_t slot,
     window_surfaces[slot].info = candidate->info;
     compositor_sources[slot].pixels = candidate->pixels;
     compositor_sources[slot].stride_pixels = candidate->info.stride_pixels;
+    compositor_sources[slot].width = candidate->info.width;
+    compositor_sources[slot].height = candidate->info.height;
 }
 
 static void release_composite_surface(void) {
@@ -238,6 +280,8 @@ static void drop_local_gui_session(void) {
     os_memset(&console_snapshot_info, 0, sizeof(console_snapshot_info));
     console_underlay.pixels = 0;
     console_underlay.stride_pixels = 0;
+    console_underlay.width = 0;
+    console_underlay.height = 0;
     gui_session_generation = 0;
 }
 
@@ -326,6 +370,8 @@ static long acquire_gui_session(void) {
     console_snapshot_pixels = pixels;
     console_underlay.pixels = pixels;
     console_underlay.stride_pixels = console_snapshot_info.stride_pixels;
+    console_underlay.width = console_snapshot_info.width;
+    console_underlay.height = console_snapshot_info.height;
     gui_session_generation = session.generation;
     window_compositor_copy_full(composite_pixels,
                                 composite_info.stride_pixels,
@@ -380,14 +426,12 @@ static long compose_pending(void) {
     if (console_underlay.pixels == 0) {
         return OS_ERR_NOT_READY;
     }
-    return window_compositor_compose_underlay(composite_pixels,
-                                              composite_info.stride_pixels,
-                                              display_info.width,
-                                              display_info.height,
-                                              &console_underlay,
-                                              &window_table,
-                                              compositor_sources,
-                                              &screen_damage);
+    long result = window_compositor_compose_underlay(
+        composite_pixels, composite_info.stride_pixels,
+        display_info.width, display_info.height, &console_underlay,
+        &window_table, compositor_sources, &screen_damage);
+    if (result == OS_SUCCESS) draw_cursor();
+    return result;
 }
 
 static long present_composite(void) {
@@ -660,10 +704,13 @@ static void handle_create(const OsIpcMessageV2* message) {
         if (entry == 0) {
             result = OS_ERR_NO_RESOURCES;
         } else {
+            window_state_set_decorated(
+                entry, (layer_flags & OS_WINDOW_FLAG_DECORATED) != 0 &&
+                       layer == OS_WINDOW_LAYER_NORMAL);
             slot = window_state_slot(&window_table, entry);
             install_window_surface(slot, &candidate);
             window_damage_add_screen(&screen_damage,
-                                     window_state_screen_rect(entry));
+                                     window_state_frame_rect(entry));
             result = compose_and_present();
         }
     }
@@ -744,7 +791,7 @@ static void handle_set_surface(const OsIpcMessageV2* message) {
         old_surface = window_surfaces[slot];
         old_source = compositor_sources[slot];
         install_window_surface(slot, &candidate);
-        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
         result = compose_and_present();
         if (result < 0) {
             window_surfaces[slot] = old_surface;
@@ -1024,7 +1071,7 @@ static void handle_visibility(const OsIpcMessageV2* message, uint32_t command) {
         old_z[i] = window_table.z_slots[i];
     }
     if (result == OS_SUCCESS) {
-        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
         window_state_set_visible(&window_table, entry,
                                  command == OS_WINDOW_SHOW, 1);
         result = compose_and_present();
@@ -1112,6 +1159,181 @@ static void handle_info(const OsIpcMessageV2* message) {
     send_window_info_reply(sender, request.request_id, (int32_t)result, entry);
 }
 
+static void send_entry_event(WindowEntry* entry,
+                             uint32_t command,
+                             uint64_t timestamp,
+                             const OsInputEvent* input) {
+    if (entry == 0 || !entry->active) return;
+    WindowFocusEndpoint endpoint;
+    endpoint.owner = entry->owner;
+    endpoint.window_id = entry->window_id;
+    endpoint.window_generation = entry->window_generation;
+    endpoint.event_sequence = window_input_router_next_event(&input_router);
+    send_window_event(&endpoint, command, timestamp, input);
+}
+
+static void deliver_pointer(WindowEntry* entry,
+                            uint64_t timestamp,
+                            const OsPointerEvent* pointer) {
+    if (entry == 0 || pointer == 0 || !entry->active || !entry->visible) return;
+    OsInputEvent event;
+    os_memset(&event, 0, sizeof(event));
+    event.type = OS_INPUT_EVENT_POINTER;
+    event.size = sizeof(event);
+    event.timestamp_ticks = timestamp;
+    event.data.pointer = *pointer;
+    event.data.pointer.x -= entry->x;
+    event.data.pointer.y -= entry->y;
+    send_entry_event(entry, OS_WINDOW_EVENT_POINTER, timestamp, &event);
+}
+
+static void focus_and_raise(WindowEntry* entry, uint64_t timestamp) {
+    if (entry == 0 || !window_state_accepts_focus(entry)) return;
+    window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
+    window_state_raise(&window_table, entry);
+    focus_entry(entry, timestamp);
+}
+
+static void minimize_entry(WindowEntry* entry, uint64_t timestamp) {
+    if (entry == 0 || !entry->active || !entry->visible) return;
+    window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
+    entry->visible = 0;
+    entry->minimized = 1;
+    window_interaction_cancel_target(&interaction, entry->window_id,
+                                     entry->window_generation);
+    send_entry_event(entry, OS_WINDOW_EVENT_MINIMIZED, timestamp, 0);
+    focus_entry(topmost_visible_window(), timestamp);
+}
+
+static void toggle_maximize_entry(WindowEntry* entry, uint64_t timestamp) {
+    if (entry == 0 || !entry->active || !entry->decorated) return;
+    window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
+    uint32_t event;
+    if (!entry->maximized) {
+        entry->restore_x = entry->x;
+        entry->restore_y = entry->y;
+        entry->restore_width = entry->width;
+        entry->restore_height = entry->height;
+        entry->x = OS_WINDOW_DECORATION_BORDER;
+        entry->y = OS_WINDOW_DECORATION_TITLE_HEIGHT;
+        entry->width = display_info.width > OS_WINDOW_DECORATION_BORDER * 2u
+            ? display_info.width - OS_WINDOW_DECORATION_BORDER * 2u : 1u;
+        entry->height = display_info.height >
+                OS_WINDOW_DECORATION_TITLE_HEIGHT + OS_WINDOW_DECORATION_BORDER
+            ? display_info.height - OS_WINDOW_DECORATION_TITLE_HEIGHT -
+                OS_WINDOW_DECORATION_BORDER : 1u;
+        entry->maximized = 1;
+        event = OS_WINDOW_EVENT_MAXIMIZED;
+    } else {
+        entry->x = entry->restore_x;
+        entry->y = entry->restore_y;
+        entry->width = entry->restore_width;
+        entry->height = entry->restore_height;
+        entry->maximized = 0;
+        event = OS_WINDOW_EVENT_RESTORED;
+    }
+    window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
+    send_entry_event(entry, event, timestamp, 0);
+    send_entry_event(entry, OS_WINDOW_EVENT_CONFIGURE, timestamp, 0);
+}
+
+static void activate_control(WindowEntry* entry,
+                             uint32_t region,
+                             uint64_t timestamp) {
+    if (region == WINDOW_HIT_CLOSE) {
+        send_entry_event(entry, OS_WINDOW_EVENT_CLOSE_REQUEST, timestamp, 0);
+    } else if (region == WINDOW_HIT_MINIMIZE) {
+        minimize_entry(entry, timestamp);
+    } else if (region == WINDOW_HIT_MAXIMIZE) {
+        toggle_maximize_entry(entry, timestamp);
+    }
+}
+
+static void handle_pointer_event(uint64_t timestamp,
+                                 const OsPointerEvent* raw) {
+    OsPointerEvent pointer;
+    OsRect old_cursor = cursor_rect();
+    if (window_interaction_normalize(&interaction, raw, &pointer) < 0) return;
+    window_damage_add_screen(&screen_damage, old_cursor);
+    window_damage_add_screen(&screen_damage, cursor_rect());
+
+    WindowEntry* captured = window_interaction_capture_target(
+        &interaction, &window_table);
+    int left_down = pointer.type == OS_POINTER_EVENT_BUTTON_DOWN &&
+        (pointer.changed_buttons & OS_POINTER_BUTTON_LEFT) != 0 &&
+        (pointer.buttons & OS_POINTER_BUTTON_LEFT) != 0;
+    int left_up = pointer.type == OS_POINTER_EVENT_BUTTON_UP &&
+        (pointer.changed_buttons & OS_POINTER_BUTTON_LEFT) != 0 &&
+        (pointer.buttons & OS_POINTER_BUTTON_LEFT) == 0;
+
+    if (left_down && captured == 0) {
+        WindowHit hit = window_interaction_hit_test(
+            &window_table, pointer.x, pointer.y);
+        if (hit.entry != 0) {
+            os_printf("[windowd] pointer press x=%d y=%d id=%u region=0x%x\n",
+                      pointer.x, pointer.y, hit.entry->window_id, hit.region);
+            focus_and_raise(hit.entry, timestamp);
+            if (hit.region == WINDOW_HIT_TITLE) {
+                hit.entry->maximized = 0;
+                window_interaction_capture(&interaction, hit.entry,
+                                           WINDOW_CAPTURE_MOVE, hit.region);
+            } else if ((hit.region & WINDOW_HIT_RESIZE_MASK) != 0) {
+                hit.entry->maximized = 0;
+                window_interaction_capture(&interaction, hit.entry,
+                                           WINDOW_CAPTURE_RESIZE, hit.region);
+            } else if (hit.region == WINDOW_HIT_CLOSE ||
+                       hit.region == WINDOW_HIT_MINIMIZE ||
+                       hit.region == WINDOW_HIT_MAXIMIZE) {
+                window_interaction_capture(&interaction, hit.entry,
+                                           WINDOW_CAPTURE_CONTROL, hit.region);
+            } else {
+                window_interaction_capture(&interaction, hit.entry,
+                                           WINDOW_CAPTURE_CLIENT, hit.region);
+                deliver_pointer(hit.entry, timestamp, &pointer);
+            }
+            captured = hit.entry;
+        }
+    } else if (captured != 0 &&
+               (interaction.capture_mode == WINDOW_CAPTURE_MOVE ||
+                interaction.capture_mode == WINDOW_CAPTURE_RESIZE) &&
+               (pointer.type == OS_POINTER_EVENT_MOVE || left_up)) {
+        OsRect old_frame = window_state_frame_rect(captured);
+        if (window_interaction_update_geometry(&interaction, captured)) {
+            window_damage_add_screen(&screen_damage, old_frame);
+            window_damage_add_screen(&screen_damage,
+                                     window_state_frame_rect(captured));
+            send_entry_event(captured, OS_WINDOW_EVENT_CONFIGURE,
+                             timestamp, 0);
+        }
+    } else if (captured != 0 &&
+               interaction.capture_mode == WINDOW_CAPTURE_CLIENT) {
+        deliver_pointer(captured, timestamp, &pointer);
+    } else if (captured == 0) {
+        WindowHit hit = window_interaction_hit_test(
+            &window_table, pointer.x, pointer.y);
+        if (hit.entry != 0 && hit.region == WINDOW_HIT_CONTENT) {
+            deliver_pointer(hit.entry, timestamp, &pointer);
+        }
+    }
+
+    if (left_up) {
+        captured = window_interaction_capture_target(&interaction,
+                                                     &window_table);
+        if (captured != 0 && interaction.capture_mode == WINDOW_CAPTURE_CONTROL) {
+            WindowHit hit = window_interaction_hit_test(
+                &window_table, pointer.x, pointer.y);
+            if (hit.entry == captured && hit.region == interaction.capture_region)
+                activate_control(captured, hit.region, timestamp);
+            else
+                os_printf("[windowd] pointer control cancel x=%d y=%d region=0x%x\n",
+                          pointer.x, pointer.y, hit.region);
+        }
+        window_interaction_cancel(&interaction);
+    }
+    if (screen_damage.count != 0 && compose_and_present() < 0)
+        pending_full_frame = 1;
+}
+
 static void handle_input_event(const OsIpcMessageV2* message) {
     if (message == 0 || message->type != OS_IPC_MESSAGE_EVENT ||
         message->flags != 0 || message->length != sizeof(OsWindowInputForward) ||
@@ -1139,11 +1361,22 @@ static void handle_input_event(const OsIpcMessageV2* message) {
         forward.abi_version != OS64_WINDOW_ABI_VERSION ||
         forward.command != OS_WINDOW_INPUT_EVENT || forward.flags != 0 ||
         forward.reserved != 0 || forward.event.size != sizeof(forward.event) ||
-        forward.event.type != OS_INPUT_EVENT_KEY ||
-        (forward.event.data.key.type != OS_KEY_EVENT_DOWN &&
+        (forward.event.type != OS_INPUT_EVENT_KEY &&
+         forward.event.type != OS_INPUT_EVENT_POINTER) ||
+        (forward.event.type == OS_INPUT_EVENT_KEY &&
+         forward.event.data.key.type != OS_KEY_EVENT_DOWN &&
          forward.event.data.key.type != OS_KEY_EVENT_UP) ||
+        (forward.event.type == OS_INPUT_EVENT_POINTER &&
+         (forward.event.data.pointer.type < OS_POINTER_EVENT_MOVE ||
+          forward.event.data.pointer.type > OS_POINTER_EVENT_WHEEL)) ||
         window_input_router_accept_input(&input_router,
                                          forward.input_sequence) < 0) {
+        return;
+    }
+
+    if (forward.event.type == OS_INPUT_EVENT_POINTER) {
+        handle_pointer_event(forward.event.timestamp_ticks,
+                             &forward.event.data.pointer);
         return;
     }
 
@@ -1189,9 +1422,9 @@ static void handle_move(const OsIpcMessageV2* message) {
     int32_t old_x = entry != 0 ? entry->x : 0;
     int32_t old_y = entry != 0 ? entry->y : 0;
     if (result == OS_SUCCESS) {
-        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
         window_state_move(entry, request.x, request.y);
-        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
         result = compose_and_present();
         if (result < 0) {
             window_state_move(entry, old_x, old_y);
@@ -1253,10 +1486,10 @@ static void handle_resize(const OsIpcMessageV2* message) {
     if (result == OS_SUCCESS) {
         old_surface = window_surfaces[slot];
         old_source = compositor_sources[slot];
-        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
         window_state_resize(entry, request.width, request.height);
         install_window_surface(slot, &candidate);
-        window_damage_add_screen(&screen_damage, window_state_screen_rect(entry));
+        window_damage_add_screen(&screen_damage, window_state_frame_rect(entry));
         result = compose_and_present();
         if (result < 0) {
             window_state_resize(entry, old_width, old_height);
@@ -1297,9 +1530,12 @@ static void destroy_entry(WindowEntry* entry, int unexpected) {
     }
     uint32_t slot = window_state_slot(&window_table, entry);
     uint32_t window_id = entry->window_id;
+    uint32_t window_generation = entry->window_generation;
     OsProcessIdentity owner = entry->owner;
-    OsRect old_rect = window_state_screen_rect(entry);
+    OsRect old_rect = window_state_frame_rect(entry);
     window_state_destroy(&window_table, entry);
+    window_interaction_cancel_target(&interaction, window_id,
+                                     window_generation);
     release_window_surface(slot);
     window_damage_add_screen(&screen_damage, old_rect);
     if (unexpected) {
@@ -1471,6 +1707,8 @@ int main(void) {
     gui_session_generation = 0;
     console_underlay.pixels = 0;
     console_underlay.stride_pixels = 0;
+    console_underlay.width = 0;
+    console_underlay.height = 0;
     next_frame_generation = (uint32_t)os_time_ticks() + 1u;
     pending_full_frame = 0;
 
@@ -1479,6 +1717,8 @@ int main(void) {
         return 1;
     }
     window_damage_init(&screen_damage, display_info.width, display_info.height);
+    window_interaction_init(&interaction, display_info.width,
+                            display_info.height);
     composite_surface = os_surface_create(display_info.width,
                                           display_info.height,
                                           display_info.format);
