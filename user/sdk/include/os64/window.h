@@ -25,7 +25,7 @@ typedef struct OsWindowInfo {
     uint32_t content_generation;
     uint32_t visible;
     uint32_t focused;
-    uint32_t reserved;
+    uint32_t layer;
 } OsWindowInfo;
 
 typedef struct OsWindow {
@@ -42,6 +42,7 @@ typedef struct OsWindow {
     int32_t y;
     uint32_t visible;
     uint32_t focused;
+    uint32_t layer;
 } OsWindow;
 
 void os_window_init(OsWindow* window);
@@ -51,6 +52,12 @@ long os_window_create(OsWindow* window,
                       int32_t y,
                       uint32_t width,
                       uint32_t height);
+long os_window_create_layer(OsWindow* window,
+                            int32_t x,
+                            int32_t y,
+                            uint32_t width,
+                            uint32_t height,
+                            uint32_t layer_flags);
 long os_window_destroy(OsWindow* window);
 long os_window_attach_surface(OsWindow* window,
                               OsHandle surface,

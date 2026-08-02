@@ -204,7 +204,22 @@ long os_window_create(OsWindow* window,
                       int32_t y,
                       uint32_t width,
                       uint32_t height) {
-    if (window == 0 || width == 0 || height == 0) {
+    return os_window_create_layer(window, x, y, width, height,
+                                  OS_WINDOW_FLAG_NONE);
+}
+
+long os_window_create_layer(OsWindow* window,
+                            int32_t x,
+                            int32_t y,
+                            uint32_t width,
+                            uint32_t height,
+                            uint32_t layer_flags) {
+    uint32_t selected = layer_flags & OS_WINDOW_FLAG_LAYER_MASK;
+    if (window == 0 ||
+        (layer_flags & ~OS_WINDOW_FLAG_LAYER_MASK) != 0 ||
+        (selected != 0 && (selected & (selected - 1u)) != 0) ||
+        ((width == 0 || height == 0) &&
+         selected != OS_WINDOW_FLAG_LAYER_DESKTOP)) {
         return OS_ERR_INVALID_ARGUMENT;
     }
     os_window_init(window);
@@ -215,6 +230,14 @@ long os_window_create(OsWindow* window,
     }
     OsWindowInfoReply service_info;
     result = query_info(window, &service_info);
+    if (result == OS_SUCCESS &&
+        selected == OS_WINDOW_FLAG_LAYER_DESKTOP &&
+        width == 0 && height == 0) {
+        width = service_info.width;
+        height = service_info.height;
+        x = 0;
+        y = 0;
+    }
     if (result < 0 || width > service_info.width ||
         height > service_info.height ||
         (service_info.pixel_format != OS64_PIXEL_FORMAT_RGB &&
@@ -234,7 +257,7 @@ long os_window_create(OsWindow* window,
     request.size = sizeof(request);
     request.abi_version = OS64_WINDOW_ABI_VERSION;
     request.command = OS_WINDOW_CREATE;
-    request.flags = 0;
+    request.flags = layer_flags;
     request.request_id = request_id;
     request.content_generation = 1;
     request.x = x;
@@ -258,6 +281,13 @@ long os_window_create(OsWindow* window,
     window->x = x;
     window->y = y;
     window->visible = 1;
+    window->layer = selected == OS_WINDOW_FLAG_LAYER_DESKTOP
+        ? OS_WINDOW_LAYER_DESKTOP
+        : selected == OS_WINDOW_FLAG_LAYER_PANEL
+            ? OS_WINDOW_LAYER_PANEL
+            : selected == OS_WINDOW_FLAG_LAYER_SYSTEM_OVERLAY
+                ? OS_WINDOW_LAYER_SYSTEM_OVERLAY
+                : OS_WINDOW_LAYER_NORMAL;
     return OS_SUCCESS;
 }
 
@@ -571,6 +601,7 @@ long os_window_get_info(OsWindow* window, OsWindowInfo* info) {
     window->content_generation = reply.content_generation;
     window->visible = reply.visible;
     window->focused = reply.focused;
+    window->layer = reply.flags;
     os_memset(info, 0, sizeof(*info));
     info->size = sizeof(*info);
     info->abi_version = OS64_WINDOW_CLIENT_ABI_VERSION;
@@ -585,6 +616,7 @@ long os_window_get_info(OsWindow* window, OsWindowInfo* info) {
     info->content_generation = window->content_generation;
     info->visible = window->visible;
     info->focused = window->focused;
+    info->layer = window->layer;
     return OS_SUCCESS;
 }
 

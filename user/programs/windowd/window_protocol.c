@@ -15,10 +15,17 @@ static int surface_fields_valid(uint32_t width,
            format_valid(pixel_format);
 }
 
+static int create_flags_valid(uint32_t flags) {
+    uint32_t selected = flags & OS_WINDOW_FLAG_LAYER_MASK;
+    return (flags & ~OS_WINDOW_FLAG_LAYER_MASK) == 0 &&
+           (selected == 0 || (selected & (selected - 1u)) == 0);
+}
+
 long window_protocol_validate_create(const OsWindowCreateRequest* request) {
     if (request == 0 || request->size != sizeof(*request) ||
         request->abi_version != OS64_WINDOW_ABI_VERSION ||
-        request->command != OS_WINDOW_CREATE || request->flags != 0 ||
+        request->command != OS_WINDOW_CREATE ||
+        !create_flags_valid(request->flags) ||
         request->request_id == 0 || request->content_generation == 0 ||
         !surface_fields_valid(request->width,
                               request->height,
@@ -33,7 +40,8 @@ long window_protocol_validate_create_geometry(
     const OsWindowCreateGeometryRequest* request) {
     if (request == 0 || request->size != sizeof(*request) ||
         request->abi_version != OS64_WINDOW_ABI_VERSION ||
-        request->command != OS_WINDOW_CREATE || request->flags != 0 ||
+        request->command != OS_WINDOW_CREATE ||
+        !create_flags_valid(request->flags) ||
         request->request_id == 0 || request->content_generation == 0 ||
         !surface_fields_valid(request->width,
                               request->height,

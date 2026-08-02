@@ -12,6 +12,7 @@ typedef struct WindowEntry {
     uint32_t window_generation;
     uint32_t accepted_content_generation;
     uint32_t visible;
+    uint32_t layer;
     int32_t x;
     int32_t y;
     uint32_t width;
@@ -38,6 +39,14 @@ WindowEntry* window_state_commit_create(WindowTable* table,
                                         int32_t y,
                                         uint32_t width,
                                         uint32_t height);
+WindowEntry* window_state_commit_create_layer(WindowTable* table,
+                                              OsProcessIdentity owner,
+                                              uint32_t content_generation,
+                                              int32_t x,
+                                              int32_t y,
+                                              uint32_t width,
+                                              uint32_t height,
+                                              uint32_t layer);
 WindowEntry* window_state_find(WindowTable* table,
                                uint32_t window_id,
                                uint32_t window_generation);
@@ -66,5 +75,8 @@ void window_state_move(WindowEntry* entry, int32_t x, int32_t y);
 void window_state_resize(WindowEntry* entry, uint32_t width, uint32_t height);
 void window_state_destroy(WindowTable* table, WindowEntry* entry);
 uint32_t window_state_slot(const WindowTable* table, const WindowEntry* entry);
+uint32_t window_state_layer_from_flags(uint32_t flags);
+int window_state_layer_flags_valid(uint32_t flags);
+int window_state_accepts_focus(const WindowEntry* entry);
 
 #endif

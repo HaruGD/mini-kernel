@@ -61,6 +61,20 @@ static int identity_equal(OsProcessIdentity left, OsProcessIdentity right) {
            left.generation == right.generation;
 }
 
+static long authorize_layer(OsProcessIdentity sender, uint32_t flags,
+                            uint32_t* layer) {
+    if (layer == 0 || !window_state_layer_flags_valid(flags))
+        return OS_ERR_INVALID_ARGUMENT;
+    *layer = window_state_layer_from_flags(flags);
+    if (*layer == OS_WINDOW_LAYER_NORMAL) return OS_SUCCESS;
+    OsProcessIdentity session_owner;
+    if (os_service_find_owner_identity("session", &session_owner) < 0 ||
+        !identity_equal(sender, session_owner)) {
+        return OS_ERR_PERMISSION_DENIED;
+    }
+    return OS_SUCCESS;
+}
+
 static void send_window_event(const WindowFocusEndpoint* endpoint,
                               uint32_t command,
                               uint64_t timestamp,
@@ -109,7 +123,7 @@ static WindowEntry* topmost_visible_window(void) {
         uint32_t slot = window_table.z_slots[i - 1u];
         if (slot < OS_WINDOW_MAX_WINDOWS) {
             WindowEntry* entry = &window_table.entries[slot];
-            if (entry->active && entry->visible) {
+            if (window_state_accepts_focus(entry)) {
                 return entry;
             }
         }
@@ -487,6 +501,7 @@ static void send_window_info_reply(OsProcessIdentity target,
             ? window_surfaces[slot].info.pixel_format : display_info.format;
         reply.content_generation = entry->accepted_content_generation;
         reply.visible = entry->visible;
+        reply.flags = entry->layer;
         reply.focused = window_input_router_is_focused(
             &input_router, entry->owner, entry->window_id,
             entry->window_generation) ? 1u : 0u;
@@ -580,6 +595,8 @@ static void handle_create(const OsIpcMessageV2* message) {
     uint32_t height = 0;
     uint32_t stride = 0;
     uint32_t format = 0;
+    uint32_t layer_flags = 0;
+    uint32_t layer = OS_WINDOW_LAYER_NORMAL;
     int32_t x = 0;
     int32_t y = 0;
     long result = OS_ERR_INVALID_ARGUMENT;
@@ -599,6 +616,7 @@ static void handle_create(const OsIpcMessageV2* message) {
         height = request.height;
         stride = request.stride_pixels;
         format = request.pixel_format;
+        layer_flags = request.flags;
     } else if (message->length == sizeof(OsWindowCreateGeometryRequest)) {
         OsWindowCreateGeometryRequest request;
         os_memcpy(&request, message->payload, sizeof(request));
@@ -611,9 +629,13 @@ static void handle_create(const OsIpcMessageV2* message) {
         height = request.height;
         stride = request.stride_pixels;
         format = request.pixel_format;
+        layer_flags = request.flags;
     }
     if (result == OS_SUCCESS && !request_matches(message, request_id)) {
         result = OS_ERR_INVALID_ARGUMENT;
+    }
+    if (result == OS_SUCCESS) {
+        result = authorize_layer(sender, layer_flags, &layer);
     }
     if (result == OS_SUCCESS) {
         result = window_state_can_create(&window_table, sender,
@@ -632,9 +654,9 @@ static void handle_create(const OsIpcMessageV2* message) {
     WindowEntry* entry = 0;
     uint32_t slot = OS_WINDOW_MAX_WINDOWS;
     if (result == OS_SUCCESS) {
-        entry = window_state_commit_create(&window_table, sender,
-                                           content_generation, x, y,
-                                           width, height);
+        entry = window_state_commit_create_layer(&window_table, sender,
+                                                 content_generation, x, y,
+                                                 width, height, layer);
         if (entry == 0) {
             result = OS_ERR_NO_RESOURCES;
         } else {
@@ -670,10 +692,10 @@ static void handle_create(const OsIpcMessageV2* message) {
     send_window_reply(sender, request_id, OS_WINDOW_CREATE, OS_SUCCESS,
                       entry->window_id, entry->window_generation,
                       entry->accepted_content_generation);
-    os_printf("[windowd] created id=%u generation=%u owner=%u:%u geometry=%d,%d %ux%u z=%u\n",
+    os_printf("[windowd] created id=%u generation=%u owner=%u:%u geometry=%d,%d %ux%u layer=%u\n",
               entry->window_id, entry->window_generation,
               sender.pid, sender.generation, entry->x, entry->y,
-              entry->width, entry->height, window_table.count - 1u);
+              entry->width, entry->height, entry->layer);
 }
 
 static void handle_set_surface(const OsIpcMessageV2* message) {
@@ -1049,7 +1071,7 @@ static void handle_focus(const OsIpcMessageV2* message) {
                                               request.window_generation,
                                               &entry);
     }
-    if (result == OS_SUCCESS && !entry->visible) {
+    if (result == OS_SUCCESS && !window_state_accepts_focus(entry)) {
         result = OS_ERR_NOT_READY;
     }
     if (result == OS_SUCCESS) {

@@ -11,6 +11,7 @@ typedef struct ManagedService {
     const char* name;
     const char* program;
     const char* dependency;
+    const char* dependency2;
     uint32_t permissions;
     uint32_t restart_policy;
     uint32_t pid;
@@ -26,33 +27,37 @@ typedef struct ManagedService {
 #define SERVICE_BASE_PERMISSIONS \
     (OS_PROCESS_PERMISSION_SERVICE_REGISTER | OS_PROCESS_PERMISSION_IPC)
 
-#define MANAGED_SERVICE_COUNT 7u
+#define MANAGED_SERVICE_COUNT 8u
 
 static ManagedService services[MANAGED_SERVICE_COUNT] = {
-    {"base", "svc_base_c.elf", 0, SERVICE_BASE_PERMISSIONS,
+    {"base", "svc_base_c.elf", 0, 0, SERVICE_BASE_PERMISSIONS,
      OS_SERVICE_RESTART_DISABLED, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
      OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
-    {"demo", "svc_demo_c.elf", "base", SERVICE_BASE_PERMISSIONS,
+    {"demo", "svc_demo_c.elf", "base", 0, SERVICE_BASE_PERMISSIONS,
      OS_SERVICE_RESTART_DISABLED, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
      OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
-    {"input", "inputd_c.elf", 0,
+    {"input", "inputd_c.elf", 0, 0,
      SERVICE_BASE_PERMISSIONS | OS_PROCESS_PERMISSION_SERVICE_DISCOVER |
          OS_PROCESS_PERMISSION_INPUT,
      OS_SERVICE_RESTART_ON_FAILURE, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
      OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
-    {"display", "displayd_c.elf", 0,
+    {"display", "displayd_c.elf", 0, 0,
      SERVICE_BASE_PERMISSIONS | OS_PROCESS_PERMISSION_DISPLAY |
          OS_PROCESS_PERMISSION_SHARED_SURFACE,
      OS_SERVICE_RESTART_ON_FAILURE, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
      OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
-    {"window", "windowd_c.elf", "display",
+    {"window", "windowd_c.elf", "display", "input",
      OS_PROCESS_PERMISSION_PROFILE_GUI_SERVICE,
      OS_SERVICE_RESTART_ON_FAILURE, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
      OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
-    {"restricted", "svc_demo_c.elf restricted", 0, SERVICE_BASE_PERMISSIONS,
+    {"session", "sessiond_c.elf", "window", 0,
+     OS_PROCESS_PERMISSION_PROFILE_GUI_SERVICE,
+     OS_SERVICE_RESTART_ON_FAILURE, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
+     OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
+    {"restricted", "svc_demo_c.elf restricted", 0, 0, SERVICE_BASE_PERMISSIONS,
      OS_SERVICE_RESTART_DISABLED, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
      OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
-    {"crash", "svc_demo_c.elf crash", 0, SERVICE_BASE_PERMISSIONS,
+    {"crash", "svc_demo_c.elf crash", 0, 0, SERVICE_BASE_PERMISSIONS,
      OS_SERVICE_RESTART_ON_FAILURE, 0, 0, OS_SERVICE_MANAGER_STATE_STOPPED, 0,
      OS_SERVICE_HEALTH_UNKNOWN, OS_SERVICE_FAILURE_NONE, 0, 0},
 };
@@ -161,13 +166,16 @@ static int validate_dependency_node(uint32_t index, uint8_t* visiting, uint8_t* 
         return OS_ERR_INVALID_ARGUMENT;
     }
     visiting[index] = 1;
-    if (services[index].dependency != 0) {
-        ManagedService* dependency = find_managed(services[index].dependency);
+    const char* dependencies[2] = {services[index].dependency,
+                                   services[index].dependency2};
+    for (uint32_t d = 0; d < 2; d++) {
+        if (dependencies[d] == 0) continue;
+        ManagedService* dependency = find_managed(dependencies[d]);
         int dependency_index = managed_index(dependency);
         if (dependency_index < 0) {
             os_printf("[serviced] missing dependency %s -> %s\n",
                       services[index].name,
-                      services[index].dependency);
+                      dependencies[d]);
             return OS_ERR_NOT_FOUND;
         }
         int result = validate_dependency_node((uint32_t)dependency_index, visiting, visited);
@@ -221,6 +229,16 @@ static int start_service_checked(ManagedService* service, uint8_t* starting, int
             return dependency_result;
         }
     }
+    if (service->dependency2 != 0) {
+        ManagedService* dependency = find_managed(service->dependency2);
+        int dependency_result = start_service_checked(dependency, starting,
+                                                       automatic);
+        if (dependency_result < 0) {
+            starting[index] = 0;
+            fail_service(service, OS_SERVICE_FAILURE_DEPENDENCY);
+            return dependency_result;
+        }
+    }
 
     transition_service(service, OS_SERVICE_MANAGER_STATE_STARTING);
     service->health = OS_SERVICE_HEALTH_UNKNOWN;
@@ -261,7 +279,10 @@ static int start_service(ManagedService* service, int automatic) {
 
 static int has_running_dependent(const ManagedService* service) {
     for (uint32_t i = 0; i < MANAGED_SERVICE_COUNT; i++) {
-        if (services[i].dependency != 0 && os_streq(services[i].dependency, service->name) &&
+        if (((services[i].dependency != 0 &&
+              os_streq(services[i].dependency, service->name)) ||
+             (services[i].dependency2 != 0 &&
+              os_streq(services[i].dependency2, service->name))) &&
             (services[i].state == OS_SERVICE_MANAGER_STATE_RUNNING ||
              services[i].state == OS_SERVICE_MANAGER_STATE_STARTING)) {
             return 1;

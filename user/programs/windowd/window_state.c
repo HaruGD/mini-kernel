@@ -7,6 +7,28 @@ static int identity_equal(OsProcessIdentity left, OsProcessIdentity right) {
            left.generation == right.generation;
 }
 
+int window_state_layer_flags_valid(uint32_t flags) {
+    uint32_t selected = flags & OS_WINDOW_FLAG_LAYER_MASK;
+    return (flags & ~OS_WINDOW_FLAG_LAYER_MASK) == 0 &&
+           (selected == 0 || (selected & (selected - 1u)) == 0);
+}
+
+uint32_t window_state_layer_from_flags(uint32_t flags) {
+    if (!window_state_layer_flags_valid(flags)) return UINT32_MAX;
+    if ((flags & OS_WINDOW_FLAG_LAYER_DESKTOP) != 0)
+        return OS_WINDOW_LAYER_DESKTOP;
+    if ((flags & OS_WINDOW_FLAG_LAYER_PANEL) != 0)
+        return OS_WINDOW_LAYER_PANEL;
+    if ((flags & OS_WINDOW_FLAG_LAYER_SYSTEM_OVERLAY) != 0)
+        return OS_WINDOW_LAYER_SYSTEM_OVERLAY;
+    return OS_WINDOW_LAYER_NORMAL;
+}
+
+int window_state_accepts_focus(const WindowEntry* entry) {
+    return entry != 0 && entry->active && entry->visible &&
+           entry->layer != OS_WINDOW_LAYER_DESKTOP;
+}
+
 uint32_t window_state_slot(const WindowTable* table, const WindowEntry* entry) {
     if (table == 0 || entry == 0 || entry < table->entries ||
         entry >= table->entries + OS_WINDOW_MAX_WINDOWS) {
@@ -27,6 +49,7 @@ void window_state_init(WindowTable* table) {
         entry->window_generation = 0;
         entry->accepted_content_generation = 0;
         entry->visible = 0;
+        entry->layer = OS_WINDOW_LAYER_NORMAL;
         entry->x = 0;
         entry->y = 0;
         entry->width = 0;
@@ -58,9 +81,23 @@ WindowEntry* window_state_commit_create(WindowTable* table,
                                         int32_t y,
                                         uint32_t width,
                                         uint32_t height) {
+    return window_state_commit_create_layer(table, owner, content_generation,
+                                            x, y, width, height,
+                                            OS_WINDOW_LAYER_NORMAL);
+}
+
+WindowEntry* window_state_commit_create_layer(WindowTable* table,
+                                              OsProcessIdentity owner,
+                                              uint32_t content_generation,
+                                              int32_t x,
+                                              int32_t y,
+                                              uint32_t width,
+                                              uint32_t height,
+                                              uint32_t layer) {
     if (window_state_can_create(table, owner, content_generation, width, height) < 0) {
         return 0;
     }
+    if (layer > OS_WINDOW_LAYER_SYSTEM_OVERLAY) return 0;
     for (uint32_t i = 0; i < OS_WINDOW_MAX_WINDOWS; i++) {
         WindowEntry* entry = &table->entries[i];
         if (entry->active) {
@@ -74,12 +111,22 @@ WindowEntry* window_state_commit_create(WindowTable* table,
         entry->window_generation = generation;
         entry->accepted_content_generation = content_generation;
         entry->visible = 1;
+        entry->layer = layer;
         entry->x = x;
         entry->y = y;
         entry->width = width;
         entry->height = height;
         entry->owner = owner;
-        table->z_slots[table->count++] = (uint8_t)i;
+        uint32_t at = table->count;
+        while (at != 0) {
+            uint32_t previous_slot = table->z_slots[at - 1u];
+            if (previous_slot >= OS_WINDOW_MAX_WINDOWS ||
+                table->entries[previous_slot].layer <= layer) break;
+            table->z_slots[at] = table->z_slots[at - 1u];
+            at--;
+        }
+        table->z_slots[at] = (uint8_t)i;
+        table->count++;
         return entry;
     }
     return 0;
@@ -165,13 +212,21 @@ void window_state_raise(WindowTable* table, WindowEntry* entry) {
             break;
         }
     }
-    if (at >= table->count || at + 1u == table->count) {
+    if (at >= table->count) {
         return;
     }
-    for (uint32_t i = at; i + 1u < table->count; i++) {
+    uint32_t layer_end = at + 1u;
+    while (layer_end < table->count) {
+        uint32_t next_slot = table->z_slots[layer_end];
+        if (next_slot >= OS_WINDOW_MAX_WINDOWS ||
+            table->entries[next_slot].layer != entry->layer) break;
+        layer_end++;
+    }
+    if (at + 1u == layer_end) return;
+    for (uint32_t i = at; i + 1u < layer_end; i++) {
         table->z_slots[i] = table->z_slots[i + 1u];
     }
-    table->z_slots[table->count - 1u] = (uint8_t)slot;
+    table->z_slots[layer_end - 1u] = (uint8_t)slot;
 }
 
 void window_state_set_visible(WindowTable* table,
@@ -222,6 +277,7 @@ void window_state_destroy(WindowTable* table, WindowEntry* entry) {
     entry->active = 0;
     entry->accepted_content_generation = 0;
     entry->visible = 0;
+    entry->layer = OS_WINDOW_LAYER_NORMAL;
     entry->x = 0;
     entry->y = 0;
     entry->width = 0;
