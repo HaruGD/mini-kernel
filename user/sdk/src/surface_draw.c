@@ -3,6 +3,7 @@
 #include <limits.h>
 
 #include "os64/result.h"
+#include "os64/text.h"
 
 #define FONT_WIDTH 5u
 #define FONT_HEIGHT 7u
@@ -65,7 +66,8 @@ static uint32_t native_color(const OsSurfaceCanvas* canvas, uint32_t color) {
     return color & 0x00FFFFFFu;
 }
 
-static uint8_t glyph_row(char character, uint32_t row) {
+static uint8_t glyph_row(uint32_t codepoint, uint32_t row) {
+    char character = codepoint <= 0x7Fu ? (char)codepoint : '?';
     if (character >= 'a' && character <= 'z') {
         character = (char)(character - 'a' + 'A');
     }
@@ -256,14 +258,19 @@ long os_surface_canvas_draw_text(OsSurfaceCanvas* canvas,
     }
     int64_t cursor_x = x;
     int64_t cursor_y = y;
-    for (uint32_t i = 0; text[i] != '\0'; i++) {
-        if (text[i] == '\n') {
+    uint32_t length = 0;
+    while (text[length] != '\0') length++;
+    uint32_t index = 0;
+    while (index < length) {
+        uint32_t codepoint;
+        if (os_utf8_next(text, length, &index, &codepoint) < 0) break;
+        if (codepoint == '\n') {
             cursor_x = x;
             cursor_y += FONT_LINE_HEIGHT;
             continue;
         }
         for (uint32_t row = 0; row < FONT_HEIGHT; row++) {
-            uint8_t bits = glyph_row(text[i], row);
+            uint8_t bits = glyph_row(codepoint, row);
             for (uint32_t column = 0; column < FONT_WIDTH; column++) {
                 int on = (bits & (1u << (FONT_WIDTH - 1u - column))) != 0;
                 if (!on && (flags & OS_SURFACE_TEXT_TRANSPARENT_BG) != 0) {

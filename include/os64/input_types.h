@@ -20,6 +20,7 @@
 #define OS_KEY_MOD_CAPS_LOCK (1u << 3)
 
 #define OS_KEY_ESCAPE 0x001u
+#define OS_KEY_TAB 0x00Fu
 #define OS_KEY_ENTER 0x01Cu
 #define OS_KEY_SPACE 0x039u
 #define OS_KEY_F1 0x03Bu

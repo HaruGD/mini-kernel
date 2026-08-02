@@ -484,6 +484,7 @@ def main() -> int:
             str(source),
             str(ROOT / "user/sdk/src/window.c"),
             str(ROOT / "user/sdk/src/surface_draw.c"),
+            str(ROOT / "user/sdk/src/text.c"),
             "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True)
