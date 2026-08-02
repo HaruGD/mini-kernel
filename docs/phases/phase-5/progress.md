@@ -19,9 +19,9 @@ inherited regression, measured resource evidence, and a commit hash.
 
 | Subphase | Status | Started | Completed | Implementation commit(s) | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| 5A: Desktop session and layer policy | Planned | - | - | - | P5-R01, P5-R02 |
-| 5B: Pointer and interactive windows | Planned | - | - | - | P5-R03, P5-R04 |
-| 5C: Graphics, fonts, images, and widget toolkit | Planned | - | - | - | P5-R05, P5-R06 |
+| 5A: Desktop session and layer policy | Complete | 2026-08-02 | 2026-08-02 | `88a16ea` | P5-R01, P5-R02 |
+| 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
+| 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-02 | `a13b5a8` | P5-R05, P5-R06 |
 | 5D: GUI terminal | Planned | - | - | - | P5-R07 |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
@@ -30,8 +30,34 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: planning complete; implementation has not started. The Phase
-4.7 closure baseline permits Phase 5A to begin.
+Current status: 5A, 5B, and 5C are complete. Phase 5D may begin.
+
+## Completed Evidence
+
+### 5A: Desktop Session And Layer Policy
+
+- `make test-phase5a` passed the session supervisor and layer authority gates.
+- Ordered startup, idempotent requests, generation rollover, restart
+  exhaustion, console fallback, clipping, overlap, and cleanup were checked.
+
+### 5B: Pointer And Interactive Windows
+
+- `make test-phase5b` passed host and QEMU pointer/interaction coverage.
+- The inherited `make test-window-multi`, `make test-window-input`, and
+  `make test-window-sdk` suites passed after the changes.
+- QEMU exercised PS/2 motion, button delivery, focus, capture, title-bar drag,
+  edge resize, controls, cursor ordering, and exact active-resource cleanup.
+
+### 5C: Graphics, Fonts, Images, And Widget Toolkit
+
+- `make test-phase5c` passed native `.osimg`, BMP, and PNG positive and
+  malformed fixtures; deterministic conversion; alpha/scaling pixels;
+  clipping; UTF-8 replacement; layout; damage overflow; and widget dispatch.
+- A restricted public-SDK application loaded all three formats in QEMU,
+  produced the expected presentation pixel `(60, 180, 30)`, operated every
+  baseline widget, and released its process, surface, mapping, and handles.
+- `make test-user-sdk`, `make test-window-sdk`, and `make test-window-input`
+  passed as affected inherited regression.
 
 ## Recording Workflow
 

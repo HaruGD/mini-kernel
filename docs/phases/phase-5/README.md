@@ -22,8 +22,10 @@ desktop protocol and recovery behavior are stable.
 
 ## Current Status
 
-Phase 5 is planned. Phase 4, 4.5, 4.6, and 4.7 are closed, so Phase 5A may
-begin. No Phase 5 feature is marked complete by these planning documents.
+Phase 5A through 5C are complete. OS64 now has a supervised desktop session,
+enforced desktop/normal/panel/overlay policy, PS/2 pointer routing and
+interactive decorated windows, plus public image, UTF-8 text, drawing, and
+widget SDKs. Phase 5D, the GUI terminal, is next.
 
 ## Intended Result
 
