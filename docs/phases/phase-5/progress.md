@@ -22,7 +22,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5A: Desktop session and layer policy | Complete | 2026-08-02 | 2026-08-02 | `88a16ea` | P5-R01, P5-R02 |
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
 | 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-04 | `a13b5a8`, `ba15722` | P5-R05, P5-R06 |
-| 5D: GUI terminal | Planned | - | - | - | P5-R07 |
+| 5D: GUI terminal | Complete | 2026-08-04 | 2026-08-04 | `c78b6fc` | P5-R07 |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
 | 5F: File manager | Planned | - | - | - | P5-R10, P5-R11 |
@@ -30,8 +30,8 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: 5A through 5C are complete. The 5C.1 responsive rendering gate
-is closed, so Phase 5D may begin.
+Current status: 5A through 5D are complete. Phase 5E may begin; the independent
+memory scalability gate remains required before Phase 5F.
 
 ## Completed Evidence
 
@@ -84,6 +84,36 @@ The current GOP logical display remains fixed at its selected boot mode. QEMU
 viewport zoom is only presentation scaling. Resolution-aware desktop layout
 belongs to 5E, persistent supported-mode selection to 5G, and true runtime
 mode switching to a future mode-setting display backend.
+
+### 5D: GUI Terminal
+
+- User SDK 2.5 freezes a 96-byte generation-bound terminal packet ABI for
+  hello, output, input, resize, hangup, and exit-status messages.
+- The bounded cell model supports 20-120 columns, 5-60 visible rows, 128 rows
+  of fixed history, a visible cursor, tab/backspace/newline, scrollback, and
+  baseline ANSI SGR, cursor, clear, erase, and save/restore controls.
+- `terminal.elf` is a restricted Window SDK application. It receives keyboard
+  input only through its focused window, publishes replacement surfaces on
+  configure, recomputes its grid, and sends resize notifications to the child.
+- `terminal_shell.elf` reuses the existing C shell command engine through an
+  IPC I/O adapter. Output uses bounded mailbox backpressure with an explicit
+  truncation marker; input uses a separate bounded 256-byte ring.
+- Normal shell exit, `HANGUP`, an unresponsive child timeout, and injected
+  child loss converge on one cleanup path. The owned child is reaped once and
+  is killed only if it fails the bounded hangup deadline.
+- `make test-phase5d` passed host packet/model/ANSI/scrollback coverage and a
+  QEMU run containing two normal command sessions, a live resize from
+  `720x440` to an exact `780x480` surface and `120x58` grid, a clean hangup,
+  and injected child loss. Both normal sessions rendered more than 1,500 visible
+  non-background pixels and recognized `echo phase5d-ok` through the GUI
+  stream.
+- QEMU active-resource and heap values returned to baseline after all four
+  lifecycles: baseline `(4, 21, 1, 0, 4, 0, 1, 107889, 4122016, 4165632)` and
+  final `(4, 21, 1, 0, 4, 0, 1, 107811, 4122016, 4165632)`. Lock-order,
+  recursion, and release violation counters remained zero.
+- Affected inherited regression passed: `make test-abi-freeze`,
+  `make test-phase5c`, `make test-process-lifecycle`, `make test-ipc`,
+  `make test-user-sdk` (`91/91`), and `make test-window-sdk`.
 
 ## Recording Workflow
 

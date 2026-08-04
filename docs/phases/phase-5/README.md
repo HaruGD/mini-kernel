@@ -22,10 +22,11 @@ desktop protocol and recovery behavior are stable.
 
 ## Current Status
 
-Phase 5A through 5C are complete. Phase 5C.1 closed the interactive rendering
-gaps with distinct lowercase and punctuation glyphs, a visible text caret,
-aspect-preserving image fitting, and client-side responsive surface/layout
-replacement. Phase 5D, the GUI terminal, is next.
+Phase 5A through 5D are complete. The desktop now has interactive windows,
+public image/widget rendering, and a normal Window SDK terminal with a bounded
+IPC shell stream, scrollback, ANSI baseline, responsive grid, and deterministic
+child cleanup. Phase 5E, the desktop shell, is next; the memory scalability
+gate must close before Phase 5F.
 
 ## Intended Result
 
