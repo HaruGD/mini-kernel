@@ -123,7 +123,8 @@ def main() -> int:
         subprocess.run([
             "gcc", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
             "-I", str(ROOT / "user/sdk/include"),
-            str(ROOT / "user/sdk/src/terminal.c"), str(source),
+            str(ROOT / "user/sdk/src/terminal.c"),
+            str(ROOT / "user/sdk/src/syscall.c"), str(source),
             "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True)
@@ -136,16 +137,24 @@ def main() -> int:
         "os_reap_children",
     ]
     required_shell = [
-        '"ushell/ushell_main.inc"', "OS_TERMINAL_COMMAND_OUTPUT",
-        "OS_TERMINAL_COMMAND_INPUT", "TERMINAL_INPUT_CAPACITY",
-        "OS_TERMINAL_FLAG_OVERFLOW",
+        '"ushell/ushell_main.inc"', "os_terminal_session_bind",
+        "os_terminal_session_exit", "terminal_read_line",
     ]
     if any(token not in terminal for token in required_terminal):
         raise RuntimeError("terminal frontend contract is incomplete")
     if any(token not in shell for token in required_shell):
         raise RuntimeError("terminal shell stream contract is incomplete")
+    kernel_session = (ROOT / "kernel/process/process_terminal.cpp").read_text(
+        encoding="utf-8")
+    required_session = [
+        "process_terminal_inherit", "PROCESS_TERMINAL_OUTPUT_CAPACITY",
+        "process_terminal_read_output", "process_terminal_notify_message",
+        "process_terminal_close",
+    ]
+    if any(token not in kernel_session for token in required_session):
+        raise RuntimeError("kernel terminal inheritance contract is incomplete")
     print("terminal packet/model/ANSI/scrollback tests OK")
-    print("terminal frontend/shell lifecycle source checks OK")
+    print("terminal frontend/shell/session lifecycle source checks OK")
     return 0
 
 

@@ -5,11 +5,15 @@
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
 #include "kernel/process_surface.h"
+#include "kernel/process_terminal.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/spinlock.h"
 #include "kernel/syscall64.h"
 #include "kernel/mm/pmm.h"
 #include "kernel/mm/vm.h"
+extern "C" {
+#include "kernel/mm/heap.h"
+}
 #include "kernel/cpu.h"
 #ifndef OS64_HOST_TEST
 #include "kernel/cpu_local.h"
@@ -987,6 +991,16 @@ void process_assign_identity(Process* process, uint32_t pid, const Process* pare
     process->fault_thread_identity.tid = 0;
     process->fault_thread_identity.generation = 0;
     process->exiting = 0;
+#ifdef OS64_HOST_TEST
+    if (parent != 0 && parent->terminal_owner_pid != 0) {
+        process->terminal_owner_pid = parent->terminal_owner_pid;
+        process->terminal_owner_generation = parent->terminal_owner_generation;
+        process->terminal_peer_pid = parent->terminal_peer_pid;
+        process->terminal_peer_generation = parent->terminal_peer_generation;
+    }
+#else
+    process_terminal_inherit(process, parent);
+#endif
     kernel_spinlock_release(&process_lock, &token);
     if (allocate_thread_record(process, 1) == 0) {
         process->pid = 0;
@@ -1225,6 +1239,11 @@ void process_clear(Process* process) {
         return;
     }
 
+    if (process->terminal_output_cookie == PROCESS_TERMINAL_OUTPUT_COOKIE &&
+        process->terminal_output != 0) {
+        kfree(process->terminal_output);
+        process->terminal_output = 0;
+    }
     recover_display_session_for_process(process->pid, process->generation);
     process_surface_unmap_all(process);
     service_unregister_owner(process->pid);
@@ -1274,6 +1293,28 @@ void process_clear(Process* process) {
     process->main_thread_identity.generation = 0;
     process->fault_thread_identity.tid = 0;
     process->fault_thread_identity.generation = 0;
+    process->terminal_owner_pid = 0;
+    process->terminal_owner_generation = 0;
+    process->terminal_peer_pid = 0;
+    process->terminal_peer_generation = 0;
+    process->terminal_output_sequence = 0;
+    process->terminal_last_input_sequence = 0;
+    process->terminal_columns = 0;
+    process->terminal_rows = 0;
+    process->terminal_input_head = 0;
+    process->terminal_input_count = 0;
+    process->terminal_output_dropped = 0;
+    process->terminal_hung_up = 0;
+    for (uint32_t i = 0; i < PROCESS_TERMINAL_INPUT_CAPACITY; i++) {
+        process->terminal_input[i] = 0;
+    }
+    kernel_spinlock_init(&process->terminal_output_lock,
+                         KERNEL_LOCK_CLASS_IPC_SERVICE,
+                         "terminal_output");
+    process->terminal_output_head = 0;
+    process->terminal_output_count = 0;
+    process->terminal_output_cookie = 0;
+    process->terminal_output = 0;
     process->cwd[0] = '/';
     process->cwd[1] = '\0';
     process->command_line[0] = '\0';

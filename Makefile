@@ -76,6 +76,7 @@ KERNEL64_OBJECTS = \
 	./build/kernel_handle64.o \
 	./build/kernel_objects64.o \
 	./build/process64.o \
+	./build/process_terminal64.o \
 	./build/process_surface64.o \
 	./build/userprog64.o \
 	./build/syscall64.o \
@@ -492,6 +493,9 @@ $(PHASE5_ASSETS) &: ./tools/build_image_fixtures.py ./tools/png_to_osimg.py
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/thread.h ./include/os64/thread_types.h ./include/kernel/handle/kernel_handle.h ./include/kernel/handle/kernel_objects.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+
+./build/process_terminal64.o: ./kernel/process/process_terminal.cpp ./include/kernel/process_terminal.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/ipc/ipc.h ./include/os64/terminal_types.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
 
 ./build/process_surface64.o: ./kernel/process/process_surface.cpp ./include/kernel/process_surface.h ./include/kernel/process.h ./include/kernel/thread.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/address_space.h ./include/os64/surface_types.h

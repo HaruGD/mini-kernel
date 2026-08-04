@@ -1,3 +1,7 @@
+#define print process_terminal_print
+#define print_hex32 process_terminal_print_hex32
+#define print_hex64 process_terminal_print_hex64
+
 static const char* reserved_range_type_name(uint32_t type) {
     if (type == BOOT_RESERVED_RANGE_KERNEL) {
         return "kernel";
@@ -228,3 +232,7 @@ void command_uptime() {
     print("\nTSC delta: ");
     print_hex64(read_tsc() - boot_tsc);
 }
+
+#undef print
+#undef print_hex32
+#undef print_hex64

@@ -2,6 +2,7 @@
 #include "kernel/handle/kernel_handle.h"
 #include "kernel/handle/kernel_objects.h"
 #include "kernel/process64.h"
+#include "kernel/process_terminal.h"
 
 int ipc_process_can_receive(const Process* process) {
     if (process == 0 || process->pid == 0 || !process->active) {
@@ -235,6 +236,9 @@ int ipc_send_message_v2(Process* sender, Process* target, const OsIpcMessageV2* 
     if (!process_wait_signal(target, PROCESS_WAIT_IPC, PROCESS_WAIT_OK)) {
         process_notify_queued_ipc(target);
     }
+#ifndef OS64_HOST_TEST
+    process_terminal_notify_message(target);
+#endif
     return IPC_OK;
 }
 

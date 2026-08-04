@@ -1,6 +1,7 @@
 #include <limits.h>
 
 #include "os64/os64.h"
+#include "internal.h"
 
 #define TERMINAL_PARSER_NORMAL 0u
 #define TERMINAL_PARSER_ESCAPE 1u
@@ -70,6 +71,36 @@ long os_terminal_send(OsProcessIdentity peer,
         }
         os_sleep(1);
     }
+}
+
+long os_terminal_session_bind(OsProcessIdentity peer) {
+    if (peer.pid == 0 || peer.generation == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall2(OS_SYS_TERMINAL_SESSION_BIND,
+                       (long)peer.pid, (long)peer.generation);
+}
+
+long os_terminal_session_exit(int32_t status) {
+    return os_syscall1(OS_SYS_TERMINAL_SESSION_EXIT, (long)status);
+}
+
+long os_terminal_session_read(OsProcessIdentity owner,
+                              OsTerminalPacket* packet) {
+    if (owner.pid == 0 || owner.generation == 0 || packet == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall3(OS_SYS_TERMINAL_SESSION_READ,
+                       (long)owner.pid, (long)owner.generation,
+                       (long)packet);
+}
+
+long os_terminal_session_close(OsProcessIdentity owner) {
+    if (owner.pid == 0 || owner.generation == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    return os_syscall2(OS_SYS_TERMINAL_SESSION_CLOSE,
+                       (long)owner.pid, (long)owner.generation);
 }
 
 static int model_valid(const OsTerminalModel* model) {

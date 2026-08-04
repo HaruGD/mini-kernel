@@ -13,6 +13,7 @@ extern "C" {
 #include "kernel/kutil64.h"
 #include "kernel/process.h"
 #include "kernel/process64.h"
+#include "kernel/process_terminal.h"
 #include "kernel/syscall64.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
@@ -70,6 +71,10 @@ extern "C" uint64_t process_fault_returnable64() {
     return current_process() != 0 ? 1 : 0;
 }
 
+#define print process_terminal_print
+#define print_hex32 process_terminal_print_hex32
+#define print_hex64 process_terminal_print_hex64
+
 extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
     syscall_count++;
 
@@ -94,7 +99,15 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             if (!copy_user_buffer(user_buffer + written, chunk, chunk_size)) {
                 return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
             }
-            print_n((const char*)chunk, chunk_size);
+            Process* process = current_process();
+            if (process_terminal_attached(process)) {
+                int result = process_terminal_write(process, chunk, chunk_size);
+                if (result < 0) {
+                    return (uint64_t)(int64_t)result;
+                }
+            } else {
+                print_n((const char*)chunk, chunk_size);
+            }
             written += chunk_size;
         }
         return written;
@@ -107,13 +120,54 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_PUTCHAR) {
-        putchar_both((char)(arg1 & 0xFF));
+        uint8_t character = (uint8_t)(arg1 & 0xFF);
+        Process* process = current_process();
+        if (process_terminal_attached(process)) {
+            int result = process_terminal_write(process, &character, 1);
+            return result < 0 ? (uint64_t)(int64_t)result : 1;
+        }
+        putchar_both((char)character);
         return 1;
     }
 
     if (syscall_no == SYS_CLEAR_SCREEN) {
+        if (process_terminal_attached(current_process())) {
+            return (uint64_t)(int64_t)process_terminal_clear(current_process());
+        }
         terminal.clear();
         return 0;
+    }
+
+    if (syscall_no == SYS_TERMINAL_SESSION_BIND) {
+        ProcessIdentity peer = {(uint32_t)arg1, (uint32_t)arg2};
+        return (uint64_t)(int64_t)process_terminal_bind(current_process(), peer);
+    }
+
+    if (syscall_no == SYS_TERMINAL_SESSION_EXIT) {
+        return (uint64_t)(int64_t)process_terminal_send_exit(
+            current_process(), (int32_t)arg1);
+    }
+
+    if (syscall_no == SYS_TERMINAL_SESSION_READ) {
+        if (!user_buffer_writable((uint8_t*)(uintptr_t)arg3,
+                                  sizeof(OsTerminalPacket))) {
+            return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
+        }
+        ProcessIdentity owner_identity = {(uint32_t)arg1, (uint32_t)arg2};
+        OsTerminalPacket packet;
+        int result = process_terminal_read_output(current_process(),
+                                                  owner_identity, &packet);
+        if (result < 0) return (uint64_t)(int64_t)result;
+        return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)arg3,
+                                          (const uint8_t*)&packet,
+                                          sizeof(packet))
+            ? 0 : (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
+    }
+
+    if (syscall_no == SYS_TERMINAL_SESSION_CLOSE) {
+        ProcessIdentity owner_identity = {(uint32_t)arg1, (uint32_t)arg2};
+        return (uint64_t)(int64_t)process_terminal_close(
+            current_process(), owner_identity);
     }
 
     if (syscall_no == SYS_USER_BRK) {
@@ -128,6 +182,28 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     }
 
     if (syscall_no == SYS_GETCHAR) {
+        Process* process = current_process();
+        if (process_terminal_attached(process)) {
+            uint8_t character = 0;
+            int result = process_terminal_read_char(process, &character);
+            if (result > 0) {
+                return character;
+            }
+            if (result != SYS_ERR_WOULD_BLOCK) {
+                return (uint64_t)(int64_t)result;
+            }
+            if (!process_wait_begin(process, PROCESS_WAIT_CHAR, 0, 0,
+                                    pit.get_tick())) {
+                return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+            }
+            result = process_terminal_read_char(process, &character);
+            if (result > 0 || result == SYS_ERR_CANCELLED) {
+                process_wait_signal(process, PROCESS_WAIT_CHAR,
+                                    result > 0 ? PROCESS_WAIT_OK
+                                               : PROCESS_WAIT_CANCELLED);
+            }
+            return SYSCALL_WAIT_TO_KERNEL;
+        }
         if (!process_has_permissions(current_process(), OS_PROCESS_PERMISSION_INPUT)) {
             return (uint64_t)(int64_t)SYS_ERR_PERMISSION_DENIED;
         }
@@ -135,7 +211,6 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         if (pop_keyboard_character_from_events(&ascii)) {
             return (uint64_t)(unsigned char)ascii;
         }
-        Process* process = current_process();
         if (process == 0 || process_focused_pid() != process->pid) {
             return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
         }

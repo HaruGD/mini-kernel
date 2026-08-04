@@ -9,6 +9,7 @@
 #include "kernel/ipc/ipc.h"
 #include "kernel/process64.h"
 #include "kernel/process_surface.h"
+#include "kernel/process_terminal.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/handle/kernel_objects.h"
 #include "kernel/graphics/display_backend.h"
@@ -1083,11 +1084,17 @@ void complete_waiting_syscall64(Thread* thread) {
             result = SYS_ERR_BAD_BUFFER;
         }
     } else if (result == PROCESS_WAIT_OK && context->wait_reason == PROCESS_WAIT_CHAR) {
-        uint32_t character = 0;
-        if (!pop_process_character(process, &character)) {
-            result = SYS_ERR_NOT_READY;
+        if (process_terminal_attached(process)) {
+            uint8_t character = 0;
+            int terminal_result = process_terminal_read_char(process, &character);
+            result = terminal_result > 0 ? (int32_t)character : terminal_result;
         } else {
-            result = (int32_t)character;
+            uint32_t character = 0;
+            if (!pop_process_character(process, &character)) {
+                result = SYS_ERR_NOT_READY;
+            } else {
+                result = (int32_t)character;
+            }
         }
     } else if (result == PROCESS_WAIT_OK &&
                context->wait_reason == PROCESS_WAIT_THREAD_JOIN) {

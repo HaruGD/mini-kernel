@@ -3,6 +3,8 @@
 #include "kernel/mm/heap.h"
 #include "arch/x86_64/io.h"
 #include "drivers/terminal.h"
+#include "kernel/process_terminal.h"
+#include "kernel/process64.h"
 
 extern Terminal terminal;
 
@@ -78,6 +80,11 @@ static void vfs_putchar_both(char c) {
 
 static void vfs_print(const char* text) {
     if (text == 0) {
+        return;
+    }
+
+    if (process_terminal_attached(current_process())) {
+        process_terminal_print(text);
         return;
     }
 

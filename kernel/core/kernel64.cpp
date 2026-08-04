@@ -37,6 +37,7 @@ extern "C" {
 #include "kernel/klog.h"
 #include "kernel/process.h"
 #include "kernel/process64.h"
+#include "kernel/process_terminal.h"
 #include "kernel/spinlock.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/syscall64.h"

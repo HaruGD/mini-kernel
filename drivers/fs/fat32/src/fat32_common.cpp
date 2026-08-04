@@ -2,6 +2,8 @@
 
 #include "arch/x86_64/io.h"
 #include "drivers/terminal.h"
+#include "kernel/process64.h"
+#include "kernel/process_terminal.h"
 
 extern Terminal terminal;
 
@@ -25,6 +27,10 @@ static void fat32_putchar_both(char c) {
 
 static void fat32_print(const char* text) {
     if (text == 0) {
+        return;
+    }
+    if (process_terminal_attached(current_process())) {
+        process_terminal_print(text);
         return;
     }
     for (uint32_t i = 0; text[i] != '\0'; i++) {

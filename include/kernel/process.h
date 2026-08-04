@@ -8,12 +8,16 @@
 #include "kernel/input/input_event_queue.h"
 #include "kernel/mm/address_space.h"
 #include "os64/process_types.h"
+#include "os64/terminal_types.h"
 #include "kernel/thread.h"
 
 #define PROCESS_NAME_MAX 32
 #define PROCESS_ARG_MAX 8
 #define PROCESS_CMDLINE_MAX 96
 #define PROCESS_SURFACE_MAPPING_MAX 16u
+#define PROCESS_TERMINAL_INPUT_CAPACITY 256u
+#define PROCESS_TERMINAL_OUTPUT_CAPACITY 256u
+#define PROCESS_TERMINAL_OUTPUT_COOKIE 0x544F5554u
 
 struct ProcessSurfaceMapping {
     uint8_t active;
@@ -108,6 +112,24 @@ struct Process {
     KernelHandleTable handle_table;
     KernelInputEventQueue event_queue;
     KernelIpcMailbox ipc_mailbox;
+    uint32_t terminal_owner_pid;
+    uint32_t terminal_owner_generation;
+    uint32_t terminal_peer_pid;
+    uint32_t terminal_peer_generation;
+    volatile uint32_t terminal_output_sequence;
+    uint32_t terminal_last_input_sequence;
+    uint32_t terminal_columns;
+    uint32_t terminal_rows;
+    uint32_t terminal_input_head;
+    uint32_t terminal_input_count;
+    volatile uint32_t terminal_output_dropped;
+    uint8_t terminal_hung_up;
+    uint8_t terminal_input[PROCESS_TERMINAL_INPUT_CAPACITY];
+    KernelSpinlock terminal_output_lock;
+    uint32_t terminal_output_head;
+    uint32_t terminal_output_count;
+    uint32_t terminal_output_cookie;
+    OsTerminalPacket* terminal_output;
 };
 
 #undef THREAD_CONTEXT_FIELDS

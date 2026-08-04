@@ -113,6 +113,25 @@ def run_cycle(process: subprocess.Popen, cycle: int, resize: bool) -> int:
     type_text(process, "echo phase5d-ok")
     hmp(process, "sendkey ret")
     marker = wait_for("[terminal] transcript marker=phase5d-ok", 20, ready)
+    marker = wait_for("[terminal] transcript marker=phase5d-ok", 20, marker)
+    type_text(process, "ls")
+    hmp(process, "sendkey ret")
+    marker = wait_for("[terminal] transcript marker=list-files", 20, marker)
+    type_text(process, "save /term5d.txt stream-output-ok")
+    hmp(process, "sendkey ret")
+    marker = wait_for("[terminal] transcript marker=save-file", 20, marker)
+    type_text(process, "cat /term5d.txt")
+    hmp(process, "sendkey ret")
+    marker = wait_for("[terminal] transcript marker=cat-file", 20, marker)
+    type_text(process, "run uargs_c.elf child-output-ok")
+    hmp(process, "sendkey ret")
+    marker = wait_for("[terminal] transcript marker=external-output", 20, marker)
+    type_text(process, "run uinfo_c.elf")
+    hmp(process, "sendkey ret")
+    marker = wait_for(
+        "[terminal] transcript marker=external-input-ready", 20, marker)
+    type_text(process, "x")
+    marker = wait_for("[terminal] transcript marker=external-input", 20, marker)
     if resize:
         hmp(process, "mouse_move 240 140", 0.1)
         hmp(process, "mouse_button 1", 0.1)
@@ -146,7 +165,7 @@ def run_hangup_cycle(process: subprocess.Popen) -> None:
 
 
 def run_fault_cycle(process: subprocess.Popen) -> None:
-    start = type_async(process, "run terminal_launch_c.elf")
+    start = type_async(process, "run terminal_launch_c.elf --fault-test")
     wait_for("[terminal-launch] GUI terminal started", 25, start)
     ready = wait_for("[terminal] ready child=", 30, start)
     hmp(process, "sendkey ctrl-shift-k")
@@ -174,7 +193,7 @@ def main() -> int:
         "-device", "virtio-blk-pci,drive=esp,bootindex=1",
         "-boot", "menu=off", "-display", "none",
         "-serial", f"file:{SERIAL}", "-monitor", "stdio", "-no-reboot",
-        "-d", "guest_errors,cpu_reset", "-D", str(QEMU_LOG),
+        "-d", "cpu_reset", "-D", str(QEMU_LOG),
     ]
     process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.PIPE,
                                stdout=subprocess.DEVNULL,

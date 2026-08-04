@@ -10,9 +10,24 @@ static uint32_t frontend_sequence = 1;
 static uint32_t shell_sequence;
 static uint32_t output_bytes;
 static uint32_t output_overflows;
-static uint32_t marker_progress;
+typedef struct TerminalTranscriptMarker {
+    const char* text;
+    const char* name;
+    uint32_t progress;
+} TerminalTranscriptMarker;
+
+static TerminalTranscriptMarker transcript_markers[] = {
+    {"phase5d-ok", "phase5d-ok", 0},
+    {"utest.bin", "list-files", 0},
+    {"Saved: /term5d.txt", "save-file", 0},
+    {"stream-output-ok", "cat-file", 0},
+    {"argv[1]=child-output-ok", "external-output", 0},
+    {"Press one key to return:", "external-input-ready", 0},
+    {"You chose: x", "external-input", 0},
+};
 static int child_exited;
 static int32_t child_status;
+static int fault_shortcut_enabled;
 
 static uint32_t next_sequence(void) {
     uint32_t sequence = frontend_sequence++;
@@ -135,35 +150,33 @@ static long paint(OsWindow* window) {
 }
 
 static void observe_marker(const uint8_t* bytes, uint32_t length) {
-    static const char marker[] = "phase5d-ok";
     for (uint32_t i = 0; i < length; i++) {
-        if (bytes[i] == (uint8_t)marker[marker_progress]) {
-            marker_progress++;
-            if (marker[marker_progress] == '\0') {
-                os_puts("[terminal] transcript marker=phase5d-ok");
-                marker_progress = 0;
+        for (uint32_t marker_index = 0;
+             marker_index < sizeof(transcript_markers) /
+                            sizeof(transcript_markers[0]);
+             marker_index++) {
+            TerminalTranscriptMarker* marker = &transcript_markers[marker_index];
+            if (bytes[i] == (uint8_t)marker->text[marker->progress]) {
+                marker->progress++;
+                if (marker->text[marker->progress] == '\0') {
+                    os_printf("[terminal] transcript marker=%s\n", marker->name);
+                    marker->progress = 0;
+                }
+            } else {
+                marker->progress = bytes[i] == (uint8_t)marker->text[0]
+                    ? 1u : 0u;
             }
-        } else {
-            marker_progress = bytes[i] == (uint8_t)marker[0] ? 1u : 0u;
         }
     }
 }
 
 static int drain_shell_output(void) {
-    OsIpcReceiveFilter filter;
-    os_ipc_filter_init(&filter);
-    filter.flags = OS_IPC_FILTER_SENDER | OS_IPC_FILTER_TYPE;
-    filter.sender_pid = shell_identity.pid;
-    filter.sender_generation = shell_identity.generation;
-    filter.type = OS_IPC_MESSAGE_EVENT;
     int changed = 0;
-    for (uint32_t count = 0; count < 16; count++) {
-        OsIpcMessageV2 message;
-        long result = os_msg_v2_recv_match(&filter, &message);
-        if (result == OS_ERR_WOULD_BLOCK) break;
-        if (result < 0 || message.length != sizeof(OsTerminalPacket)) continue;
+    for (uint32_t count = 0; count < 64; count++) {
         OsTerminalPacket packet;
-        os_memcpy(&packet, message.payload, sizeof(packet));
+        long result = os_terminal_session_read(shell_identity, &packet);
+        if (result == OS_ERR_WOULD_BLOCK) break;
+        if (result < 0) return (int)result;
         if (os_terminal_packet_validate(&packet) < 0 ||
             packet.sequence <= shell_sequence) continue;
         shell_sequence = packet.sequence;
@@ -213,11 +226,16 @@ static void terminate_child(void) {
         }
     }
     long reaped = os_reap_children();
+    long session_closed = os_terminal_session_close(shell_identity);
     os_printf("[terminal] child reaped=%ld forced=%d cleanup OK\n",
               reaped, forced);
+    if (session_closed < 0 && session_closed != OS_ERR_NO_TARGET)
+        os_printf("[terminal] session close failed %ld\n", session_closed);
 }
 
-int main(void) {
+int main(int argc, char** argv) {
+    fault_shortcut_enabled = argc == 2 &&
+        os_streq(argv[1], "--fault-test");
     if (!permission_boundary_ok()) {
         os_puts("[terminal] permission boundary failed");
         return 1;
@@ -237,9 +255,19 @@ int main(void) {
         terminate_child();
         return 1;
     }
-    if (send_resize(&window) < 0 || drain_shell_output() < 0 ||
-        paint(&window) < 0 || os_window_damage_all(&window) < 0 ||
-        os_window_focus(&window) < 0) {
+    long resize_result = send_resize(&window);
+    int drain_result = resize_result >= 0 ? drain_shell_output() : 0;
+    long paint_result = resize_result >= 0 && drain_result >= 0
+        ? paint(&window) : OS_ERR_NOT_READY;
+    long damage_result = paint_result >= 0
+        ? os_window_damage_all(&window) : OS_ERR_NOT_READY;
+    long focus_result = damage_result >= 0
+        ? os_window_focus(&window) : OS_ERR_NOT_READY;
+    if (resize_result < 0 || drain_result < 0 || paint_result < 0 ||
+        damage_result < 0 || focus_result < 0) {
+        os_printf("[terminal] bring-up failed resize=%ld drain=%d paint=%ld damage=%ld focus=%ld\n",
+                  resize_result, drain_result, paint_result, damage_result,
+                  focus_result);
         os_window_destroy(&window);
         terminate_child();
         return 1;
@@ -278,7 +306,8 @@ int main(void) {
                     (OS_KEY_MOD_CTRL | OS_KEY_MOD_SHIFT) &&
                 (key.character == 'q' || key.character == 'Q')) {
                 closing = 1;
-            } else if ((key.modifiers & (OS_KEY_MOD_CTRL | OS_KEY_MOD_SHIFT)) ==
+            } else if (fault_shortcut_enabled &&
+                       (key.modifiers & (OS_KEY_MOD_CTRL | OS_KEY_MOD_SHIFT)) ==
                            (OS_KEY_MOD_CTRL | OS_KEY_MOD_SHIFT) &&
                        (key.character == 'k' || key.character == 'K')) {
                 (void)os_kill(shell_identity.pid);

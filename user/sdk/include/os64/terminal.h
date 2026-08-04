@@ -12,6 +12,11 @@ long os_terminal_packet_validate(const OsTerminalPacket* packet);
 long os_terminal_send(OsProcessIdentity peer,
                       OsTerminalPacket* packet,
                       uint32_t retry_ticks);
+long os_terminal_session_bind(OsProcessIdentity peer);
+long os_terminal_session_exit(int32_t status);
+long os_terminal_session_read(OsProcessIdentity owner,
+                              OsTerminalPacket* packet);
+long os_terminal_session_close(OsProcessIdentity owner);
 
 long os_terminal_model_init(OsTerminalModel* model,
                             uint32_t columns,

@@ -5,9 +5,14 @@
 #include "kernel/mm/heap.h"
 #include "kernel/mm/pmm.h"
 #include "kernel/process64.h"
+#include "kernel/process_terminal.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/spinlock.h"
 #include "kernel/graphics/surface_backing.h"
+
+#define print process_terminal_print
+#define print_hex32 process_terminal_print_hex32
+#define print_hex64 process_terminal_print_hex64
 
 const char* process_state_name(uint32_t state) {
     if (state == PROCESS_STATE_LOADED) {

@@ -96,20 +96,26 @@ mode switching to a future mode-setting display backend.
   input only through its focused window, publishes replacement surfaces on
   configure, recomputes its grid, and sends resize notifications to the child.
 - `terminal_shell.elf` reuses the existing C shell command engine through an
-  IPC I/O adapter. Output uses bounded mailbox backpressure with an explicit
-  truncation marker; input uses a separate bounded 256-byte ring.
+  inheritable kernel terminal session. A dynamically allocated 256-packet
+  output stream is separate from general IPC; input uses a bounded 256-byte
+  ring and wakes only the newest active descendant.
+- Standard writes, character input, clear-screen, kernel-backed file commands,
+  FAT32 directory listing, and command diagnostics now honor the session.
+  External ELF output and interactive input therefore remain inside the GUI
+  terminal instead of leaking to or blocking on the kernel console.
 - Normal shell exit, `HANGUP`, an unresponsive child timeout, and injected
   child loss converge on one cleanup path. The owned child is reaped once and
   is killed only if it fails the bounded hangup deadline.
 - `make test-phase5d` passed host packet/model/ANSI/scrollback coverage and a
   QEMU run containing two normal command sessions, a live resize from
   `720x440` to an exact `780x480` surface and `120x58` grid, a clean hangup,
-  and injected child loss. Both normal sessions rendered more than 1,500 visible
-  non-background pixels and recognized `echo phase5d-ok` through the GUI
-  stream.
+  and test-only injected child loss. Both normal sessions exercised `echo`,
+  FAT32 `ls`, `save`, `cat`, external `uargs_c.elf` output, and inherited
+  interactive `uinfo_c.elf` input entirely through the GUI stream. Both
+  sessions rendered more than `8,000` visible non-background pixels.
 - QEMU active-resource and heap values returned to baseline after all four
   lifecycles: baseline `(4, 21, 1, 0, 4, 0, 1, 107889, 4122016, 4165632)` and
-  final `(4, 21, 1, 0, 4, 0, 1, 107811, 4122016, 4165632)`. Lock-order,
+  final `(4, 21, 1, 0, 4, 0, 1, 107808, 4122016, 4165632)`. Lock-order,
   recursion, and release violation counters remained zero.
 - Affected inherited regression passed: `make test-abi-freeze`,
   `make test-phase5c`, `make test-process-lifecycle`, `make test-ipc`,
