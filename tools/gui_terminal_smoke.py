@@ -78,7 +78,18 @@ def stable(before: tuple[int, ...], after: tuple[int, ...]) -> None:
             raise RuntimeError(f"GUI terminal resource drift {before} -> {after}")
 
 
-def foreground_pixels(path: Path) -> int:
+def run_console_user_bootinfo(process: subprocess.Popen) -> None:
+    start = type_async(process, "ushellc")
+    prompt = wait_for("csh>", 20, start)
+    bootinfo_start = type_async(process, "bootinfo")
+    details = wait_for("Reserved range count:", 20, bootinfo_start)
+    wait_for("csh>", 20, details)
+    exit_start = type_async(process, "exit")
+    wait_for("OS64>", 20, exit_start)
+    print("console_user_bootinfo=responsive")
+
+
+def terminal_screendump(path: Path) -> tuple[bytes, int, int, int]:
     data = path.read_bytes()
     if not data.startswith(b"P6"):
         raise RuntimeError("invalid terminal screendump")
@@ -96,6 +107,11 @@ def foreground_pixels(path: Path) -> int:
     width, height, maximum = tokens
     if (width, height, maximum) != (1280, 800, 255):
         raise RuntimeError(f"unexpected framebuffer {tokens}")
+    return data, offset, width, height
+
+
+def foreground_pixels(path: Path) -> int:
+    data, offset, width, _ = terminal_screendump(path)
     count = 0
     for y in range(108, 530):
         for x in range(168, 870):
@@ -106,10 +122,23 @@ def foreground_pixels(path: Path) -> int:
     return count
 
 
+def assert_bottom_inset(path: Path, client_bottom: int) -> None:
+    data, offset, width, _ = terminal_screendump(path)
+    background = (18, 20, 25)
+    for y in range(client_bottom - 12, client_bottom):
+        for x in range(168, 300):
+            at = offset + (y * width + x) * 3
+            if tuple(data[at:at + 3]) != background:
+                raise RuntimeError(
+                    f"terminal output entered bottom inset at ({x}, {y})")
+
+
 def run_cycle(process: subprocess.Popen, cycle: int, resize: bool) -> int:
     start = type_async(process, "run terminal_launch_c.elf")
     wait_for("[terminal-launch] GUI terminal started", 25, start)
     ready = wait_for("[terminal] ready child=", 30, start)
+    wait_for("[terminal] resized columns=117 rows=52 surface=720x440", 10,
+             start)
     type_text(process, "echo phase5d-ok")
     hmp(process, "sendkey ret")
     marker = wait_for("[terminal] transcript marker=phase5d-ok", 20, ready)
@@ -137,11 +166,12 @@ def run_cycle(process: subprocess.Popen, cycle: int, resize: bool) -> int:
         hmp(process, "mouse_button 1", 0.1)
         hmp(process, "mouse_move 60 40", 0.1)
         resized = wait_for(
-            "[terminal] resized columns=120 rows=58 surface=780x480", 20, marker)
+            "[terminal] resized columns=120 rows=57 surface=780x480", 20, marker)
         hmp(process, "mouse_button 0", 0.1)
         marker = resized
     hmp(process, f"screendump {SCREEN}", 0.1)
     pixels = foreground_pixels(SCREEN)
+    assert_bottom_inset(SCREEN, 580 if resize else 540)
     if pixels < 100:
         raise RuntimeError(f"terminal text was not visibly rendered: {pixels}")
     type_text(process, "exit")
@@ -202,6 +232,7 @@ def main() -> int:
         wait_for("OS64>", 25)
         if "start window OK" not in shell_command(process, "service start window"):
             raise RuntimeError("window stack start failed")
+        run_console_user_bootinfo(process)
         baseline = resources(process)
         pixels_first = run_cycle(process, 1, True)
         pixels_second = run_cycle(process, 2, False)

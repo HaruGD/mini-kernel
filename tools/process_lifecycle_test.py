@@ -72,7 +72,9 @@ int main() {
     parent->state = PROCESS_STATE_PAUSED;
     parent->resumable = 1;
     check(process_wait_begin(parent, PROCESS_WAIT_CHILD, 0, 0, 0) == 1);
+    check(process_set_focus(child->pid) == 1);
     process_mark_returned(child, PROCESS_TERM_EXIT, 7);
+    check(process_focused_pid() == parent->pid);
     check(parent->wait_pending == 0);
     check(parent->wait_result == PROCESS_WAIT_OK);
     check(parent->scheduler_state == SCHED_STATE_READY);

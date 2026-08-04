@@ -52,6 +52,11 @@ interactive child is active, only the newest descendant is woken to consume
 the shared input stream. A configure event recomputes the grid and sends
 `RESIZE`.
 
+The frontend reserves an independent bottom safety inset, so the final glyph
+row and cursor do not visually collide with the window frame. The same inset
+calculation determines both the rendered viewport and the row count reported
+to the backend.
+
 Normal `exit`, frontend hangup, and injected child loss all converge on one
 bounded teardown path. The frontend waits briefly after `HANGUP`, kills only
 an unresponsive owned child, drains a final `EXIT` packet, and reaps child
@@ -64,3 +69,8 @@ The GUI terminal now carries shell-native output, legacy filesystem commands,
 external ELF output, and inherited interactive ELF input. Kernel diagnostics
 remain on the serial/kernel console unless they are explicitly part of a
 user-requested command response.
+
+When a foreground command exits, the process layer restores input focus to
+its live foreground parent before waking the parent's child wait. This also
+applies to console user-shell commands, preventing a completed command such as
+`bootinfo` from leaving its parent shell alive but unable to receive input.

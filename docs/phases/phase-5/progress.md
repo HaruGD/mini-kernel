@@ -108,18 +108,27 @@ mode switching to a future mode-setting display backend.
   is killed only if it fails the bounded hangup deadline.
 - `make test-phase5d` passed host packet/model/ANSI/scrollback coverage and a
   QEMU run containing two normal command sessions, a live resize from
-  `720x440` to an exact `780x480` surface and `120x58` grid, a clean hangup,
+  `720x440` to an exact `780x480` surface and `120x57` grid, a clean hangup,
   and test-only injected child loss. Both normal sessions exercised `echo`,
   FAT32 `ls`, `save`, `cat`, external `uargs_c.elf` output, and inherited
   interactive `uinfo_c.elf` input entirely through the GUI stream. Both
   sessions rendered more than `8,000` visible non-background pixels.
-- QEMU active-resource and heap values returned to baseline after all four
-  lifecycles: baseline `(4, 21, 1, 0, 4, 0, 1, 107889, 4122016, 4165632)` and
-  final `(4, 21, 1, 0, 4, 0, 1, 107808, 4122016, 4165632)`. Lock-order,
+- QEMU active-resource and heap values returned to baseline after the console
+  regression and all four GUI lifecycles: baseline
+  `(4, 21, 1, 0, 4, 0, 1, 107879, 4122016, 4165632)` and final
+  `(4, 21, 1, 0, 4, 0, 1, 107811, 4122016, 4165632)`. Lock-order,
   recursion, and release violation counters remained zero.
 - Affected inherited regression passed: `make test-abi-freeze`,
   `make test-phase5c`, `make test-process-lifecycle`, `make test-ipc`,
   `make test-user-sdk` (`91/91`), and `make test-window-sdk`.
+- Post-completion hardening restores console input focus to a foreground
+  parent after an external command exits. The QEMU gate now starts the window
+  service, enters the console user shell, runs `bootinfo`, verifies the next
+  prompt remains interactive, and returns to the kernel shell.
+- The terminal uses a distinct bottom safety inset for both viewport rendering
+  and resize row negotiation. At `720x440` it exposes `117x52`; after the live
+  resize to `780x480` it exposes `120x57`, keeping the cursor clear of the
+  client-area boundary.
 
 ## Recording Workflow
 

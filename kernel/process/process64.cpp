@@ -1432,6 +1432,7 @@ static void process_finish(Process* process,
     uint32_t parent_generation = process->parent_generation;
     uint32_t own_pid = process->pid;
     uint32_t own_generation = process->generation;
+    uint8_t own_background = process->background;
 
     process->exiting = 1;
     for (uint32_t i = 0; i < THREAD_TABLE_SIZE; i++) {
@@ -1484,6 +1485,10 @@ static void process_finish(Process* process,
     parent_identity.pid = parent_pid;
     parent_identity.generation = parent_generation;
     Process* parent = find_process_by_identity(parent_identity);
+    if (parent != 0 && !own_background && parent->active &&
+        !parent->background) {
+        process_set_focus(parent->pid);
+    }
     if (parent == 0 || parent->state == PROCESS_STATE_RETURNED ||
         parent->state == PROCESS_STATE_FAILED) {
         process->reaped = 1;

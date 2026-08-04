@@ -1,6 +1,7 @@
 #include <os64/os64.h>
 
 #define TERMINAL_MARGIN 8
+#define TERMINAL_BOTTOM_MARGIN 12
 #define TERMINAL_CELL_WIDTH 6u
 #define TERMINAL_CELL_HEIGHT 8u
 
@@ -93,8 +94,9 @@ static void dimensions_for_window(const OsWindow* window,
                                   uint32_t* rows) {
     uint32_t width = window->surface_info.width > TERMINAL_MARGIN * 2
         ? window->surface_info.width - TERMINAL_MARGIN * 2 : 0;
-    uint32_t height = window->surface_info.height > TERMINAL_MARGIN * 2
-        ? window->surface_info.height - TERMINAL_MARGIN * 2 : 0;
+    uint32_t vertical_margins = TERMINAL_MARGIN + TERMINAL_BOTTOM_MARGIN;
+    uint32_t height = window->surface_info.height > vertical_margins
+        ? window->surface_info.height - vertical_margins : 0;
     *columns = width / TERMINAL_CELL_WIDTH;
     *rows = height / TERMINAL_CELL_HEIGHT;
     if (*columns < OS_TERMINAL_MIN_COLUMNS) *columns = OS_TERMINAL_MIN_COLUMNS;
@@ -140,7 +142,7 @@ static long paint(OsWindow* window) {
     OsRect bounds = {
         TERMINAL_MARGIN, TERMINAL_MARGIN,
         (int32_t)canvas.width - TERMINAL_MARGIN * 2,
-        (int32_t)canvas.height - TERMINAL_MARGIN * 2,
+        (int32_t)canvas.height - TERMINAL_MARGIN - TERMINAL_BOTTOM_MARGIN,
     };
     result = os_surface_canvas_fill_rect(
         &canvas, (OsRect){0, 0, (int32_t)canvas.width, (int32_t)canvas.height},
@@ -245,7 +247,7 @@ int main(int argc, char** argv) {
         os_printf("[terminal] shell launch failed %ld\n", result);
         return 1;
     }
-    if (os_terminal_model_init(&terminal_model, 117, 53) < 0) {
+    if (os_terminal_model_init(&terminal_model, 117, 52) < 0) {
         terminate_child();
         return 1;
     }

@@ -134,7 +134,7 @@ def main() -> int:
     required_terminal = [
         "os_window_create", "os_window_apply_configure", "os_terminal_model_render",
         "OS_TERMINAL_COMMAND_RESIZE", "OS_TERMINAL_COMMAND_HANGUP",
-        "os_reap_children",
+        "os_reap_children", "TERMINAL_BOTTOM_MARGIN",
     ]
     required_shell = [
         '"ushell/ushell_main.inc"', "os_terminal_session_bind",
