@@ -35,6 +35,8 @@ permission mask.
 - Display service: correlated full-frame or bounded partial-damage surface present
 - Window SDK: create/destroy, mapped drawing, surface attach/replace, bounded
   damage, show/hide, move/resize, focus, live information, and event wait
+- Terminal SDK: bounded frontend/backend packets, cell model, scrollback,
+  baseline ANSI control, responsive sizing, and mapped-surface rendering
 - Input: blocking and nonblocking key/pointer events with modifiers and button state
 - IPC: fixed-size message initialization, send, nonblocking receive, and blocking wait
 - Services: register, find, and unregister short-lived service names
@@ -114,6 +116,15 @@ event-driven GUI application:
 ```sh
 make test-window-sdk
 ```
+
+Phase 5D adds User SDK 2.5 terminal packets and the bounded terminal model:
+
+```sh
+make test-phase5d
+```
+
+The protocol and lifecycle rules are documented in
+`docs/reference/terminal_sdk.md`.
 
 Phase 4.5C adds thread ABI v1 and User SDK 2.2 lifecycle wrappers:
 

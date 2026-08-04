@@ -21,6 +21,7 @@
 #include "os64/service_protocol_types.h"
 #include "os64/service_types.h"
 #include "os64/surface.h"
+#include "os64/terminal.h"
 #include "os64/text.h"
 #include "os64/time.h"
 #include "os64/ui.h"
@@ -30,7 +31,7 @@
 #include "os64/window.h"
 
 #define OS64_SDK_VERSION_MAJOR 2u
-#define OS64_SDK_VERSION_MINOR 4u
+#define OS64_SDK_VERSION_MINOR 5u
 #define OS_OK 0
 #define OS_ERROR (-1)
 #define OS_PATH_MAX 160u

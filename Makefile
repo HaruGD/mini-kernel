@@ -33,7 +33,7 @@ USER_ELFS = $(USER_EASM_ELFS) $(USER_C_ELFS)
 USER_SDK_SOURCES = $(wildcard ./user/sdk/src/*.c)
 USER_SDK_OBJECTS = $(patsubst ./user/sdk/src/%.c,./build/user_sdk_%.o,$(USER_SDK_SOURCES))
 USER_SDK_LIB = ./build/libos64.a
-USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/display_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/process_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h ./include/os64/surface_types.h ./include/os64/thread_types.h ./include/os64/window_types.h
+USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk/src/*.h) ./include/os64/display_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/process_types.h ./include/os64/service_types.h ./include/os64/service_manager_types.h ./include/os64/service_protocol_types.h ./include/os64/surface_types.h ./include/os64/terminal_types.h ./include/os64/thread_types.h ./include/os64/window_types.h
 WINDOWD_MODULE_SOURCES = $(wildcard ./user/programs/windowd/*.c)
 WINDOWD_MODULE_OBJECTS = $(patsubst ./user/programs/windowd/%.c,./build/windowd_%.o,$(WINDOWD_MODULE_SOURCES))
 WINDOW_DEMO_OBJECT = ./build/window_demo.o
@@ -59,7 +59,7 @@ PHASE5_ASSET_DIR = ./build/assets
 PHASE5_ASSETS = $(PHASE5_ASSET_DIR)/image_demo.osimg $(PHASE5_ASSET_DIR)/image_demo.bmp $(PHASE5_ASSET_DIR)/image_demo.png
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES) $(PHASE5_ASSETS),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c test-terminal-model test-gui-terminal test-phase5d clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -420,6 +420,14 @@ test-responsive-window:
 	python3 ./tools/window_sdk_test.py
 
 test-phase5c: test-image-codecs test-ui-rendering test-responsive-window test-widget-sdk
+
+test-terminal-model:
+	python3 ./tools/terminal_model_test.py
+
+test-gui-terminal: test-terminal-model uefi
+	python3 ./tools/gui_terminal_smoke.py
+
+test-phase5d: test-gui-terminal
 
 test-service-registry:
 	python3 ./tools/service_registry_test.py

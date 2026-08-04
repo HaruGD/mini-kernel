@@ -1,4 +1,8 @@
-int main(void) {
+#ifndef USHELL_MAIN
+#define USHELL_MAIN main
+#endif
+
+int USHELL_MAIN(void) {
     refresh_shell_cwd();
     user_write_cstr(
         "=== ushell_c.elf ===\n"
