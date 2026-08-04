@@ -66,6 +66,7 @@ long os_window_attach_surface(OsWindow* window,
                               uint32_t* pixels,
                               const OsGraphicsSurfaceHandleInfo* info);
 long os_window_replace_surface(OsWindow* window);
+long os_window_apply_configure(OsWindow* window);
 long os_window_damage(OsWindow* window,
                       const OsRect* rects,
                       uint32_t rect_count);

@@ -323,8 +323,8 @@ long os_window_attach_surface(OsWindow* window,
                               uint32_t* pixels,
                               const OsGraphicsSurfaceHandleInfo* info) {
     if (!window_valid(window) || surface == 0 || pixels == 0 || info == 0 ||
-        info->width != window->surface_info.width ||
-        info->height != window->surface_info.height ||
+        info->width != window->frame_width ||
+        info->height != window->frame_height ||
         info->stride_pixels < info->width ||
         info->pixel_format != window->surface_info.pixel_format) {
         return OS_ERR_INVALID_ARGUMENT;
@@ -365,8 +365,8 @@ long os_window_replace_surface(OsWindow* window) {
     OsHandle surface = 0;
     uint32_t* pixels = 0;
     OsGraphicsSurfaceHandleInfo info;
-    long result = allocate_surface(window->surface_info.width,
-                                   window->surface_info.height,
+    long result = allocate_surface(window->frame_width,
+                                   window->frame_height,
                                    window->surface_info.pixel_format,
                                    &surface, &pixels, &info);
     if (result < 0) {
@@ -375,6 +375,56 @@ long os_window_replace_surface(OsWindow* window) {
     result = os_window_attach_surface(window, surface, pixels, &info);
     if (result < 0) {
         release_surface(surface, pixels);
+    }
+    return result;
+}
+
+long os_window_apply_configure(OsWindow* window) {
+    if (!window_valid(window) || window->frame_width == 0 ||
+        window->frame_height == 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    if (window->surface_info.width == window->frame_width &&
+        window->surface_info.height == window->frame_height) {
+        return OS_SUCCESS;
+    }
+
+    /*
+     * A live resize may advance again between GET_INFO and SET_SURFACE.  Keep
+     * the published surface alive and retry against the newest authoritative
+     * frame a bounded number of times.  This drains short configure storms
+     * without turning an unresponsive server into an unbounded allocation
+     * loop.
+     */
+    long result = OS_ERR_INVALID_ARGUMENT;
+    for (uint32_t attempt = 0; attempt < 4; attempt++) {
+        OsWindowInfo latest;
+        result = os_window_get_info(window, &latest);
+        if (result < 0) {
+            return result;
+        }
+        if (window->surface_info.width == window->frame_width &&
+            window->surface_info.height == window->frame_height) {
+            return OS_SUCCESS;
+        }
+
+        OsHandle surface = 0;
+        uint32_t* pixels = 0;
+        OsGraphicsSurfaceHandleInfo info;
+        result = allocate_surface(window->frame_width, window->frame_height,
+                                  window->surface_info.pixel_format,
+                                  &surface, &pixels, &info);
+        if (result < 0) {
+            return result;
+        }
+        result = os_window_attach_surface(window, surface, pixels, &info);
+        if (result >= 0) {
+            return result;
+        }
+        release_surface(surface, pixels);
+        if (result != OS_ERR_INVALID_ARGUMENT) {
+            return result;
+        }
     }
     return result;
 }

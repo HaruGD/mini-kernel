@@ -87,6 +87,7 @@ long os_ui_add(OsUiContext* context,
                uint32_t* index_out);
 long os_ui_set_text(OsUiContext* context, uint32_t index, const char* text);
 long os_ui_set_value(OsUiContext* context, uint32_t index, int32_t value);
+long os_ui_set_rect(OsUiContext* context, uint32_t index, OsRect rect);
 long os_ui_layout(OsUiContext* context, uint32_t container_index);
 long os_ui_draw(OsUiContext* context, OsSurfaceCanvas* canvas);
 long os_ui_dispatch(OsUiContext* context,

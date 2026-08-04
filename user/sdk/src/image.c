@@ -188,6 +188,40 @@ static int image_valid(const OsImage* image) {
                image->allocation_bytes;
 }
 
+long os_image_fit_rect(const OsImage* image,
+                       OsRect bounds,
+                       OsRect* fitted_out) {
+    if (!image_valid(image) || fitted_out == 0 || bounds.width <= 0 ||
+        bounds.height <= 0) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    int64_t bounds_right = (int64_t)bounds.x + bounds.width;
+    int64_t bounds_bottom = (int64_t)bounds.y + bounds.height;
+    if (bounds_right > INT32_MAX || bounds_right < INT32_MIN ||
+        bounds_bottom > INT32_MAX || bounds_bottom < INT32_MIN)
+        return OS_ERR_OUT_OF_RANGE;
+    uint64_t width = (uint32_t)bounds.width;
+    uint64_t height = width * image->height / image->width;
+    if (height == 0) height = 1;
+    if (height > (uint32_t)bounds.height) {
+        height = (uint32_t)bounds.height;
+        width = height * image->width / image->height;
+        if (width == 0) width = 1;
+    }
+    if (width > INT32_MAX || height > INT32_MAX) return OS_ERR_OUT_OF_RANGE;
+    int32_t fitted_width = (int32_t)width;
+    int32_t fitted_height = (int32_t)height;
+    int64_t x = (int64_t)bounds.x + (bounds.width - fitted_width) / 2;
+    int64_t y = (int64_t)bounds.y + (bounds.height - fitted_height) / 2;
+    if (x < INT32_MIN || x > INT32_MAX || y < INT32_MIN || y > INT32_MAX)
+        return OS_ERR_OUT_OF_RANGE;
+    fitted_out->width = fitted_width;
+    fitted_out->height = fitted_height;
+    fitted_out->x = (int32_t)x;
+    fitted_out->y = (int32_t)y;
+    return OS_SUCCESS;
+}
+
 static uint32_t blend(uint32_t source, uint32_t destination) {
     uint32_t alpha = source >> 24;
     uint32_t inverse = 255u - alpha;

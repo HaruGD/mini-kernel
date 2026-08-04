@@ -54,6 +54,7 @@ long os_image_decode(const void* bytes,
                      uint32_t format_hint,
                      OsImage* image);
 long os_image_load(const char* path, OsImage* image);
+long os_image_fit_rect(const OsImage* image, OsRect bounds, OsRect* fitted_out);
 long os_surface_canvas_draw_image(OsSurfaceCanvas* canvas,
                                   const OsImage* image,
                                   OsRect source,

@@ -120,13 +120,17 @@ int main(void) {
             continue;
         }
         if (event.command == OS_WINDOW_EVENT_CONFIGURE) {
-            if (os_window_get_info(&window, &info) < 0) {
-                os_puts("[ugui] configure information failed");
+            if (os_window_apply_configure(&window) < 0 ||
+                paint_window(&window, 1) < 0 ||
+                os_window_damage_all(&window) < 0 ||
+                os_window_get_info(&window, &info) < 0) {
+                os_puts("[ugui] configure redraw failed");
                 os_window_destroy(&window);
                 return 1;
             }
-            os_printf("[ugui] configured %d,%d %ux%u\n",
-                      info.x, info.y, info.width, info.height);
+            os_printf("[ugui] configured %d,%d %ux%u surface=%ux%u\n",
+                      info.x, info.y, info.width, info.height,
+                      window.surface_info.width, window.surface_info.height);
             continue;
         }
         if (event.command == OS_WINDOW_EVENT_CLOSE_REQUEST) {

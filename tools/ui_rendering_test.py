@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = r'''
 #include <assert.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -51,6 +52,17 @@ static void click(OsUiContext* ui, uint32_t index, OsUiEventResult* result) {
     assert(os_ui_dispatch(ui, &event, result) == 0);
 }
 
+static uint32_t glyph_pixels(const uint32_t* pixels, uint32_t stride,
+                             uint32_t x) {
+    uint32_t hash = 2166136261u;
+    for (uint32_t y = 0; y < 7; y++)
+        for (uint32_t column = 0; column < 5; column++) {
+            hash ^= pixels[y * stride + x + column];
+            hash *= 16777619u;
+        }
+    return hash;
+}
+
 int main(void) {
     uint32_t storage[64 * 48 + 2];
     storage[0] = 0xDEADBEEFu;
@@ -60,6 +72,24 @@ int main(void) {
     info.pixel_format = OS64_PIXEL_FORMAT_RGB;
     OsSurfaceCanvas canvas;
     assert(os_surface_canvas_init(&canvas, storage + 1, &info) == 0);
+    memset(storage + 1, 0, 64 * 48 * sizeof(uint32_t));
+    assert(os_surface_canvas_draw_text(&canvas, 0, 0, "Aa", OS_RGB(1,2,3),
+                                       0, OS_SURFACE_TEXT_TRANSPARENT_BG) == 0);
+    assert(glyph_pixels(storage + 1, 64, 0) !=
+           glyph_pixels(storage + 1, 64, 6));
+    const char punctuation[] = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+    for (uint32_t i = 0; punctuation[i] != '\0'; i++) {
+        memset(storage + 1, 0, 64 * 48 * sizeof(uint32_t));
+        char value[2] = {punctuation[i], 0};
+        assert(os_surface_canvas_draw_text(&canvas, 0, 0, value,
+                                           OS_RGB(1,2,3), 0,
+                                           OS_SURFACE_TEXT_TRANSPARENT_BG) == 0);
+        uint32_t lit = 0;
+        for (uint32_t pixel = 0; pixel < 5 * 7; pixel++)
+            if ((storage + 1)[(pixel / 5) * 64 + pixel % 5] != 0) lit++;
+        assert(lit != 0);
+    }
+    memset(storage + 1, 0, 64 * 48 * sizeof(uint32_t));
 
     OsUiContext ui;
     assert(os_ui_init(&ui, 0) == 0);
@@ -79,7 +109,7 @@ int main(void) {
     }
     assert(os_ui_set_text(&ui, indices[0], "UTF-8: \xED\xA0\x80") == 0);
     assert(os_ui_set_text(&ui, indices[1], "BUTTON") == 0);
-    assert(os_ui_set_text(&ui, indices[2], "EDIT") == 0);
+    assert(os_ui_set_text(&ui, indices[2], "Edit: ") == 0);
     assert(os_ui_set_text(&ui, indices[3], "CHECK") == 0);
     assert(os_ui_set_text(&ui, indices[4], "LIST") == 0);
     assert(os_ui_set_text(&ui, indices[5], "MENU") == 0);
@@ -109,10 +139,14 @@ int main(void) {
     assert(os_ui_dispatch(&ui, &event, &result) == 0);
     assert(os_ui_focused(&ui) != OS_UI_NONE);
     ui.focused = indices[2];
-    event = key(0x1Eu, 'A');
+    event = key(0x1Eu, 'a');
     assert(os_ui_dispatch(&ui, &event, &result) == 0);
     assert(result.action == OS_UI_ACTION_CHANGE);
-    assert(strcmp(ui.widgets[indices[2]].text, "EDITA") == 0);
+    assert(strcmp(ui.widgets[indices[2]].text, "Edit: a") == 0);
+    assert(os_ui_set_rect(&ui, indices[2], (OsRect){0, 10, 60, 20}) == 0);
+    memset(storage + 1, 0, 64 * 48 * sizeof(uint32_t));
+    assert(os_ui_draw(&ui, &canvas) == 0);
+    assert((storage + 1)[14 * 64 + 48] == ui.theme.accent);
     ui.focused = indices[3];
     event = key(OS_KEY_SPACE, ' ');
     assert(os_ui_dispatch(&ui, &event, &result) == 0);
@@ -128,6 +162,9 @@ int main(void) {
     assert(os_ui_add(&ui, OS_UI_WIDGET_BUTTON, 11, root,
                      (OsRect){0,0,1,1}, OS_UI_FLAG_VISIBLE, 0) ==
            OS_ERR_ALREADY_EXISTS);
+    assert(os_ui_set_rect(&ui, indices[1],
+                          (OsRect){INT32_MAX, 0, 2, 1}) ==
+           OS_ERR_INVALID_ARGUMENT);
 
     uint32_t index = 0, codepoint = 0;
     const char invalid[] = "\xF0\x28\x8C\x28";

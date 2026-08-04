@@ -39,6 +39,7 @@ static uint32_t server_format = OS64_PIXEL_FORMAT_BGR;
 static uint32_t server_content;
 static uint32_t server_visible;
 static uint32_t server_focused;
+static int surface_race_once;
 
 typedef struct FakeSurface {
     int active;
@@ -257,6 +258,13 @@ long os_msg_v2_send_to_identity(OsProcessIdentity target,
         server_visible = 1;
         unrelated_reply_pending = 1;
         queue_reply(message->request_id, command, words[5]);
+    } else if (command == OS_WINDOW_SET_SURFACE && surface_race_once) {
+        surface_race_once = 0;
+        server_width += 10;
+        server_height += 5;
+        queue_reply(message->request_id, command, server_content);
+        ((OsWindowReply*)reply_message.payload)->result =
+            OS_ERR_INVALID_ARGUMENT;
     } else if (command == OS_WINDOW_SET_SURFACE || command == OS_WINDOW_RESIZE) {
         server_content = words[7];
         server_width = words[8];
@@ -391,6 +399,51 @@ int main(void) {
     check(os_window_get_info(&window, &info) == OS_SUCCESS &&
           info.width == 140 && info.height == 90,
           "resized information");
+    OsHandle configured_old = window.surface;
+    server_width = 200;
+    server_height = 120;
+    server_stride = window.surface_info.stride_pixels;
+    queue_event(&window, OS_WINDOW_EVENT_CONFIGURE, 9, window.window_id);
+    check(os_window_poll_event(&window, &event) == OS_SUCCESS &&
+          window.frame_width == 200 && window.frame_height == 120 &&
+          window.surface_info.width == 140 && window.surface_info.height == 90,
+          "configure records authoritative frame before publication");
+    check(os_window_apply_configure(&window) == OS_SUCCESS &&
+          window.surface_info.width == 200 && window.surface_info.height == 120 &&
+          !surfaces[configured_old].active,
+          "configure allocate-before-publish surface replacement");
+
+    uint64_t coalesced_handle = next_handle;
+    queue_event(&window, OS_WINDOW_EVENT_CONFIGURE, 10, window.window_id);
+    check(os_window_poll_event(&window, &event) == OS_SUCCESS,
+          "coalesced configure event");
+    before = sent_count;
+    check(os_window_apply_configure(&window) == OS_SUCCESS &&
+          next_handle == coalesced_handle && sent_count == before,
+          "stale configure coalesces without allocation or publication");
+
+    configured_old = window.surface;
+    server_width = 210;
+    server_height = 125;
+    surface_race_once = 1;
+    queue_event(&window, OS_WINDOW_EVENT_CONFIGURE, 11, window.window_id);
+    check(os_window_poll_event(&window, &event) == OS_SUCCESS &&
+          os_window_apply_configure(&window) == OS_SUCCESS &&
+          window.surface_info.width == 220 &&
+          window.surface_info.height == 130 &&
+          !surfaces[configured_old].active,
+          "configure race retries the newest authoritative geometry");
+
+    OsHandle failure_surface = window.surface;
+    server_width = 700;
+    server_height = 120;
+    server_stride = window.surface_info.stride_pixels;
+    queue_event(&window, OS_WINDOW_EVENT_CONFIGURE, 12, window.window_id);
+    check(os_window_poll_event(&window, &event) == OS_SUCCESS &&
+          os_window_apply_configure(&window) == OS_ERR_NO_RESOURCES &&
+          window.surface == failure_surface && surfaces[failure_surface].active &&
+          window.surface_info.width == 220 && window.frame_width == 700,
+          "configure allocation failure preserves published surface");
     check(os_window_hide(&window) == OS_SUCCESS && window.visible == 0,
           "hide");
     check(os_window_show(&window) == OS_SUCCESS && window.visible == 1,
@@ -458,7 +511,8 @@ def require_sources() -> None:
         raise RuntimeError("GUI app bypasses the public Window SDK")
     required = (
         "os_window_create", "os_window_replace_surface", "os_window_damage",
-        "os_window_resize", "os_window_wait_event", "os_window_destroy",
+        "os_window_resize", "os_window_apply_configure",
+        "os_window_wait_event", "os_window_destroy",
         "os_surface_canvas_draw_text",
     )
     if any(marker not in app for marker in required):

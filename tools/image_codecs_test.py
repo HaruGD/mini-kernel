@@ -100,7 +100,21 @@ int main(int argc, char** argv) {
     assert(canvas_pixels[1 * 4 + 1] == OS_RGB(110, 20, 30));
     assert(canvas_pixels[0] == OS_RGB(20, 40, 60));
 
+    OsImage wide;
+    os_image_init(&wide);
+    wide.width = 4; wide.height = 2; wide.stride_pixels = 4;
+    wide.allocation_bytes = 32;
+    wide.pixels = calloc(1, 32);
+    assert(wide.pixels);
+    OsRect fitted;
+    assert(os_image_fit_rect(&wide, (OsRect){10,20,100,100}, &fitted) == 0);
+    assert(fitted.x == 10 && fitted.y == 45 &&
+           fitted.width == 100 && fitted.height == 50);
+    assert(os_image_fit_rect(&wide, (OsRect){INT32_MAX,0,2,2}, &fitted) ==
+           OS_ERR_OUT_OF_RANGE);
+
     os_image_destroy(&alpha);
+    os_image_destroy(&wide);
     os_image_destroy(&native_image);
     os_image_destroy(&bmp_image);
     os_image_destroy(&png_image);

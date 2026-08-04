@@ -1,6 +1,8 @@
 #include "os64/os64.h"
 #include "os64/ui.h"
 
+#include <limits.h>
+
 static int context_valid(const OsUiContext* context) {
     return context != 0 && context->size == sizeof(*context) &&
            context->abi_version == OS64_UI_ABI_VERSION &&
@@ -24,6 +26,13 @@ static int point_in(OsRect rect, int32_t x, int32_t y) {
     return rect.width > 0 && rect.height > 0 && x >= rect.x && y >= rect.y &&
            (int64_t)x < (int64_t)rect.x + rect.width &&
            (int64_t)y < (int64_t)rect.y + rect.height;
+}
+
+static int rect_valid(OsRect rect) {
+    int64_t right = (int64_t)rect.x + rect.width;
+    int64_t bottom = (int64_t)rect.y + rect.height;
+    return rect.width >= 0 && rect.height >= 0 && right <= INT32_MAX &&
+           right >= INT32_MIN && bottom <= INT32_MAX && bottom >= INT32_MIN;
 }
 
 static void add_damage(OsUiContext* context, OsRect rect) {
@@ -68,8 +77,8 @@ long os_ui_add(OsUiContext* context,
                uint32_t flags,
                uint32_t* index_out) {
     if (!context_valid(context) || type < OS_UI_WIDGET_CONTAINER ||
-        type > OS_UI_WIDGET_SCROLL || id == 0 || rect.width < 0 ||
-        rect.height < 0 || context->count >= OS_UI_MAX_WIDGETS ||
+        type > OS_UI_WIDGET_SCROLL || id == 0 || !rect_valid(rect) ||
+        context->count >= OS_UI_MAX_WIDGETS ||
         (parent_index != OS_UI_NONE && parent_index >= context->count))
         return OS_ERR_INVALID_ARGUMENT;
     for (uint32_t i = 0; i < context->count; i++)
@@ -123,6 +132,16 @@ long os_ui_set_value(OsUiContext* context, uint32_t index, int32_t value) {
         else widget->flags &= ~OS_UI_FLAG_CHECKED;
     }
     add_damage(context, widget->rect);
+    return OS_SUCCESS;
+}
+
+long os_ui_set_rect(OsUiContext* context, uint32_t index, OsRect rect) {
+    if (!context_valid(context) || index >= context->count || !rect_valid(rect)) {
+        return OS_ERR_INVALID_ARGUMENT;
+    }
+    add_damage(context, context->widgets[index].rect);
+    context->widgets[index].rect = rect;
+    add_damage(context, rect);
     return OS_SUCCESS;
 }
 
@@ -181,6 +200,12 @@ static void draw_widget(OsUiContext* context,
     OsUiWidget* widget = &context->widgets[index];
     if (!widget_visible(widget) || widget->rect.width <= 0 || widget->rect.height <= 0)
         return;
+    int64_t widget_right = (int64_t)widget->rect.x + widget->rect.width;
+    int64_t widget_bottom = (int64_t)widget->rect.y + widget->rect.height;
+    if (widget_right <= 0 || widget_bottom <= 0 ||
+        widget->rect.x >= (int32_t)canvas->width ||
+        widget->rect.y >= (int32_t)canvas->height)
+        return;
     uint32_t foreground = widget_enabled(widget)
         ? context->theme.text : context->theme.disabled_text;
     uint32_t background = context->theme.surface;
@@ -210,6 +235,33 @@ static void draw_widget(OsUiContext* context,
     os_surface_canvas_draw_text(canvas, text_x, text_y, widget->text,
                                 foreground, background,
                                 OS_SURFACE_TEXT_TRANSPARENT_BG);
+    if (widget->type == OS_UI_WIDGET_TEXT_FIELD &&
+        index == context->focused && widget_enabled(widget)) {
+        uint32_t bytes = 0;
+        while (widget->text[bytes] != '\0') bytes++;
+        uint32_t at = 0;
+        uint32_t columns = 0;
+        while (at < bytes) {
+            uint32_t codepoint;
+            if (os_utf8_next(widget->text, bytes, &at, &codepoint) < 0) break;
+            if (codepoint == '\n') break;
+            columns++;
+        }
+        int64_t caret64 = (int64_t)text_x + (int64_t)columns * 6;
+        int64_t right64 = (int64_t)widget->rect.x + widget->rect.width - 3;
+        int64_t top64 = (int64_t)widget->rect.y + 4;
+        int64_t bottom64 = (int64_t)widget->rect.y + widget->rect.height - 5;
+        int64_t selected_caret = caret64 > right64 ? right64 : caret64;
+        if (widget->rect.width >= 5 && widget->rect.height >= 9 &&
+            selected_caret >= INT32_MIN && selected_caret <= INT32_MAX &&
+            top64 >= INT32_MIN && bottom64 <= INT32_MAX &&
+            selected_caret >= (int64_t)widget->rect.x + 2 && bottom64 >= top64)
+            os_surface_canvas_draw_line(canvas, (int32_t)selected_caret,
+                                        (int32_t)top64,
+                                        (int32_t)selected_caret,
+                                        (int32_t)bottom64,
+                                        context->theme.accent);
+    }
 }
 
 long os_ui_draw(OsUiContext* context, OsSurfaceCanvas* canvas) {

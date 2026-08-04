@@ -134,13 +134,32 @@ def run() -> int:
                for actual, expected in zip(pixel, (60, 180, 30))):
             raise RuntimeError(f"decoded BMP presentation pixel mismatch {pixel}")
 
+        # Resize the server-owned frame from 600x420 to 700x480. The client
+        # must collapse queued CONFIGURE events to the latest geometry,
+        # publish an exactly-sized replacement surface, relayout, and repaint.
+        hmp(process, "mouse_move 140 130", 0.1)
+        hmp(process, "mouse_button 1", 0.1)
+        for _ in range(5):
+            hmp(process, "mouse_move 20 12", 0.03)
+        resized = wait_for(
+            "[image-ui] configured frame=700x480 surface=700x480 compact=0",
+            25, ready)
+        hmp(process, "mouse_button 0", 0.1)
+        hmp(process, f"screendump {SCREEN}", 0.1)
+        resized_pixel = read_ppm_pixel(SCREEN, 431, 153)
+        if any(abs(actual - expected) > 5
+               for actual, expected in zip(resized_pixel, (60, 180, 30))):
+            raise RuntimeError(
+                f"responsive BMP presentation pixel mismatch {resized_pixel}")
+
         hmp(process, "sendkey tab")
-        wait_for("[image-ui] action=3 widget=102", 15, ready)
+        wait_for("[image-ui] action=3 widget=102", 15, resized)
         hmp(process, "sendkey spc")
         activated = wait_for("[image-ui] action=1 widget=102", 15, ready)
         hmp(process, "sendkey tab")
         hmp(process, "sendkey a")
         edited = wait_for("[image-ui] action=2 widget=103", 15, activated)
+        edited = wait_for("[image-ui] text=edit: a", 15, edited)
         hmp(process, "sendkey tab")
         hmp(process, "sendkey spc")
         checked = wait_for("[image-ui] action=2 widget=104 value=1", 15, edited)
@@ -183,7 +202,7 @@ def run() -> int:
     text = SERIAL.read_text(errors="replace")
     if "KERNEL PANIC" in text or "CPU EMERGENCY" in text:
         raise RuntimeError("fatal kernel path observed")
-    print(f"image/widget QEMU presentation OK pixel={pixel}")
+    print(f"image/widget QEMU presentation OK pixel={pixel} resized={resized_pixel}")
     print(f"resource baseline={baseline}")
     print(f"resource final={final}")
     return 0
