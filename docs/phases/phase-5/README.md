@@ -22,11 +22,10 @@ desktop protocol and recovery behavior are stable.
 
 ## Current Status
 
-Phase 5A and 5B are complete. The 5C image, UTF-8 text, drawing, and widget SDK
-foundation is implemented, but interactive review reopened its exit gate for
-distinct lowercase glyphs, a visible text caret, and client-side responsive
-surface/layout replacement after window resize. These 5C.1 items must close
-before Phase 5D, the GUI terminal, begins.
+Phase 5A through 5C are complete. Phase 5C.1 closed the interactive rendering
+gaps with distinct lowercase and punctuation glyphs, a visible text caret,
+aspect-preserving image fitting, and client-side responsive surface/layout
+replacement. Phase 5D, the GUI terminal, is next.
 
 ## Intended Result
 

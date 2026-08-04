@@ -21,7 +21,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | --- | --- | --- | --- | --- | --- |
 | 5A: Desktop session and layer policy | Complete | 2026-08-02 | 2026-08-02 | `88a16ea` | P5-R01, P5-R02 |
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
-| 5C: Graphics, fonts, images, and widget toolkit | In progress | 2026-08-02 | - | `a13b5a8` (foundation) | P5-R05, P5-R06 |
+| 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-04 | `a13b5a8`, `ba15722` | P5-R05, P5-R06 |
 | 5D: GUI terminal | Planned | - | - | - | P5-R07 |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
@@ -30,8 +30,8 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: 5A and 5B are complete. The 5C foundation exists, but 5C.1
-responsive rendering completion is active and blocks entry into 5D.
+Current status: 5A through 5C are complete. The 5C.1 responsive rendering gate
+is closed, so Phase 5D may begin.
 
 ## Completed Evidence
 
@@ -49,7 +49,7 @@ responsive rendering completion is active and blocks entry into 5D.
 - QEMU exercised PS/2 motion, button delivery, focus, capture, title-bar drag,
   edge resize, controls, cursor ordering, and exact active-resource cleanup.
 
-### 5C Foundation Evidence
+### 5C: Graphics, Fonts, Images, And Widget Toolkit
 
 - `make test-phase5c` passed native `.osimg`, BMP, and PNG positive and
   malformed fixtures; deterministic conversion; alpha/scaling pixels;
@@ -59,21 +59,26 @@ responsive rendering completion is active and blocks entry into 5D.
   baseline widget, and released its process, surface, mapping, and handles.
 - `make test-user-sdk`, `make test-window-sdk`, and `make test-window-input`
   passed as affected inherited regression.
-
-This evidence remains valid for the implemented foundation, but does not close
-5C after interactive review found that lowercase input was stored correctly
-and then rendered as uppercase, and that the sample application did not
-replace its surface or recompute its layout after configure events.
-
-## Active 5C.1 Completion Work
-
-- add distinct lowercase and required ASCII punctuation glyphs;
-- render a visible caret in the focused text field;
-- handle configure events with allocate-before-publish surface replacement;
-- recompute bounded widget/image layout for the new client size;
-- preserve requested image aspect ratios;
-- test minimum/overflow sizes, resize storms, allocation failure, stale
-  configure events, and exact resource cleanup in host and QEMU paths.
+- 5C.1 added distinct `a-z` and printable ASCII punctuation glyphs and a
+  visible focused-text-field caret without changing stored lowercase input.
+- The public Window SDK now tracks server-authoritative frame geometry and
+  performs bounded allocate-before-publish surface replacement. A live resize
+  race re-queries the newest geometry while allocation failure preserves the
+  old published surface and mapping.
+- The public UI and image APIs support bounded rectangle replacement and
+  centered aspect-preserving image fitting. The sample application recomputes
+  every widget and image rectangle, repaints, and damages the new client area.
+- Host tests cover glyph distinction, punctuation, caret pixels, overflow,
+  aspect fitting, stale/duplicate configure coalescing, allocation failure,
+  and configure/publication races.
+- `make test-phase5c` passed its complete host and QEMU gate. QEMU dragged the
+  client from `600x420` to `700x480`, observed an exact `700x480` replacement
+  surface, verified the resized BMP pixel `(60, 180, 30)`, preserved lowercase
+  text, operated all baseline widgets, and finished with stable active
+  resources: baseline `(4, 21, 1, 0, 4, 0, 1, 107889, 4122016, 4165632)` and
+  final `(4, 21, 1, 0, 4, 0, 1, 107860, 4122016, 4165632)`.
+- Affected inherited regression also passed: `make test-window-sdk`,
+  `make test-pointer-routing`, and `make test-user-sdk` (`91/91`).
 
 The current GOP logical display remains fixed at its selected boot mode. QEMU
 viewport zoom is only presentation scaling. Resolution-aware desktop layout
