@@ -4,6 +4,35 @@ Experimental x86 OS project for learning low-level systems work by building a 64
 
 This project is developed by a non-professional developer with heavy AI assistance for learning and experimentation.
 
+## Core Philosophy: Documented By Design
+
+Documentation is part of the operating system, not an optional description
+written after implementation. Undocumented behavior is not a supported
+contract. When code and documentation disagree, at least one of them is a bug.
+
+A kernel feature is complete only when its implementation, specification,
+error contract, failure handling, regression coverage, and measured execution
+evidence are complete together. Every externally observable subsystem must
+document:
+
+- its purpose, scope, authority, ownership, and lifecycle;
+- its public ABI, data structures, inputs, outputs, and versioning policy;
+- every success result and distinct error code, without ambiguous `NULL`, zero,
+  or boolean failure conventions where the caller needs a cause;
+- its permissions, trust boundaries, user-memory rules, and security impact;
+- its concurrency model, lock ordering, execution context, and blocking rules;
+- its resource limits, allocation behavior, cancellation, cleanup, and recovery;
+- its state transitions, invariants, unsupported cases, and compatibility rules;
+- the positive, negative, fault-injection, regression, and soak evidence that
+  supports its completion claim.
+
+Machine-readable contracts should be the single source of truth wherever
+practical, generating shared constants, SDK bindings, reference documentation,
+and ABI regression checks. A change that alters observable behavior must update
+its contract and tests in the same work item. Documentation debt is treated as
+technical debt, and a feature without current documentation is not marked
+complete.
+
 The current active path is:
 
 ```text
