@@ -9,15 +9,24 @@ UEFI_CC = gcc
 UEFI_LD = ld
 UEFI_OBJCOPY = objcopy
 OVMF_VARS_TEMPLATE = /usr/share/OVMF/OVMF_VARS_4M.fd
+KERNEL_OPT ?= -Os
+KERNEL_OPT_ALLOWED = -Os -Og -O2
+ifeq ($(filter $(KERNEL_OPT),$(KERNEL_OPT_ALLOWED)),)
+$(error unsupported KERNEL_OPT '$(KERNEL_OPT)'; expected one of $(KERNEL_OPT_ALLOWED))
+endif
+ifneq ($(words $(KERNEL_OPT)),1)
+$(error KERNEL_OPT must select exactly one optimization profile)
+endif
+KERNEL_PROFILE_STAMP = ./build/.kernel-profile
 
 # Common flags
 INCLUDES = -I./include -I./drivers/fs/fat32/include -I.
-HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mgeneral-regs-only -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-omit-frame-pointer $(INCLUDES)
-HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mgeneral-regs-only -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-omit-frame-pointer $(INCLUDES)
+HOST64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -std=gnu11 -m64 -mgeneral-regs-only -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-omit-frame-pointer $(INCLUDES)
+HOST64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics -m64 -mgeneral-regs-only -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-omit-frame-pointer $(INCLUDES)
 UEFI_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fshort-wchar -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer $(INCLUDES)
 USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mno-red-zone -fpie -fno-stack-protector -I./user/include -I./user/sdk/include
 DRIVER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/include
-DRIVER64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/include
+DRIVER64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/include
 
 # Userland
 USER_ASM_SOURCES = $(wildcard ./user/programs/*.asm)
@@ -59,7 +68,7 @@ PHASE5_ASSET_DIR = ./build/assets
 PHASE5_ASSETS = $(PHASE5_ASSET_DIR)/image_demo.osimg $(PHASE5_ASSET_DIR)/image_demo.bmp $(PHASE5_ASSET_DIR)/image_demo.png
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES) $(PHASE5_ASSETS),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c test-terminal-model test-gui-terminal test-phase5d clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-kernel-language-contract test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c test-terminal-model test-gui-terminal test-phase5d clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -133,7 +142,16 @@ KERNEL64_OBJECTS = \
 	./build/heap.o
 
 KERNEL_PUBLIC_HEADERS = $(shell find ./include -type f)
-$(KERNEL64_OBJECTS): $(KERNEL_PUBLIC_HEADERS)
+.PHONY: FORCE
+FORCE:
+
+$(KERNEL_PROFILE_STAMP): FORCE
+	@mkdir -p ./build
+	@if [ "$$(cat $@ 2>/dev/null)" != "$(KERNEL_OPT)" ]; then \
+		printf '%s\n' "$(KERNEL_OPT)" > $@; \
+	fi
+
+$(KERNEL64_OBJECTS): $(KERNEL_PUBLIC_HEADERS) $(KERNEL_PROFILE_STAMP)
 
 all: all64
 all64: driver-projects ./bin/os64.bin
@@ -308,6 +326,9 @@ test-soak: uefi
 test-soak-hour: uefi
 	python3 ./tools/service_soak.py --duration 3600
 
+test-kernel-language-contract: ./bin/kernel64.elf
+	python3 ./tools/kernel_language_contract_test.py
+
 test-abi-freeze:
 	python3 ./tools/abi_freeze_test.py
 
@@ -386,7 +407,7 @@ test-uefi-userland: uefi
 test-uefi-screen: uefi
 	python3 ./tools/uefi_screen_smoke.py
 
-test-closure: test-abi-freeze test-phase4-entry test-phase4 test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-soak
+test-closure: test-abi-freeze test-phase4-entry test-kernel-language-contract test-phase4 test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-soak
 
 # Complete regression umbrella through the currently closed Phase 4.7.
 test-current-closure: test-closure test-phase46 test-phase47
@@ -460,82 +481,82 @@ $(PHASE5_ASSETS) &: ./tools/build_image_fixtures.py ./tools/png_to_osimg.py
 
 ./build/kernel64.o: ./kernel/core/kernel64.cpp ./kernel/core/kernel64_main.cpp ./kernel/core/kernel64_process.cpp ./kernel/core/kernel64_diag.cpp ./kernel/core/kernel64_user.cpp ./kernel/core/kernel64_irq.cpp ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/handle/kernel_objects.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/syscall64.h
 	@mkdir -p ./build
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/core/kernel64.cpp -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c ./kernel/core/kernel64.cpp -o $@
 
 ./build/spinlock64.o: ./kernel/sync/spinlock.cpp ./include/kernel/spinlock.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/thread_sync64.o: ./kernel/sync/thread_sync.cpp ./include/kernel/sync/thread_sync.h ./include/kernel/process64.h ./include/kernel/handle/kernel_handle.h ./include/os64/sync_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/fault_injection64.o: ./kernel/debug/fault_injection.cpp ./include/kernel/fault_injection.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/kutil64.o: ./kernel/util/kutil64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/kernel_diag64.o: ./kernel/process/kernel_diag.cpp ./include/kernel/kernel_diag.h ./include/kernel/process.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/ipc_mailbox64.o: ./kernel/ipc/ipc_mailbox.cpp ./include/kernel/ipc/ipc_mailbox.h ./include/os64/ipc_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/ipc64.o: ./kernel/ipc/ipc.cpp ./include/kernel/handle/kernel_objects.h ./include/kernel/ipc/ipc.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/ipc_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/service_registry64.o: ./kernel/service/service_registry.cpp ./include/kernel/service/service_registry.h ./include/kernel/process.h ./include/kernel/process64.h ./include/os64/service_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/kernel_handle64.o: ./kernel/handle/kernel_handle.cpp ./include/kernel/handle/kernel_handle.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/kernel_objects64.o: ./kernel/handle/kernel_objects.cpp ./include/kernel/handle/kernel_objects.h ./include/kernel/handle/kernel_handle.h ./include/kernel/graphics/graphics2d.h ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/vm.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/process64.o: ./kernel/process/process64.cpp ./include/kernel/process64.h ./include/kernel/process.h ./include/kernel/thread.h ./include/os64/thread_types.h ./include/kernel/handle/kernel_handle.h ./include/kernel/handle/kernel_objects.h ./include/kernel/input/input_event_queue.h ./include/kernel/ipc/ipc_mailbox.h ./include/kernel/service/service_registry.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/process_terminal64.o: ./kernel/process/process_terminal.cpp ./include/kernel/process_terminal.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/ipc/ipc.h ./include/os64/terminal_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/process_surface64.o: ./kernel/process/process_surface.cpp ./include/kernel/process_surface.h ./include/kernel/process.h ./include/kernel/thread.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/address_space.h ./include/os64/surface_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/kernel/userprog64.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./kernel/syscall/vfs_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/vfs_syscalls64.o: ./kernel/syscall/vfs_syscalls.cpp ./kernel/syscall/vfs_syscalls.h ./include/fs/vfs.h ./include/kernel/handle/kernel_handle.h ./include/kernel/process64.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/sdk_syscalls64.o: ./kernel/syscall/sdk_syscalls.cpp ./kernel/syscall/sdk_syscalls.h ./include/drivers/gop.h ./include/drivers/keyboard.h ./include/drivers/pit.h ./include/kernel/input/input_events.h ./include/kernel/ipc/ipc.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/kernel/service/service_registry.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h ./include/os64/graphics_types.h ./include/os64/input_types.h ./include/os64/ipc_types.h ./include/os64/service_types.h ./include/os64/thread_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/klog64.o: ./kernel/log/klog.cpp ./include/kernel/klog.h ./include/kernel/kutil64.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/panic64.o: ./kernel/panic/panic.cpp ./include/kernel/panic.h ./include/kernel/klog.h ./include/kernel/boot_info.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/acpi64.o: ./kernel/acpi/acpi.cpp ./include/kernel/acpi.h ./include/kernel/klog.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/madt_cpu64.o: ./kernel/acpi/madt_cpu.cpp ./include/kernel/acpi.h ./include/kernel/acpi_madt.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/acpi_power64.o: ./kernel/acpi/acpi_power.cpp ./include/kernel/acpi.h ./include/arch/x86_64/io.h ./include/kernel/mm/vm.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/cpu64.o: ./kernel/cpu/cpu.cpp ./include/kernel/cpu.h ./include/kernel/acpi.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/cpu_local64.o: ./kernel/cpu/cpu_local.cpp ./include/kernel/cpu_local.h ./include/kernel/cpu.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/smp64.o: ./kernel/cpu/smp.cpp ./include/kernel/smp.h ./include/kernel/cpu.h ./include/kernel/cpu_local.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./bin/ap_trampoline.bin: ./arch/x86_64/ap_trampoline.asm
 	$(AS) -f bin $< -o $@
@@ -544,130 +565,130 @@ $(PHASE5_ASSETS) &: ./tools/build_image_fixtures.py ./tools/png_to_osimg.py
 	$(AS) -f elf64 ./arch/x86_64/ap_trampoline_blob.asm -o $@
 
 ./build/apic64.o: ./arch/x86_64/apic.cpp ./include/arch/x86_64/apic.h ./include/kernel/acpi.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/ksh64.o: ./kernel/shell/ksh64.cpp ./include/kernel/pci.h ./include/drivers/gop.h ./include/kernel/kernel_diag.h ./include/kernel/process64.h ./include/kernel/handle/kernel_objects.h ./include/kernel/graphics/surface_backing.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/shell/ksh64.cpp -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c ./kernel/shell/ksh64.cpp -o $@
 
 ./build/driver_manager64.o: ./kernel/driver/driver_manager.cpp ./include/kernel/driver/driver_manager.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_resource64.o: ./kernel/driver/driver_resource.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/spinlock.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_va64.o: ./kernel/driver/driver_va.cpp ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_manager.h ./include/kernel/spinlock.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_alloc64.o: ./kernel/driver/driver_alloc.cpp ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/driver_manager.h ./include/kernel/spinlock.h ./include/kernel/mm/vm.h ./include/kernel/fault_injection.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_mmio64.o: ./kernel/driver/driver_mmio.cpp ./include/kernel/driver/driver_mmio.h ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_alloc.h ./include/kernel/mm/vm.h ./include/kernel/pci.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_dma64.o: ./kernel/driver/driver_dma.cpp ./include/kernel/driver/driver_dma.h ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_alloc.h ./include/kernel/mm/pmm.h ./include/kernel/mm/vm.h ./include/kernel/pci.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_exports64.o: ./kernel/driver/driver_exports.cpp ./include/kernel/driver/driver_manager.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_binding64.o: ./kernel/driver/driver_binding.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_alloc.h ./include/kernel/pci.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_irq64.o: ./kernel/driver/driver_irq.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_alloc.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_loader64.o: ./kernel/driver/driver_loader.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/drv_format.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_unload64.o: ./kernel/driver/driver_unload.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/driver_mmio.h ./include/kernel/driver/drv_format.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_builtin64.o: $(GENERATED_LINKED_DRIVER_REGISTRY) ./include/kernel/driver/driver_manager.h ./include/kernel/driver/drv_format.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_activation64.o: $(GENERATED_DRIVER_ACTIVATION) ./include/kernel/driver/driver_manager.h ./include/kernel/boot_info.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/driver_shell64.o: ./kernel/driver/driver_shell.cpp ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_va.h ./include/kernel/driver/driver_alloc.h ./include/kernel/driver/driver_mmio.h ./include/kernel/driver/driver_dma.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/kernel_exports64.o: ./kernel/driver/kernel_exports.cpp ./include/kernel/driver/kernel_exports.h ./include/kernel/driver/driver_manager.h ./include/kernel/driver/driver_mmio.h ./include/kernel/driver/driver_dma.h ./include/kernel/pci.h ./include/arch/x86_64/io.h ./include/drivers/ata.h ./include/drivers/gop.h ./include/fs/vfs.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/driver/kernel_exports.cpp -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c ./kernel/driver/kernel_exports.cpp -o $@
 
 ./build/pci64.o: ./kernel/pci/pci.cpp ./include/kernel/pci.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/input_event_queue64.o: ./kernel/input/input_event_queue.cpp ./include/kernel/input/input_event_queue.h ./include/os64/input_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/input_events64.o: ./kernel/input/input_events.cpp ./include/kernel/input/input_events.h ./include/kernel/input/input_event_queue.h ./include/kernel/process64.h ./include/os64/input_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/graphics_clip64.o: ./kernel/graphics/graphics_clip.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/graphics_surface64.o: ./kernel/graphics/graphics_surface.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/surface_backing64.o: ./kernel/graphics/surface_backing.cpp ./include/kernel/graphics/surface_backing.h ./include/kernel/mm/pmm.h ./include/kernel/mm/vm.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/graphics_draw64.o: ./kernel/graphics/graphics_draw.cpp ./include/kernel/graphics/graphics2d.h ./include/kernel/graphics/graphics_font.h ./include/os64/graphics_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/graphics_dirty64.o: ./kernel/graphics/graphics_dirty.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/graphics_present64.o: ./kernel/graphics/graphics_present.cpp ./include/kernel/graphics/graphics2d.h ./include/os64/graphics_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/graphics_font64.o: ./kernel/graphics/graphics_font.cpp ./include/kernel/graphics/graphics_font.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/display_backend64.o: ./kernel/graphics/display_backend.cpp ./include/kernel/graphics/display_backend.h ./include/drivers/gop.h ./include/kernel/graphics/graphics2d.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/display_owner64.o: ./kernel/graphics/display_owner.cpp ./include/kernel/graphics/display_owner.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/terminal64.o: ./drivers/display/terminal/terminal.cpp ./include/kernel/graphics/graphics_font.h ./include/kernel/graphics/display_owner.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/gop64.o: ./drivers/display/gop/gop.cpp ./include/drivers/gop.h ./include/kernel/boot_info.h ./include/kernel/graphics/graphics2d.h ./include/kernel/graphics/display_owner.h ./include/os64/graphics_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/ata64.o: ./drivers/block/ata/ata.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/keyboard64.o: ./drivers/input/ps2_keyboard/keyboard.cpp ./include/drivers/keyboard.h ./include/kernel/input/input_events.h ./include/os64/input_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/mouse64.o: ./drivers/input/ps2_mouse/mouse.cpp ./include/drivers/mouse.h ./include/kernel/input/input_events.h ./include/os64/input_types.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/mouse_packet64.o: ./drivers/input/ps2_mouse/mouse_packet.c ./include/drivers/mouse.h ./include/os64/input_types.h
-	$(HOST64_CC) $(HOST64_CFLAGS) -Os -c $< -o $@
+	$(HOST64_CC) $(HOST64_CFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/pit64.o: ./drivers/timer/pit/pit.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/fat32_64.o: ./drivers/fs/fat32/src/fat32.cpp ./drivers/fs/fat32/src/fat32_common.cpp ./drivers/fs/fat32/src/fat32_dir.cpp ./drivers/fs/fat32/src/fat32_lfn.cpp ./drivers/fs/fat32/src/fat32_cluster.cpp ./drivers/fs/fat32/src/fat32_api.cpp ./drivers/fs/fat32/include/fat32.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./drivers/fs/fat32/src/fat32.cpp -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c ./drivers/fs/fat32/src/fat32.cpp -o $@
 
 ./build/fat32_vfs64.o: ./drivers/fs/fat32/src/fat32_vfs.cpp ./drivers/fs/fat32/include/fat32.h ./include/fs/vfs.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/vfs64.o: ./kernel/vfs/vfs.cpp ./kernel/vfs/vfs_common.cpp ./kernel/vfs/vfs_memfs.cpp ./kernel/vfs/vfs_core.cpp ./kernel/vfs/vfs_open.cpp ./include/fs/vfs.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c ./kernel/vfs/vfs.cpp -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c ./kernel/vfs/vfs.cpp -o $@
 
 ./build/idt64.o: ./arch/x86_64/idt64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/idt64_asm.o: ./arch/x86_64/idt64.asm
 	$(AS) -f elf64 -g $< -o $@
 
 ./build/gdt64.o: ./arch/x86_64/gdt64.cpp
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/gdt64_asm.o: ./arch/x86_64/gdt64.asm
 	$(AS) -f elf64 -g $< -o $@
@@ -676,19 +697,19 @@ $(PHASE5_ASSETS) &: ./tools/build_image_fixtures.py ./tools/png_to_osimg.py
 	$(AS) -f elf64 -g $< -o $@
 
 ./build/pmm.o: ./kernel/mm/pmm.cpp ./include/kernel/mm/pmm.h ./include/kernel/boot_info.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/vm.o: ./kernel/mm/vm.cpp ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h ./include/kernel/mm/arch_vm.h ./include/kernel/smp.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/address_space.o: ./kernel/mm/address_space.cpp ./include/kernel/mm/address_space.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/paging_x86_64.o: ./arch/x86_64/mm/paging.cpp ./include/kernel/mm/arch_vm.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/heap.o: ./kernel/mm/heap.cpp ./include/kernel/mm/heap.h ./include/kernel/mm/vm.h ./include/kernel/mm/pmm.h
-	$(HOST64_CXX) $(HOST64_CPPFLAGS) -Os -c $< -o $@
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./bin/kernel64.elf: $(KERNEL64_OBJECTS)
 	$(HOST64_LD) -m elf_x86_64 -nostdlib -T ./arch/x86_64/linkerScript64.ld -o $@ $(KERNEL64_OBJECTS)
@@ -811,3 +832,4 @@ clean:
 	rm -rf $(USER_SDK_OBJECTS)
 	rm -rf $(USER_SDK_LIB)
 	rm -rf ./build/*
+	rm -rf ./build/.kernel-profile

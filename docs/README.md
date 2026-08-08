@@ -17,6 +17,7 @@ links and test references remain stable from the project root.
 - [Console and GUI display handoff](architecture/console_gui_handoff.md)
 - [IPC v2](architecture/ipc_v2.md)
 - [Kernel context and concurrency rules](architecture/kernel_context_rules.md)
+- [Kernel language and toolchain contract](architecture/kernel_language_toolchain_contract.md)
 - [Kernel objects and handles](architecture/kernel_handles.md)
 - [Process and scheduler invariants](architecture/process_scheduler_invariants.md)
 - [Scheduler modernization plan](architecture/scheduler_modernization.md)

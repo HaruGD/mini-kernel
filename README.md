@@ -71,6 +71,9 @@ What works on the active 64-bit UEFI path:
 - diagnostic-only kernel GP and runtime ACPI corruption fault injection
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
+- restricted freestanding GNU C++17 kernel profile with explicit C ABI
+  boundaries, selectable `KERNEL_OPT`, bounded global-initializer/vtable
+  allowlists, and automated runtime-symbol/section/size auditing
 - bounded process and thread tables with a locked global-queue SMP scheduler
 - generation-tagged thread identities and up to four threads per process
 - extracted main-thread contexts plus private guarded user and kernel stacks
@@ -188,6 +191,7 @@ What works on the active 64-bit UEFI path:
 - Phase 3.5 starting baseline: [docs/phases/phase-3.5/baseline.md](docs/phases/phase-3.5/baseline.md)
 - Process/scheduler invariants: [docs/architecture/process_scheduler_invariants.md](docs/architecture/process_scheduler_invariants.md)
 - Kernel context rules: [docs/architecture/kernel_context_rules.md](docs/architecture/kernel_context_rules.md)
+- Kernel language and toolchain contract: [docs/architecture/kernel_language_toolchain_contract.md](docs/architecture/kernel_language_toolchain_contract.md)
 - Service supervision and permissions: [docs/architecture/service_supervision.md](docs/architecture/service_supervision.md)
 - Concurrency readiness: [docs/architecture/concurrency_readiness.md](docs/architecture/concurrency_readiness.md)
 - Fault injection and soak testing: [docs/testing/fault_injection_and_soak.md](docs/testing/fault_injection_and_soak.md)

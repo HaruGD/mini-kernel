@@ -130,6 +130,28 @@ mode switching to a future mode-setting display backend.
   resize to `780x480` it exposes `120x57`, keeping the cursor clear of the
   client-area boundary.
 
+### Cross-Phase Kernel Language And Toolchain Hardening
+
+- The kernel language contract now fixes GNU C++17 as a restricted
+  freestanding implementation profile while preserving C ABI boundaries for
+  syscalls, drivers, firmware, and assembly.
+- `KERNEL_OPT` selects one unambiguous optimization profile. Clean default
+  `-Os` and alternate `-O2` kernels both built and passed the binary contract.
+- The avoidable shell scalar dynamic initializer and the unlinked duplicate
+  C++ runtime source were removed. The remaining two boot-lifetime global
+  initializers and five legacy driver vtables are explicitly allowlisted.
+- `make test-kernel-language-contract` rejects forbidden language/runtime
+  features, sections, symbols, initializers, vtables, duplicate runtime code,
+  optimization bypass, and text/data/BSS budget overflow. It is included in
+  the inherited `test-closure` gate.
+- Clean `-Os` evidence: text `215,202`, data `416`, BSS `1,630,752` bytes,
+  two initializers, five vtables. Clean `-O2` evidence: text `280,124`, data
+  `416`, BSS `1,630,752` bytes, with the same initializer and vtable counts.
+- Affected regression passed: `make test-abi-freeze`, the driver build and
+  regression matrix checks, `make test-uefi-smoke`, and `make test-phase5d`.
+  The GUI terminal retained stable active resources across its console
+  `bootinfo`, normal, hangup, and injected-fault lifecycles.
+
 ## Recording Workflow
 
 For each subphase:

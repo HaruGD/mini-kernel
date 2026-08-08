@@ -40,7 +40,7 @@ static char shell_buffer[MAX_BUFFER_SIZE];
 static int buffer_index = 0;
 static char history[MAX_HISTORY][MAX_CMD_LEN];
 static int history_count = 0;
-static int history_index = history_count;
+static int history_index = 0;
 static char* notebook_ptr = 0;
 static uint32_t notebook_length = 0;
 static uint8_t shell_prompt_pending = 0;

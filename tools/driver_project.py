@@ -45,7 +45,8 @@ def package(root: Path, driver_dir: Path, entry: dict, settings: dict) -> None:
              "-fno-unwind-tables", "-fno-asynchronous-unwind-tables", "-fomit-frame-pointer",
              "-I" + str(root / "drivers/include")]
     if compiler == "g++":
-        flags += ["-fno-exceptions", "-fno-rtti", "-fno-use-cxa-atexit"]
+        flags += ["-fno-exceptions", "-fno-rtti", "-fno-use-cxa-atexit",
+                  "-fno-threadsafe-statics"]
     subprocess.run([compiler, *flags, "-c", str(sources[0]), "-o", str(obj)], check=True)
     subprocess.run(["python3", str(root / "tools/driver_builder/build_drv.py"), "--object", str(obj),
                     "--output", str(unsigned), "--manifest", str(manifest_path)], check=True)
