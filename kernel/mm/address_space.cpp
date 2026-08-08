@@ -470,6 +470,36 @@ int address_space_owns_address(const AddressSpace* space, uint64_t address) {
     return find_region(space, address) != 0;
 }
 
+int address_space_address_has_rights(const AddressSpace* space,
+                                     uint64_t address,
+                                     uint32_t rights) {
+    if (space == 0 || address == 0 ||
+        (rights & ~(ADDRESS_SPACE_REGION_READ |
+                    ADDRESS_SPACE_REGION_WRITE |
+                    ADDRESS_SPACE_REGION_EXECUTE)) != 0) {
+        return 0;
+    }
+    AddressSpace* mutable_space = (AddressSpace*)space;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mutable_space->lock, &token)) {
+        return 0;
+    }
+    const AddressSpaceRegion* region = find_region(space, address);
+    const uint64_t flags = address_space_get_flags(space, address);
+    int valid = region != 0 && (region->rights & rights) == rights &&
+        (flags & VM_FLAG_USER) != 0;
+    if ((rights & ADDRESS_SPACE_REGION_WRITE) != 0 &&
+        (flags & VM_FLAG_WRITABLE) == 0) {
+        valid = 0;
+    }
+    if ((rights & ADDRESS_SPACE_REGION_EXECUTE) != 0 &&
+        (flags & VM_FLAG_NO_EXECUTE) != 0) {
+        valid = 0;
+    }
+    kernel_spinlock_release(&mutable_space->lock, &token);
+    return valid;
+}
+
 int address_space_buffer_accessible(const AddressSpace* space,
                                     uint64_t start,
                                     uint64_t size,

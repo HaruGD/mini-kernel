@@ -170,6 +170,18 @@ static void test_dispatch_permission_preflight(void) {
           "descriptor permission preflight in restricted process");
 }
 
+static void test_fast_syscall_entry(void) {
+    long launch = os_run_with_permissions("usyscall_entry_c.elf", 0);
+    long status = launch == OS_SUCCESS ? os_wait() : launch;
+    check(launch == OS_SUCCESS && status == 0,
+          "SYSCALL entry, return, and blocking resume");
+
+    launch = os_run_with_permissions("usyscall_badreturn.elf", 0);
+    status = launch == OS_SUCCESS ? os_wait() : launch;
+    check(launch == OS_SUCCESS && status == 0x5E01,
+          "invalid SYSCALL return state terminates only caller");
+}
+
 static void test_allocator(void) {
     void* initial_break = os_brk(0);
     uint8_t* first = (uint8_t*)os_malloc(48);
@@ -584,6 +596,7 @@ int main(void) {
     test_syscall_pointer_validation();
     test_process_identity();
     test_dispatch_permission_preflight();
+    test_fast_syscall_entry();
     test_allocator();
     test_paths();
     test_text_file();

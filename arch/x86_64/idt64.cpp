@@ -1,4 +1,5 @@
 #include "arch/x86_64/idt64.h"
+#include "arch/x86_64/gdt64.h"
 #include "kernel/klog.h"
 #include "kernel/panic.h"
 #include "kernel/driver/driver_manager.h"
@@ -59,7 +60,7 @@ extern "C" void syscall_asm();
 static void set_idt64_gate(int n, uint64_t handler) {
     uint8_t type_attr = 0x8E;
     idt64[n].offset_low = handler & 0xFFFF;
-    idt64[n].selector = 0x18;
+    idt64[n].selector = GDT64_KERNEL64_CODE_SEL;
     idt64[n].ist = 0;
     idt64[n].type_attr = type_attr;
     idt64[n].offset_mid = (handler >> 16) & 0xFFFF;
@@ -70,7 +71,7 @@ static void set_idt64_gate(int n, uint64_t handler) {
 static void set_idt64_gate_dpl(int n, uint64_t handler, uint8_t dpl) {
     uint8_t type_attr = 0x8E | ((dpl & 0x3) << 5);
     idt64[n].offset_low = handler & 0xFFFF;
-    idt64[n].selector = 0x18;
+    idt64[n].selector = GDT64_KERNEL64_CODE_SEL;
     idt64[n].ist = 0;
     idt64[n].type_attr = type_attr;
     idt64[n].offset_mid = (handler >> 16) & 0xFFFF;

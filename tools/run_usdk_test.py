@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -92,7 +93,14 @@ def run(cpus: int = 1) -> int:
         send_monitor_line(process, "sendkey z")
         wait_for_serial("[INFO] waiting for injected key event", 10)
         send_monitor_line(process, "sendkey x")
-        time.sleep(5)
+        wait_for_serial("failed=0 ===", 20)
+        time.sleep(1)
+        send_key_sequence(process, [
+            "backspace", "backspace",
+            "s", "y", "s", "c", "a", "l", "l", "s", "ret",
+        ])
+        wait_for_serial("entry_ready=", 10)
+        time.sleep(1)
     finally:
         if process.poll() is None:
             process.terminate()
@@ -114,10 +122,30 @@ def run(cpus: int = 1) -> int:
         print(f"SDK test reported a failure. See {SERIAL}", file=sys.stderr)
         return 1
 
+    entry_match = re.search(
+        r"entry_ready=0x([0-9A-Fa-f]+)/0x([0-9A-Fa-f]+) "
+        r"calls=0x([0-9A-Fa-f]+) sysret=0x([0-9A-Fa-f]+) "
+        r"iret=0x([0-9A-Fa-f]+) abort=0x([0-9A-Fa-f]+) "
+        r"failures=0x([0-9A-Fa-f]+)",
+        serial_text,
+    )
+    if entry_match is None:
+        print(f"SYSCALL entry diagnostics missing. See {SERIAL}", file=sys.stderr)
+        return 1
+    ready, discovered, calls, sysret, iret, aborts, failures = (
+        int(value, 16) for value in entry_match.groups()
+    )
+    if (ready != cpus or discovered != cpus or calls == 0 or sysret == 0 or
+            iret == 0 or aborts == 0 or failures != aborts):
+        print(f"SYSCALL entry diagnostics invalid: {entry_match.group(0)}",
+              file=sys.stderr)
+        return 1
+
     for line in serial_text.splitlines():
         if "[PASS]" in line or "[FAIL]" in line or "=== result:" in line:
             print(line)
     print(f"User SDK QEMU test OK (vcpus={cpus})")
+    print(entry_match.group(0))
     return 0
 
 

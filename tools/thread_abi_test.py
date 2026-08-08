@@ -11,7 +11,7 @@ def require(text: str, needle: str, label: str) -> None:
 
 
 def main() -> int:
-    kernel = (ROOT / "include/kernel/syscall64.h").read_text()
+    numbers = (ROOT / "include/os64/syscall_numbers.h").read_text()
     internal = (ROOT / "user/sdk/src/internal.h").read_text()
     public = (ROOT / "include/os64/thread_types.h").read_text()
     sdk = (ROOT / "user/sdk/src/thread.c").read_text()
@@ -23,8 +23,13 @@ def main() -> int:
         ("THREAD_EXIT", 91), ("THREAD_JOIN", 92),
         ("THREAD_SET_AFFINITY", 107),
     ):
-        require(kernel, f"SYS_{name} {number}", f"kernel syscall {name}")
-        require(internal, f"OS_SYS_{name} = {number}", f"SDK syscall {name}")
+        require(numbers, f"#define SYS_{name} {number}",
+                f"shared kernel syscall {name}")
+        require(numbers, f"#define OS_SYS_{name} {number}",
+                f"shared SDK syscall {name}")
+
+    require(internal, '#include "os64/syscall_numbers.h"',
+            "SDK generated-number include")
 
     require(public, "sizeof(OsThreadIdentity) == 8", "thread identity ABI")
     require(public, "sizeof(OsThreadCreateRequest) == 40", "create request ABI")

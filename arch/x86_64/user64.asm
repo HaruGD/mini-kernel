@@ -4,6 +4,14 @@
 
 global enter_user_mode
 global resume_user_mode
+extern syscall_cpu_states
+
+%macro MARK_USER_ACTIVE 0
+    mov eax, [gs:CPU_LOCAL_LOGICAL_ID]
+    shl rax, 12
+    add rax, syscall_cpu_states
+    mov byte [rax + 53], 1
+%endmacro
 
 section .text
 
@@ -23,6 +31,7 @@ enter_user_mode:
     push rax
     push qword 0x2B
     push rdi
+    MARK_USER_ACTIVE
     iretq
 
 resume_user_mode:
@@ -42,6 +51,9 @@ resume_user_mode:
     push qword 0x2B
     mov rax, [gs:CPU_LOCAL_USER_RESUME_RIP]
     push rax
+
+    MARK_USER_ACTIVE
+
 
     mov rax, [gs:CPU_LOCAL_USER_RESUME_RAX]
     mov rbx, [gs:CPU_LOCAL_USER_RESUME_RBX]

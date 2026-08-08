@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-#define GDT64_KERNEL32_CODE_SEL 0x08
+#define GDT64_KERNEL64_CODE_SEL 0x08
 #define GDT64_KERNEL_DATA_SEL   0x10
-#define GDT64_KERNEL64_CODE_SEL 0x18
+#define GDT64_KERNEL32_CODE_SEL 0x18
 #define GDT64_USER_DATA_SEL     0x20
 #define GDT64_USER_CODE_SEL     0x28
 #define GDT64_TSS_SEL           0x30

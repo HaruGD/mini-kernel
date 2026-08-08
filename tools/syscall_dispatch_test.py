@@ -117,6 +117,9 @@ int main() {
     check((int64_t)syscall_dispatch64(OS_SYS_GETPID, 0, 0, 0) ==
           OS_ERR_NOT_READY);
     process.state = PROCESS_STATE_RUNNING;
+    process.state = PROCESS_STATE_PAUSED;
+    check(syscall_dispatch64(OS_SYS_GETPID, 0, 0, 0) == handler_result);
+    process.state = PROCESS_STATE_RUNNING;
     current_thread_value = 0;
     check((int64_t)syscall_dispatch64(OS_SYS_GETPID, 0, 0, 0) ==
           OS_ERR_NOT_READY);
@@ -171,8 +174,8 @@ int main() {
 
     SyscallDispatchDiagnostics diagnostics;
     syscall_dispatch_get_diagnostics(&diagnostics);
-    check(diagnostics.total_calls == 18);
-    check(diagnostics.dispatched_calls == 5);
+    check(diagnostics.total_calls == 19);
+    check(diagnostics.dispatched_calls == 6);
     check(diagnostics.rejected_calls == 13);
     uint64_t rejection_sum = 0;
     for (uint32_t reason = 1; reason < SYSCALL_REJECT_REASON_COUNT; reason++) {

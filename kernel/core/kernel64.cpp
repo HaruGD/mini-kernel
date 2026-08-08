@@ -9,6 +9,7 @@ extern "C" {
 #include "arch/x86_64/idt64.h"
 #include "arch/x86_64/apic.h"
 #include "arch/x86_64/gdt64.h"
+#include "arch/x86_64/syscall_entry.h"
 #include "kernel/mm/vm.h"
 #include "kernel/mm/pmm.h"
 #include "drivers/terminal.h"

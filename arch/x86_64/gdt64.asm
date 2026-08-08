@@ -5,7 +5,7 @@ global tss64_load
 
 gdt64_load:
     lgdt [rdi]
-    push qword 0x18
+    push qword 0x08
     lea rax, [rel gdt64_reload_cs]
     push rax
     o64 retf

@@ -48,6 +48,7 @@ global irq_generic_14_asm
 global user_test_asm
 global user_exit_asm
 global syscall_asm
+global syscall_frame_dispatch_asm
 
 extern default_interrupt_handler64
 extern nmi_handler64
@@ -70,6 +71,9 @@ extern save_yield_context64
 extern save_preempt_context64
 extern save_sleep_context64
 extern save_wait_context64
+extern syscall_fast_enter64
+extern syscall_fast_return64
+extern syscall_fast_leave_to_kernel64
 
 %macro PUSH_GPRS 0
     push rax
@@ -405,6 +409,119 @@ syscall_asm:
     ret
 
 .syscall_wait:
+    lea rdi, [rsp + 8]
+    call save_wait_context64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+syscall_frame_dispatch_asm:
+    PUSH_GPRS
+    mov rax, [gs:CPU_LOCAL_SYSCALL_R10_SCRATCH]
+    mov [rsp + 40], rax
+    mov dword [gs:CPU_LOCAL_SYSCALL_R10_SCRATCH], 0
+    sub rsp, 8
+    lea rdi, [rsp + 8]
+    call syscall_fast_enter64
+    test rax, rax
+    jz .fast_abort
+    mov rdi, [rsp + 120]
+    mov rsi, [rsp + 72]
+    mov rdx, [rsp + 80]
+    mov rcx, [rsp + 96]
+    call syscall_dispatch64
+    cmp rax, SYSCALL_RETURN_TO_KERNEL
+    je .fast_exit
+    cmp rax, SYSCALL_YIELD_TO_KERNEL
+    je .fast_yield
+    cmp rax, SYSCALL_SLEEP_TO_KERNEL
+    je .fast_sleep
+    cmp rax, SYSCALL_WAIT_TO_KERNEL
+    je .fast_wait
+    mov [rsp + 120], rax
+    lea rdi, [rsp + 8]
+    call syscall_fast_return64
+    cmp rax, 1
+    je .fast_sysret
+    cmp rax, 2
+    je .fast_iret
+    jmp .fast_abort
+
+.fast_sysret:
+    add rsp, 8
+    POP_GPRS
+    mov rcx, [rsp]
+    mov r11, [rsp + 16]
+    mov rsp, [rsp + 24]
+    swapgs
+    o64 sysret
+
+.fast_iret:
+    add rsp, 8
+    POP_GPRS
+    swapgs
+    iretq
+
+.fast_exit:
+    call syscall_fast_leave_to_kernel64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+.fast_abort:
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+.fast_yield:
+    call syscall_fast_leave_to_kernel64
+    lea rdi, [rsp + 8]
+    call save_yield_context64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+.fast_sleep:
+    call syscall_fast_leave_to_kernel64
+    mov rsi, [rsp + 72]
+    lea rdi, [rsp + 8]
+    call save_sleep_context64
+    add rsp, 8
+    mov rbx, [kernel_user_saved_rbx]
+    mov rbp, [kernel_user_saved_rbp]
+    mov r12, [kernel_user_saved_r12]
+    mov r13, [kernel_user_saved_r13]
+    mov r14, [kernel_user_saved_r14]
+    mov r15, [kernel_user_saved_r15]
+    mov rsp, [kernel_user_return_rsp]
+    ret
+
+.fast_wait:
+    call syscall_fast_leave_to_kernel64
     lea rdi, [rsp + 8]
     call save_wait_context64
     add rsp, 8

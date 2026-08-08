@@ -187,6 +187,7 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
         : driver_manager_activate_packaged_boot(g_boot_info);
     pci_discover();
     gdt64_init();
+    int syscall_entry_ready = syscall_entry_init_current_cpu();
     ata.init();
     uint32_t root_from_ramdisk = 0;
     if (g_boot_info != 0 &&
@@ -240,6 +241,9 @@ extern "C" void kernel64_main(const BootInfo* boot_info) {
     print("\n");
     print("NX policy: ");
     print_hex32((uint32_t)nx_policy_applied);
+    print("\n");
+    print("SYSCALL entry: ");
+    print_hex32((uint32_t)syscall_entry_ready);
     print("\n");
     print("Driver autoloaded: ");
     print_hex32(autoloaded_drivers);

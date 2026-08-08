@@ -10,6 +10,7 @@
 #include "kernel/spinlock.h"
 #include "kernel/syscall/dispatcher.h"
 #include "kernel/graphics/surface_backing.h"
+#include "arch/x86_64/syscall_entry.h"
 
 #define print process_terminal_print
 #define print_hex32 process_terminal_print_hex32
@@ -100,6 +101,8 @@ const char* pause_reason_name(uint32_t reason) {
 void print_syscall_info() {
     SyscallDispatchDiagnostics diagnostics;
     syscall_dispatch_get_diagnostics(&diagnostics);
+    SyscallEntryDiagnostics entry;
+    syscall_entry_get_diagnostics(&entry);
     print("\n=== SYSCALL DISPATCH ===");
     print("\ntotal=");
     print_hex64(diagnostics.total_calls);
@@ -120,6 +123,22 @@ void print_syscall_info() {
         print("=");
         print_hex64(diagnostics.rejected_by_reason[reason]);
     }
+    print("\nentry_ready=");
+    print_hex32(entry.ready_cpu_count);
+    print("/");
+    print_hex32(entry.cpu_count);
+    print(" calls=");
+    print_hex64(entry.entry_count);
+    print(" sysret=");
+    print_hex64(entry.sysret_count);
+    print(" iret=");
+    print_hex64(entry.iret_count);
+    print(" abort=");
+    print_hex64(entry.abort_count);
+    print(" failures=");
+    print_hex64(entry.entry_failures);
+    print(" fmask=");
+    print_hex32(entry.fmask);
     print("\n========================");
 }
 

@@ -56,7 +56,8 @@ OsResult syscall_dispatch_preflight64(
         return SYS_ERR_NOT_READY;
     }
     if (!process->active || process->exiting ||
-        process->state != PROCESS_STATE_RUNNING) {
+        (process->state != PROCESS_STATE_RUNNING &&
+         process->state != PROCESS_STATE_PAUSED)) {
         set_reason(SYSCALL_REJECT_PROCESS_LIFECYCLE, reject_reason_out);
         return SYS_ERR_NOT_READY;
     }

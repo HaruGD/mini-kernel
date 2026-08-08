@@ -4,6 +4,7 @@
 #include "arch/x86_64/apic.h"
 #include "arch/x86_64/gdt64.h"
 #include "arch/x86_64/idt64.h"
+#include "arch/x86_64/syscall_entry.h"
 #include "drivers/pit.h"
 #include "kernel/cpu.h"
 #include "kernel/cpu_local.h"
@@ -255,7 +256,8 @@ extern "C" void smp_ap_entry(uint32_t logical_id) {
 
     gdt64_init();
     idt64_load_current();
-    if (!interrupt_controller_init_local_cpu() ||
+    if (!syscall_entry_init_current_cpu() ||
+        !interrupt_controller_init_local_cpu() ||
         !cpu_transition(logical_id, CPU_STATE_ONLINE)) {
         while (1) __asm__ volatile("cli; hlt");
     }
