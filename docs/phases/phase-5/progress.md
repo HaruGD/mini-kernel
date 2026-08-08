@@ -199,6 +199,52 @@ mode switching to a future mode-setting display backend.
   not the common user-copy implementation in 5S-C or complete per-call audit
   in 5S-G.
 
+### 5S-C: User-Memory Validation And Copy Boundary
+
+- Implementation commit: `1b1fb2c`.
+- Catalog/schema version 3 adds mandatory power-of-two alignment, read/write
+  access, snapshot/publication, encoding, and nested-buffer policy to every
+  argument. Generated kernel descriptors now carry pointer, readable,
+  writable, snapshot, nested, and three-argument alignment metadata. The
+  catalog remains complete at 111 calls, 22 result codes, 53 pointer-bearing
+  calls, 25 atomic-output calls, and one partial-output call.
+- The common boundary returns explicit checked-arithmetic, canonical-address,
+  range, mapping, region/PTE permission, alignment, empty-range, bounded
+  string, array, versioned-structure, and UTF-8 results. Existing copy helpers
+  now route through it, while `SYS_WRITE` propagates exact bad-buffer and
+  overflow results instead of collapsing them into invalid argument.
+- A short-lived mapping lease blocks map, unmap, protection, region, and reset
+  mutation after validation and before the last byte copy. The mutation side
+  waits without holding the address-space spinlock. Copy start is rejected
+  while a spinlock or TLB-wait context is active, and input metadata remains a
+  kernel-owned snapshot rather than a live user pointer.
+- `make test-syscall-validation` passed checked addition/multiplication,
+  canonical and misaligned addresses, zero-range policy, cross-page input,
+  unmapped/read-only failures, unchanged failed output, page-boundary strings,
+  version rejection, UTF-8, mutation-gate refusal, and a real threaded unmap
+  held until lease release.
+- `make test-syscall-contract`, `make test-abi-freeze`, and the complete
+  `make -j4 all64` build passed generated-artifact freshness, negative schema
+  mutations, C/C++/NASM descriptor compilation, and ABI version 3.
+- The User SDK QEMU suite passed `101/101` on both one and four vCPUs. New live
+  cases rejected a kernel pointer, an unmapped user hole, a wrapping range, and
+  a read-only output without publication, then accepted a mapped input that
+  crossed a page boundary.
+- Affected memory/concurrency regression passed: `make test-surface-abi`,
+  `make test-tlb-shootdown`, and `make test-tlb-lock-order`. The 64-cycle SMP
+  shootdown run completed `13,508,100` concurrent reads with AP acknowledgement
+  counts `141/137/137`; the surface mapping smoke returned exactly to baseline
+  `(0, 0, 0, 0, 0, 0, 0, 108887, 4122016, 4165632)`.
+- `make test-kernel-language-contract` passed at text `217,552`, data `416`,
+  BSS `1,630,752`, two initializers, and five vtables. `make
+  test-process-lifecycle` and `make test-phase5d` also passed; the GUI terminal
+  retained its established baseline
+  `(4, 21, 1, 0, 4, 0, 1, 107879, 4122016, 4165632)` and final
+  `(4, 21, 1, 0, 4, 0, 1, 107811, 4122016, 4165632)` values.
+- 5S-C is complete, but P5S-R03 intentionally remains in progress. Generic
+  descriptor permission preflight, fault-injected copy/allocation cleanup, and
+  the complete per-call audit close in 5S-D/G.
+
 ### Cross-Phase Kernel Language And Toolchain Hardening
 
 - The kernel language contract now fixes GNU C++17 as a restricted
