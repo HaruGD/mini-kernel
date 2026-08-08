@@ -71,6 +71,9 @@ What works on the active 64-bit UEFI path:
 - diagnostic-only kernel GP and runtime ACPI corruption fault injection
 - framebuffer terminal with an internal text-cell buffer
 - syscall path through `int 0x80`
+- versioned machine-readable catalog for all 111 current syscall numbers,
+  generated kernel/SDK/NASM constants and result codes, generated descriptor
+  and reference tables, and stale/duplicate/incomplete-contract rejection
 - restricted freestanding GNU C++17 kernel profile with explicit C ABI
   boundaries, selectable `KERNEL_OPT`, bounded global-initializer/vtable
   allowlists, and automated runtime-symbol/section/size auditing

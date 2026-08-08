@@ -32,6 +32,7 @@ links and test references remain stable from the project root.
 - [Window service and single-window ABI](reference/window_service.md)
 - [Window SDK](reference/window_sdk.md)
 - [User SDK v2](reference/user_sdk.md)
+- [Generated system-call catalog](reference/syscall_catalog.generated.md)
 
 ## Testing
 

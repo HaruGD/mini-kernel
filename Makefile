@@ -1,4 +1,6 @@
 # Toolchain
+.DEFAULT_GOAL := all
+
 AS = nasm
 HOST64_CC = gcc
 HOST64_CXX = g++
@@ -28,6 +30,21 @@ USER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -
 DRIVER64_CFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu11 -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/include
 DRIVER64_CPPFLAGS = -g -ffreestanding -nostdlib -nostartfiles -nodefaultlibs -Wall -O0 -std=gnu++17 -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics -m64 -mcmodel=large -mno-red-zone -fno-pic -fno-pie -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer -I./drivers/include
 
+SYSCALL_CATALOG = ./config/abi/syscalls.json
+SYSCALL_SCHEMA = ./config/schemas/syscalls.schema.json
+SYSCALL_GENERATOR = ./tools/gen_syscall_catalog.py
+SYSCALL_GENERATED = \
+	./include/os64/syscall_numbers.h \
+	./user/sdk/include/os64/syscall_numbers.h \
+	./include/os64/result.h \
+	./user/sdk/include/os64/result.h \
+	./include/kernel/syscall_catalog_generated.h \
+	./user/include/syscall_numbers.inc \
+	./docs/reference/syscall_catalog.generated.md
+
+$(SYSCALL_GENERATED) &: $(SYSCALL_CATALOG) $(SYSCALL_SCHEMA) $(SYSCALL_GENERATOR) ./tools/syscall_catalog.py
+	python3 $(SYSCALL_GENERATOR)
+
 # Userland
 USER_ASM_SOURCES = $(wildcard ./user/programs/*.asm)
 USER_BINS = $(patsubst ./user/programs/%.asm,./bin/%.bin,$(USER_ASM_SOURCES))
@@ -46,6 +63,8 @@ USER_SDK_HEADERS = $(wildcard ./user/sdk/include/os64/*.h) $(wildcard ./user/sdk
 WINDOWD_MODULE_SOURCES = $(wildcard ./user/programs/windowd/*.c)
 WINDOWD_MODULE_OBJECTS = $(patsubst ./user/programs/windowd/%.c,./build/windowd_%.o,$(WINDOWD_MODULE_SOURCES))
 WINDOW_DEMO_OBJECT = ./build/window_demo.o
+
+$(USER_C_OBJECTS) $(USER_SDK_OBJECTS) $(WINDOWD_MODULE_OBJECTS) $(WINDOW_DEMO_OBJECT): $(SYSCALL_GENERATED)
 
 
 # Policy-driven driver build inputs
@@ -68,7 +87,7 @@ PHASE5_ASSET_DIR = ./build/assets
 PHASE5_ASSETS = $(PHASE5_ASSET_DIR)/image_demo.osimg $(PHASE5_ASSET_DIR)/image_demo.bmp $(PHASE5_ASSET_DIR)/image_demo.png
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES) $(PHASE5_ASSETS),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-kernel-language-contract test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c test-terminal-model test-gui-terminal test-phase5d clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-kernel-language-contract test-syscall-contract test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c test-terminal-model test-gui-terminal test-phase5d clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -151,7 +170,7 @@ $(KERNEL_PROFILE_STAMP): FORCE
 		printf '%s\n' "$(KERNEL_OPT)" > $@; \
 	fi
 
-$(KERNEL64_OBJECTS): $(KERNEL_PUBLIC_HEADERS) $(KERNEL_PROFILE_STAMP)
+$(KERNEL64_OBJECTS): $(KERNEL_PUBLIC_HEADERS) $(KERNEL_PROFILE_STAMP) $(SYSCALL_GENERATED)
 
 all: all64
 all64: driver-projects ./bin/os64.bin
@@ -329,6 +348,9 @@ test-soak-hour: uefi
 test-kernel-language-contract: ./bin/kernel64.elf
 	python3 ./tools/kernel_language_contract_test.py
 
+test-syscall-contract: $(SYSCALL_GENERATED)
+	python3 ./tools/syscall_contract_test.py
+
 test-abi-freeze:
 	python3 ./tools/abi_freeze_test.py
 
@@ -407,7 +429,7 @@ test-uefi-userland: uefi
 test-uefi-screen: uefi
 	python3 ./tools/uefi_screen_smoke.py
 
-test-closure: test-abi-freeze test-phase4-entry test-kernel-language-contract test-phase4 test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-soak
+test-closure: test-abi-freeze test-phase4-entry test-kernel-language-contract test-syscall-contract test-phase4 test-phase1 test-shutdown test-uefi-smoke test-uefi-userland test-uefi-screen test-user-sdk test-graphics test-input test-ipc test-services test-concurrency test-soak
 
 # Complete regression umbrella through the currently closed Phase 4.7.
 test-current-closure: test-closure test-phase46 test-phase47
@@ -751,6 +773,8 @@ $(PHASE5_ASSETS) &: ./tools/build_image_fixtures.py ./tools/png_to_osimg.py
 	@mkdir -p ./bin
 	$(AS) -f bin -o $@ $<
 
+$(USER_BINS): ./user/include/syscall.inc ./user/include/syscall_numbers.inc
+
 ./build/user_elf_%.o: ./user/programs/%.easm
 	@mkdir -p ./build
 	$(AS) -f elf64 -g -o $@ $<
@@ -775,7 +799,7 @@ $(USER_SDK_LIB): $(USER_SDK_OBJECTS)
 	@mkdir -p ./build
 	$(HOST64_AR) rcs $@ $^
 
-./build/user_crt0.o: ./user/programs/user_crt0.easm
+./build/user_crt0.o: ./user/programs/user_crt0.easm ./user/include/syscall_numbers.inc
 	@mkdir -p ./build
 	$(AS) -f elf64 -g -o $@ $<
 

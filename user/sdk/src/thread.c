@@ -2,11 +2,14 @@
 
 #include "internal.h"
 
+#define OS64_STRINGIFY_INNER(value) #value
+#define OS64_STRINGIFY(value) OS64_STRINGIFY_INNER(value)
+
 __attribute__((naked, noreturn))
 static void os_thread_return_trampoline(void) {
     __asm__ volatile(
         "mov %rax, %rdi\n"
-        "mov $91, %rax\n"
+        "mov $" OS64_STRINGIFY(OS_SYS_THREAD_EXIT) ", %rax\n"
         "int $0x80\n"
         "1: jmp 1b\n");
 }

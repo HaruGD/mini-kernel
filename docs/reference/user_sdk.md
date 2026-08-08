@@ -11,7 +11,18 @@ int main(void) {
 }
 ```
 
-The build compiles `user/sdk/src/` into `build/libos64.a` and links it into every C user program. Syscall numbers and the `int 0x80` calling sequence remain private to the SDK.
+The build compiles `user/sdk/src/` into `build/libos64.a` and links it into every
+C user program. Ordinary applications use SDK wrappers rather than issuing raw
+calls. Phase 5S-A generates the shared number and result headers from
+`config/abi/syscalls.json`; those generated constants support the kernel, SDK,
+NASM compatibility programs, and ABI tests but are not a promise that raw-call
+source is a supported application interface. The active `int 0x80` instruction
+sequence remains inside the SDK pending Phase 5S-E/F entry migration.
+
+The complete generated catalog is
+[syscall_catalog.generated.md](syscall_catalog.generated.md). Entries remain
+`provisional` until the per-call Phase 5S-G semantic audit and focused negative
+evidence are complete.
 
 Service managers can use `os_run_with_permissions(command, permissions)` to
 assign a validated `OS_PROCESS_PERMISSION_*` mask before a child first enters

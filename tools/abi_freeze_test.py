@@ -12,10 +12,12 @@ HEADERS = (
     "input_types.h",
     "ipc_types.h",
     "process_types.h",
+    "result.h",
     "service_types.h",
     "service_protocol_types.h",
     "service_manager_types.h",
     "surface_types.h",
+    "syscall_numbers.h",
     "terminal_types.h",
     "thread_types.h",
     "window_types.h",
@@ -42,6 +44,11 @@ def source(cxx: bool) -> str:
 {assertions}(OS64_TERMINAL_ABI_VERSION == 1u, "terminal ABI version changed");
 {assertions}(OS64_THREAD_ABI_VERSION == 2u, "thread ABI version changed");
 {assertions}(OS64_WINDOW_ABI_VERSION == 1u, "window ABI version changed");
+{assertions}(OS64_SYSCALL_CATALOG_VERSION == 1u, "syscall catalog version changed");
+{assertions}(OS64_SYSCALL_MAX_NUMBER == 111u, "syscall number range changed");
+{assertions}(SYS_WRITE == 1u, "first syscall number changed");
+{assertions}(SYS_TERMINAL_SESSION_CLOSE == 111u, "last syscall number changed");
+{assertions}(OS_ERR_CANCELLED == -18, "syscall result ABI changed");
 {assertions}(OS_SURFACE_MAP_VALID_MASK == 3u, "surface map flags changed");
 {assertions}(OS_SURFACE_TRANSFER_RIGHTS == (OS_HANDLE_RIGHT_READ | OS_HANDLE_RIGHT_MAP),
              "surface transfer rights changed");

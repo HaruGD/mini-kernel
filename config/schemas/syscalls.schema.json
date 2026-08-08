@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os64.local/schemas/syscalls.schema.json",
+  "title": "OS64 System Call Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "catalog_version",
+    "abi",
+    "defaults",
+    "error_codes",
+    "error_sets",
+    "syscalls"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "catalog_version": {"type": "integer", "minimum": 1},
+    "abi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "architecture",
+        "number_register",
+        "result_register",
+        "argument_registers",
+        "max_number",
+        "active_transport",
+        "compatibility_transport"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "architecture": {"const": "x86_64"},
+        "number_register": {"const": "rax"},
+        "result_register": {"const": "rax"},
+        "argument_registers": {"const": ["rdi", "rsi", "rdx"]},
+        "max_number": {"type": "integer", "minimum": 1},
+        "active_transport": {"type": "string", "minLength": 1},
+        "compatibility_transport": {"type": "string", "minLength": 1}
+      }
+    },
+    "defaults": {"$ref": "#/$defs/defaults"},
+    "error_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/errorCode"}
+    },
+    "error_sets": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": {"type": "string", "pattern": "^OS_ERR_[A-Z][A-Z0-9_]*$"}
+      }
+    },
+    "syscalls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/syscall"}
+    }
+  },
+  "$defs": {
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "blocking", "cancellation"],
+      "properties": {
+        "context": {"const": "process"},
+        "blocking": {"type": "boolean"},
+        "cancellation": {
+          "enum": ["none", "timeout", "cancellable", "process_exit"]
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_ownership", "output_ownership", "cleanup", "limit"],
+      "properties": {
+        "input_ownership": {"type": "string", "minLength": 1},
+        "output_ownership": {"type": "string", "minLength": 1},
+        "cleanup": {"type": "string", "minLength": 1},
+        "limit": {"type": "string", "minLength": 1}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["permission", "execution", "resources"],
+      "properties": {
+        "permission": {"type": "string", "minLength": 1},
+        "execution": {"$ref": "#/$defs/execution"},
+        "resources": {"$ref": "#/$defs/resources"}
+      }
+    },
+    "errorCode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "kernel_symbol", "value", "description"],
+      "properties": {
+        "symbol": {"type": "string", "pattern": "^OS_ERR_[A-Z][A-Z0-9_]*$"},
+        "kernel_symbol": {"type": "string", "pattern": "^SYS_ERR_[A-Z][A-Z0-9_]*$"},
+        "value": {"type": "integer", "maximum": -1},
+        "description": {"type": "string", "minLength": 1}
+      }
+    },
+    "argument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "register", "kind", "direction", "type", "nullable", "size"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "register": {"enum": ["rdi", "rsi", "rdx"]},
+        "kind": {"enum": ["scalar", "cstring", "buffer", "structure", "handle", "address"]},
+        "direction": {"enum": ["value", "in", "out", "inout"]},
+        "type": {"type": "string", "minLength": 1},
+        "nullable": {"type": "boolean"},
+        "size": {"type": "string", "minLength": 1}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "success", "output_on_error", "errors"],
+      "properties": {
+        "kind": {"enum": ["status", "count", "value", "handle", "address", "noreturn"]},
+        "success": {"type": "string", "minLength": 1},
+        "output_on_error": {"type": "string", "minLength": 1},
+        "errors": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+      }
+    },
+    "syscall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "symbol",
+        "sdk_symbol",
+        "name",
+        "state",
+        "audit_status",
+        "handler",
+        "arguments",
+        "result",
+        "reference"
+      ],
+      "properties": {
+        "number": {"type": "integer", "minimum": 1},
+        "symbol": {"type": "string", "pattern": "^SYS_[A-Z][A-Z0-9_]*$"},
+        "sdk_symbol": {"type": "string", "pattern": "^OS_SYS_[A-Z][A-Z0-9_]*$"},
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "state": {"enum": ["active", "reserved", "retired"]},
+        "audit_status": {"enum": ["provisional", "audited"]},
+        "handler": {"enum": ["core", "vfs", "sdk"]},
+        "arguments": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/argument"}},
+        "result": {"$ref": "#/$defs/result"},
+        "permission": {"type": "string", "minLength": 1},
+        "execution": {"$ref": "#/$defs/execution"},
+        "resources": {"$ref": "#/$defs/resources"},
+        "reference": {"type": "string", "pattern": "^docs/.+\\.md$"}
+      }
+    }
+  }
+}

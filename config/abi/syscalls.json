@@ -1,0 +1,3743 @@
+{
+  "schema_version": 1,
+  "catalog_version": 1,
+  "abi": {
+    "name": "os64-x86_64-v1",
+    "architecture": "x86_64",
+    "number_register": "rax",
+    "result_register": "rax",
+    "argument_registers": [
+      "rdi",
+      "rsi",
+      "rdx"
+    ],
+    "max_number": 111,
+    "active_transport": "int 0x80",
+    "compatibility_transport": "none until Phase 5S-E/F"
+  },
+  "defaults": {
+    "permission": "none",
+    "execution": {
+      "context": "process",
+      "blocking": false,
+      "cancellation": "none"
+    },
+    "resources": {
+      "input_ownership": "Pointer and handle arguments are borrowed for the duration of the call.",
+      "output_ownership": "Caller-provided output storage remains caller-owned.",
+      "cleanup": "The handler releases temporary kernel resources before returning.",
+      "limit": "Bounded by argument sizes and the referenced subsystem contract."
+    }
+  },
+  "error_codes": [
+    {
+      "symbol": "OS_ERR_NOT_READY",
+      "kernel_symbol": "SYS_ERR_NOT_READY",
+      "value": -1,
+      "description": "Required subsystem or state is not ready."
+    },
+    {
+      "symbol": "OS_ERR_INVALID_ARGUMENT",
+      "kernel_symbol": "SYS_ERR_INVALID_ARGUMENT",
+      "value": -2,
+      "description": "A scalar, flag, or semantic argument is invalid."
+    },
+    {
+      "symbol": "OS_ERR_NOT_FOUND",
+      "kernel_symbol": "SYS_ERR_NOT_FOUND",
+      "value": -3,
+      "description": "The named object or identity does not exist."
+    },
+    {
+      "symbol": "OS_ERR_BUFFER_TOO_SMALL",
+      "kernel_symbol": "SYS_ERR_BUFFER_TOO_SMALL",
+      "value": -4,
+      "description": "The supplied output capacity is insufficient."
+    },
+    {
+      "symbol": "OS_ERR_IO",
+      "kernel_symbol": "SYS_ERR_IO",
+      "value": -5,
+      "description": "An input/output operation failed."
+    },
+    {
+      "symbol": "OS_ERR_ALREADY_EXISTS",
+      "kernel_symbol": "SYS_ERR_ALREADY_EXISTS",
+      "value": -6,
+      "description": "The requested object already exists."
+    },
+    {
+      "symbol": "OS_ERR_NO_RESOURCES",
+      "kernel_symbol": "SYS_ERR_NO_RESOURCES",
+      "value": -7,
+      "description": "A bounded object table or resource pool is exhausted."
+    },
+    {
+      "symbol": "OS_ERR_UNSUPPORTED",
+      "kernel_symbol": "SYS_ERR_UNSUPPORTED",
+      "value": -8,
+      "description": "The requested operation, version, or option is unsupported."
+    },
+    {
+      "symbol": "OS_ERR_WOULD_BLOCK",
+      "kernel_symbol": "SYS_ERR_WOULD_BLOCK",
+      "value": -9,
+      "description": "The nonblocking operation cannot complete immediately."
+    },
+    {
+      "symbol": "OS_ERR_OUT_OF_MEMORY",
+      "kernel_symbol": "SYS_ERR_OUT_OF_MEMORY",
+      "value": -10,
+      "description": "Kernel or process memory allocation failed."
+    },
+    {
+      "symbol": "OS_ERR_OUT_OF_RANGE",
+      "kernel_symbol": "SYS_ERR_OUT_OF_RANGE",
+      "value": -11,
+      "description": "A value or geometry lies outside the supported range."
+    },
+    {
+      "symbol": "OS_ERR_NO_TARGET",
+      "kernel_symbol": "SYS_ERR_NO_TARGET",
+      "value": -12,
+      "description": "No eligible destination exists."
+    },
+    {
+      "symbol": "OS_ERR_QUEUE_FULL",
+      "kernel_symbol": "SYS_ERR_QUEUE_FULL",
+      "value": -13,
+      "description": "The destination queue is full."
+    },
+    {
+      "symbol": "OS_ERR_MESSAGE_TOO_LARGE",
+      "kernel_symbol": "SYS_ERR_MESSAGE_TOO_LARGE",
+      "value": -14,
+      "description": "The message exceeds the bounded ABI payload."
+    },
+    {
+      "symbol": "OS_ERR_PERMISSION_DENIED",
+      "kernel_symbol": "SYS_ERR_PERMISSION_DENIED",
+      "value": -15,
+      "description": "The caller lacks the required authority or rights."
+    },
+    {
+      "symbol": "OS_ERR_BAD_BUFFER",
+      "kernel_symbol": "SYS_ERR_BAD_BUFFER",
+      "value": -16,
+      "description": "User memory is inaccessible for the declared direction and size."
+    },
+    {
+      "symbol": "OS_ERR_TIMEOUT",
+      "kernel_symbol": "SYS_ERR_TIMEOUT",
+      "value": -17,
+      "description": "The bounded wait deadline expired."
+    },
+    {
+      "symbol": "OS_ERR_CANCELLED",
+      "kernel_symbol": "SYS_ERR_CANCELLED",
+      "value": -18,
+      "description": "The operation was cancelled by lifecycle or explicit policy."
+    }
+  ],
+  "error_sets": {
+    "none": [],
+    "legacy": [
+      "OS_ERR_NOT_READY"
+    ],
+    "console": [
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NOT_READY",
+      "OS_ERR_QUEUE_FULL",
+      "OS_ERR_CANCELLED"
+    ],
+    "lifecycle": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_CANCELLED"
+    ],
+    "process": [
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_NOT_READY",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_OUT_OF_MEMORY",
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_CANCELLED"
+    ],
+    "timeout": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_TIMEOUT",
+      "OS_ERR_CANCELLED"
+    ],
+    "vfs": [
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_BUFFER_TOO_SMALL",
+      "OS_ERR_IO",
+      "OS_ERR_ALREADY_EXISTS",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_UNSUPPORTED",
+      "OS_ERR_OUT_OF_MEMORY",
+      "OS_ERR_OUT_OF_RANGE",
+      "OS_ERR_PERMISSION_DENIED"
+    ],
+    "memory": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_OUT_OF_MEMORY",
+      "OS_ERR_OUT_OF_RANGE",
+      "OS_ERR_BAD_BUFFER"
+    ],
+    "graphics": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_OUT_OF_RANGE",
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_IO"
+    ],
+    "input": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_WOULD_BLOCK",
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_TIMEOUT",
+      "OS_ERR_CANCELLED"
+    ],
+    "ipc": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_UNSUPPORTED",
+      "OS_ERR_WOULD_BLOCK",
+      "OS_ERR_OUT_OF_MEMORY",
+      "OS_ERR_NO_TARGET",
+      "OS_ERR_QUEUE_FULL",
+      "OS_ERR_MESSAGE_TOO_LARGE",
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_TIMEOUT",
+      "OS_ERR_CANCELLED"
+    ],
+    "service": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_ALREADY_EXISTS",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_PERMISSION_DENIED"
+    ],
+    "buffer": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER"
+    ],
+    "surface": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_OUT_OF_MEMORY",
+      "OS_ERR_OUT_OF_RANGE",
+      "OS_ERR_PERMISSION_DENIED"
+    ],
+    "display": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_IO",
+      "OS_ERR_PERMISSION_DENIED"
+    ],
+    "handle": [
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_PERMISSION_DENIED"
+    ],
+    "thread": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_OUT_OF_MEMORY",
+      "OS_ERR_OUT_OF_RANGE",
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_CANCELLED"
+    ],
+    "sync": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_WOULD_BLOCK",
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_TIMEOUT",
+      "OS_ERR_CANCELLED"
+    ],
+    "terminal": [
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_NO_TARGET",
+      "OS_ERR_QUEUE_FULL",
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_CANCELLED"
+    ]
+  },
+  "syscalls": [
+    {
+      "number": 1,
+      "symbol": "SYS_WRITE",
+      "sdk_symbol": "OS_SYS_WRITE",
+      "name": "write",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "text",
+          "register": "rdi",
+          "kind": "buffer",
+          "direction": "in",
+          "type": "const void*",
+          "nullable": false,
+          "size": "arg2 bytes"
+        },
+        {
+          "name": "length",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "count",
+        "success": "Returns the number of bytes written; zero is valid for an empty request.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "console"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 2,
+      "symbol": "SYS_EXIT",
+      "sdk_symbol": "OS_SYS_EXIT",
+      "name": "exit",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "status",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "int32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "noreturn",
+        "success": "Terminates the calling process and does not return to that process.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "lifecycle"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "process_exit"
+      }
+    },
+    {
+      "number": 3,
+      "symbol": "SYS_PUTCHAR",
+      "sdk_symbol": "OS_SYS_PUTCHAR",
+      "name": "putchar",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "character",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint8_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "count",
+        "success": "Returns 1 after publishing the character.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "console"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 4,
+      "symbol": "SYS_GETCHAR",
+      "sdk_symbol": "OS_SYS_GETCHAR",
+      "name": "getchar",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "value",
+        "success": "Returns one unsigned character value.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "input"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_INPUT or attached terminal",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "cancellable"
+      }
+    },
+    {
+      "number": 5,
+      "symbol": "SYS_LIST_FILES",
+      "sdk_symbol": "OS_SYS_LIST_FILES",
+      "name": "list_files",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints the current directory listing and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 6,
+      "symbol": "SYS_CAT_FILE",
+      "sdk_symbol": "OS_SYS_CAT_FILE",
+      "name": "cat_file",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "count",
+        "success": "Prints a file and returns its byte count.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 7,
+      "symbol": "SYS_RUN_USER",
+      "sdk_symbol": "OS_SYS_RUN",
+      "name": "run_user",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "command",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "PROCESS_CMDLINE_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Starts a child and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_MANAGE_CHILD"
+    },
+    {
+      "number": 8,
+      "symbol": "SYS_VERSION",
+      "sdk_symbol": "OS_SYS_VERSION",
+      "name": "version",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints version information and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 9,
+      "symbol": "SYS_BOOTINFO",
+      "sdk_symbol": "OS_SYS_BOOTINFO",
+      "name": "bootinfo",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints boot information and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 10,
+      "symbol": "SYS_MEMSTAT",
+      "sdk_symbol": "OS_SYS_MEMSTAT",
+      "name": "memstat",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints memory statistics and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 11,
+      "symbol": "SYS_RM_FILE",
+      "sdk_symbol": "OS_SYS_RM_FILE",
+      "name": "rm_file",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Deletes a file, prints diagnostics, and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 12,
+      "symbol": "SYS_UPTIME",
+      "sdk_symbol": "OS_SYS_UPTIME",
+      "name": "uptime",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints uptime and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 13,
+      "symbol": "SYS_TOUCH_FILE",
+      "sdk_symbol": "OS_SYS_TOUCH_FILE",
+      "name": "touch_file",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Creates or updates a file and prints diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 14,
+      "symbol": "SYS_SAVE_FILE",
+      "sdk_symbol": "OS_SYS_SAVE_FILE",
+      "name": "save_file",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        },
+        {
+          "name": "text",
+          "register": "rsi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "128 bytes including NUL"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes the bounded text and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 15,
+      "symbol": "SYS_GET_PID",
+      "sdk_symbol": "OS_SYS_GETPID",
+      "name": "get_pid",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "value",
+        "success": "Returns the current process identifier.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 16,
+      "symbol": "SYS_GET_PPID",
+      "sdk_symbol": "OS_SYS_GETPPID",
+      "name": "get_ppid",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "value",
+        "success": "Returns the parent process identifier.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 17,
+      "symbol": "SYS_PS",
+      "sdk_symbol": "OS_SYS_PS",
+      "name": "ps",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints the process table and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 18,
+      "symbol": "SYS_LAST_STATUS",
+      "sdk_symbol": "OS_SYS_LAST_STATUS",
+      "name": "last_status",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "value",
+        "success": "Returns the last child status, or zero when no child result exists.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 19,
+      "symbol": "SYS_WAIT_CHILD",
+      "sdk_symbol": "OS_SYS_WAIT",
+      "name": "wait_child",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "value",
+        "success": "Consumes one waitable child result and returns its status, or zero when absent.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 20,
+      "symbol": "SYS_SCHED_INFO",
+      "sdk_symbol": "OS_SYS_SCHED_INFO",
+      "name": "sched_info",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints scheduler diagnostics and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 21,
+      "symbol": "SYS_YIELD",
+      "sdk_symbol": "OS_SYS_YIELD",
+      "name": "yield",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Yields execution and resumes with zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "none"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "none"
+      }
+    },
+    {
+      "number": 22,
+      "symbol": "SYS_RESUME_USER",
+      "sdk_symbol": "OS_SYS_RESUME_USER",
+      "name": "resume_user",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Resumes the selected child and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_MANAGE_CHILD"
+    },
+    {
+      "number": 23,
+      "symbol": "SYS_KILL_USER",
+      "sdk_symbol": "OS_SYS_KILL",
+      "name": "kill_user",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Terminates the selected child and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_MANAGE_CHILD"
+    },
+    {
+      "number": 24,
+      "symbol": "SYS_REAP_ALL_CHILDREN",
+      "sdk_symbol": "OS_SYS_REAP_ALL_CHILDREN",
+      "name": "reap_all_children",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "count",
+        "success": "Returns the number of reaped children and prints it.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 25,
+      "symbol": "SYS_JOBS",
+      "sdk_symbol": "OS_SYS_JOBS",
+      "name": "jobs",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints child job state and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 26,
+      "symbol": "SYS_SLEEP",
+      "sdk_symbol": "OS_SYS_SLEEP",
+      "name": "sleep",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "ticks",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Sleeps for at least one tick and resumes with zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "timeout"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 27,
+      "symbol": "SYS_SET_BACKGROUND",
+      "sdk_symbol": "OS_SYS_SET_BACKGROUND",
+      "name": "set_background",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "enabled",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Updates child background state and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_MANAGE_CHILD"
+    },
+    {
+      "number": 28,
+      "symbol": "SYS_CHILDREN_ACTIVE",
+      "sdk_symbol": "OS_SYS_CHILDREN_ACTIVE",
+      "name": "children_active",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "count",
+        "success": "Returns the number of unfinished children.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "none"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 29,
+      "symbol": "SYS_REAP_ALL_CHILDREN_SILENT",
+      "sdk_symbol": "OS_SYS_REAP",
+      "name": "reap_all_children_silent",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "count",
+        "success": "Returns the number of reaped children without console output.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "none"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 30,
+      "symbol": "SYS_RM_FILE_SILENT",
+      "sdk_symbol": "OS_SYS_REMOVE",
+      "name": "rm_file_silent",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Deletes a file without console diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 31,
+      "symbol": "SYS_TOUCH_FILE_SILENT",
+      "sdk_symbol": "OS_SYS_TOUCH",
+      "name": "touch_file_silent",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Creates or updates a file without console diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 32,
+      "symbol": "SYS_SAVE_FILE_SILENT",
+      "sdk_symbol": "OS_SYS_SAVE_FILE_SILENT",
+      "name": "save_file_silent",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        },
+        {
+          "name": "text",
+          "register": "rsi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "128 bytes including NUL"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes bounded text without console diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 33,
+      "symbol": "SYS_VFS_MOUNTS",
+      "sdk_symbol": "OS_SYS_VFS_MOUNTS",
+      "name": "vfs_mounts",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Prints mounted filesystems and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 34,
+      "symbol": "SYS_LIST_FILES_AT",
+      "sdk_symbol": "OS_SYS_LIST_FILES_AT",
+      "name": "list_files_at",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Prints a directory listing and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "legacy"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 35,
+      "symbol": "SYS_VFS_OPEN",
+      "sdk_symbol": "OS_SYS_OPEN",
+      "name": "vfs_open",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "PROCESS_CMDLINE_MAX"
+        },
+        {
+          "name": "mode",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "handle",
+        "success": "Returns an owned file handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "resources": {
+        "input_ownership": "Arguments are borrowed for the call.",
+        "output_ownership": "The caller owns the returned VFS file handle until close.",
+        "cleanup": "The kernel rolls back the object if handle publication fails.",
+        "limit": "Bounded by the per-process handle table and subsystem object capacity."
+      }
+    },
+    {
+      "number": 36,
+      "symbol": "SYS_VFS_READ",
+      "sdk_symbol": "OS_SYS_READ",
+      "name": "vfs_read",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "file",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "buffer",
+          "register": "rsi",
+          "kind": "buffer",
+          "direction": "out",
+          "type": "void*",
+          "nullable": false,
+          "size": "arg3 bytes"
+        },
+        {
+          "name": "size",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "count",
+        "success": "Returns up to 4096 bytes read.",
+        "output_on_error": "Only the returned byte count is initialized; no bytes are promised on failure.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 37,
+      "symbol": "SYS_VFS_WRITE",
+      "sdk_symbol": "OS_SYS_WRITE_FD",
+      "name": "vfs_write",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "file",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "buffer",
+          "register": "rsi",
+          "kind": "buffer",
+          "direction": "in",
+          "type": "const void*",
+          "nullable": false,
+          "size": "arg3 bytes"
+        },
+        {
+          "name": "size",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "count",
+        "success": "Returns up to 4096 bytes written.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 38,
+      "symbol": "SYS_VFS_CLOSE",
+      "sdk_symbol": "OS_SYS_CLOSE",
+      "name": "vfs_close",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "file",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Closes the file handle and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 39,
+      "symbol": "SYS_VFS_SEEK",
+      "sdk_symbol": "OS_SYS_SEEK",
+      "name": "vfs_seek",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "file",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "offset",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "int32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "whence",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "value",
+        "success": "Returns the resulting file position.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 40,
+      "symbol": "SYS_VFS_TELL",
+      "sdk_symbol": "OS_SYS_TELL",
+      "name": "vfs_tell",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "file",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "value",
+        "success": "Returns the current file position.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 41,
+      "symbol": "SYS_MKDIR",
+      "sdk_symbol": "OS_SYS_MKDIR_COMMAND",
+      "name": "mkdir_command",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Creates a directory with console diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 42,
+      "symbol": "SYS_RMDIR",
+      "sdk_symbol": "OS_SYS_RMDIR_COMMAND",
+      "name": "rmdir_command",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Removes a directory with console diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 43,
+      "symbol": "SYS_VFS_INFO",
+      "sdk_symbol": "OS_SYS_STAT",
+      "name": "vfs_info",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        },
+        {
+          "name": "info",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "VFSFileInfo*",
+          "nullable": false,
+          "size": "sizeof(VFSFileInfo)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes file metadata and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 44,
+      "symbol": "SYS_GETCWD",
+      "sdk_symbol": "OS_SYS_GETCWD",
+      "name": "getcwd",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "buffer",
+          "register": "rdi",
+          "kind": "buffer",
+          "direction": "out",
+          "type": "char*",
+          "nullable": false,
+          "size": "arg2 bytes"
+        },
+        {
+          "name": "capacity",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes a NUL-terminated current directory and returns zero.",
+        "output_on_error": "The output buffer is not valid on failure.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 45,
+      "symbol": "SYS_CHDIR",
+      "sdk_symbol": "OS_SYS_CHDIR",
+      "name": "chdir",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Changes the process current directory and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 46,
+      "symbol": "SYS_VFS_OPENDIR",
+      "sdk_symbol": "OS_SYS_OPENDIR",
+      "name": "vfs_opendir",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "PROCESS_CMDLINE_MAX"
+        }
+      ],
+      "result": {
+        "kind": "handle",
+        "success": "Returns an owned directory handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "resources": {
+        "input_ownership": "Arguments are borrowed for the call.",
+        "output_ownership": "The caller owns the returned VFS directory handle until close.",
+        "cleanup": "The kernel rolls back the object if handle publication fails.",
+        "limit": "Bounded by the per-process handle table and subsystem object capacity."
+      }
+    },
+    {
+      "number": 47,
+      "symbol": "SYS_VFS_READDIR",
+      "sdk_symbol": "OS_SYS_READDIR",
+      "name": "vfs_readdir",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "directory",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "entry",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "VFSDirEntry*",
+          "nullable": false,
+          "size": "sizeof(VFSDirEntry)"
+        }
+      ],
+      "result": {
+        "kind": "value",
+        "success": "Returns 1 for an entry and 0 at end of directory.",
+        "output_on_error": "The entry is valid only when the result is 1.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 48,
+      "symbol": "SYS_VFS_CLOSEDIR",
+      "sdk_symbol": "OS_SYS_CLOSEDIR",
+      "name": "vfs_closedir",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "vfs",
+      "arguments": [
+        {
+          "name": "directory",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Closes the directory handle and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 49,
+      "symbol": "SYS_MKDIR_SILENT",
+      "sdk_symbol": "OS_SYS_MKDIR",
+      "name": "mkdir",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Creates a directory without console diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 50,
+      "symbol": "SYS_RMDIR_SILENT",
+      "sdk_symbol": "OS_SYS_RMDIR",
+      "name": "rmdir",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Removes a directory without console diagnostics.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 51,
+      "symbol": "SYS_RENAME_PATH",
+      "sdk_symbol": "OS_SYS_RENAME",
+      "name": "rename_path",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "old_path",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        },
+        {
+          "name": "new_path",
+          "register": "rsi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "USER_PATH_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Renames a path and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "vfs"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 52,
+      "symbol": "SYS_CLEAR_SCREEN",
+      "sdk_symbol": "OS_SYS_CLEAR",
+      "name": "clear_screen",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [],
+      "result": {
+        "kind": "status",
+        "success": "Clears the attached terminal or kernel console.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "console"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 53,
+      "symbol": "SYS_USER_BRK",
+      "sdk_symbol": "OS_SYS_BRK",
+      "name": "user_brk",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "address",
+          "register": "rdi",
+          "kind": "address",
+          "direction": "value",
+          "type": "uintptr_t",
+          "nullable": true,
+          "size": "address"
+        }
+      ],
+      "result": {
+        "kind": "address",
+        "success": "Returns the resulting program break; address zero queries it.",
+        "output_on_error": "No mapping change is promised when the result is negative.",
+        "errors": "memory"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 54,
+      "symbol": "SYS_TIME_TICKS",
+      "sdk_symbol": "OS_SYS_TIME_TICKS",
+      "name": "time_ticks",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [],
+      "result": {
+        "kind": "value",
+        "success": "Returns the monotonic PIT tick count.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "none"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 55,
+      "symbol": "SYS_TIME_FREQUENCY",
+      "sdk_symbol": "OS_SYS_TIME_FREQUENCY",
+      "name": "time_frequency",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [],
+      "result": {
+        "kind": "value",
+        "success": "Returns PIT ticks per second.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "none"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 56,
+      "symbol": "SYS_GFX_GET_INFO",
+      "sdk_symbol": "OS_SYS_GFX_GET_INFO",
+      "name": "gfx_get_info",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "info",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsGraphicsInfo*",
+          "nullable": false,
+          "size": "sizeof(OsGraphicsInfo)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes graphics mode information and returns zero.",
+        "output_on_error": "The info structure is invalid on failure.",
+        "errors": "graphics"
+      },
+      "reference": "docs/reference/display_service.md",
+      "permission": "display authority"
+    },
+    {
+      "number": 57,
+      "symbol": "SYS_GFX_PUT_PIXEL",
+      "sdk_symbol": "OS_SYS_GFX_PUT_PIXEL",
+      "name": "gfx_put_pixel",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "x",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "y",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "color",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes one display pixel and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "graphics"
+      },
+      "reference": "docs/reference/display_service.md",
+      "permission": "display authority"
+    },
+    {
+      "number": 58,
+      "symbol": "SYS_GFX_FILL_RECT",
+      "sdk_symbol": "OS_SYS_GFX_FILL_RECT",
+      "name": "gfx_fill_rect",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "rect",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "in",
+          "type": "const UserGraphicsRect*",
+          "nullable": false,
+          "size": "sizeof(UserGraphicsRect)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Fills a clipped display rectangle and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "graphics"
+      },
+      "reference": "docs/reference/display_service.md",
+      "permission": "display authority"
+    },
+    {
+      "number": 59,
+      "symbol": "SYS_GFX_CLEAR",
+      "sdk_symbol": "OS_SYS_GFX_CLEAR",
+      "name": "gfx_clear",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "color",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Clears the display and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "graphics"
+      },
+      "reference": "docs/reference/display_service.md",
+      "permission": "display authority"
+    },
+    {
+      "number": 60,
+      "symbol": "SYS_KEYBOARD_EVENT",
+      "sdk_symbol": "OS_SYS_KEYBOARD_EVENT",
+      "name": "keyboard_event",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "event",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsKeyEvent*",
+          "nullable": false,
+          "size": "sizeof(OsKeyEvent)"
+        },
+        {
+          "name": "wait",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "timeout_ticks",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes one key event and returns zero.",
+        "output_on_error": "The event is invalid on failure.",
+        "errors": "input"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_INPUT",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 61,
+      "symbol": "SYS_INPUT_EVENT_POLL",
+      "sdk_symbol": "OS_SYS_INPUT_EVENT_POLL",
+      "name": "input_event_poll",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "event",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsInputEvent*",
+          "nullable": false,
+          "size": "sizeof(OsInputEvent)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes one queued input event and returns zero.",
+        "output_on_error": "The event is invalid on failure.",
+        "errors": "input"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_INPUT"
+    },
+    {
+      "number": 62,
+      "symbol": "SYS_INPUT_EVENT_WAIT",
+      "sdk_symbol": "OS_SYS_INPUT_EVENT_WAIT",
+      "name": "input_event_wait",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "event",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsInputEvent*",
+          "nullable": false,
+          "size": "sizeof(OsInputEvent)"
+        },
+        {
+          "name": "timeout_ticks",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Waits for and writes one input event.",
+        "output_on_error": "The event is invalid on failure.",
+        "errors": "input"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_INPUT",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 63,
+      "symbol": "SYS_IPC_SEND",
+      "sdk_symbol": "OS_SYS_IPC_SEND",
+      "name": "ipc_send",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "target_pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "message",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "in",
+          "type": "const OsIpcMessage*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessage)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Queues one IPC v1 message and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md"
+    },
+    {
+      "number": 64,
+      "symbol": "SYS_IPC_RECV",
+      "sdk_symbol": "OS_SYS_IPC_RECV",
+      "name": "ipc_recv",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "message",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsIpcMessage*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessage)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes one queued IPC v1 message.",
+        "output_on_error": "The message is invalid on failure.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md"
+    },
+    {
+      "number": 65,
+      "symbol": "SYS_IPC_WAIT",
+      "sdk_symbol": "OS_SYS_IPC_WAIT",
+      "name": "ipc_wait",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "message",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsIpcMessage*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessage)"
+        },
+        {
+          "name": "timeout_ticks",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Waits for and writes one IPC v1 message.",
+        "output_on_error": "The message is invalid on failure.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 66,
+      "symbol": "SYS_SERVICE_REGISTER",
+      "sdk_symbol": "OS_SYS_SERVICE_REGISTER",
+      "name": "service_register",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "name",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "SERVICE_NAME_MAX"
+        },
+        {
+          "name": "flags",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Registers the calling process as a service.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "service"
+      },
+      "reference": "docs/architecture/service_supervision.md",
+      "permission": "service registration policy"
+    },
+    {
+      "number": 67,
+      "symbol": "SYS_SERVICE_FIND",
+      "sdk_symbol": "OS_SYS_SERVICE_FIND",
+      "name": "service_find",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "name",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "SERVICE_NAME_MAX"
+        },
+        {
+          "name": "info",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsServiceInfo*",
+          "nullable": false,
+          "size": "sizeof(OsServiceInfo)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes matching service information.",
+        "output_on_error": "The info structure is invalid on failure.",
+        "errors": "service"
+      },
+      "reference": "docs/architecture/service_supervision.md"
+    },
+    {
+      "number": 68,
+      "symbol": "SYS_SERVICE_UNREGISTER",
+      "sdk_symbol": "OS_SYS_SERVICE_UNREGISTER",
+      "name": "service_unregister",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "name",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "SERVICE_NAME_MAX"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Unregisters a service owned by the caller.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "service"
+      },
+      "reference": "docs/architecture/service_supervision.md",
+      "permission": "registered service owner"
+    },
+    {
+      "number": 69,
+      "symbol": "SYS_GET_PROCESS_IDENTITY",
+      "sdk_symbol": "OS_SYS_GET_PROCESS_IDENTITY",
+      "name": "get_process_identity",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "identity",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsProcessIdentity*",
+          "nullable": false,
+          "size": "sizeof(OsProcessIdentity)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes the caller process identity.",
+        "output_on_error": "The identity is invalid on failure.",
+        "errors": "buffer"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 70,
+      "symbol": "SYS_IPC_SEND_IDENTITY",
+      "sdk_symbol": "OS_SYS_IPC_SEND_IDENTITY",
+      "name": "ipc_send_identity",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "target_pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "target_generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "message",
+          "register": "rdx",
+          "kind": "structure",
+          "direction": "in",
+          "type": "const OsIpcMessage*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessage)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Queues one IPC v1 message to an exact process identity.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md"
+    },
+    {
+      "number": 71,
+      "symbol": "SYS_IPC_QUERY",
+      "sdk_symbol": "OS_SYS_IPC_QUERY",
+      "name": "ipc_query",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "abi_version",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "uint32_t*",
+          "nullable": false,
+          "size": "sizeof(uint32_t)"
+        },
+        {
+          "name": "features",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "uint32_t*",
+          "nullable": false,
+          "size": "sizeof(uint32_t)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes supported IPC ABI and feature bits.",
+        "output_on_error": "Neither output is promised on failure.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md"
+    },
+    {
+      "number": 72,
+      "symbol": "SYS_IPC_V2_SEND_IDENTITY",
+      "sdk_symbol": "OS_SYS_IPC_V2_SEND_IDENTITY",
+      "name": "ipc_v2_send_identity",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "target_pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "target_generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "message",
+          "register": "rdx",
+          "kind": "structure",
+          "direction": "in",
+          "type": "const OsIpcMessageV2*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessageV2)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Queues one IPC v2 message to an exact identity.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md"
+    },
+    {
+      "number": 73,
+      "symbol": "SYS_IPC_V2_RECV",
+      "sdk_symbol": "OS_SYS_IPC_V2_RECV",
+      "name": "ipc_v2_recv",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "message",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsIpcMessageV2*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessageV2)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes one queued IPC v2 message.",
+        "output_on_error": "The message is invalid on failure.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md"
+    },
+    {
+      "number": 74,
+      "symbol": "SYS_IPC_V2_RECV_MATCH",
+      "sdk_symbol": "OS_SYS_IPC_V2_RECV_MATCH",
+      "name": "ipc_v2_recv_match",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "filter",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "in",
+          "type": "const OsIpcReceiveFilter*",
+          "nullable": false,
+          "size": "sizeof(OsIpcReceiveFilter)"
+        },
+        {
+          "name": "message",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsIpcMessageV2*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessageV2)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes one queued IPC v2 message matching the filter.",
+        "output_on_error": "The message is invalid on failure.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md"
+    },
+    {
+      "number": 75,
+      "symbol": "SYS_RUN_USER_WITH_PERMISSIONS",
+      "sdk_symbol": "OS_SYS_RUN_WITH_PERMISSIONS",
+      "name": "run_user_with_permissions",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "command",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "PROCESS_CMDLINE_MAX"
+        },
+        {
+          "name": "permissions",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Starts a child with the requested allowed permissions.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_MANAGE_CHILD"
+    },
+    {
+      "number": 76,
+      "symbol": "SYS_SURFACE_CREATE",
+      "sdk_symbol": "OS_SYS_SURFACE_CREATE",
+      "name": "surface_create",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "width",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "height",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "pixel_format",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "handle",
+        "success": "Returns an owned graphics-surface handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "surface"
+      },
+      "reference": "docs/phases/phase-4/compositor_contracts.md",
+      "resources": {
+        "input_ownership": "Arguments are borrowed for the call.",
+        "output_ownership": "The caller owns the returned graphics surface handle until close.",
+        "cleanup": "The kernel rolls back the object if handle publication fails.",
+        "limit": "Bounded by the per-process handle table and subsystem object capacity."
+      }
+    },
+    {
+      "number": 77,
+      "symbol": "SYS_SURFACE_GET_INFO",
+      "sdk_symbol": "OS_SYS_SURFACE_GET_INFO",
+      "name": "surface_get_info",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "surface",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSurface",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "info",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsSurfaceInfo*",
+          "nullable": false,
+          "size": "sizeof(OsSurfaceInfo)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes surface information and returns zero.",
+        "output_on_error": "The info structure is invalid on failure.",
+        "errors": "surface"
+      },
+      "reference": "docs/phases/phase-4/compositor_contracts.md"
+    },
+    {
+      "number": 78,
+      "symbol": "SYS_SURFACE_MAP",
+      "sdk_symbol": "OS_SYS_SURFACE_MAP",
+      "name": "surface_map",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "surface",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSurface",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "map_flags",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "address",
+        "success": "Returns an owned user mapping address.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "surface"
+      },
+      "reference": "docs/phases/phase-4/compositor_contracts.md",
+      "resources": {
+        "input_ownership": "The surface handle is borrowed for the call.",
+        "output_ownership": "The process owns the returned mapping until surface_unmap or process teardown.",
+        "cleanup": "A failed map rolls back page mappings and references.",
+        "limit": "Bounded by surface size, rights, address-space capacity, and one active mapping policy."
+      }
+    },
+    {
+      "number": 79,
+      "symbol": "SYS_SURFACE_UNMAP",
+      "sdk_symbol": "OS_SYS_SURFACE_UNMAP",
+      "name": "surface_unmap",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "surface",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSurface",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "address",
+          "register": "rsi",
+          "kind": "address",
+          "direction": "value",
+          "type": "uintptr_t",
+          "nullable": false,
+          "size": "address"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Removes the matching surface mapping.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "surface"
+      },
+      "reference": "docs/phases/phase-4/compositor_contracts.md"
+    },
+    {
+      "number": 80,
+      "symbol": "SYS_SURFACE_CLOSE",
+      "sdk_symbol": "OS_SYS_SURFACE_CLOSE",
+      "name": "surface_close",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "surface",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSurface",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Closes the surface handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "surface"
+      },
+      "reference": "docs/phases/phase-4/compositor_contracts.md"
+    },
+    {
+      "number": 81,
+      "symbol": "SYS_IPC_V2_WAIT",
+      "sdk_symbol": "OS_SYS_IPC_V2_WAIT",
+      "name": "ipc_v2_wait",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "message",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsIpcMessageV2*",
+          "nullable": false,
+          "size": "sizeof(OsIpcMessageV2)"
+        },
+        {
+          "name": "timeout_ticks",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Waits for and writes one IPC v2 message.",
+        "output_on_error": "The message is invalid on failure.",
+        "errors": "ipc"
+      },
+      "reference": "docs/architecture/ipc_v2.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 82,
+      "symbol": "SYS_GFX_PRESENT_SURFACE",
+      "sdk_symbol": "OS_SYS_GFX_PRESENT_SURFACE",
+      "name": "gfx_present_surface",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "surface",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSurface",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "rects",
+          "register": "rsi",
+          "kind": "buffer",
+          "direction": "in",
+          "type": "const OsRect*",
+          "nullable": false,
+          "size": "arg3 * sizeof(OsRect)"
+        },
+        {
+          "name": "rect_count",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "count",
+        "success": "Returns the number of presented damage rectangles.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "graphics"
+      },
+      "reference": "docs/reference/display_service.md",
+      "permission": "display authority"
+    },
+    {
+      "number": 83,
+      "symbol": "SYS_HANDLE_CLOSE",
+      "sdk_symbol": "OS_SYS_HANDLE_CLOSE",
+      "name": "handle_close",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "handle",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsHandle",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Closes one typed process handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "handle"
+      },
+      "reference": "docs/reference/user_sdk.md"
+    },
+    {
+      "number": 84,
+      "symbol": "SYS_SERVICE_FIND_OWNER_IDENTITY",
+      "sdk_symbol": "OS_SYS_SERVICE_FIND_OWNER_IDENTITY",
+      "name": "service_find_owner_identity",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "name",
+          "register": "rdi",
+          "kind": "cstring",
+          "direction": "in",
+          "type": "const char*",
+          "nullable": false,
+          "size": "SERVICE_NAME_MAX"
+        },
+        {
+          "name": "identity",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsProcessIdentity*",
+          "nullable": false,
+          "size": "sizeof(OsProcessIdentity)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes the registered service owner identity.",
+        "output_on_error": "The identity is invalid on failure.",
+        "errors": "service"
+      },
+      "reference": "docs/architecture/service_supervision.md"
+    },
+    {
+      "number": 85,
+      "symbol": "SYS_PROCESS_IDENTITY_ALIVE",
+      "sdk_symbol": "OS_SYS_PROCESS_IDENTITY_ALIVE",
+      "name": "process_identity_alive",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Returns zero when the exact process identity is alive.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "process"
+      },
+      "reference": "docs/reference/user_sdk.md",
+      "permission": "OS_PROCESS_PERMISSION_MANAGE_CHILD"
+    },
+    {
+      "number": 86,
+      "symbol": "SYS_DISPLAY_SESSION_ACQUIRE",
+      "sdk_symbol": "OS_SYS_DISPLAY_SESSION_ACQUIRE",
+      "name": "display_session_acquire",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "surface",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSurface",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "info",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsDisplaySessionInfo*",
+          "nullable": false,
+          "size": "sizeof(OsDisplaySessionInfo)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Acquires a generation-owned GUI display session.",
+        "output_on_error": "The session info is invalid and acquisition is rolled back on failure.",
+        "errors": "display"
+      },
+      "reference": "docs/reference/display_service.md",
+      "permission": "window service owner with OS_PROCESS_PERMISSION_SHARED_SURFACE"
+    },
+    {
+      "number": 87,
+      "symbol": "SYS_DISPLAY_SESSION_RELEASE",
+      "sdk_symbol": "OS_SYS_DISPLAY_SESSION_RELEASE",
+      "name": "display_session_release",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "generation",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Releases the matching display session and restores the console.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "display"
+      },
+      "reference": "docs/reference/display_service.md",
+      "permission": "window service owner"
+    },
+    {
+      "number": 88,
+      "symbol": "SYS_DISPLAY_SESSION_GET_INFO",
+      "sdk_symbol": "OS_SYS_DISPLAY_SESSION_GET_INFO",
+      "name": "display_session_get_info",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "info",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsDisplaySessionInfo*",
+          "nullable": false,
+          "size": "sizeof(OsDisplaySessionInfo)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes current display-session information.",
+        "output_on_error": "The info structure is invalid on failure.",
+        "errors": "display"
+      },
+      "reference": "docs/reference/display_service.md"
+    },
+    {
+      "number": 89,
+      "symbol": "SYS_THREAD_CREATE",
+      "sdk_symbol": "OS_SYS_THREAD_CREATE",
+      "name": "thread_create",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "request",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "in",
+          "type": "const OsThreadCreateRequest*",
+          "nullable": false,
+          "size": "sizeof(OsThreadCreateRequest)"
+        },
+        {
+          "name": "identity",
+          "register": "rsi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsThreadIdentity*",
+          "nullable": false,
+          "size": "sizeof(OsThreadIdentity)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Creates a thread and writes its identity.",
+        "output_on_error": "The identity is invalid and no thread is published on failure.",
+        "errors": "thread"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "resources": {
+        "input_ownership": "The request and entry pointers are borrowed and snapshotted.",
+        "output_ownership": "The process owns the created thread until join/process teardown.",
+        "cleanup": "Creation failure releases stack, context, slot, and identity publication.",
+        "limit": "Bounded by per-process thread and stack arenas."
+      }
+    },
+    {
+      "number": 90,
+      "symbol": "SYS_THREAD_SELF",
+      "sdk_symbol": "OS_SYS_THREAD_SELF",
+      "name": "thread_self",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "identity",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsThreadIdentity*",
+          "nullable": false,
+          "size": "sizeof(OsThreadIdentity)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes the calling thread identity.",
+        "output_on_error": "The identity is invalid on failure.",
+        "errors": "buffer"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 91,
+      "symbol": "SYS_THREAD_EXIT",
+      "sdk_symbol": "OS_SYS_THREAD_EXIT",
+      "name": "thread_exit",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "status",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "noreturn",
+        "success": "Terminates the calling thread and does not return to it.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "lifecycle"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "process_exit"
+      }
+    },
+    {
+      "number": 92,
+      "symbol": "SYS_THREAD_JOIN",
+      "sdk_symbol": "OS_SYS_THREAD_JOIN",
+      "name": "thread_join",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "tid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "status",
+          "register": "rdx",
+          "kind": "structure",
+          "direction": "out",
+          "type": "uint32_t*",
+          "nullable": true,
+          "size": "sizeof(uint32_t)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Waits for the target thread and optionally writes its status.",
+        "output_on_error": "The optional status is valid only on success.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "cancellable"
+      }
+    },
+    {
+      "number": 93,
+      "symbol": "SYS_MUTEX_CREATE",
+      "sdk_symbol": "OS_SYS_MUTEX_CREATE",
+      "name": "mutex_create",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [],
+      "result": {
+        "kind": "handle",
+        "success": "Returns an owned mutex handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "resources": {
+        "input_ownership": "Arguments are borrowed for the call.",
+        "output_ownership": "The caller owns the returned mutex handle until close.",
+        "cleanup": "The kernel rolls back the object if handle publication fails.",
+        "limit": "Bounded by the per-process handle table and subsystem object capacity."
+      }
+    },
+    {
+      "number": 94,
+      "symbol": "SYS_MUTEX_LOCK",
+      "sdk_symbol": "OS_SYS_MUTEX_LOCK",
+      "name": "mutex_lock",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "mutex",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsMutex",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "timeout_ticks",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Acquires the mutex and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 95,
+      "symbol": "SYS_MUTEX_UNLOCK",
+      "sdk_symbol": "OS_SYS_MUTEX_UNLOCK",
+      "name": "mutex_unlock",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "mutex",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsMutex",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Releases a mutex owned by the calling thread.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 96,
+      "symbol": "SYS_SEMAPHORE_CREATE",
+      "sdk_symbol": "OS_SYS_SEMAPHORE_CREATE",
+      "name": "semaphore_create",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "initial_count",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "maximum_count",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "handle",
+        "success": "Returns an owned semaphore handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "resources": {
+        "input_ownership": "Arguments are borrowed for the call.",
+        "output_ownership": "The caller owns the returned semaphore handle until close.",
+        "cleanup": "The kernel rolls back the object if handle publication fails.",
+        "limit": "Bounded by the per-process handle table and subsystem object capacity."
+      }
+    },
+    {
+      "number": 97,
+      "symbol": "SYS_SEMAPHORE_WAIT",
+      "sdk_symbol": "OS_SYS_SEMAPHORE_WAIT",
+      "name": "semaphore_wait",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "semaphore",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSemaphore",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "timeout_ticks",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Acquires one semaphore unit and returns zero.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 98,
+      "symbol": "SYS_SEMAPHORE_POST",
+      "sdk_symbol": "OS_SYS_SEMAPHORE_POST",
+      "name": "semaphore_post",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "semaphore",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsSemaphore",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "release_count",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Releases bounded semaphore units.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 99,
+      "symbol": "SYS_CONDITION_CREATE",
+      "sdk_symbol": "OS_SYS_CONDITION_CREATE",
+      "name": "condition_create",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [],
+      "result": {
+        "kind": "handle",
+        "success": "Returns an owned condition-variable handle.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "resources": {
+        "input_ownership": "Arguments are borrowed for the call.",
+        "output_ownership": "The caller owns the returned condition variable handle until close.",
+        "cleanup": "The kernel rolls back the object if handle publication fails.",
+        "limit": "Bounded by the per-process handle table and subsystem object capacity."
+      }
+    },
+    {
+      "number": 100,
+      "symbol": "SYS_CONDITION_WAIT",
+      "sdk_symbol": "OS_SYS_CONDITION_WAIT",
+      "name": "condition_wait",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "condition",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsCondition",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "mutex",
+          "register": "rsi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsMutex",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "timeout_ticks",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Atomically releases the mutex, waits, and reacquires it.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md",
+      "execution": {
+        "context": "process",
+        "blocking": true,
+        "cancellation": "timeout"
+      }
+    },
+    {
+      "number": 101,
+      "symbol": "SYS_CONDITION_SIGNAL",
+      "sdk_symbol": "OS_SYS_CONDITION_SIGNAL",
+      "name": "condition_signal",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "condition",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsCondition",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Wakes one eligible condition waiter.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 102,
+      "symbol": "SYS_CONDITION_BROADCAST",
+      "sdk_symbol": "OS_SYS_CONDITION_BROADCAST",
+      "name": "condition_broadcast",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "condition",
+          "register": "rdi",
+          "kind": "handle",
+          "direction": "value",
+          "type": "OsCondition",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Wakes all eligible condition waiters.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "sync"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 103,
+      "symbol": "SYS_THREAD_TLS_SET",
+      "sdk_symbol": "OS_SYS_THREAD_TLS_SET",
+      "name": "thread_tls_set",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "base",
+          "register": "rdi",
+          "kind": "address",
+          "direction": "value",
+          "type": "void*",
+          "nullable": true,
+          "size": "address"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Sets the calling thread user FS base.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "thread"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 104,
+      "symbol": "SYS_THREAD_TLS_GET",
+      "sdk_symbol": "OS_SYS_THREAD_TLS_GET",
+      "name": "thread_tls_get",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "base",
+          "register": "rdi",
+          "kind": "structure",
+          "direction": "out",
+          "type": "void**",
+          "nullable": false,
+          "size": "sizeof(void*)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes the calling thread user FS base.",
+        "output_on_error": "The output pointer is unchanged on failure.",
+        "errors": "buffer"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 105,
+      "symbol": "SYS_THREAD_GET_INFO",
+      "sdk_symbol": "OS_SYS_THREAD_GET_INFO",
+      "name": "thread_get_info",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "tid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "info",
+          "register": "rdx",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsThreadInfo*",
+          "nullable": false,
+          "size": "sizeof(OsThreadInfo)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes information for an owned thread identity.",
+        "output_on_error": "The info structure is invalid on failure.",
+        "errors": "thread"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 106,
+      "symbol": "SYS_THREAD_SET_PRIORITY",
+      "sdk_symbol": "OS_SYS_THREAD_SET_PRIORITY",
+      "name": "thread_set_priority",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "tid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "priority",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Updates an owned thread priority.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "thread"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 107,
+      "symbol": "SYS_THREAD_SET_AFFINITY",
+      "sdk_symbol": "OS_SYS_THREAD_SET_AFFINITY",
+      "name": "thread_set_affinity",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "sdk",
+      "arguments": [
+        {
+          "name": "tid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "affinity_mask",
+          "register": "rdx",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Updates an owned thread affinity mask.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "thread"
+      },
+      "reference": "docs/phases/phase-4.5/implementation_plan.md"
+    },
+    {
+      "number": 108,
+      "symbol": "SYS_TERMINAL_SESSION_BIND",
+      "sdk_symbol": "OS_SYS_TERMINAL_SESSION_BIND",
+      "name": "terminal_session_bind",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "peer_pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "peer_generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Binds the caller to the exact terminal peer.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "terminal"
+      },
+      "reference": "docs/reference/terminal_sdk.md"
+    },
+    {
+      "number": 109,
+      "symbol": "SYS_TERMINAL_SESSION_EXIT",
+      "sdk_symbol": "OS_SYS_TERMINAL_SESSION_EXIT",
+      "name": "terminal_session_exit",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "status",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "int32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Publishes child exit status to the terminal owner.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "terminal"
+      },
+      "reference": "docs/reference/terminal_sdk.md"
+    },
+    {
+      "number": 110,
+      "symbol": "SYS_TERMINAL_SESSION_READ",
+      "sdk_symbol": "OS_SYS_TERMINAL_SESSION_READ",
+      "name": "terminal_session_read",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "owner_pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "owner_generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "packet",
+          "register": "rdx",
+          "kind": "structure",
+          "direction": "out",
+          "type": "OsTerminalPacket*",
+          "nullable": false,
+          "size": "sizeof(OsTerminalPacket)"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Writes one terminal output packet.",
+        "output_on_error": "The packet is invalid on failure.",
+        "errors": "terminal"
+      },
+      "reference": "docs/reference/terminal_sdk.md"
+    },
+    {
+      "number": 111,
+      "symbol": "SYS_TERMINAL_SESSION_CLOSE",
+      "sdk_symbol": "OS_SYS_TERMINAL_SESSION_CLOSE",
+      "name": "terminal_session_close",
+      "state": "active",
+      "audit_status": "provisional",
+      "handler": "core",
+      "arguments": [
+        {
+          "name": "owner_pid",
+          "register": "rdi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        },
+        {
+          "name": "owner_generation",
+          "register": "rsi",
+          "kind": "scalar",
+          "direction": "value",
+          "type": "uint32_t",
+          "nullable": false,
+          "size": "none"
+        }
+      ],
+      "result": {
+        "kind": "status",
+        "success": "Closes the matching terminal session.",
+        "output_on_error": "No caller-visible output is published.",
+        "errors": "terminal"
+      },
+      "reference": "docs/reference/terminal_sdk.md"
+    }
+  ]
+}
