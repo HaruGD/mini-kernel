@@ -188,6 +188,8 @@ What works on the active 64-bit UEFI path:
 - Phase 4.5 regression matrix: [docs/phases/phase-4.5/regression_matrix.md](docs/phases/phase-4.5/regression_matrix.md)
 - Phase 4.6 SMP foundation: [docs/phases/phase-4.6/README.md](docs/phases/phase-4.6/README.md)
 - Phase 4.7 driver memory/DMA foundation: [docs/phases/phase-4.7/README.md](docs/phases/phase-4.7/README.md)
+- Phase 5 desktop foundation: [docs/phases/phase-5/README.md](docs/phases/phase-5/README.md)
+- Phase 5S system-call modernization plan: [docs/phases/phase-5/syscall_modernization_plan.md](docs/phases/phase-5/syscall_modernization_plan.md)
 - Phase 3.5 starting baseline: [docs/phases/phase-3.5/baseline.md](docs/phases/phase-3.5/baseline.md)
 - Process/scheduler invariants: [docs/architecture/process_scheduler_invariants.md](docs/architecture/process_scheduler_invariants.md)
 - Kernel context rules: [docs/architecture/kernel_context_rules.md](docs/architecture/kernel_context_rules.md)
@@ -236,7 +238,9 @@ Phase 4.5/4.6 threading/SMP work, and Phase 4.7 driver-memory/DMA work are
 complete. The bounded driver runtime now has owned allocation, MMIO,
 coherent/streaming/SG DMA, quiescent unload, QEMU EDU device evidence, fault
 rollback, and soak closure. Phase 5 desktop work may proceed while later
-hardware work adds a remapping IOMMU backend and production drivers.
+hardware work adds a remapping IOMMU backend and production drivers. Phase 5A
+through 5D are complete; the mandatory Phase 5S system-call modernization gate
+is next and must close before Phase 5E desktop-shell work begins.
 
 Test ACPI power-off in an isolated QEMU instance:
 

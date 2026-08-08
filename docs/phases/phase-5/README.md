@@ -15,6 +15,8 @@ desktop protocol and recovery behavior are stable.
   remaining desktop gaps.
 - [Implementation plan](implementation_plan.md): architecture rules, ordered
   subphases, memory-scaling gate, and exit conditions.
+- [System-call modernization plan](syscall_modernization_plan.md): the mandatory
+  5S catalog, result, validation, entry, compatibility, and audit gate.
 - [Regression matrix](regression_matrix.md): planned contract, QEMU, failure,
   resource, and inherited evidence.
 - [Progress ledger](progress.md): live status and immutable implementation
@@ -25,8 +27,8 @@ desktop protocol and recovery behavior are stable.
 Phase 5A through 5D are complete. The desktop now has interactive windows,
 public image/widget rendering, and a normal Window SDK terminal with a bounded
 IPC shell stream, scrollback, ANSI baseline, responsive grid, and deterministic
-child cleanup. Phase 5E, the desktop shell, is next; the memory scalability
-gate must close before Phase 5F.
+child cleanup. Phase 5S system-call modernization is next and must close before
+Phase 5E. The independent memory-scalability gate must close before Phase 5F.
 
 ## Intended Result
 

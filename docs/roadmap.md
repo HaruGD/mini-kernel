@@ -273,17 +273,24 @@ Detailed planning and live evidence:
 - [Phase 5 overview](phases/phase-5/README.md)
 - [Entry baseline](phases/phase-5/entry_baseline.md)
 - [Implementation plan](phases/phase-5/implementation_plan.md)
+- [System-call modernization plan](phases/phase-5/syscall_modernization_plan.md)
 - [Regression matrix](phases/phase-5/regression_matrix.md)
 - [Progress ledger](phases/phase-5/progress.md)
 
 Planned work:
 
-- [ ] 5A: Desktop session supervision and privileged layer policy
-- [ ] 5B: Pointer routing, cursor, hit testing, capture, and interactive window
+- [x] 5A: Desktop session supervision and privileged layer policy
+- [x] 5B: Pointer routing, cursor, hit testing, capture, and interactive window
   decorations
-- [ ] 5C: Alpha, fonts, native/BMP/PNG image assets and user-space decoding,
+- [x] 5C: Alpha, fonts, native/BMP/PNG image assets and user-space decoding,
   drawing primitives, layout, and baseline widget toolkit
-- [ ] 5D: GUI terminal with a bounded PTY-like user-shell transport
+- [x] 5C.1: Lowercase/punctuation/caret rendering and responsive surface
+  replacement, layout, and aspect-preserving redraw
+- [x] 5D: GUI terminal with a bounded PTY-like user-shell transport
+- [ ] 5S: Machine-readable syscall catalog, generated ABI/reference artifacts,
+  explicit result and user-memory contracts, common validation, x86_64
+  `SYSCALL/SYSRET`, compatibility migration, complete call audit, and
+  one/four-CPU fault/soak closure
 - [ ] Memory scalability gate: replace the fixed 512 MiB PMM ceiling before
   file-manager and multi-application closure work
 - [ ] 5E: Desktop background, panel, launcher, task list, and window switching

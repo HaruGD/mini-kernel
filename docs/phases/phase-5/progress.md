@@ -23,6 +23,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
 | 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-04 | `a13b5a8`, `ba15722` | P5-R05, P5-R06 |
 | 5D: GUI terminal | Complete | 2026-08-04 | 2026-08-04 | `c78b6fc` | P5-R07 |
+| 5S: System-call modernization | Planned | - | - | - | P5S-R01 through P5S-R04 |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
 | 5F: File manager | Planned | - | - | - | P5-R10, P5-R11 |
@@ -30,8 +31,9 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: 5A through 5D are complete. Phase 5E may begin; the independent
-memory scalability gate remains required before Phase 5F.
+Current status: 5A through 5D are complete. Phase 5S is the next mandatory gate
+and must close before Phase 5E. The independent memory-scalability gate remains
+required before Phase 5F.
 
 ## Completed Evidence
 
@@ -167,10 +169,21 @@ For each subphase:
 ## Planned Order
 
 ```text
-5A -> 5B -> 5C -> 5C.1 -> 5D -> 5E -> 5F -> 5G -> 5H -> 5I
-                                  |
-                                  `-- memory scalability must close before 5F
+5A -> 5B -> 5C -> 5C.1 -> 5D -> 5S -> 5E -> 5F -> 5G -> 5H -> 5I
+                                         |
+                                         `-- memory scalability must close before 5F
 ```
+
+## Phase 5S Planning Record
+
+- Date: 2026-08-08
+- Phase 5S is inserted as the mandatory next gate between completed 5D and 5E.
+- Its catalog, generated ABI, explicit result and user-memory contracts,
+  `SYSCALL/SYSRET` migration, complete call audit, and required regression are
+  defined in
+  [syscall_modernization_plan.md](syscall_modernization_plan.md).
+- This record claims planning only; implementation and P5S-R01 through P5S-R04
+  remain `Planned` until their measured exit evidence exists.
 
 ## Planning Record
 

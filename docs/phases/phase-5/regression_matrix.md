@@ -16,6 +16,10 @@ empty target.
 | P5-R05 | 5C | Alpha, font, native/BMP/PNG image, clipping, scaling, layout, and damage primitives are bounded and deterministic. | `make test-image-codecs`; `make test-ui-rendering` | Positive and malformed image fixtures, decode/work budgets, golden pixels, distinct upper/lowercase and punctuation glyphs, malformed UTF-8, clipping edges, aspect-preserving scaling, responsive resize, and full-repaint fallback pass. | Complete |
 | P5-R06 | 5C | Public widgets preserve input, focus, state, resize, and cleanup contracts. | `make test-widget-sdk`; `make test-responsive-window` | A restricted client operates every baseline widget, shows a text caret, replaces surfaces and recomputes layout across configure events, rejects stale/invalid resize, and exits without raw display/input access or resource drift. | Complete |
 | P5-R07 | 5D | A GUI terminal owns a bounded terminal stream and one child-shell lifecycle. | `make test-terminal-model`; `make test-gui-terminal` | Command input/output, ANSI baseline, scrollback, resize, backpressure, hangup, child fault, and repeated teardown pass. | Complete |
+| P5S-R01 | 5S | One versioned catalog generates syscall numbers, result constants, kernel descriptors, SDK bindings, ABI assertions, and reference tables. | `make test-syscall-contract` | Duplicate/reserved numbers, incomplete pointer/result/error contracts, invalid schema, and stale or nondeterministic generated artifacts are rejected. | Planned |
+| P5S-R02 | 5S | The x86_64 `SYSCALL/SYSRET` entry preserves complete thread state and reaches the same dispatcher as the compatibility entry. | `make test-syscall-entry` | BSP/AP setup, register and flag clobbers, kernel-stack switch, blocking/preemption/migration, canonical return checks, `IRETQ` fallback, and the documented `int 0x80` policy pass on one and four CPUs. | Planned |
+| P5S-R03 | 5S | Common syscall validation enforces user-memory, output, permission, handle, ownership, and explicit result semantics. | `make test-syscall-validation`; `make test-syscall-faults` | Boundary/cross-page buffers, racing unmap, wrong permissions/rights/types/generations, unknown calls/flags/versions, and injected copy/allocation failures return only cataloged errors with exact cleanup. | Planned |
+| P5S-R04 | 5S | Blocking, timeout, cancellation, process exit, and malformed concurrent syscall traffic preserve progress and resources. | `make test-syscall-soak`; `make test-phase5s` | Mixed valid/invalid traffic on one and four CPUs has bounded waits, zero lock-order/recursion violations, no collateral process loss, and identical warmed/final active resources. | Planned |
 | P5-R08 | 5E | The desktop shell discovers, launches, activates, minimizes, and restores applications. | `make test-desktop-shell` | Background/panel persistence, launcher/task state, shortcuts, desktop restart, and surviving applications remain coherent. | Planned |
 | P5-R09 | Memory gate | PMM capacity derives from valid firmware memory metadata rather than a 512 MiB compile-time ceiling. | `make test-pmm-scaling` | Multiple RAM sizes, memory above 4 GiB, holes, overflow, invalid maps, SMP allocation, and reserved ranges pass fail-closed checks. | Planned |
 | P5-R10 | 5F | Directory and file mutation APIs are bounded, race-aware, and recover cleanly. | `make test-vfs-desktop` | Enumeration/stat/create/rename/remove/copy/move, disappearing entries, read-only targets, and injected failures preserve data and handles. | Planned |
@@ -43,6 +47,9 @@ resource, lock, queue, or ownership drift blocks completion.
 ## Mandatory Negative Coverage
 
 - stale session/window/process/thread/handle generations;
+- unknown/reserved syscalls, invalid ABI versions and flag bits, noncanonical
+  entry/return state, kernel/cross-page/unmapped/read-only user ranges, racing
+  unmap, partial output outside contract, and undocumented result codes;
 - unauthorized layer, focus, capture, settings, power, and file operations;
 - pointer coordinate, geometry, surface/image stride, alpha, text, layout, and
   size overflow;
@@ -68,6 +75,6 @@ resource, lock, queue, or ownership drift blocks completion.
 - each focused row must pass independently before the aggregate can count.
 - screenshots may supplement evidence but cannot replace exact state, pixel,
   lifecycle, and resource assertions.
-- P5-R01 through P5-R15 all block Phase 5 closure.
+- P5-R01 through P5-R15 and P5S-R01 through P5S-R04 all block Phase 5 closure.
 - the optional one-hour soak does not replace the required repeatable
   60-second soak.

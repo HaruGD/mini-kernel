@@ -31,6 +31,7 @@ into the kernel.
   -> 5C graphics, fonts, images, and widget toolkit
   -> 5C.1 responsive rendering completion
   -> 5D GUI terminal
+  -> 5S system-call modernization
   -> 5E desktop shell
   -> 5F file manager
   -> 5G settings and system UI
@@ -38,8 +39,11 @@ into the kernel.
   -> 5I fault, soak, regression, and closure
 ```
 
-The memory-scalability gate may progress beside 5A through 5E but must close
-before 5F and the multi-application closure workload.
+Phase 5S is a mandatory gate after 5D and before 5E. Its detailed contract is
+defined in
+[syscall_modernization_plan.md](syscall_modernization_plan.md). The
+memory-scalability gate may progress beside 5A through 5E but must close before
+5F and the multi-application closure workload.
 
 ## 5A: Desktop Session And Layer Policy
 
@@ -171,6 +175,33 @@ Deliver:
 Exit gate: the graphical terminal launches the existing user shell, runs
 commands, scrolls and resizes correctly, reaps the child exactly once, and can
 be repeatedly opened and closed without process or memory drift.
+
+## 5S: System Call Modernization
+
+Deliver the mandatory cross-cutting syscall gate before adding the persistent
+desktop shell:
+
+- one versioned machine-readable catalog for numbers, arguments, user-memory
+  rules, results, errors, permissions, ownership, context, blocking, timeout,
+  cancellation, and compatibility;
+- deterministic generated kernel/SDK constants, dispatch metadata, reference
+  material, ABI assertions, and stale-artifact checks;
+- one shared signed result domain with explicit output state and no ambiguous
+  failure `NULL`, zero, or boolean convention where callers need a cause;
+- common checked user-memory copy helpers and one descriptor-driven permission
+  and dispatch boundary;
+- an SMP-safe x86_64 `SYSCALL/SYSRET` default entry with checked `IRETQ`
+  fallback and a documented, tested `int 0x80` migration policy;
+- a complete audit of every existing call plus malformed-input, permission,
+  pointer-race, blocking, cancellation, fault-injection, and one/four-CPU
+  regression evidence.
+
+Exit gate: every active/reserved call is generated and documented from the
+catalog, every handler matches its public result and lifecycle contract, the
+new entry path is the in-tree SDK default, the compatibility path cannot bypass
+validation, and the full Phase 5S and affected inherited suites pass without
+resource or lock drift. The detailed subphases and evidence rules are in the
+[Phase 5S plan](syscall_modernization_plan.md).
 
 ## Memory Scalability Gate
 
