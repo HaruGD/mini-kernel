@@ -32,7 +32,9 @@ established the versioned catalog, generated ABI, signed result domain, and
 output-publication contract. 5S-C now provides the common user-memory
 validation/copy boundary and unmap exclusion. 5S-D now routes calls through
 one generated descriptor dispatcher with lifecycle, authority, pointer, and
-privacy-safe rejection diagnostics; 5S-E architecture entry is next. Phase 5S
+privacy-safe rejection diagnostics. 5S-E now provides the verified per-CPU
+`SYSCALL/SYSRET` entry and checked `IRETQ` fallback; 5S-F compatibility
+migration is next. Phase 5S
 must close before Phase 5E. The independent memory-scalability gate must close
 before Phase 5F.
 

@@ -17,7 +17,11 @@ calls. Phase 5S-A generates the shared number and result headers from
 `config/abi/syscalls.json`; those generated constants support the kernel, SDK,
 NASM compatibility programs, and ABI tests but are not a promise that raw-call
 source is a supported application interface. The active `int 0x80` instruction
-sequence remains inside the SDK pending Phase 5S-E/F entry migration.
+sequence remains inside the SDK pending the Phase 5S-F default migration.
+Phase 5S-E has enabled a verified optional raw `SYSCALL` transport with
+identical numbers, results, permissions, and pointer validation. Raw
+`SYSCALL` code must treat `RCX` and `R11` as clobbered and declare a memory
+clobber; ordinary applications still use SDK wrappers.
 
 The complete generated catalog is
 [syscall_catalog.generated.md](syscall_catalog.generated.md). Entries remain

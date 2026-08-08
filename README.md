@@ -70,7 +70,8 @@ What works on the active 64-bit UEFI path:
   detailed boot reports
 - diagnostic-only kernel GP and runtime ACPI corruption fault injection
 - framebuffer terminal with an internal text-cell buffer
-- syscall path through `int 0x80`
+- verified x86_64 `SYSCALL/SYSRET` transport with per-CPU entry stacks,
+  checked `IRETQ` fallback, and the existing `int 0x80` SDK compatibility path
 - versioned machine-readable catalog for all 111 current syscall numbers,
   generated kernel/SDK/NASM constants and result codes, generated descriptor
   and reference tables, and stale/duplicate/incomplete-contract rejection
@@ -249,7 +250,7 @@ coherent/streaming/SG DMA, quiescent unload, QEMU EDU device evidence, fault
 rollback, and soak closure. Phase 5 desktop work may proceed while later
 hardware work adds a remapping IOMMU backend and production drivers. Phase 5A
 through 5D are complete; the mandatory Phase 5S system-call modernization gate
-is in progress, with 5S-A through 5S-D complete and 5S-E next. It must close
+is in progress, with 5S-A through 5S-E complete and 5S-F next. It must close
 before Phase 5E desktop-shell work begins.
 
 Test ACPI power-off in an isolated QEMU instance:

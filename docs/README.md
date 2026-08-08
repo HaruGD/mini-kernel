@@ -36,6 +36,7 @@ links and test references remain stable from the project root.
 - [System-call result and output contract](reference/syscall_result_contract.md)
 - [System-call user-memory boundary](reference/syscall_user_memory.md)
 - [System-call dispatch and authority contract](reference/syscall_dispatch.md)
+- [x86_64 system-call entry contract](reference/syscall_entry_x86_64.md)
 
 ## Testing
 

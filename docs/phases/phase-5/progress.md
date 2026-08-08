@@ -23,7 +23,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
 | 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-04 | `a13b5a8`, `ba15722` | P5-R05, P5-R06 |
 | 5D: GUI terminal | Complete | 2026-08-04 | 2026-08-04 | `c78b6fc` | P5-R07 |
-| 5S: System-call modernization | In progress | 2026-08-08 | - | `4e5dfa8`, `4244d82`, `1b1fb2c`, `719ca12` | 5S-A through 5S-D complete; P5S-R01 complete, P5S-R03 in progress |
+| 5S: System-call modernization | In progress | 2026-08-08 | - | `4e5dfa8`, `4244d82`, `1b1fb2c`, `719ca12`, `888df73` | 5S-A through 5S-E complete; P5S-R01 complete, P5S-R02/P5S-R03 in progress |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
 | 5F: File manager | Planned | - | - | - | P5-R10, P5-R11 |
@@ -32,7 +32,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
 Current status: 5A through 5D are complete. Phase 5S is in progress: 5S-A
-through 5S-D are complete, while 5S-E architecture entry is next. Phase 5S
+through 5S-E are complete, while 5S-F compatibility migration is next. Phase 5S
 must close before Phase 5E. The independent memory-scalability gate remains
 required before Phase 5F.
 
@@ -289,6 +289,49 @@ mode switching to a future mode-setting display backend.
   scalar/flag/handle audit and injected copy/allocation failure matrix; 5S-E/F
   still own `SYSCALL/SYSRET` and compatibility migration.
 
+### 5S-E: x86_64 `SYSCALL/SYSRET` Entry
+
+- Implementation commit: `888df73`.
+- The BSP and every AP verify architectural support, program and read back
+  `IA32_EFER.SCE`, `IA32_STAR`, `IA32_LSTAR`, and
+  `IA32_FMASK=0x44700`, and publish readiness only after an aligned current
+  kernel entry stack exists. AP publication fails closed before `ONLINE`.
+- Kernel/user GDT selectors now satisfy the architectural STAR relationships:
+  kernel `0x08/0x10`, user `0x2b/0x23`. The scheduler updates TSS `RSP0` and
+  fast-entry stack ownership together.
+- The entry path saves the untrusted user RSP before switching stacks,
+  preserves every logical frame register including temporary `R10`, clears
+  DF, and constructs the same 20-word frame consumed by existing yield,
+  sleep, wait, exit, fault, and resume paths. Both transports call the sole
+  descriptor dispatcher and expose the same results and permissions.
+- Return validation rechecks process/thread generations, ownership, loaded
+  address-space pointer/identity/root, selectors, RFLAGS, canonical RIP/RSP,
+  executable RIP, and writable stack. Safe state uses `SYSRETQ`; DF and other
+  slow flags use `IRETQ`; invalid return state terminates only the caller as
+  GP fault status `0x5e01`.
+- A latent 5S-D SMP lifecycle error was corrected: `Process::state` is a
+  compatibility summary that may be `PAUSED` while an owned sibling thread is
+  executing on another CPU. Common preflight and fast-entry validation now
+  accept `RUNNING` or `PAUSED` active processes while continuing to reject
+  terminal and exiting state. The host dispatcher test covers this rule.
+- `make test-syscall-entry`, `make test-syscall-validation`,
+  `make test-syscall-contract`, and `make test-abi-freeze` passed. The focused
+  entry test covers normal/slow/abort state transitions, executable and
+  writable return mappings, identity/address-space mutation, and assembly
+  source contracts.
+- The User SDK QEMU suite passed `104/104` on one and four vCPUs while mixing
+  `int 0x80` with raw `SYSCALL`. Both runs measured eight fast entries, five
+  `SYSRETQ` returns, one deliberate DF `IRETQ` fallback, one isolated invalid
+  return abort, and one matching invariant-failure count. Ready CPU counts
+  were exactly `1/1` and `4/4`.
+- Existing thread creation/join regression completed 18 repeated lifecycles
+  with unchanged resource and scheduler baselines; thread wait/wake passed.
+  The inherited four-CPU execution workload passed with CPU mask `0x0e`,
+  three simultaneous workers, 34 preemptions, and zero workload failures.
+- 5S-E is complete. P5S-R02 remains in progress until 5S-F makes the verified
+  transport the SDK default and records the final bounded `int 0x80`
+  compatibility decision.
+
 ### Cross-Phase Kernel Language And Toolchain Hardening
 
 - The kernel language contract now fixes GNU C++17 as a restricted
@@ -339,10 +382,11 @@ For each subphase:
   `SYSCALL/SYSRET` migration, complete call audit, and required regression are
   defined in
   [syscall_modernization_plan.md](syscall_modernization_plan.md).
-- This was a planning-only record when written. 5S-A through 5S-D subsequently
+- This was a planning-only record when written. 5S-A through 5S-E subsequently
   completed their focused gates in `4e5dfa8`, `4244d82`, `1b1fb2c`, and
-  `719ca12`. P5S-R01 is complete; the remaining subphases and P5S-R02 through
-  P5S-R04 still require measured exit evidence.
+  `719ca12`, with the architecture-entry implementation in `888df73`.
+  P5S-R01 is complete; 5S-F through 5S-H and P5S-R02 through P5S-R04 still
+  require their remaining measured exit evidence.
 
 ## Planning Record
 

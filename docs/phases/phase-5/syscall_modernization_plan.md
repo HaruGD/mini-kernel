@@ -9,7 +9,7 @@ before Phase 5F adds directory, metadata, and file-mutation operations.
 
 ```text
 5D GUI terminal (Complete)
-  -> 5S system-call modernization (In progress: 5S-A through 5S-D complete)
+  -> 5S system-call modernization (In progress: 5S-A through 5S-E complete)
   -> 5E desktop shell
   -> memory scalability gate
   -> 5F file manager
@@ -193,6 +193,18 @@ The default ABI continues to use `RAX` for the number/result and `RDI`, `RSI`,
 and `RDX` for the current three arguments unless a separately versioned call
 requires more. No handler depends on C++ name mangling or an assembly-visible
 C++ object layout.
+
+Implementation status (2026-08-08): commit `888df73` programs and verifies
+the four syscall MSRs on the BSP and every AP, provides a fixed-stride
+per-CPU entry state and scheduler-owned kernel stack, synthesizes the existing
+20-word user frame, and routes both transports to `syscall_dispatch64`.
+Return validation covers selectors, flags, executable RIP, writable RSP,
+process/thread generations, and loaded address-space identity/root. Safe
+returns use `SYSRETQ`; unsafe flags use `IRETQ`; invalid state terminates only
+the caller with status `0x5e01`. One/four-vCPU QEMU probes passed normal,
+error, blocking-resume, DF-fallback, and noncanonical-return cases. Phase
+5S-F still owns the SDK default switch and final `int 0x80` compatibility
+policy, so P5S-R02 remains in progress.
 
 ## 5S-F: Compatibility Migration
 

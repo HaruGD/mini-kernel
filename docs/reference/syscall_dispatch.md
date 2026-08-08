@@ -6,8 +6,9 @@ transport and an OS64 system-call handler. The machine-readable authority is
 view is `include/kernel/syscall_catalog_generated.h`; and the implementation is
 `kernel/syscall/dispatcher.cpp`.
 
-The active SDK still enters through x86_64 `int 0x80`. Phase 5S-E/F will add
-and migrate to `SYSCALL/SYSRET`, but both transports must call the same
+The active SDK still defaults to x86_64 `int 0x80`. Phase 5S-E added the
+verified `SYSCALL/SYSRET` transport and Phase 5S-F will migrate the default;
+both transports call the same
 `syscall_dispatch64` function. A transport may construct and restore machine
 state; it may not perform a second number lookup, permission policy, pointer
 policy, or subsystem dispatch.
@@ -19,8 +20,11 @@ selected handler:
 
 1. Look up the exact active descriptor. Zero, gaps, and numbers above the
    catalog return `OS_ERR_UNSUPPORTED`.
-2. Require a nonzero current process identity in the active, non-exiting,
-   `RUNNING` state. Failure returns `OS_ERR_NOT_READY`.
+2. Require a nonzero current process identity in an active, non-exiting
+   `RUNNING` or compatibility-summary `PAUSED` state. `PAUSED` is permitted
+   because another thread may change the process summary while the current
+   owned thread is executing on this CPU. Terminal states return
+   `OS_ERR_NOT_READY`.
 3. Require an active, non-exited current thread whose owner pointer, process
    identifier, and process generation all match. Failure returns
    `OS_ERR_NOT_READY`.
