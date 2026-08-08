@@ -23,7 +23,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
 | 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-04 | `a13b5a8`, `ba15722` | P5-R05, P5-R06 |
 | 5D: GUI terminal | Complete | 2026-08-04 | 2026-08-04 | `c78b6fc` | P5-R07 |
-| 5S: System-call modernization | Planned | - | - | - | P5S-R01 through P5S-R04 |
+| 5S: System-call modernization | In progress | 2026-08-08 | - | `4e5dfa8` | P5S-R01 complete; P5S-R02 through P5S-R04 planned |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
 | 5F: File manager | Planned | - | - | - | P5-R10, P5-R11 |
@@ -31,9 +31,9 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: 5A through 5D are complete. Phase 5S is the next mandatory gate
-and must close before Phase 5E. The independent memory-scalability gate remains
-required before Phase 5F.
+Current status: 5A through 5D are complete. Phase 5S is in progress: 5S-A and
+P5S-R01 are complete, while 5S-B is next. Phase 5S must close before Phase 5E.
+The independent memory-scalability gate remains required before Phase 5F.
 
 ## Completed Evidence
 
@@ -132,6 +132,32 @@ mode switching to a future mode-setting display backend.
   resize to `780x480` it exposes `120x57`, keeping the cursor clear of the
   client-area boundary.
 
+### 5S-A: Catalog, Schema, And Generated ABI
+
+- Implementation commit: `4e5dfa8`.
+- `config/abi/syscalls.json` is the versioned source of truth for all active
+  syscall numbers `1..111`, 18 explicit result codes, ABI registers, handler
+  symbols, SDK aliases, argument direction and sizing, output state,
+  permission, execution-context, resource, and reference fields.
+- The deterministic generator emits seven tracked kernel, SDK, NASM,
+  descriptor, result, and reference artifacts. Kernel and user sources no
+  longer maintain separate numeric syscall or result-code lists.
+- `make test-syscall-contract` passed catalog/schema validation, exact active
+  range and dispatcher coverage, generated-artifact freshness and
+  determinism, C/C++/NASM compilation, raw-number rejection, and negative
+  mutations for duplicate keys/numbers, missing pointer sizing, and unknown
+  error sets. Measured catalog coverage was 111 calls, 18 result codes, and 53
+  calls with pointer-like arguments.
+- `make test-abi-freeze`, `make test-kernel-language-contract`,
+  `make test-user-sdk` (`91/91`), `make test-uefi-smoke`, and
+  `make test-phase5d` passed as affected inherited regression. The Phase 5D
+  QEMU run retained its established final active-resource shape and exercised
+  console `bootinfo`, normal terminal use, hangup, and injected child loss.
+- Every syscall entry intentionally remains marked `provisional`. P5S-R01
+  closes structural catalog/generation coverage only; it does not claim the
+  per-call semantic audit in 5S-G or the `SYSCALL/SYSRET` entry migration in
+  5S-E/F.
+
 ### Cross-Phase Kernel Language And Toolchain Hardening
 
 - The kernel language contract now fixes GNU C++17 as a restricted
@@ -182,8 +208,9 @@ For each subphase:
   `SYSCALL/SYSRET` migration, complete call audit, and required regression are
   defined in
   [syscall_modernization_plan.md](syscall_modernization_plan.md).
-- This record claims planning only; implementation and P5S-R01 through P5S-R04
-  remain `Planned` until their measured exit evidence exists.
+- This was a planning-only record when written. 5S-A and P5S-R01 subsequently
+  completed in `4e5dfa8`; the remaining subphases and P5S-R02 through P5S-R04
+  still require measured exit evidence.
 
 ## Planning Record
 

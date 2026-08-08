@@ -27,8 +27,10 @@ desktop protocol and recovery behavior are stable.
 Phase 5A through 5D are complete. The desktop now has interactive windows,
 public image/widget rendering, and a normal Window SDK terminal with a bounded
 IPC shell stream, scrollback, ANSI baseline, responsive grid, and deterministic
-child cleanup. Phase 5S system-call modernization is next and must close before
-Phase 5E. The independent memory-scalability gate must close before Phase 5F.
+child cleanup. Phase 5S system-call modernization is in progress: 5S-A has
+established the versioned catalog and generated ABI, and 5S-B result/output
+contracts are next. Phase 5S must close before Phase 5E. The independent
+memory-scalability gate must close before Phase 5F.
 
 ## Intended Result
 
