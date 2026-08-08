@@ -44,11 +44,17 @@ def source(cxx: bool) -> str:
 {assertions}(OS64_TERMINAL_ABI_VERSION == 1u, "terminal ABI version changed");
 {assertions}(OS64_THREAD_ABI_VERSION == 2u, "thread ABI version changed");
 {assertions}(OS64_WINDOW_ABI_VERSION == 1u, "window ABI version changed");
-{assertions}(OS64_SYSCALL_CATALOG_VERSION == 1u, "syscall catalog version changed");
+{assertions}(OS64_SYSCALL_CATALOG_VERSION == 2u, "syscall catalog version changed");
 {assertions}(OS64_SYSCALL_MAX_NUMBER == 111u, "syscall number range changed");
 {assertions}(SYS_WRITE == 1u, "first syscall number changed");
 {assertions}(SYS_TERMINAL_SESSION_CLOSE == 111u, "last syscall number changed");
 {assertions}(OS_ERR_CANCELLED == -18, "syscall result ABI changed");
+{assertions}(sizeof(OsResult) == 8u, "syscall result width changed");
+{assertions}(OS_ERR_INVALID_HANDLE == -19, "invalid-handle result changed");
+{assertions}(OS_ERR_STALE_HANDLE == -20, "stale-handle result changed");
+{assertions}(OS_ERR_WRONG_HANDLE_TYPE == -21, "handle-type result changed");
+{assertions}(OS_ERR_OVERFLOW == -22, "overflow result changed");
+{assertions}(OS64_RESULT_ERROR_MIN == -4095, "public result range changed");
 {assertions}(OS_SURFACE_MAP_VALID_MASK == 3u, "surface map flags changed");
 {assertions}(OS_SURFACE_TRANSFER_RIGHTS == (OS_HANDLE_RIGHT_READ | OS_HANDLE_RIGHT_MAP),
              "surface transfer rights changed");

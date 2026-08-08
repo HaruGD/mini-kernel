@@ -24,6 +24,12 @@ The complete generated catalog is
 `provisional` until the per-call Phase 5S-G semantic audit and focused negative
 evidence are complete.
 
+System calls share a signed 64-bit result domain. Nonnegative values are
+operation-specific success, while cataloged negative values are explicit
+errors. Output pointers use generated atomic/partial publication rules; see
+[syscall_result_contract.md](syscall_result_contract.md). SDK error strings
+are generated from the same catalog as the numeric result constants.
+
 Service managers can use `os_run_with_permissions(command, permissions)` to
 assign a validated `OS_PROCESS_PERMISSION_*` mask before a child first enters
 user mode. Ordinary `os_run()` remains compatible and grants the full current

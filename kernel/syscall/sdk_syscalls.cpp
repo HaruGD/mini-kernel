@@ -255,12 +255,11 @@ static uint64_t dispatch_surface_get_info(uint64_t handle, uint64_t user_info_ad
         return permission_denied();
     }
     KernelHandle resolved;
-    if (!kernel_handle_resolve_copy(&process->handle_table,
-                                    handle,
-                                    KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
-                                    KERNEL_HANDLE_RIGHT_READ,
-                                    &resolved)) {
-        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    int64_t resolve_result = kernel_handle_resolve_copy_result(
+        &process->handle_table, handle, KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
+        KERNEL_HANDLE_RIGHT_READ, &resolved);
+    if (resolve_result != OS_SUCCESS) {
+        return (uint64_t)resolve_result;
     }
     KernelGraphicsSurfaceInfo info;
     if (kernel_graphics_surface_get_info(resolved.object, &info) != KERNEL_OBJECT_OK) {
@@ -298,12 +297,11 @@ static uint64_t dispatch_surface_close(uint64_t handle) {
         return permission_denied();
     }
     KernelHandle resolved;
-    if (!kernel_handle_resolve_copy(&process->handle_table,
-                                    handle,
-                                    KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE,
-                                    0,
-                                    &resolved)) {
-        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    int64_t resolve_result = kernel_handle_resolve_copy_result(
+        &process->handle_table, handle, KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE, 0,
+        &resolved);
+    if (resolve_result != OS_SUCCESS) {
+        return (uint64_t)resolve_result;
     }
     int unmap_result = process_surface_unmap_object(process, resolved.object);
     if (unmap_result != 0) {
@@ -311,7 +309,7 @@ static uint64_t dispatch_surface_close(uint64_t handle) {
     }
     return kernel_object_close_handle(&process->handle_table, handle, 0)
         ? 0
-        : (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+        : (uint64_t)(int64_t)SYS_ERR_STALE_HANDLE;
 }
 
 static uint64_t dispatch_handle_close(uint64_t handle) {
@@ -320,17 +318,17 @@ static uint64_t dispatch_handle_close(uint64_t handle) {
         return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
     }
     KernelHandle resolved;
-    if (!kernel_handle_resolve_copy(&process->handle_table,
-                                    handle,
-                                    KERNEL_HANDLE_TYPE_NONE,
-                                    0,
-                                    &resolved) ||
-        (resolved.type != KERNEL_HANDLE_TYPE_SHARED_MEMORY &&
-         resolved.type != KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE &&
-         resolved.type != KERNEL_HANDLE_TYPE_MUTEX &&
-         resolved.type != KERNEL_HANDLE_TYPE_SEMAPHORE &&
-         resolved.type != KERNEL_HANDLE_TYPE_CONDITION)) {
-        return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+    int64_t resolve_result = kernel_handle_resolve_copy_result(
+        &process->handle_table, handle, KERNEL_HANDLE_TYPE_NONE, 0, &resolved);
+    if (resolve_result != OS_SUCCESS) {
+        return (uint64_t)resolve_result;
+    }
+    if (resolved.type != KERNEL_HANDLE_TYPE_SHARED_MEMORY &&
+        resolved.type != KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE &&
+        resolved.type != KERNEL_HANDLE_TYPE_MUTEX &&
+        resolved.type != KERNEL_HANDLE_TYPE_SEMAPHORE &&
+        resolved.type != KERNEL_HANDLE_TYPE_CONDITION) {
+        return (uint64_t)(int64_t)SYS_ERR_WRONG_HANDLE_TYPE;
     }
     if (resolved.type == KERNEL_HANDLE_TYPE_GRAPHICS_SURFACE) {
         int unmap_result = process_surface_unmap_object(process, resolved.object);
@@ -340,7 +338,7 @@ static uint64_t dispatch_handle_close(uint64_t handle) {
     }
     return kernel_object_close_handle(&process->handle_table, handle, 0)
         ? 0
-        : (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
+        : (uint64_t)(int64_t)SYS_ERR_STALE_HANDLE;
 }
 
 static int pop_current_input_event(OsInputEvent* event) {

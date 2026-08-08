@@ -172,8 +172,18 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
 
     if (syscall_no == SYS_USER_BRK) {
         Process* process = current_process();
+        if (process == 0 || process->heap_base == 0 ||
+            process->heap_limit <= process->heap_base) {
+            return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+        }
+        if (arg1 != 0 &&
+            (arg1 < process->heap_base || arg1 > process->heap_limit)) {
+            return (uint64_t)(int64_t)SYS_ERR_OUT_OF_RANGE;
+        }
         uint64_t result = resize_user_process_heap(process, arg1);
-        return result != 0 ? result : (uint64_t)-1;
+        return result != 0
+            ? result
+            : (uint64_t)(int64_t)SYS_ERR_OUT_OF_MEMORY;
     }
 
     uint64_t sdk_result = 0;
@@ -236,11 +246,12 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
         }
 
-        if (vfs_list_files_at(file_path) != VFS_OK) {
+        int list_result = vfs_list_files_at(file_path);
+        if (list_result != VFS_OK) {
             print("\nFailed to list path: ");
             print(file_path);
             print("\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)list_result;
         }
         print("\n");
         return 0;
@@ -365,23 +376,27 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         char file_name[USER_PATH_MAX];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, file_name, sizeof(file_name))) {
             print("\nInvalid user filename pointer.");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
         }
 
         VFSFileInfo file_info;
-        if (vfs_get_file_info(file_name, &file_info) != VFS_OK) {
+        int info_result = vfs_get_file_info(file_name, &file_info);
+        if (info_result != VFS_OK) {
             print("\nFile not found: ");
             print(file_name);
             print("\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)info_result;
         }
         if (file_info.type != VFS_NODE_FILE) {
             print("\nNot a file: ");
             print(file_name);
             print("\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
         }
 
+        if (file_info.size == UINT32_MAX) {
+            return (uint64_t)(int64_t)SYS_ERR_OVERFLOW;
+        }
         uint32_t buffer_size = file_info.size + 1;
         if (buffer_size < 512) {
             buffer_size = 512;
@@ -390,16 +405,18 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         uint8_t* file_buffer = (uint8_t*)kmalloc(buffer_size);
         if (file_buffer == 0) {
             print("\nOut of memory reading file.\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_OUT_OF_MEMORY;
         }
 
         uint32_t bytes_read = 0;
-        if (vfs_read_file(file_name, file_buffer, buffer_size, &bytes_read) != VFS_OK) {
+        int read_result = vfs_read_file(file_name, file_buffer, buffer_size,
+                                        &bytes_read);
+        if (read_result != VFS_OK) {
             kfree(file_buffer);
             print("\nFailed to read file: ");
             print(file_name);
             print("\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)read_result;
         }
 
         file_buffer[bytes_read] = '\0';
@@ -418,11 +435,11 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         char command_line[PROCESS_CMDLINE_MAX];
         if (!copy_user_cstring((const char*)(uintptr_t)arg1, command_line, sizeof(command_line))) {
             print("\nInvalid user program pointer.");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
         }
 
         if (!run_user_program(command_line)) {
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
         }
         return 0;
     }
@@ -470,10 +487,11 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             if (noisy) {
                 print("\nInvalid user filename pointer.");
             }
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
         }
 
-        if (vfs_delete_file(file_name) == VFS_OK) {
+        int delete_result = vfs_delete_file(file_name);
+        if (delete_result == VFS_OK) {
             if (noisy) {
                 print("\nDeleted: ");
                 print(file_name);
@@ -487,7 +505,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             print(file_name);
             print("\n");
         }
-        return (uint64_t)-1;
+        return (uint64_t)(int64_t)delete_result;
     }
 
     if (syscall_no == SYS_UPTIME) {
@@ -503,10 +521,11 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             if (noisy) {
                 print("\nInvalid user filename pointer.");
             }
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
         }
 
-        if (vfs_touch_file(file_name) == VFS_OK) {
+        int touch_result = vfs_touch_file(file_name);
+        if (touch_result == VFS_OK) {
             if (noisy) {
                 print("\nTouched: ");
                 print(file_name);
@@ -520,7 +539,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             print(file_name);
             print("\n");
         }
-        return (uint64_t)-1;
+        return (uint64_t)(int64_t)touch_result;
     }
 
     if (syscall_no == SYS_SAVE_FILE || syscall_no == SYS_SAVE_FILE_SILENT) {
@@ -531,16 +550,18 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             if (noisy) {
                 print("\nInvalid user filename pointer.");
             }
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
         }
         if (!copy_user_cstring((const char*)(uintptr_t)arg2, file_text, sizeof(file_text))) {
             if (noisy) {
                 print("\nInvalid user text pointer.");
             }
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
         }
 
-        if (vfs_write_file(file_name, (uint8_t*)file_text, (uint32_t)strlen64(file_text)) == VFS_OK) {
+        int write_result = vfs_write_file(file_name, (uint8_t*)file_text,
+                                          (uint32_t)strlen64(file_text));
+        if (write_result == VFS_OK) {
             if (noisy) {
                 print("\nSaved: ");
                 print(file_name);
@@ -554,7 +575,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             print(file_name);
             print("\n");
         }
-        return (uint64_t)-1;
+        return (uint64_t)(int64_t)write_result;
     }
 
     if (syscall_no == SYS_GET_PID) {
@@ -576,7 +597,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         Process* process = current_process();
         if (process == 0) {
             print("\nNo current user process.\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
         }
 
         const Process* child = find_last_child_process(process->pid);
@@ -594,7 +615,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         Process* process = current_process();
         if (process == 0) {
             print("\nNo current user process.\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
         }
 
         Process* child = find_waitable_child_process(process->pid);
@@ -637,7 +658,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         }
         uint32_t pid = (uint32_t)arg1;
         if (!resume_user_program(pid)) {
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
         }
         return 0;
     }
@@ -648,7 +669,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         }
         uint32_t pid = (uint32_t)arg1;
         if (!kill_user_program(pid)) {
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
         }
         return 0;
     }
@@ -657,7 +678,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         Process* process = current_process();
         if (process == 0) {
             print("\nNo current user process.\n");
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
         }
 
         uint32_t count = reap_all_child_processes(process->pid);
@@ -688,7 +709,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         uint32_t pid = (uint32_t)arg1;
         uint32_t enabled = (uint32_t)arg2;
         if (!set_user_program_background(pid, enabled)) {
-            return (uint64_t)-1;
+            return (uint64_t)(int64_t)SYS_ERR_NOT_FOUND;
         }
         return 0;
     }
@@ -712,5 +733,5 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     print("\nUnknown syscall: ");
     print_hex32((uint32_t)syscall_no);
     print("\n");
-    return (uint64_t)-1;
+    return (uint64_t)(int64_t)SYS_ERR_UNSUPPORTED;
 }

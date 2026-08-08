@@ -1,5 +1,6 @@
 #include "kernel/handle/kernel_handle.h"
 #include "kernel/fault_injection.h"
+#include "os64/result.h"
 
 static uint64_t encode_handle_token(uint32_t slot, uint32_t generation) {
     return ((uint64_t)generation << OS_HANDLE_TOKEN_SLOT_BITS) | (uint64_t)(slot + 1u);
@@ -33,26 +34,42 @@ static uint32_t next_generation(KernelHandleTable* table) {
     return generation == 0 ? next_generation(table) : generation;
 }
 
+static int64_t resolve_unlocked_result(KernelHandleTable* table,
+                                       uint64_t handle,
+                                       uint32_t expected_type,
+                                       uint32_t required_rights,
+                                       KernelHandle** resolved_out) {
+    uint32_t slot = 0;
+    uint32_t generation = 0;
+    if (table == 0 || resolved_out == 0) {
+        return SYS_ERR_INVALID_ARGUMENT;
+    }
+    *resolved_out = 0;
+    if (!decode_handle_token(handle, &slot, &generation)) {
+        return SYS_ERR_INVALID_HANDLE;
+    }
+    KernelHandle* entry = &table->entries[slot];
+    if (!entry->active || entry->generation != generation) {
+        return SYS_ERR_STALE_HANDLE;
+    }
+    if (expected_type != KERNEL_HANDLE_TYPE_NONE && entry->type != expected_type) {
+        return SYS_ERR_WRONG_HANDLE_TYPE;
+    }
+    if ((entry->rights & required_rights) != required_rights) {
+        return SYS_ERR_PERMISSION_DENIED;
+    }
+    *resolved_out = entry;
+    return OS_SUCCESS;
+}
+
 static KernelHandle* resolve_unlocked(KernelHandleTable* table,
                                       uint64_t handle,
                                       uint32_t expected_type,
                                       uint32_t required_rights) {
-    uint32_t slot = 0;
-    uint32_t generation = 0;
-    if (table == 0 || !decode_handle_token(handle, &slot, &generation)) {
-        return 0;
-    }
-    KernelHandle* entry = &table->entries[slot];
-    if (!entry->active || entry->generation != generation) {
-        return 0;
-    }
-    if (expected_type != KERNEL_HANDLE_TYPE_NONE && entry->type != expected_type) {
-        return 0;
-    }
-    if ((entry->rights & required_rights) != required_rights) {
-        return 0;
-    }
-    return entry;
+    KernelHandle* resolved = 0;
+    return resolve_unlocked_result(table, handle, expected_type,
+                                   required_rights, &resolved) == OS_SUCCESS
+        ? resolved : 0;
 }
 
 void kernel_handle_table_init(KernelHandleTable* table) {
@@ -146,20 +163,32 @@ int kernel_handle_resolve_copy(const KernelHandleTable* table,
                                uint32_t expected_type,
                                uint32_t required_rights,
                                KernelHandle* resolved_out) {
+    return kernel_handle_resolve_copy_result(table, handle, expected_type,
+                                             required_rights, resolved_out) ==
+           OS_SUCCESS;
+}
+
+int64_t kernel_handle_resolve_copy_result(const KernelHandleTable* table,
+                                          uint64_t handle,
+                                          uint32_t expected_type,
+                                          uint32_t required_rights,
+                                          KernelHandle* resolved_out) {
     if (table == 0 || resolved_out == 0) {
-        return 0;
+        return SYS_ERR_INVALID_ARGUMENT;
     }
     KernelHandleTable* mutable_table = (KernelHandleTable*)table;
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&mutable_table->lock, &token)) {
-        return 0;
+        return SYS_ERR_NOT_READY;
     }
-    KernelHandle* entry = resolve_unlocked(mutable_table, handle, expected_type, required_rights);
-    if (entry != 0) {
+    KernelHandle* entry = 0;
+    int64_t result = resolve_unlocked_result(mutable_table, handle, expected_type,
+                                             required_rights, &entry);
+    if (result == OS_SUCCESS) {
         *resolved_out = *entry;
     }
     kernel_spinlock_release(&mutable_table->lock, &token);
-    return entry != 0;
+    return result;
 }
 
 int kernel_handle_restrict_rights(KernelHandleTable* table,

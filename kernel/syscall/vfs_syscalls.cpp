@@ -28,23 +28,32 @@ static uint32_t vfs_mode_to_handle_rights(uint32_t mode) {
     return rights;
 }
 
-static int resolve_current_handle(uint64_t handle,
-                                  uint32_t type,
-                                  uint32_t rights,
-                                  KernelHandle* resolved) {
+static int64_t resolve_current_handle(uint64_t handle,
+                                      uint32_t type,
+                                      uint32_t rights,
+                                      KernelHandle* resolved) {
     Process* process = current_process();
-    return process != 0 &&
-           kernel_handle_resolve_copy(&process->handle_table, handle, type, rights, resolved);
+    return process != 0
+        ? kernel_handle_resolve_copy_result(&process->handle_table, handle,
+                                            type, rights, resolved)
+        : SYS_ERR_NOT_READY;
 }
 
-static int resolve_vfs_fd(uint64_t handle, uint32_t type, uint32_t rights, int* fd_out) {
+static int64_t resolve_vfs_fd(uint64_t handle, uint32_t type,
+                              uint32_t rights, int* fd_out) {
+    if (fd_out == 0) {
+        return SYS_ERR_INVALID_ARGUMENT;
+    }
     KernelHandle entry;
-    if (!resolve_current_handle(handle, type, rights, &entry) ||
-        fd_out == 0 || entry.object > 0x7FFFFFFFULL) {
-        return 0;
+    int64_t result = resolve_current_handle(handle, type, rights, &entry);
+    if (result != OS_SUCCESS) {
+        return result;
+    }
+    if (entry.object > 0x7FFFFFFFULL) {
+        return SYS_ERR_OUT_OF_RANGE;
     }
     *fd_out = (int)entry.object;
-    return 1;
+    return OS_SUCCESS;
 }
 
 static uint64_t allocate_current_handle(uint32_t type,
@@ -62,7 +71,7 @@ static uint64_t dispatch_open(uint64_t path_address, uint64_t mode_arg) {
     char file_name[VFS_USER_PATH_MAX];
     if (!copy_user_cstring((const char*)(uintptr_t)path_address, file_name, sizeof(file_name))) {
         print("\nInvalid user filename pointer.");
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
     }
 
     Process* owner = current_process();
@@ -98,9 +107,11 @@ static uint64_t dispatch_read(uint64_t handle, uint64_t buffer_address, uint64_t
     }
 
     int fd = -1;
-    if (!resolve_vfs_fd(handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_READ, &fd)) {
+    int64_t resolve_result = resolve_vfs_fd(
+        handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_READ, &fd);
+    if (resolve_result != OS_SUCCESS) {
         kfree(temp);
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        return (uint64_t)resolve_result;
     }
 
     uint32_t bytes_read = 0;
@@ -111,7 +122,7 @@ static uint64_t dispatch_read(uint64_t handle, uint64_t buffer_address, uint64_t
     }
     if (!copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)buffer_address, temp, bytes_read)) {
         kfree(temp);
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
     }
 
     kfree(temp);
@@ -133,13 +144,15 @@ static uint64_t dispatch_write(uint64_t handle, uint64_t buffer_address, uint64_
     }
     if (!copy_user_buffer((const uint8_t*)(uintptr_t)buffer_address, temp, requested)) {
         kfree(temp);
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
     }
 
     int fd = -1;
-    if (!resolve_vfs_fd(handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_WRITE, &fd)) {
+    int64_t resolve_result = resolve_vfs_fd(
+        handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_WRITE, &fd);
+    if (resolve_result != OS_SUCCESS) {
         kfree(temp);
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        return (uint64_t)resolve_result;
     }
 
     uint32_t bytes_written = 0;
@@ -152,11 +165,19 @@ static uint64_t dispatch_close_typed(uint64_t handle, uint32_t type) {
     Process* process = current_process();
     KernelHandle closed;
     KernelHandle resolved;
-    if (process == 0 ||
-        !kernel_handle_resolve_copy(&process->handle_table, handle, type, 0, &resolved) ||
-        !kernel_handle_close(&process->handle_table, handle, &closed) ||
-        closed.object > 0x7FFFFFFFULL) {
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+    if (process == 0) {
+        return (uint64_t)(int64_t)SYS_ERR_NOT_READY;
+    }
+    int64_t resolve_result = kernel_handle_resolve_copy_result(
+        &process->handle_table, handle, type, 0, &resolved);
+    if (resolve_result != OS_SUCCESS) {
+        return (uint64_t)resolve_result;
+    }
+    if (!kernel_handle_close(&process->handle_table, handle, &closed)) {
+        return (uint64_t)(int64_t)SYS_ERR_STALE_HANDLE;
+    }
+    if (closed.object > 0x7FFFFFFFULL) {
+        return (uint64_t)(int64_t)SYS_ERR_OUT_OF_RANGE;
     }
     return type == KERNEL_HANDLE_TYPE_VFS_DIR
         ? (uint64_t)(int64_t)vfs_closedir((int)closed.object)
@@ -165,8 +186,10 @@ static uint64_t dispatch_close_typed(uint64_t handle, uint32_t type) {
 
 static uint64_t dispatch_seek(uint64_t handle, uint64_t offset_arg, uint64_t whence_arg) {
     int fd = -1;
-    if (!resolve_vfs_fd(handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_SEEK, &fd)) {
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+    int64_t resolve_result = resolve_vfs_fd(
+        handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_SEEK, &fd);
+    if (resolve_result != OS_SUCCESS) {
+        return (uint64_t)resolve_result;
     }
 
     uint32_t position = 0;
@@ -176,8 +199,10 @@ static uint64_t dispatch_seek(uint64_t handle, uint64_t offset_arg, uint64_t whe
 
 static uint64_t dispatch_tell(uint64_t handle) {
     int fd = -1;
-    if (!resolve_vfs_fd(handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_SEEK, &fd)) {
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+    int64_t resolve_result = resolve_vfs_fd(
+        handle, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_SEEK, &fd);
+    if (resolve_result != OS_SUCCESS) {
+        return (uint64_t)resolve_result;
     }
 
     uint32_t position = 0;
@@ -188,7 +213,7 @@ static uint64_t dispatch_tell(uint64_t handle) {
 static uint64_t dispatch_opendir(uint64_t path_address) {
     char dir_path[VFS_USER_PATH_MAX];
     if (!copy_user_cstring((const char*)(uintptr_t)path_address, dir_path, sizeof(dir_path))) {
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
     }
 
     Process* owner = current_process();
@@ -210,8 +235,10 @@ static uint64_t dispatch_opendir(uint64_t path_address) {
 
 static uint64_t dispatch_readdir(uint64_t handle, uint64_t entry_address) {
     int fd = -1;
-    if (!resolve_vfs_fd(handle, KERNEL_HANDLE_TYPE_VFS_DIR, KERNEL_HANDLE_RIGHT_ENUMERATE, &fd)) {
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+    int64_t resolve_result = resolve_vfs_fd(
+        handle, KERNEL_HANDLE_TYPE_VFS_DIR, KERNEL_HANDLE_RIGHT_ENUMERATE, &fd);
+    if (resolve_result != OS_SUCCESS) {
+        return (uint64_t)resolve_result;
     }
 
     VFSDirEntry entry;
@@ -220,13 +247,13 @@ static uint64_t dispatch_readdir(uint64_t handle, uint64_t entry_address) {
         return (uint64_t)result;
     }
     if (entry_address == 0) {
-        return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        return (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
     }
     return copy_kernel_to_user_buffer((uint8_t*)(uintptr_t)entry_address,
                                       (const uint8_t*)&entry,
                                       sizeof(entry))
         ? 1
-        : (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+        : (uint64_t)(int64_t)SYS_ERR_BAD_BUFFER;
 }
 
 int dispatch_vfs_handle_syscall64(uint64_t syscall_no,

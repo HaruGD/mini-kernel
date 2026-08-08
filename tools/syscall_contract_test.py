@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression gate for the Phase 5S-A system-call catalog."""
+"""Regression gate for the Phase 5S-A/B system-call catalog and result ABI."""
 
 from __future__ import annotations
 
@@ -75,6 +75,35 @@ def mutation_contract(catalog: dict, failures: list[str]) -> None:
                 for error in validate_catalog(unknown_errors)),
             "unknown result error set was accepted", failures)
 
+    incomplete_result = copy.deepcopy(catalog)
+    del incomplete_result["syscalls"][0]["result"]["success_domain"]
+    require(any("missing field 'success_domain'" in error
+                for error in validate_catalog(incomplete_result)),
+            "incomplete success domain was accepted", failures)
+
+    invalid_output = copy.deepcopy(catalog)
+    output_call = next(call for call in invalid_output["syscalls"]
+                       if any(arg["direction"] == "out"
+                              for arg in call["arguments"]))
+    output_call["result"]["output"]["publication"] = "none"
+    require(any("output pointer requires" in error
+                for error in validate_catalog(invalid_output)),
+            "output pointer without publication contract was accepted", failures)
+
+    invalid_partial = copy.deepcopy(catalog)
+    query = next(call for call in invalid_partial["syscalls"]
+                 if call["name"] == "ipc_query")
+    query["result"]["output"]["partial_errors"] = []
+    require(any("partial output requires" in error
+                for error in validate_catalog(invalid_partial)),
+            "partial output without named errors was accepted", failures)
+
+    sparse_errors = copy.deepcopy(catalog)
+    sparse_errors["error_codes"][-1]["value"] = -23
+    require(any("contiguous" in error
+                for error in validate_catalog(sparse_errors)),
+            "noncontiguous public result codes were accepted", failures)
+
     with tempfile.TemporaryDirectory(prefix="os64_syscall_json_") as directory:
         path = Path(directory) / "duplicate.json"
         path.write_text('{"schema_version":1,"schema_version":1}\n',
@@ -146,9 +175,34 @@ def source_of_truth_contract(catalog: dict, failures: list[str]) -> None:
             "thread trampoline contains a raw numeric syscall invocation", failures)
 
     result_source = (ROOT / "user/sdk/src/result.c").read_text(encoding="utf-8")
+    require("OS64_RESULT_CODE_TABLE(OS64_RESULT_STRING_CASE)" in result_source,
+            "SDK result strings do not consume the generated code table", failures)
+    require(re.search(r"case\s+OS_ERR_", result_source) is None,
+            "SDK result strings still contain a manual error-code switch", failures)
+    syscall_sources = dispatch_text
+    require(re.search(r"\(uint64_t\)-\d+", syscall_sources) is None,
+            "syscall dispatcher contains an ambiguous raw negative result", failures)
+    require("SYS_ERR_UNSUPPORTED" in
+            (ROOT / "kernel/syscall/syscall64.cpp").read_text(encoding="utf-8"),
+            "unknown syscall path does not use the cataloged unsupported result", failures)
+    kernel_syscall_header = (ROOT / "include/kernel/syscall64.h").read_text(
+        encoding="utf-8")
+    for token in ("SYSCALL_RETURN_TO_KERNEL", "SYSCALL_YIELD_TO_KERNEL",
+                  "SYSCALL_SLEEP_TO_KERNEL", "SYSCALL_WAIT_TO_KERNEL"):
+        match = re.search(rf"#define\s+{token}\s+0x([0-9A-Fa-f]+)ULL",
+                          kernel_syscall_header)
+        require(match is not None, f"missing internal control token {token}", failures)
+        if match is not None:
+            unsigned = int(match.group(1), 16)
+            signed = unsigned - (1 << 64) if unsigned >= (1 << 63) else unsigned
+            require(signed < catalog["result_domain"]["error_min"],
+                    f"internal control token overlaps public result range: {token}",
+                    failures)
+
     for code in catalog["error_codes"]:
-        require(code["symbol"] in result_source,
-                f"SDK result string missing {code['symbol']}", failures)
+        require(code["symbol"] in
+                (ROOT / "user/sdk/include/os64/result.h").read_text(encoding="utf-8"),
+                f"generated result table missing {code['symbol']}", failures)
     result_header = (ROOT / "user/sdk/include/os64/result.h").read_text(
         encoding="utf-8")
     require("int os_result_failed(long result);" in result_header and
@@ -165,12 +219,16 @@ _Static_assert(OS64_SYSCALL_CATALOG_VERSION == {catalog['catalog_version']}u, "c
 _Static_assert(OS64_SYSCALL_MAX_NUMBER == {catalog['abi']['max_number']}u, "maximum number");
 _Static_assert({first['symbol']} == {first['number']}u, "first syscall");
 _Static_assert({last['symbol']} == {last['number']}u, "last syscall");
-_Static_assert(OS_ERR_CANCELLED == -18, "result ABI");
+_Static_assert(sizeof(OsResult) == 8u, "signed result width");
+_Static_assert(OS_ERR_CANCELLED == -18, "existing result ABI");
+_Static_assert(OS_ERR_OVERFLOW == -22, "extended result ABI");
+_Static_assert(OS64_RESULT_ERROR_MIN == -4095, "reserved result range");
 int main(void) {{ return 0; }}
 '''
     cpp_source = c_source.replace("_Static_assert", "static_assert")
     descriptor_source = f'''#include "kernel/syscall_catalog_generated.h"
 _Static_assert(OS64_SYSCALL_CATALOG_COUNT == {len(catalog['syscalls'])}u, "descriptor count");
+_Static_assert(OS64_SYSCALL_OUTPUT_PARTIAL == 2u, "output policy ABI");
 int main(void) {{ return os64_syscall_catalog[0].number == 1u ? 0 : 1; }}
 '''
     with tempfile.TemporaryDirectory(prefix="os64_syscall_headers_") as directory:
@@ -198,12 +256,55 @@ ret
                        cwd=ROOT, check=True)
 
 
+def result_runtime_contract(catalog: dict, failures: list[str]) -> None:
+    checks = "\n".join(
+        f'    if (strcmp(os_result_string({code["symbol"]}), '
+        f'"{code["message"]}") != 0) return {index + 10};'
+        for index, code in enumerate(catalog["error_codes"])
+    )
+    source = f'''#include <string.h>
+#include "os64/result.h"
+int main(void) {{
+    if (os_result_failed(OS_SUCCESS) || os_result_failed(17)) return 1;
+    if (!os_result_failed(OS_ERR_NOT_READY)) return 2;
+    if (strcmp(os_result_string(OS_SUCCESS), "success") != 0) return 3;
+    if (strcmp(os_result_string(17), "success") != 0) return 4;
+    if (strcmp(os_result_string(OS64_RESULT_ERROR_MIN), "unknown error") != 0) return 5;
+{checks}
+    return 0;
+}}
+'''
+    with tempfile.TemporaryDirectory(prefix="os64_result_runtime_") as directory:
+        temp = Path(directory)
+        source_path = temp / "result_runtime.c"
+        binary_path = temp / "result_runtime"
+        source_path.write_text(source, encoding="utf-8")
+        process = subprocess.run([
+            "gcc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+            "-I", str(ROOT / "user/sdk/include"),
+            str(ROOT / "user/sdk/src/result.c"), str(source_path),
+            "-o", str(binary_path),
+        ], cwd=ROOT, text=True, stdout=subprocess.PIPE,
+           stderr=subprocess.STDOUT)
+        require(process.returncode == 0,
+                f"SDK result runtime compile failed:\n{process.stdout}", failures)
+        if process.returncode == 0:
+            run = subprocess.run([str(binary_path)], text=True,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
+            require(run.returncode == 0,
+                    f"SDK result runtime failed with {run.returncode}:\n{run.stdout}",
+                    failures)
+
+
 def documentation_contract(catalog: dict, failures: list[str]) -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     require(schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema",
             "syscall schema is not Draft 2020-12", failures)
     require(schema.get("additionalProperties") is False,
             "syscall schema does not reject unknown root fields", failures)
+    require(schema.get("properties", {}).get("schema_version", {}).get("const") == 2,
+            "syscall schema version did not advance for result contracts", failures)
     reference = (ROOT / "docs/reference/syscall_catalog.generated.md").read_text(
         encoding="utf-8")
     rows = re.findall(r"^\| \d+ \| `SYS_", reference, re.MULTILINE)
@@ -216,6 +317,10 @@ def documentation_contract(catalog: dict, failures: list[str]) -> None:
             "Phase 5S plan does not own the syscall catalog", failures)
     require("P5S-R01" in progress,
             "Phase 5 progress does not track the syscall contract gate", failures)
+    result_contract = ROOT / "docs/reference/syscall_result_contract.md"
+    require(result_contract.is_file() and
+            "signed 64-bit" in result_contract.read_text(encoding="utf-8"),
+            "result/output contract reference is missing", failures)
 
 
 def main() -> int:
@@ -231,6 +336,7 @@ def main() -> int:
     mutation_contract(catalog, failures)
     source_of_truth_contract(catalog, failures)
     compile_contract(catalog, failures)
+    result_runtime_contract(catalog, failures)
     documentation_contract(catalog, failures)
     if failures:
         print("syscall contract test failed:")
@@ -244,7 +350,9 @@ def main() -> int:
     )
     print("syscall contract test OK")
     print(f"catalog_version={catalog['catalog_version']} calls={len(catalog['syscalls'])} "
-          f"error_codes={len(catalog['error_codes'])} pointer_calls={pointer_calls}")
+          f"error_codes={len(catalog['error_codes'])} pointer_calls={pointer_calls} "
+          f"atomic_outputs={sum(call['result']['output']['publication'] == 'atomic' for call in catalog['syscalls'])} "
+          f"partial_outputs={sum(call['result']['output']['publication'] == 'partial' for call in catalog['syscalls'])}")
     return 0
 
 

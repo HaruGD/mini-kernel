@@ -5,26 +5,13 @@ int os_result_failed(long result) {
 }
 
 const char* os_result_string(long result) {
+    if (result >= OS64_RESULT_SUCCESS_MIN) {
+        return "success";
+    }
     switch (result) {
-        case OS_SUCCESS: return "success";
-        case OS_ERR_NOT_READY: return "not ready";
-        case OS_ERR_INVALID_ARGUMENT: return "invalid argument";
-        case OS_ERR_NOT_FOUND: return "not found";
-        case OS_ERR_BUFFER_TOO_SMALL: return "buffer too small";
-        case OS_ERR_IO: return "I/O error";
-        case OS_ERR_ALREADY_EXISTS: return "already exists";
-        case OS_ERR_NO_RESOURCES: return "no resources";
-        case OS_ERR_UNSUPPORTED: return "unsupported";
-        case OS_ERR_WOULD_BLOCK: return "would block";
-        case OS_ERR_OUT_OF_MEMORY: return "out of memory";
-        case OS_ERR_OUT_OF_RANGE: return "out of range";
-        case OS_ERR_NO_TARGET: return "no target";
-        case OS_ERR_QUEUE_FULL: return "queue full";
-        case OS_ERR_MESSAGE_TOO_LARGE: return "message too large";
-        case OS_ERR_PERMISSION_DENIED: return "permission denied";
-        case OS_ERR_BAD_BUFFER: return "bad buffer";
-        case OS_ERR_TIMEOUT: return "timeout";
-        case OS_ERR_CANCELLED: return "cancelled";
+#define OS64_RESULT_STRING_CASE(symbol, message) case symbol: return message;
+        OS64_RESULT_CODE_TABLE(OS64_RESULT_STRING_CASE)
+#undef OS64_RESULT_STRING_CASE
         default: return "unknown error";
     }
 }

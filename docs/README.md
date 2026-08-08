@@ -33,6 +33,7 @@ links and test references remain stable from the project root.
 - [Window SDK](reference/window_sdk.md)
 - [User SDK v2](reference/user_sdk.md)
 - [Generated system-call catalog](reference/syscall_catalog.generated.md)
+- [System-call result and output contract](reference/syscall_result_contract.md)
 
 ## Testing
 

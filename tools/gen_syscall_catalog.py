@@ -19,6 +19,22 @@ OUTPUTS = (
     "docs/reference/syscall_catalog.generated.md",
 )
 
+RESULT_KIND_IDS = {
+    "status": 0,
+    "count": 1,
+    "value": 2,
+    "handle": 3,
+    "address": 4,
+    "noreturn": 5,
+}
+SUCCESS_DOMAIN_IDS = {"zero": 0, "nonnegative": 1, "positive": 2, "noreturn": 3}
+OUTPUT_PUBLICATION_IDS = {"none": 0, "atomic": 1, "partial": 2}
+OUTPUT_FAILURE_IDS = {"not_applicable": 0, "unchanged": 1, "partial": 2}
+
+
+def c_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
 def banner(comment: str) -> str:
     return f"{comment} Generated from config/abi/syscalls.json. Do not edit.\n"
 
@@ -42,20 +58,34 @@ def numbers_header(catalog: dict) -> str:
 
 
 def result_header(catalog: dict) -> str:
+    domain = catalog["result_domain"]
     lines = [
         banner("//").rstrip(),
         "#ifndef OS64_RESULT_H",
         "#define OS64_RESULT_H",
         "",
-        "typedef enum OsResult {",
-        "    OS_SUCCESS = 0,",
+        "#include <stdint.h>",
+        "",
+        "typedef int64_t OsResult;",
+        "",
+        "#define OS_SUCCESS INT64_C(0)",
+        f"#define OS64_RESULT_SUCCESS_MIN INT64_C({domain['success_min']})",
+        f"#define OS64_RESULT_SUCCESS_MAX INT64_C({domain['success_max']})",
+        f"#define OS64_RESULT_ERROR_MIN (-INT64_C({-domain['error_min']}))",
+        f"#define OS64_RESULT_ERROR_MAX (-INT64_C({-domain['error_max']}))",
+        "",
     ]
-    for index, code in enumerate(catalog["error_codes"]):
-        suffix = "," if index + 1 < len(catalog["error_codes"]) else ""
-        lines.append(f"    {code['symbol']} = {code['value']}{suffix}")
-    lines.extend(["} OsResult;", ""])
+    for code in catalog["error_codes"]:
+        lines.append(f"#define {code['symbol']} (-INT64_C({-code['value']}))")
+    lines.append("")
     for code in catalog["error_codes"]:
         lines.append(f"#define {code['kernel_symbol']} {code['symbol']}")
+    lines.extend(["", "#define OS64_RESULT_CODE_TABLE(X) \\"])
+    for index, code in enumerate(catalog["error_codes"]):
+        suffix = " \\" if index + 1 < len(catalog["error_codes"]) else ""
+        lines.append(
+            f"    X({code['symbol']}, \"{c_string(code['message'])}\"){suffix}"
+        )
     lines.extend([
         "", "int os_result_failed(long result);",
         "const char* os_result_string(long result);", "", "#endif", "",
@@ -84,6 +114,22 @@ def descriptor_header(catalog: dict) -> str:
         "#define OS64_SYSCALL_FLAG_BLOCKING (1u << 0)",
         "#define OS64_SYSCALL_FLAG_CANCELLABLE (1u << 1)",
         "#define OS64_SYSCALL_FLAG_AUDITED (1u << 2)",
+        "#define OS64_SYSCALL_RESULT_STATUS 0u",
+        "#define OS64_SYSCALL_RESULT_COUNT 1u",
+        "#define OS64_SYSCALL_RESULT_VALUE 2u",
+        "#define OS64_SYSCALL_RESULT_HANDLE 3u",
+        "#define OS64_SYSCALL_RESULT_ADDRESS 4u",
+        "#define OS64_SYSCALL_RESULT_NORETURN 5u",
+        "#define OS64_SYSCALL_SUCCESS_ZERO 0u",
+        "#define OS64_SYSCALL_SUCCESS_NONNEGATIVE 1u",
+        "#define OS64_SYSCALL_SUCCESS_POSITIVE 2u",
+        "#define OS64_SYSCALL_SUCCESS_NORETURN 3u",
+        "#define OS64_SYSCALL_OUTPUT_NONE 0u",
+        "#define OS64_SYSCALL_OUTPUT_ATOMIC 1u",
+        "#define OS64_SYSCALL_OUTPUT_PARTIAL 2u",
+        "#define OS64_SYSCALL_FAILURE_OUTPUT_NOT_APPLICABLE 0u",
+        "#define OS64_SYSCALL_FAILURE_OUTPUT_UNCHANGED 1u",
+        "#define OS64_SYSCALL_FAILURE_OUTPUT_PARTIAL 2u",
         "",
         "typedef struct OsSyscallCatalogDescriptor {",
         "    uint32_t number;",
@@ -91,6 +137,10 @@ def descriptor_header(catalog: dict) -> str:
         "    uint8_t pointer_mask;",
         "    uint8_t writable_mask;",
         "    uint8_t flags;",
+        "    uint8_t result_kind;",
+        "    uint8_t success_domain;",
+        "    uint8_t output_publication;",
+        "    uint8_t failure_output;",
         "    const char* name;",
         "    const char* symbol;",
         "    const char* permission;",
@@ -115,9 +165,15 @@ def descriptor_header(catalog: dict) -> str:
             flags |= 2
         if call["audit_status"] == "audited":
             flags |= 4
+        result = call["result"]
+        output = result["output"]
         lines.append(
             f"    {{{call['number']}u, {len(call['arguments'])}u, {pointer_mask}u, "
-            f"{writable_mask}u, {flags}u, \"{call['name']}\", \"{call['symbol']}\", "
+            f"{writable_mask}u, {flags}u, {RESULT_KIND_IDS[result['kind']]}u, "
+            f"{SUCCESS_DOMAIN_IDS[result['success_domain']]}u, "
+            f"{OUTPUT_PUBLICATION_IDS[output['publication']]}u, "
+            f"{OUTPUT_FAILURE_IDS[output['failure_state']]}u, "
+            f"\"{call['name']}\", \"{call['symbol']}\", "
             f"\"{resolved['permission']}\", \"{call['result']['errors']}\"}},"
         )
     lines.extend([
@@ -145,8 +201,8 @@ def reference_markdown(catalog: dict) -> str:
         "The catalog is authoritative for identifiers and declared contract metadata. "
         "Rows marked `provisional` still require the Phase 5S-G implementation audit.",
         "",
-        "| No. | Symbol | Name | Arguments | Result | Errors | Permission | Blocking | Audit | Reference |",
-        "| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| No. | Symbol | Name | Arguments | Result | Output | Errors | Permission | Blocking | Audit | Reference |",
+        "| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for call in catalog["syscalls"]:
         resolved = resolve_contract(call, defaults)
@@ -156,14 +212,29 @@ def reference_markdown(catalog: dict) -> str:
         ) or "-"
         lines.append(
             f"| {call['number']} | `{call['symbol']}` | `{call['name']}` | {args} | "
-            f"{call['result']['kind']}: {call['result']['success']} | "
+            f"{call['result']['kind']}/{call['result']['success_domain']}: {call['result']['success']} | "
+            f"{call['result']['output']['publication']}; failure={call['result']['output']['failure_state']} | "
             f"`{call['result']['errors']}` | `{resolved['permission']}` | "
             f"{'yes' if resolved['execution']['blocking'] else 'no'} | "
             f"{call['audit_status']} | `{call['reference']}` |"
         )
-    lines.extend(["", "## Result Codes", "", "| Value | SDK symbol | Kernel alias | Meaning |", "| ---: | --- | --- | --- |"])
+    domain = catalog["result_domain"]
+    lines.extend([
+        "", "## Result Domain", "",
+        f"Public results are signed `{domain['width_bits']}`-bit values. "
+        f"Nonnegative values are success; cataloged errors occupy "
+        f"`{domain['error_min']}..{domain['error_max']}`. Internal scheduler "
+        "control tokens are outside that range and must never reach user mode.",
+        "", "## Result Codes", "",
+        "| Value | SDK symbol | Kernel alias | Category | Retryable | Meaning |",
+        "| ---: | --- | --- | --- | --- | --- |",
+    ])
     for code in catalog["error_codes"]:
-        lines.append(f"| {code['value']} | `{code['symbol']}` | `{code['kernel_symbol']}` | {code['description']} |")
+        lines.append(
+            f"| {code['value']} | `{code['symbol']}` | `{code['kernel_symbol']}` | "
+            f"`{code['category']}` | {'yes' if code['retryable'] else 'no'} | "
+            f"{code['description']} |"
+        )
     lines.append("")
     return "\n".join(lines)
 

@@ -2,27 +2,38 @@
 #ifndef OS64_RESULT_H
 #define OS64_RESULT_H
 
-typedef enum OsResult {
-    OS_SUCCESS = 0,
-    OS_ERR_NOT_READY = -1,
-    OS_ERR_INVALID_ARGUMENT = -2,
-    OS_ERR_NOT_FOUND = -3,
-    OS_ERR_BUFFER_TOO_SMALL = -4,
-    OS_ERR_IO = -5,
-    OS_ERR_ALREADY_EXISTS = -6,
-    OS_ERR_NO_RESOURCES = -7,
-    OS_ERR_UNSUPPORTED = -8,
-    OS_ERR_WOULD_BLOCK = -9,
-    OS_ERR_OUT_OF_MEMORY = -10,
-    OS_ERR_OUT_OF_RANGE = -11,
-    OS_ERR_NO_TARGET = -12,
-    OS_ERR_QUEUE_FULL = -13,
-    OS_ERR_MESSAGE_TOO_LARGE = -14,
-    OS_ERR_PERMISSION_DENIED = -15,
-    OS_ERR_BAD_BUFFER = -16,
-    OS_ERR_TIMEOUT = -17,
-    OS_ERR_CANCELLED = -18
-} OsResult;
+#include <stdint.h>
+
+typedef int64_t OsResult;
+
+#define OS_SUCCESS INT64_C(0)
+#define OS64_RESULT_SUCCESS_MIN INT64_C(0)
+#define OS64_RESULT_SUCCESS_MAX INT64_C(9223372036854775807)
+#define OS64_RESULT_ERROR_MIN (-INT64_C(4095))
+#define OS64_RESULT_ERROR_MAX (-INT64_C(1))
+
+#define OS_ERR_NOT_READY (-INT64_C(1))
+#define OS_ERR_INVALID_ARGUMENT (-INT64_C(2))
+#define OS_ERR_NOT_FOUND (-INT64_C(3))
+#define OS_ERR_BUFFER_TOO_SMALL (-INT64_C(4))
+#define OS_ERR_IO (-INT64_C(5))
+#define OS_ERR_ALREADY_EXISTS (-INT64_C(6))
+#define OS_ERR_NO_RESOURCES (-INT64_C(7))
+#define OS_ERR_UNSUPPORTED (-INT64_C(8))
+#define OS_ERR_WOULD_BLOCK (-INT64_C(9))
+#define OS_ERR_OUT_OF_MEMORY (-INT64_C(10))
+#define OS_ERR_OUT_OF_RANGE (-INT64_C(11))
+#define OS_ERR_NO_TARGET (-INT64_C(12))
+#define OS_ERR_QUEUE_FULL (-INT64_C(13))
+#define OS_ERR_MESSAGE_TOO_LARGE (-INT64_C(14))
+#define OS_ERR_PERMISSION_DENIED (-INT64_C(15))
+#define OS_ERR_BAD_BUFFER (-INT64_C(16))
+#define OS_ERR_TIMEOUT (-INT64_C(17))
+#define OS_ERR_CANCELLED (-INT64_C(18))
+#define OS_ERR_INVALID_HANDLE (-INT64_C(19))
+#define OS_ERR_STALE_HANDLE (-INT64_C(20))
+#define OS_ERR_WRONG_HANDLE_TYPE (-INT64_C(21))
+#define OS_ERR_OVERFLOW (-INT64_C(22))
 
 #define SYS_ERR_NOT_READY OS_ERR_NOT_READY
 #define SYS_ERR_INVALID_ARGUMENT OS_ERR_INVALID_ARGUMENT
@@ -42,6 +53,34 @@ typedef enum OsResult {
 #define SYS_ERR_BAD_BUFFER OS_ERR_BAD_BUFFER
 #define SYS_ERR_TIMEOUT OS_ERR_TIMEOUT
 #define SYS_ERR_CANCELLED OS_ERR_CANCELLED
+#define SYS_ERR_INVALID_HANDLE OS_ERR_INVALID_HANDLE
+#define SYS_ERR_STALE_HANDLE OS_ERR_STALE_HANDLE
+#define SYS_ERR_WRONG_HANDLE_TYPE OS_ERR_WRONG_HANDLE_TYPE
+#define SYS_ERR_OVERFLOW OS_ERR_OVERFLOW
+
+#define OS64_RESULT_CODE_TABLE(X) \
+    X(OS_ERR_NOT_READY, "not ready") \
+    X(OS_ERR_INVALID_ARGUMENT, "invalid argument") \
+    X(OS_ERR_NOT_FOUND, "not found") \
+    X(OS_ERR_BUFFER_TOO_SMALL, "buffer too small") \
+    X(OS_ERR_IO, "I/O error") \
+    X(OS_ERR_ALREADY_EXISTS, "already exists") \
+    X(OS_ERR_NO_RESOURCES, "no resources") \
+    X(OS_ERR_UNSUPPORTED, "unsupported") \
+    X(OS_ERR_WOULD_BLOCK, "would block") \
+    X(OS_ERR_OUT_OF_MEMORY, "out of memory") \
+    X(OS_ERR_OUT_OF_RANGE, "out of range") \
+    X(OS_ERR_NO_TARGET, "no target") \
+    X(OS_ERR_QUEUE_FULL, "queue full") \
+    X(OS_ERR_MESSAGE_TOO_LARGE, "message too large") \
+    X(OS_ERR_PERMISSION_DENIED, "permission denied") \
+    X(OS_ERR_BAD_BUFFER, "bad buffer") \
+    X(OS_ERR_TIMEOUT, "timeout") \
+    X(OS_ERR_CANCELLED, "cancelled") \
+    X(OS_ERR_INVALID_HANDLE, "invalid handle") \
+    X(OS_ERR_STALE_HANDLE, "stale handle") \
+    X(OS_ERR_WRONG_HANDLE_TYPE, "wrong handle type") \
+    X(OS_ERR_OVERFLOW, "arithmetic overflow")
 
 int os_result_failed(long result);
 const char* os_result_string(long result);

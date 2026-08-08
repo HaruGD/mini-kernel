@@ -1,11 +1,12 @@
 #include <os64/os64.h>
+#include <os64/syscall_numbers.h>
 
 #define TEST_DIR "/mem/usdk_test"
 #define TEST_TEXT_PATH TEST_DIR "/data.txt"
 #define TEST_RENAMED_PATH TEST_DIR "/result.txt"
 #define TEST_LARGE_PATH "/sdk_large_test.bin"
 #define TEST_LARGE_SIZE 12000u
-#define LEGACY_SYS_WRITE 1
+#define LEGACY_SYS_WRITE OS_SYS_WRITE
 
 static uint32_t checks_passed = 0;
 static uint32_t checks_failed = 0;
@@ -86,8 +87,18 @@ static void test_malformed_requests(void) {
           "service rejects unknown flags");
     check(os_service_find("fuzz", (OsServiceInfo*)(uintptr_t)kernel_pointer) == OS_ERR_BAD_BUFFER,
           "service rejects kernel output pointer");
-    check(raw_syscall2(35, kernel_pointer, OS_OPEN_READ) == OS_ERR_INVALID_ARGUMENT,
+    check(raw_syscall2(SYS_VFS_OPEN, kernel_pointer, OS_OPEN_READ) ==
+              OS_ERR_BAD_BUFFER,
           "VFS rejects kernel path pointer");
+    check(raw_syscall1(OS64_SYSCALL_MAX_NUMBER + 1u, 0) == OS_ERR_UNSUPPORTED,
+          "unknown syscall has explicit result");
+
+    uint32_t partial_version = 0xA5A5A5A5u;
+    check(raw_syscall2(OS_SYS_IPC_QUERY,
+                       (long)(uintptr_t)&partial_version,
+                       kernel_pointer) == OS_ERR_BAD_BUFFER &&
+          partial_version == OS64_IPC_ABI_VERSION_V2,
+          "IPC query documents partial output");
 }
 
 static void test_global_data(void) {
@@ -269,6 +280,11 @@ static void test_results(void) {
           "error result string");
     check(os_streq(os_result_string(-999), "unknown error"),
           "unknown error string");
+    check(os_streq(os_result_string(OS_ERR_INVALID_HANDLE), "invalid handle") &&
+          os_streq(os_result_string(OS_ERR_STALE_HANDLE), "stale handle") &&
+          os_streq(os_result_string(OS_ERR_WRONG_HANDLE_TYPE), "wrong handle type") &&
+          os_streq(os_result_string(OS_ERR_OVERFLOW), "arithmetic overflow"),
+          "generated extended result strings");
     check(os_open("/mem/usdk_test/missing.txt", OS_OPEN_READ) == OS_ERR_NOT_FOUND,
           "filesystem error propagation");
     check(os_read_file(0, 0, 0) == OS_ERR_INVALID_ARGUMENT,
@@ -394,6 +410,16 @@ static void test_surfaces(void) {
           info.pixel_format == OS64_PIXEL_FORMAT_RGB &&
           info.byte_size == 4100,
           "surface information");
+    uint8_t untouched = 0xA5u;
+    check(raw_syscall3(SYS_VFS_READ, 0,
+                       (long)(uintptr_t)&untouched, 1) == OS_ERR_INVALID_HANDLE &&
+          untouched == 0xA5u,
+          "malformed handle preserves output");
+    check(raw_syscall3(SYS_VFS_READ, (long)surface,
+                       (long)(uintptr_t)&untouched, 1) ==
+              OS_ERR_WRONG_HANDLE_TYPE &&
+          untouched == 0xA5u,
+          "wrong handle type preserves output");
     check(raw_syscall2(77, (long)surface, kernel_pointer) == OS_ERR_BAD_BUFFER,
           "surface info rejects kernel pointer");
     check(raw_syscall2(78, (long)surface, 0x80000000u) ==
@@ -421,8 +447,12 @@ static void test_surfaces(void) {
               "surface repeated unmap is safe");
     }
     check(os_surface_close(surface) == OS_SUCCESS, "surface close");
-    check(os_surface_close(surface) == OS_ERR_NOT_FOUND,
+    check(os_surface_close(surface) == OS_ERR_STALE_HANDLE,
           "surface stale close is safe");
+    os_memset(&info, 0xA5, sizeof(info));
+    check(os_surface_get_info(surface, &info) == OS_ERR_STALE_HANDLE &&
+          ((const uint8_t*)&info)[0] == 0xA5u,
+          "stale handle preserves atomic output");
     check(os_surface_map(surface, OS_SURFACE_MAP_READ) == 0,
           "surface stale map is safe");
 

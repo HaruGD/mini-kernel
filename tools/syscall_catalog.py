@@ -14,8 +14,8 @@ CATALOG_PATH = ROOT / "config/abi/syscalls.json"
 SCHEMA_PATH = ROOT / "config/schemas/syscalls.schema.json"
 
 ROOT_FIELDS = {
-    "schema_version", "catalog_version", "abi", "defaults", "error_codes",
-    "error_sets", "syscalls",
+    "schema_version", "catalog_version", "abi", "result_domain", "defaults",
+    "error_codes", "error_sets", "syscalls",
 }
 ABI_FIELDS = {
     "name", "architecture", "number_register", "result_register",
@@ -23,7 +23,14 @@ ABI_FIELDS = {
     "compatibility_transport",
 }
 DEFAULT_FIELDS = {"permission", "execution", "resources"}
-ERROR_FIELDS = {"symbol", "kernel_symbol", "value", "description"}
+RESULT_DOMAIN_FIELDS = {
+    "width_bits", "success_min", "success_max", "error_min", "error_max",
+    "unknown_syscall", "internal_control_policy",
+}
+ERROR_FIELDS = {
+    "symbol", "kernel_symbol", "value", "category", "message", "retryable",
+    "description",
+}
 SYSCALL_FIELDS = {
     "number", "symbol", "sdk_symbol", "name", "state", "audit_status",
     "handler", "arguments", "result", "permission", "execution",
@@ -32,7 +39,8 @@ SYSCALL_FIELDS = {
 ARGUMENT_FIELDS = {
     "name", "register", "kind", "direction", "type", "nullable", "size",
 }
-RESULT_FIELDS = {"kind", "success", "output_on_error", "errors"}
+RESULT_FIELDS = {"kind", "success_domain", "success", "output", "errors"}
+OUTPUT_FIELDS = {"publication", "failure_state", "partial_errors", "resume"}
 EXECUTION_FIELDS = {"context", "blocking", "cancellation"}
 RESOURCE_FIELDS = {"input_ownership", "output_ownership", "cleanup", "limit"}
 
@@ -48,6 +56,18 @@ AUDIT_STATES = {"provisional", "audited"}
 HANDLERS = {"core", "vfs", "sdk"}
 CANCELLATION = {"none", "timeout", "cancellable", "process_exit"}
 RESULT_KINDS = {"status", "count", "value", "handle", "address", "noreturn"}
+SUCCESS_DOMAINS = {"zero", "nonnegative", "positive", "noreturn"}
+OUTPUT_PUBLICATION = {"none", "atomic", "partial"}
+OUTPUT_FAILURE_STATES = {"not_applicable", "unchanged", "partial"}
+OUTPUT_RESUME = {"not_applicable", "retry_entire_call"}
+RESULT_KIND_DOMAINS = {
+    "status": "zero",
+    "count": "nonnegative",
+    "value": "nonnegative",
+    "handle": "positive",
+    "address": "positive",
+    "noreturn": "noreturn",
+}
 
 
 class DuplicateKeyError(ValueError):
@@ -121,8 +141,8 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
     exact_fields(catalog, ROOT_FIELDS, "catalog", errors)
     if not isinstance(catalog, dict):
         return errors
-    if type(catalog.get("schema_version")) is not int or catalog.get("schema_version") != 1:
-        errors.append("catalog.schema_version: expected 1")
+    if type(catalog.get("schema_version")) is not int or catalog.get("schema_version") != 2:
+        errors.append("catalog.schema_version: expected 2")
     if type(catalog.get("catalog_version")) is not int or catalog.get("catalog_version", 0) < 1:
         errors.append("catalog.catalog_version: expected a positive integer")
 
@@ -140,6 +160,22 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
             errors.append("catalog.abi.max_number: expected a positive integer")
         for field in ("name", "active_transport", "compatibility_transport"):
             nonempty_string(abi.get(field), f"catalog.abi.{field}", errors)
+
+    result_domain = catalog.get("result_domain")
+    exact_fields(result_domain, RESULT_DOMAIN_FIELDS, "catalog.result_domain", errors)
+    if isinstance(result_domain, dict):
+        if result_domain.get("width_bits") != 64:
+            errors.append("catalog.result_domain.width_bits: expected 64")
+        if result_domain.get("success_min") != 0 or \
+                result_domain.get("success_max") != 0x7FFFFFFFFFFFFFFF:
+            errors.append("catalog.result_domain: expected signed 64-bit nonnegative success range")
+        if type(result_domain.get("error_min")) is not int or \
+                result_domain.get("error_min", 0) >= 0 or \
+                result_domain.get("error_max") != -1:
+            errors.append("catalog.result_domain: expected a negative error range ending at -1")
+        if result_domain.get("internal_control_policy") != \
+                "outside_public_domain_never_returned":
+            errors.append("catalog.result_domain.internal_control_policy: unknown policy")
 
     defaults = catalog.get("defaults")
     exact_fields(defaults, DEFAULT_FIELDS, "catalog.defaults", errors)
@@ -183,7 +219,25 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
             errors.append(f"{label}.value: duplicate {value}")
         else:
             values.add(value)
+        if not isinstance(code.get("category"), str) or \
+                NAME_RE.fullmatch(code.get("category", "")) is None:
+            errors.append(f"{label}.category: invalid category")
+        nonempty_string(code.get("message"), f"{label}.message", errors)
+        if not isinstance(code.get("retryable"), bool):
+            errors.append(f"{label}.retryable: expected boolean")
         nonempty_string(code.get("description"), f"{label}.description", errors)
+
+    if isinstance(result_domain, dict):
+        error_min = result_domain.get("error_min")
+        error_max = result_domain.get("error_max")
+        if type(error_min) is int and type(error_max) is int:
+            for value in values:
+                if value < error_min or value > error_max:
+                    errors.append(f"catalog.error_codes: value {value} lies outside public error range")
+        if values and values != set(range(-len(values), 0)):
+            errors.append("catalog.error_codes: values must be contiguous from -1")
+        if result_domain.get("unknown_syscall") not in code_symbols:
+            errors.append("catalog.result_domain.unknown_syscall: unknown error symbol")
 
     error_sets = catalog.get("error_sets")
     if not isinstance(error_sets, dict) or not error_sets:
@@ -290,12 +344,64 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
         result = call.get("result")
         exact_fields(result, RESULT_FIELDS, f"{label}.result", errors)
         if isinstance(result, dict):
-            if result.get("kind") not in RESULT_KINDS:
+            kind = result.get("kind")
+            success_domain = result.get("success_domain")
+            if kind not in RESULT_KINDS:
                 errors.append(f"{label}.result.kind: unknown result kind")
+            if success_domain not in SUCCESS_DOMAINS:
+                errors.append(f"{label}.result.success_domain: unknown domain")
+            elif kind in RESULT_KIND_DOMAINS and success_domain != RESULT_KIND_DOMAINS[kind]:
+                errors.append(
+                    f"{label}.result.success_domain: expected {RESULT_KIND_DOMAINS[kind]} for {kind}"
+                )
             nonempty_string(result.get("success"), f"{label}.result.success", errors)
-            nonempty_string(result.get("output_on_error"), f"{label}.result.output_on_error", errors)
             if result.get("errors") not in error_sets:
                 errors.append(f"{label}.result.errors: unknown error set")
+            output = result.get("output")
+            output_label = f"{label}.result.output"
+            exact_fields(output, OUTPUT_FIELDS, output_label, errors)
+            if isinstance(output, dict):
+                publication = output.get("publication")
+                failure_state = output.get("failure_state")
+                resume = output.get("resume")
+                partial_errors = output.get("partial_errors")
+                if publication not in OUTPUT_PUBLICATION:
+                    errors.append(f"{output_label}.publication: unknown policy")
+                if failure_state not in OUTPUT_FAILURE_STATES:
+                    errors.append(f"{output_label}.failure_state: unknown policy")
+                if resume not in OUTPUT_RESUME:
+                    errors.append(f"{output_label}.resume: unknown policy")
+                if not isinstance(partial_errors, list):
+                    errors.append(f"{output_label}.partial_errors: expected an array")
+                    partial_errors = []
+                if len(partial_errors) != len(set(partial_errors)):
+                    errors.append(f"{output_label}.partial_errors: duplicate error")
+                call_errors = set(error_sets.get(result.get("errors"), []))
+                for partial_error in partial_errors:
+                    if partial_error not in code_symbols:
+                        errors.append(f"{output_label}.partial_errors: unknown error {partial_error!r}")
+                    elif partial_error not in call_errors:
+                        errors.append(f"{output_label}.partial_errors: {partial_error} is outside the call error set")
+
+                has_output = any(
+                    isinstance(argument, dict) and
+                    argument.get("direction") in {"out", "inout"}
+                    for argument in arguments
+                )
+                if not has_output:
+                    if publication != "none" or failure_state != "not_applicable" or \
+                            partial_errors or resume != "not_applicable":
+                        errors.append(f"{output_label}: calls without output pointers must use the no-output contract")
+                elif publication == "none":
+                    errors.append(f"{output_label}: output pointer requires a publication policy")
+                elif publication == "atomic":
+                    if failure_state != "unchanged" or partial_errors or \
+                            resume != "retry_entire_call":
+                        errors.append(f"{output_label}: atomic output must remain unchanged and retry as a whole")
+                elif publication == "partial":
+                    if failure_state != "partial" or not partial_errors or \
+                            resume != "retry_entire_call":
+                        errors.append(f"{output_label}: partial output requires named errors and whole-call retry")
 
         resolved = resolve_contract(call, defaults) if DEFAULT_FIELDS <= set(defaults) else call
         nonempty_string(resolved.get("permission"), f"{label}.permission", errors)

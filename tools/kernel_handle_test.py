@@ -14,6 +14,7 @@ TEST_SOURCE = r"""
 #include "kernel/handle/kernel_handle.h"
 #include "kernel/handle/kernel_objects.h"
 #include "os64/graphics_types.h"
+#include "os64/result.h"
 #include "kernel_mm_host_stubs.h"
 
 static int failures = 0;
@@ -153,6 +154,22 @@ int main() {
     check(kernel_handle_resolve(&table, file, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_READ) != 0);
     check(kernel_handle_resolve(&table, file, KERNEL_HANDLE_TYPE_VFS_FILE, KERNEL_HANDLE_RIGHT_WRITE) == 0);
     check(kernel_handle_resolve(&table, file, KERNEL_HANDLE_TYPE_VFS_DIR, 0) == 0);
+    KernelHandle resolved_copy;
+    check(kernel_handle_resolve_copy_result(&table, 0,
+                                            KERNEL_HANDLE_TYPE_VFS_FILE, 0,
+                                            &resolved_copy) == OS_ERR_INVALID_HANDLE);
+    check(kernel_handle_resolve_copy_result(&table, file,
+                                            KERNEL_HANDLE_TYPE_VFS_DIR, 0,
+                                            &resolved_copy) == OS_ERR_WRONG_HANDLE_TYPE);
+    check(kernel_handle_resolve_copy_result(&table, file,
+                                            KERNEL_HANDLE_TYPE_VFS_FILE,
+                                            KERNEL_HANDLE_RIGHT_WRITE,
+                                            &resolved_copy) == OS_ERR_PERMISSION_DENIED);
+    check(kernel_handle_resolve_copy_result(&table, file,
+                                            KERNEL_HANDLE_TYPE_VFS_FILE,
+                                            KERNEL_HANDLE_RIGHT_READ,
+                                            &resolved_copy) == OS_SUCCESS &&
+          resolved_copy.object == 7);
     check(kernel_object_clone_handle(&receiver, kernel_handle_resolve(&table,
                                                                       file,
                                                                       KERNEL_HANDLE_TYPE_VFS_FILE,
@@ -163,6 +180,9 @@ int main() {
     check(closed.object == 7);
     check(kernel_handle_resolve(&table, file, KERNEL_HANDLE_TYPE_VFS_FILE, 0) == 0);
     check(kernel_handle_close(&table, file, 0) == 0);
+    check(kernel_handle_resolve_copy_result(&table, file,
+                                            KERNEL_HANDLE_TYPE_VFS_FILE, 0,
+                                            &resolved_copy) == OS_ERR_STALE_HANDLE);
 
     uint64_t next = kernel_handle_alloc(&table,
                                         KERNEL_HANDLE_TYPE_VFS_FILE,

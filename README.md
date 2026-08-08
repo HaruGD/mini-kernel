@@ -74,6 +74,9 @@ What works on the active 64-bit UEFI path:
 - versioned machine-readable catalog for all 111 current syscall numbers,
   generated kernel/SDK/NASM constants and result codes, generated descriptor
   and reference tables, and stale/duplicate/incomplete-contract rejection
+- signed 64-bit syscall results with generated SDK messages, explicit
+  success domains, atomic/partial output publication, distinct handle and
+  arithmetic errors, and internal scheduler tokens excluded from public ABI
 - restricted freestanding GNU C++17 kernel profile with explicit C ABI
   boundaries, selectable `KERNEL_OPT`, bounded global-initializer/vtable
   allowlists, and automated runtime-symbol/section/size auditing

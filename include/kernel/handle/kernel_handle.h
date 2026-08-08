@@ -60,6 +60,11 @@ int kernel_handle_resolve_copy(const KernelHandleTable* table,
                                uint32_t expected_type,
                                uint32_t required_rights,
                                KernelHandle* resolved_out);
+int64_t kernel_handle_resolve_copy_result(const KernelHandleTable* table,
+                                          uint64_t handle,
+                                          uint32_t expected_type,
+                                          uint32_t required_rights,
+                                          KernelHandle* resolved_out);
 int kernel_handle_restrict_rights(KernelHandleTable* table,
                                   uint64_t handle,
                                   uint32_t rights);

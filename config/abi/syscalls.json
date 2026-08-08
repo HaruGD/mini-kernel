@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "catalog_version": 1,
+  "schema_version": 2,
+  "catalog_version": 2,
   "abi": {
     "name": "os64-x86_64-v1",
     "architecture": "x86_64",
@@ -14,6 +14,15 @@
     "max_number": 111,
     "active_transport": "int 0x80",
     "compatibility_transport": "none until Phase 5S-E/F"
+  },
+  "result_domain": {
+    "width_bits": 64,
+    "success_min": 0,
+    "success_max": 9223372036854775807,
+    "error_min": -4095,
+    "error_max": -1,
+    "unknown_syscall": "OS_ERR_UNSUPPORTED",
+    "internal_control_policy": "outside_public_domain_never_returned"
   },
   "defaults": {
     "permission": "none",
@@ -34,115 +43,216 @@
       "symbol": "OS_ERR_NOT_READY",
       "kernel_symbol": "SYS_ERR_NOT_READY",
       "value": -1,
+      "category": "state",
+      "message": "not ready",
+      "retryable": false,
       "description": "Required subsystem or state is not ready."
     },
     {
       "symbol": "OS_ERR_INVALID_ARGUMENT",
       "kernel_symbol": "SYS_ERR_INVALID_ARGUMENT",
       "value": -2,
+      "category": "argument",
+      "message": "invalid argument",
+      "retryable": false,
       "description": "A scalar, flag, or semantic argument is invalid."
     },
     {
       "symbol": "OS_ERR_NOT_FOUND",
       "kernel_symbol": "SYS_ERR_NOT_FOUND",
       "value": -3,
+      "category": "lookup",
+      "message": "not found",
+      "retryable": false,
       "description": "The named object or identity does not exist."
     },
     {
       "symbol": "OS_ERR_BUFFER_TOO_SMALL",
       "kernel_symbol": "SYS_ERR_BUFFER_TOO_SMALL",
       "value": -4,
+      "category": "capacity",
+      "message": "buffer too small",
+      "retryable": true,
       "description": "The supplied output capacity is insufficient."
     },
     {
       "symbol": "OS_ERR_IO",
       "kernel_symbol": "SYS_ERR_IO",
       "value": -5,
+      "category": "io",
+      "message": "I/O error",
+      "retryable": false,
       "description": "An input/output operation failed."
     },
     {
       "symbol": "OS_ERR_ALREADY_EXISTS",
       "kernel_symbol": "SYS_ERR_ALREADY_EXISTS",
       "value": -6,
+      "category": "conflict",
+      "message": "already exists",
+      "retryable": false,
       "description": "The requested object already exists."
     },
     {
       "symbol": "OS_ERR_NO_RESOURCES",
       "kernel_symbol": "SYS_ERR_NO_RESOURCES",
       "value": -7,
+      "category": "resource",
+      "message": "no resources",
+      "retryable": true,
       "description": "A bounded object table or resource pool is exhausted."
     },
     {
       "symbol": "OS_ERR_UNSUPPORTED",
       "kernel_symbol": "SYS_ERR_UNSUPPORTED",
       "value": -8,
+      "category": "support",
+      "message": "unsupported",
+      "retryable": false,
       "description": "The requested operation, version, or option is unsupported."
     },
     {
       "symbol": "OS_ERR_WOULD_BLOCK",
       "kernel_symbol": "SYS_ERR_WOULD_BLOCK",
       "value": -9,
+      "category": "transient",
+      "message": "would block",
+      "retryable": true,
       "description": "The nonblocking operation cannot complete immediately."
     },
     {
       "symbol": "OS_ERR_OUT_OF_MEMORY",
       "kernel_symbol": "SYS_ERR_OUT_OF_MEMORY",
       "value": -10,
+      "category": "memory",
+      "message": "out of memory",
+      "retryable": true,
       "description": "Kernel or process memory allocation failed."
     },
     {
       "symbol": "OS_ERR_OUT_OF_RANGE",
       "kernel_symbol": "SYS_ERR_OUT_OF_RANGE",
       "value": -11,
+      "category": "range",
+      "message": "out of range",
+      "retryable": false,
       "description": "A value or geometry lies outside the supported range."
     },
     {
       "symbol": "OS_ERR_NO_TARGET",
       "kernel_symbol": "SYS_ERR_NO_TARGET",
       "value": -12,
+      "category": "routing",
+      "message": "no target",
+      "retryable": true,
       "description": "No eligible destination exists."
     },
     {
       "symbol": "OS_ERR_QUEUE_FULL",
       "kernel_symbol": "SYS_ERR_QUEUE_FULL",
       "value": -13,
+      "category": "capacity",
+      "message": "queue full",
+      "retryable": true,
       "description": "The destination queue is full."
     },
     {
       "symbol": "OS_ERR_MESSAGE_TOO_LARGE",
       "kernel_symbol": "SYS_ERR_MESSAGE_TOO_LARGE",
       "value": -14,
+      "category": "capacity",
+      "message": "message too large",
+      "retryable": false,
       "description": "The message exceeds the bounded ABI payload."
     },
     {
       "symbol": "OS_ERR_PERMISSION_DENIED",
       "kernel_symbol": "SYS_ERR_PERMISSION_DENIED",
       "value": -15,
+      "category": "permission",
+      "message": "permission denied",
+      "retryable": false,
       "description": "The caller lacks the required authority or rights."
     },
     {
       "symbol": "OS_ERR_BAD_BUFFER",
       "kernel_symbol": "SYS_ERR_BAD_BUFFER",
       "value": -16,
+      "category": "memory_access",
+      "message": "bad buffer",
+      "retryable": false,
       "description": "User memory is inaccessible for the declared direction and size."
     },
     {
       "symbol": "OS_ERR_TIMEOUT",
       "kernel_symbol": "SYS_ERR_TIMEOUT",
       "value": -17,
+      "category": "timeout",
+      "message": "timeout",
+      "retryable": true,
       "description": "The bounded wait deadline expired."
     },
     {
       "symbol": "OS_ERR_CANCELLED",
       "kernel_symbol": "SYS_ERR_CANCELLED",
       "value": -18,
+      "category": "cancellation",
+      "message": "cancelled",
+      "retryable": true,
       "description": "The operation was cancelled by lifecycle or explicit policy."
+    },
+    {
+      "symbol": "OS_ERR_INVALID_HANDLE",
+      "kernel_symbol": "SYS_ERR_INVALID_HANDLE",
+      "value": -19,
+      "category": "handle",
+      "message": "invalid handle",
+      "retryable": false,
+      "description": "The handle token encoding or slot is invalid."
+    },
+    {
+      "symbol": "OS_ERR_STALE_HANDLE",
+      "kernel_symbol": "SYS_ERR_STALE_HANDLE",
+      "value": -20,
+      "category": "handle",
+      "message": "stale handle",
+      "retryable": false,
+      "description": "The handle generation no longer names a live object."
+    },
+    {
+      "symbol": "OS_ERR_WRONG_HANDLE_TYPE",
+      "kernel_symbol": "SYS_ERR_WRONG_HANDLE_TYPE",
+      "value": -21,
+      "category": "handle",
+      "message": "wrong handle type",
+      "retryable": false,
+      "description": "The handle object type is not accepted by this operation."
+    },
+    {
+      "symbol": "OS_ERR_OVERFLOW",
+      "kernel_symbol": "SYS_ERR_OVERFLOW",
+      "value": -22,
+      "category": "arithmetic",
+      "message": "arithmetic overflow",
+      "retryable": false,
+      "description": "Checked size, count, offset, or address arithmetic overflowed."
     }
   ],
   "error_sets": {
     "none": [],
     "legacy": [
-      "OS_ERR_NOT_READY"
+      "OS_ERR_NOT_READY",
+      "OS_ERR_INVALID_ARGUMENT",
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_NOT_FOUND",
+      "OS_ERR_BUFFER_TOO_SMALL",
+      "OS_ERR_IO",
+      "OS_ERR_ALREADY_EXISTS",
+      "OS_ERR_NO_RESOURCES",
+      "OS_ERR_UNSUPPORTED",
+      "OS_ERR_OUT_OF_MEMORY",
+      "OS_ERR_OUT_OF_RANGE",
+      "OS_ERR_OVERFLOW"
     ],
     "console": [
       "OS_ERR_INVALID_ARGUMENT",
@@ -163,7 +273,8 @@
       "OS_ERR_NO_RESOURCES",
       "OS_ERR_OUT_OF_MEMORY",
       "OS_ERR_PERMISSION_DENIED",
-      "OS_ERR_CANCELLED"
+      "OS_ERR_CANCELLED",
+      "OS_ERR_BAD_BUFFER"
     ],
     "timeout": [
       "OS_ERR_NOT_READY",
@@ -181,14 +292,19 @@
       "OS_ERR_UNSUPPORTED",
       "OS_ERR_OUT_OF_MEMORY",
       "OS_ERR_OUT_OF_RANGE",
-      "OS_ERR_PERMISSION_DENIED"
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_INVALID_HANDLE",
+      "OS_ERR_STALE_HANDLE",
+      "OS_ERR_WRONG_HANDLE_TYPE",
+      "OS_ERR_OVERFLOW"
     ],
     "memory": [
       "OS_ERR_NOT_READY",
       "OS_ERR_INVALID_ARGUMENT",
       "OS_ERR_OUT_OF_MEMORY",
       "OS_ERR_OUT_OF_RANGE",
-      "OS_ERR_BAD_BUFFER"
+      "OS_ERR_BAD_BUFFER",
+      "OS_ERR_OVERFLOW"
     ],
     "graphics": [
       "OS_ERR_NOT_READY",
@@ -196,7 +312,11 @@
       "OS_ERR_BAD_BUFFER",
       "OS_ERR_OUT_OF_RANGE",
       "OS_ERR_PERMISSION_DENIED",
-      "OS_ERR_IO"
+      "OS_ERR_IO",
+      "OS_ERR_INVALID_HANDLE",
+      "OS_ERR_STALE_HANDLE",
+      "OS_ERR_WRONG_HANDLE_TYPE",
+      "OS_ERR_OVERFLOW"
     ],
     "input": [
       "OS_ERR_NOT_READY",
@@ -221,7 +341,10 @@
       "OS_ERR_MESSAGE_TOO_LARGE",
       "OS_ERR_PERMISSION_DENIED",
       "OS_ERR_TIMEOUT",
-      "OS_ERR_CANCELLED"
+      "OS_ERR_CANCELLED",
+      "OS_ERR_INVALID_HANDLE",
+      "OS_ERR_STALE_HANDLE",
+      "OS_ERR_WRONG_HANDLE_TYPE"
     ],
     "service": [
       "OS_ERR_NOT_READY",
@@ -244,7 +367,12 @@
       "OS_ERR_NO_RESOURCES",
       "OS_ERR_OUT_OF_MEMORY",
       "OS_ERR_OUT_OF_RANGE",
-      "OS_ERR_PERMISSION_DENIED"
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_INVALID_HANDLE",
+      "OS_ERR_STALE_HANDLE",
+      "OS_ERR_WRONG_HANDLE_TYPE",
+      "OS_ERR_OVERFLOW",
+      "OS_ERR_NOT_FOUND"
     ],
     "display": [
       "OS_ERR_NOT_READY",
@@ -256,7 +384,11 @@
     "handle": [
       "OS_ERR_INVALID_ARGUMENT",
       "OS_ERR_NOT_FOUND",
-      "OS_ERR_PERMISSION_DENIED"
+      "OS_ERR_PERMISSION_DENIED",
+      "OS_ERR_INVALID_HANDLE",
+      "OS_ERR_STALE_HANDLE",
+      "OS_ERR_WRONG_HANDLE_TYPE",
+      "OS_ERR_NOT_READY"
     ],
     "thread": [
       "OS_ERR_NOT_READY",
@@ -277,7 +409,10 @@
       "OS_ERR_WOULD_BLOCK",
       "OS_ERR_PERMISSION_DENIED",
       "OS_ERR_TIMEOUT",
-      "OS_ERR_CANCELLED"
+      "OS_ERR_CANCELLED",
+      "OS_ERR_INVALID_HANDLE",
+      "OS_ERR_STALE_HANDLE",
+      "OS_ERR_WRONG_HANDLE_TYPE"
     ],
     "terminal": [
       "OS_ERR_NOT_READY",
@@ -321,8 +456,14 @@
       ],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns the number of bytes written; zero is valid for an empty request.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "console"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -348,8 +489,14 @@
       ],
       "result": {
         "kind": "noreturn",
+        "success_domain": "noreturn",
         "success": "Terminates the calling process and does not return to that process.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "lifecycle"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -380,8 +527,14 @@
       ],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns 1 after publishing the character.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "console"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -397,8 +550,14 @@
       "arguments": [],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns one unsigned character value.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "input"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -420,8 +579,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints the current directory listing and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -447,8 +612,14 @@
       ],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Prints a file and returns its byte count.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -474,8 +645,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Starts a child and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -492,8 +669,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints version information and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -509,8 +692,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints boot information and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -526,8 +715,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints memory statistics and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -553,8 +748,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Deletes a file, prints diagnostics, and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -570,8 +771,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints uptime and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -597,8 +804,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Creates or updates a file and prints diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -633,8 +846,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes the bounded text and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -650,8 +869,14 @@
       "arguments": [],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns the current process identifier.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -667,8 +892,14 @@
       "arguments": [],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns the parent process identifier.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -684,8 +915,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints the process table and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -701,8 +938,14 @@
       "arguments": [],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns the last child status, or zero when no child result exists.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -718,8 +961,14 @@
       "arguments": [],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Consumes one waitable child result and returns its status, or zero when absent.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -735,8 +984,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints scheduler diagnostics and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -752,8 +1007,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Yields execution and resumes with zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "none"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -784,8 +1045,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Resumes the selected child and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -812,8 +1079,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Terminates the selected child and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -830,8 +1103,14 @@
       "arguments": [],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns the number of reaped children and prints it.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -847,8 +1126,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints child job state and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -874,8 +1159,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Sleeps for at least one tick and resumes with zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "timeout"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -915,8 +1206,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Updates child background state and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -933,8 +1230,14 @@
       "arguments": [],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns the number of unfinished children.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "none"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -950,8 +1253,14 @@
       "arguments": [],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns the number of reaped children without console output.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "none"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -977,8 +1286,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Deletes a file without console diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1004,8 +1319,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Creates or updates a file without console diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1040,8 +1361,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes bounded text without console diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1057,8 +1384,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints mounted filesystems and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1084,8 +1417,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Prints a directory listing and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "legacy"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1120,8 +1459,14 @@
       ],
       "result": {
         "kind": "handle",
+        "success_domain": "positive",
         "success": "Returns an owned file handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -1171,8 +1516,14 @@
       ],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns up to 4096 bytes read.",
-        "output_on_error": "Only the returned byte count is initialized; no bytes are promised on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1216,8 +1567,14 @@
       ],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns up to 4096 bytes written.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1243,8 +1600,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Closes the file handle and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1288,8 +1651,14 @@
       ],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns the resulting file position.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1315,8 +1684,14 @@
       ],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns the current file position.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1342,8 +1717,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Creates a directory with console diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1369,8 +1750,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Removes a directory with console diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1405,8 +1792,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes file metadata and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1441,8 +1834,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes a NUL-terminated current directory and returns zero.",
-        "output_on_error": "The output buffer is not valid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1468,8 +1867,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Changes the process current directory and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1495,8 +1900,14 @@
       ],
       "result": {
         "kind": "handle",
+        "success_domain": "positive",
         "success": "Returns an owned directory handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -1537,8 +1948,14 @@
       ],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns 1 for an entry and 0 at end of directory.",
-        "output_on_error": "The entry is valid only when the result is 1.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1564,8 +1981,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Closes the directory handle and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1591,8 +2014,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Creates a directory without console diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1618,8 +2047,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Removes a directory without console diagnostics.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1654,8 +2089,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Renames a path and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "vfs"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1671,8 +2112,14 @@
       "arguments": [],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Clears the attached terminal or kernel console.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "console"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1698,8 +2145,14 @@
       ],
       "result": {
         "kind": "address",
+        "success_domain": "positive",
         "success": "Returns the resulting program break; address zero queries it.",
-        "output_on_error": "No mapping change is promised when the result is negative.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "memory"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1715,8 +2168,14 @@
       "arguments": [],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns the monotonic PIT tick count.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "none"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1732,8 +2191,14 @@
       "arguments": [],
       "result": {
         "kind": "value",
+        "success_domain": "nonnegative",
         "success": "Returns PIT ticks per second.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "none"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -1759,8 +2224,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes graphics mode information and returns zero.",
-        "output_on_error": "The info structure is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "graphics"
       },
       "reference": "docs/reference/display_service.md",
@@ -1805,8 +2276,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes one display pixel and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "graphics"
       },
       "reference": "docs/reference/display_service.md",
@@ -1833,8 +2310,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Fills a clipped display rectangle and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "graphics"
       },
       "reference": "docs/reference/display_service.md",
@@ -1861,8 +2344,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Clears the display and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "graphics"
       },
       "reference": "docs/reference/display_service.md",
@@ -1907,8 +2396,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes one key event and returns zero.",
-        "output_on_error": "The event is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "input"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -1940,8 +2435,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes one queued input event and returns zero.",
-        "output_on_error": "The event is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "input"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -1977,8 +2478,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Waits for and writes one input event.",
-        "output_on_error": "The event is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "input"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -2019,8 +2526,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Queues one IPC v1 message and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md"
@@ -2046,8 +2559,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes one queued IPC v1 message.",
-        "output_on_error": "The message is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md"
@@ -2082,8 +2601,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Waits for and writes one IPC v1 message.",
-        "output_on_error": "The message is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md",
@@ -2123,8 +2648,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Registers the calling process as a service.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "service"
       },
       "reference": "docs/architecture/service_supervision.md",
@@ -2160,8 +2691,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes matching service information.",
-        "output_on_error": "The info structure is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "service"
       },
       "reference": "docs/architecture/service_supervision.md"
@@ -2187,8 +2724,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Unregisters a service owned by the caller.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "service"
       },
       "reference": "docs/architecture/service_supervision.md",
@@ -2215,8 +2758,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes the caller process identity.",
-        "output_on_error": "The identity is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "buffer"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -2260,8 +2809,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Queues one IPC v1 message to an exact process identity.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md"
@@ -2296,8 +2851,16 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes supported IPC ABI and feature bits.",
-        "output_on_error": "Neither output is promised on failure.",
+        "output": {
+          "publication": "partial",
+          "failure_state": "partial",
+          "partial_errors": [
+            "OS_ERR_BAD_BUFFER"
+          ],
+          "resume": "retry_entire_call"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md"
@@ -2341,8 +2904,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Queues one IPC v2 message to an exact identity.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md"
@@ -2368,8 +2937,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes one queued IPC v2 message.",
-        "output_on_error": "The message is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md"
@@ -2404,8 +2979,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes one queued IPC v2 message matching the filter.",
-        "output_on_error": "The message is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md"
@@ -2440,8 +3021,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Starts a child with the requested allowed permissions.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -2486,8 +3073,14 @@
       ],
       "result": {
         "kind": "handle",
+        "success_domain": "positive",
         "success": "Returns an owned graphics-surface handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "surface"
       },
       "reference": "docs/phases/phase-4/compositor_contracts.md",
@@ -2528,8 +3121,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes surface information and returns zero.",
-        "output_on_error": "The info structure is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "surface"
       },
       "reference": "docs/phases/phase-4/compositor_contracts.md"
@@ -2564,8 +3163,14 @@
       ],
       "result": {
         "kind": "address",
+        "success_domain": "positive",
         "success": "Returns an owned user mapping address.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "surface"
       },
       "reference": "docs/phases/phase-4/compositor_contracts.md",
@@ -2606,8 +3211,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Removes the matching surface mapping.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "surface"
       },
       "reference": "docs/phases/phase-4/compositor_contracts.md"
@@ -2633,8 +3244,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Closes the surface handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "surface"
       },
       "reference": "docs/phases/phase-4/compositor_contracts.md"
@@ -2669,8 +3286,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Waits for and writes one IPC v2 message.",
-        "output_on_error": "The message is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "ipc"
       },
       "reference": "docs/architecture/ipc_v2.md",
@@ -2719,8 +3342,14 @@
       ],
       "result": {
         "kind": "count",
+        "success_domain": "nonnegative",
         "success": "Returns the number of presented damage rectangles.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "graphics"
       },
       "reference": "docs/reference/display_service.md",
@@ -2747,8 +3376,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Closes one typed process handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "handle"
       },
       "reference": "docs/reference/user_sdk.md"
@@ -2783,8 +3418,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes the registered service owner identity.",
-        "output_on_error": "The identity is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "service"
       },
       "reference": "docs/architecture/service_supervision.md"
@@ -2819,8 +3460,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Returns zero when the exact process identity is alive.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "process"
       },
       "reference": "docs/reference/user_sdk.md",
@@ -2856,8 +3503,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Acquires a generation-owned GUI display session.",
-        "output_on_error": "The session info is invalid and acquisition is rolled back on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "display"
       },
       "reference": "docs/reference/display_service.md",
@@ -2884,8 +3537,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Releases the matching display session and restores the console.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "display"
       },
       "reference": "docs/reference/display_service.md",
@@ -2912,8 +3571,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes current display-session information.",
-        "output_on_error": "The info structure is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "display"
       },
       "reference": "docs/reference/display_service.md"
@@ -2948,8 +3613,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Creates a thread and writes its identity.",
-        "output_on_error": "The identity is invalid and no thread is published on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "thread"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -2981,8 +3652,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes the calling thread identity.",
-        "output_on_error": "The identity is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "buffer"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3008,8 +3685,14 @@
       ],
       "result": {
         "kind": "noreturn",
+        "success_domain": "noreturn",
         "success": "Terminates the calling thread and does not return to it.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "lifecycle"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3058,8 +3741,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Waits for the target thread and optionally writes its status.",
-        "output_on_error": "The optional status is valid only on success.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3080,8 +3769,14 @@
       "arguments": [],
       "result": {
         "kind": "handle",
+        "success_domain": "positive",
         "success": "Returns an owned mutex handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3122,8 +3817,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Acquires the mutex and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3154,8 +3855,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Releases a mutex owned by the calling thread.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3190,8 +3897,14 @@
       ],
       "result": {
         "kind": "handle",
+        "success_domain": "positive",
         "success": "Returns an owned semaphore handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3232,8 +3945,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Acquires one semaphore unit and returns zero.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3273,8 +3992,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Releases bounded semaphore units.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3290,8 +4015,14 @@
       "arguments": [],
       "result": {
         "kind": "handle",
+        "success_domain": "positive",
         "success": "Returns an owned condition-variable handle.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3341,8 +4072,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Atomically releases the mutex, waits, and reacquires it.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md",
@@ -3373,8 +4110,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Wakes one eligible condition waiter.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3400,8 +4143,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Wakes all eligible condition waiters.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "sync"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3427,8 +4176,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Sets the calling thread user FS base.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "thread"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3454,8 +4209,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes the calling thread user FS base.",
-        "output_on_error": "The output pointer is unchanged on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "buffer"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3499,8 +4260,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes information for an owned thread identity.",
-        "output_on_error": "The info structure is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "thread"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3544,8 +4311,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Updates an owned thread priority.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "thread"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3589,8 +4362,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Updates an owned thread affinity mask.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "thread"
       },
       "reference": "docs/phases/phase-4.5/implementation_plan.md"
@@ -3625,8 +4404,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Binds the caller to the exact terminal peer.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "terminal"
       },
       "reference": "docs/reference/terminal_sdk.md"
@@ -3652,8 +4437,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Publishes child exit status to the terminal owner.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "terminal"
       },
       "reference": "docs/reference/terminal_sdk.md"
@@ -3697,8 +4488,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Writes one terminal output packet.",
-        "output_on_error": "The packet is invalid on failure.",
+        "output": {
+          "publication": "atomic",
+          "failure_state": "unchanged",
+          "partial_errors": [],
+          "resume": "retry_entire_call"
+        },
         "errors": "terminal"
       },
       "reference": "docs/reference/terminal_sdk.md"
@@ -3733,8 +4530,14 @@
       ],
       "result": {
         "kind": "status",
+        "success_domain": "zero",
         "success": "Closes the matching terminal session.",
-        "output_on_error": "No caller-visible output is published.",
+        "output": {
+          "publication": "none",
+          "failure_state": "not_applicable",
+          "partial_errors": [],
+          "resume": "not_applicable"
+        },
         "errors": "terminal"
       },
       "reference": "docs/reference/terminal_sdk.md"

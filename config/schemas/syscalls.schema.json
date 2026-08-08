@@ -8,13 +8,14 @@
     "schema_version",
     "catalog_version",
     "abi",
+    "result_domain",
     "defaults",
     "error_codes",
     "error_sets",
     "syscalls"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "catalog_version": {"type": "integer", "minimum": 1},
     "abi": {
       "type": "object",
@@ -40,6 +41,7 @@
         "compatibility_transport": {"type": "string", "minLength": 1}
       }
     },
+    "result_domain": {"$ref": "#/$defs/resultDomain"},
     "defaults": {"$ref": "#/$defs/defaults"},
     "error_codes": {
       "type": "array",
@@ -99,12 +101,29 @@
     "errorCode": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["symbol", "kernel_symbol", "value", "description"],
+      "required": ["symbol", "kernel_symbol", "value", "category", "message", "retryable", "description"],
       "properties": {
         "symbol": {"type": "string", "pattern": "^OS_ERR_[A-Z][A-Z0-9_]*$"},
         "kernel_symbol": {"type": "string", "pattern": "^SYS_ERR_[A-Z][A-Z0-9_]*$"},
         "value": {"type": "integer", "maximum": -1},
+        "category": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "message": {"type": "string", "minLength": 1},
+        "retryable": {"type": "boolean"},
         "description": {"type": "string", "minLength": 1}
+      }
+    },
+    "resultDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width_bits", "success_min", "success_max", "error_min", "error_max", "unknown_syscall", "internal_control_policy"],
+      "properties": {
+        "width_bits": {"const": 64},
+        "success_min": {"const": 0},
+        "success_max": {"const": 9223372036854775807},
+        "error_min": {"type": "integer", "maximum": -1},
+        "error_max": {"const": -1},
+        "unknown_syscall": {"type": "string", "pattern": "^OS_ERR_[A-Z][A-Z0-9_]*$"},
+        "internal_control_policy": {"const": "outside_public_domain_never_returned"}
       }
     },
     "argument": {
@@ -124,12 +143,28 @@
     "result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "success", "output_on_error", "errors"],
+      "required": ["kind", "success_domain", "success", "output", "errors"],
       "properties": {
         "kind": {"enum": ["status", "count", "value", "handle", "address", "noreturn"]},
+        "success_domain": {"enum": ["zero", "nonnegative", "positive", "noreturn"]},
         "success": {"type": "string", "minLength": 1},
-        "output_on_error": {"type": "string", "minLength": 1},
+        "output": {"$ref": "#/$defs/outputContract"},
         "errors": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+      }
+    },
+    "outputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publication", "failure_state", "partial_errors", "resume"],
+      "properties": {
+        "publication": {"enum": ["none", "atomic", "partial"]},
+        "failure_state": {"enum": ["not_applicable", "unchanged", "partial"]},
+        "partial_errors": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^OS_ERR_[A-Z][A-Z0-9_]*$"}
+        },
+        "resume": {"enum": ["not_applicable", "retry_entire_call"]}
       }
     },
     "syscall": {
