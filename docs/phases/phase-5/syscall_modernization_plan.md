@@ -2,14 +2,14 @@
 
 ## Status And Placement
 
-Phase 5S is a planned mandatory gate between the completed Phase 5D GUI
+Phase 5S is an in-progress mandatory gate between the completed Phase 5D GUI
 terminal and Phase 5E desktop shell. It modernizes the system-call contract and
 x86_64 entry mechanism before the desktop adds more long-lived clients and
 before Phase 5F adds directory, metadata, and file-mutation operations.
 
 ```text
 5D GUI terminal (Complete)
-  -> 5S system-call modernization (Planned, next)
+  -> 5S system-call modernization (In progress: 5S-A through 5S-D complete)
   -> 5E desktop shell
   -> memory scalability gate
   -> 5F file manager
@@ -18,18 +18,18 @@ before Phase 5F adds directory, metadata, and file-mutation operations.
 The memory-scalability gate may progress independently, but neither it nor
 desktop work substitutes for the Phase 5S exit evidence.
 
-## Current Baseline
+## Starting Baseline
 
-The active x86_64 user SDK currently enters the kernel through the DPL3 IDT
+At Phase 5S entry, the active x86_64 user SDK entered through the DPL3 IDT
 vector `int 0x80`. The syscall number is in `RAX`, the first three arguments
 are in `RDI`, `RSI`, and `RDX`, and the result returns in `RAX`. Active numbers
 1 through 111 and kernel-side error constants are manually declared in
-`include/kernel/syscall64.h`; the user SDK carries a separate result-code view.
-The SDK correctly hides the raw entry instruction from ordinary applications,
-but there is no machine-readable source that proves the number, argument,
-pointer, permission, blocking, output, and error contracts remain synchronized.
+`include/kernel/syscall64.h`; the user SDK carried a separate result-code view.
+The SDK correctly hid the raw entry instruction from ordinary applications,
+but no machine-readable source proved that number, argument, pointer,
+permission, blocking, output, and error contracts remained synchronized.
 
-The current interface already has useful subsystem-specific checks and stable
+That interface already had useful subsystem-specific checks and stable
 negative result values. Phase 5S preserves working behavior while replacing
 manual duplication and filling contract gaps. It is not permission to renumber
 working calls or silently change existing application behavior.
@@ -133,8 +133,9 @@ racing thread all have deterministic fail-closed results.
 Implementation status (2026-08-08): the schema-v3 catalog metadata, common
 checked-copy API, mapping lease, address-space mutation exclusion, and focused
 host/QEMU validation cases are implemented. P5S-R03 remains in progress because
-descriptor permission preflight, injected copy/allocation faults, and the
-complete per-call semantic audit belong to 5S-D/G.
+5S-D subsequently closed descriptor permission preflight, while injected
+copy/allocation faults and the complete per-call semantic audit remain in
+5S-G/H.
 
 ## 5S-D: Dispatch, Permissions, And Auditability
 
@@ -149,6 +150,18 @@ operations validate type, rights, owner generation, and transfer policy.
 Failures expose no kernel pointer, physical address, stale object content, or
 data belonging to another process. Diagnostics count rejected calls by stable
 reason without logging unbounded user payloads or secrets.
+
+Implementation status (2026-08-08): schema/catalog version 4 names structured
+authority for all 111 calls and generates permission masks and dispatch
+metadata. The active `int 0x80` path now reaches one descriptor dispatcher that
+enforces number, process/thread ownership, lifecycle, permission-before-pointer,
+pointer shape/range arithmetic, and privacy-safe rejection accounting before
+the existing handler. Partial-output ordering remains handler-controlled.
+`syscalls` exposes counters without payloads. Focused host tests, zero-authority
+QEMU probes, 102/102 User SDK runs on one/four vCPUs, and affected IPC, surface,
+service, process, display/window, and GUI terminal regression passed. Exact
+per-call scalar/flag/object semantic audit remains 5S-G; the second entry
+transport remains 5S-E/F.
 
 ## 5S-E: x86_64 `SYSCALL/SYSRET` Entry
 

@@ -77,6 +77,9 @@ What works on the active 64-bit UEFI path:
 - signed 64-bit syscall results with generated SDK messages, explicit
   success domains, atomic/partial output publication, distinct handle and
   arithmetic errors, and internal scheduler tokens excluded from public ABI
+- one descriptor-driven syscall dispatcher with lifecycle/thread ownership,
+  generated permission preflight, pointer-shape checks, bounded rejection
+  diagnostics, and no user-payload logging
 - restricted freestanding GNU C++17 kernel profile with explicit C ABI
   boundaries, selectable `KERNEL_OPT`, bounded global-initializer/vtable
   allowlists, and automated runtime-symbol/section/size auditing
@@ -246,8 +249,8 @@ coherent/streaming/SG DMA, quiescent unload, QEMU EDU device evidence, fault
 rollback, and soak closure. Phase 5 desktop work may proceed while later
 hardware work adds a remapping IOMMU backend and production drivers. Phase 5A
 through 5D are complete; the mandatory Phase 5S system-call modernization gate
-is in progress, with 5S-A/B complete and 5S-C next. It must close before Phase
-5E desktop-shell work begins.
+is in progress, with 5S-A through 5S-D complete and 5S-E next. It must close
+before Phase 5E desktop-shell work begins.
 
 Test ACPI power-off in an isolated QEMU instance:
 

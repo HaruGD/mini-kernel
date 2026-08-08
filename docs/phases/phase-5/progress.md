@@ -23,7 +23,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
 | 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-04 | `a13b5a8`, `ba15722` | P5-R05, P5-R06 |
 | 5D: GUI terminal | Complete | 2026-08-04 | 2026-08-04 | `c78b6fc` | P5-R07 |
-| 5S: System-call modernization | In progress | 2026-08-08 | - | `4e5dfa8`, `4244d82` | P5S-R01 complete through 5S-B; P5S-R02 through P5S-R04 planned |
+| 5S: System-call modernization | In progress | 2026-08-08 | - | `4e5dfa8`, `4244d82`, `1b1fb2c`, `719ca12` | 5S-A through 5S-D complete; P5S-R01 complete, P5S-R03 in progress |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
 | 5F: File manager | Planned | - | - | - | P5-R10, P5-R11 |
@@ -31,9 +31,10 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: 5A through 5D are complete. Phase 5S is in progress: 5S-A/B
-and P5S-R01 are complete, while 5S-C is next. Phase 5S must close before Phase
-5E. The independent memory-scalability gate remains required before Phase 5F.
+Current status: 5A through 5D are complete. Phase 5S is in progress: 5S-A
+through 5S-D are complete, while 5S-E architecture entry is next. Phase 5S
+must close before Phase 5E. The independent memory-scalability gate remains
+required before Phase 5F.
 
 ## Completed Evidence
 
@@ -242,8 +243,51 @@ mode switching to a future mode-setting display backend.
   `(4, 21, 1, 0, 4, 0, 1, 107879, 4122016, 4165632)` and final
   `(4, 21, 1, 0, 4, 0, 1, 107811, 4122016, 4165632)` values.
 - 5S-C is complete, but P5S-R03 intentionally remains in progress. Generic
-  descriptor permission preflight, fault-injected copy/allocation cleanup, and
-  the complete per-call audit close in 5S-D/G.
+  descriptor permission preflight closes in 5S-D; fault-injected copy and
+  allocation cleanup plus the complete per-call audit remain in 5S-G/H.
+
+### 5S-D: Dispatch, Permissions, And Auditability
+
+- Implementation commit: `719ca12`.
+- Schema/catalog version 4 gives every syscall a structured authority mode and
+  generated permission mask. The descriptor also carries nullability and
+  direct `argN bytes` range relationships without introducing a second policy
+  list in the dispatcher.
+- The active entry path reaches one common dispatcher for exact number lookup,
+  active process/thread and owner-generation checks, corrupt permission-state
+  rejection, required-permission preflight, pointer null/canonical/alignment/
+  overflow/base-access checks, and handler routing. Permission denial occurs
+  before pointer inspection. Subsystem owner/session and exact handle checks
+  remain defense-in-depth in their owning handlers.
+- The sole partial-output call, `SYS_IPC_QUERY`, retains handler-ordered
+  publication. Empty `write` and VFS read/write buffers preserve their
+  zero-byte null-buffer behavior; wrapping byte ranges retain
+  `OS_ERR_OVERFLOW`.
+- Atomic diagnostics count total, dispatched, rejected, stable rejection
+  reasons, and the last rejected number/reason. The `syscalls` shell command
+  exposes those counters without recording user payloads, strings, addresses,
+  object contents, or secrets.
+- `make test-syscall-contract`, `make test-syscall-validation`,
+  `make test-abi-freeze`, `make -j4 all64`, and `make uefi` passed. The catalog
+  measured 111 calls, 22 result codes, 53 pointer-bearing calls, 25 atomic
+  outputs, and one partial output.
+- The User SDK QEMU suite passed `102/102` on both one and four vCPUs. A child
+  with zero permissions proved permission-before-pointer rejection for IPC,
+  service discovery, input, shared surfaces, display, and child management,
+  while identity and time remained available.
+- Affected host regression passed for kernel language/toolchain (text
+  `230,096`, data `416`, BSS `1,630,752`, two initializers, five vtables),
+  process lifecycle, handles, IPC, services, display, multiwindow, and Window
+  SDK contracts. QEMU regression passed IPC, surface mapping, all service
+  supervision smokes, and the GUI terminal lifecycle.
+- Surface mapping returned exactly to baseline/final
+  `(0, 0, 0, 0, 0, 0, 0, 108887, 4122016, 4165632)`. GUI terminal resources
+  remained at the established baseline
+  `(4, 21, 1, 0, 4, 0, 1, 107879, 4122016, 4165632)` and final
+  `(4, 21, 1, 0, 4, 0, 1, 107811, 4122016, 4165632)` values.
+- 5S-D is complete. P5S-R03 remains in progress until 5S-G/H add the complete
+  scalar/flag/handle audit and injected copy/allocation failure matrix; 5S-E/F
+  still own `SYSCALL/SYSRET` and compatibility migration.
 
 ### Cross-Phase Kernel Language And Toolchain Hardening
 
@@ -295,9 +339,10 @@ For each subphase:
   `SYSCALL/SYSRET` migration, complete call audit, and required regression are
   defined in
   [syscall_modernization_plan.md](syscall_modernization_plan.md).
-- This was a planning-only record when written. 5S-A/B and P5S-R01
-  subsequently completed in `4e5dfa8` and `4244d82`; the remaining subphases
-  and P5S-R02 through P5S-R04 still require measured exit evidence.
+- This was a planning-only record when written. 5S-A through 5S-D subsequently
+  completed their focused gates in `4e5dfa8`, `4244d82`, `1b1fb2c`, and
+  `719ca12`. P5S-R01 is complete; the remaining subphases and P5S-R02 through
+  P5S-R04 still require measured exit evidence.
 
 ## Planning Record
 
