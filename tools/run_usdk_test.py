@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import shutil
 import subprocess
@@ -38,7 +39,7 @@ def send_key_sequence(process: subprocess.Popen, keys: list[str]) -> None:
         send_monitor_line(process, f"sendkey {key}")
 
 
-def run() -> int:
+def run(cpus: int = 1) -> int:
     os.chdir(ROOT)
     (ROOT / "logs").mkdir(exist_ok=True)
     SERIAL.unlink(missing_ok=True)
@@ -56,6 +57,7 @@ def run() -> int:
         "-machine", "q35",
         "-m", "512M",
         "-cpu", "max",
+        "-smp", str(cpus),
         "-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
         "-drive", f"if=pflash,format=raw,file={vars_image}",
         "-drive", f"if=none,id=esp,format=raw,file={esp}",
@@ -115,12 +117,16 @@ def run() -> int:
     for line in serial_text.splitlines():
         if "[PASS]" in line or "[FAIL]" in line or "=== result:" in line:
             print(line)
+    print(f"User SDK QEMU test OK (vcpus={cpus})")
     return 0
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--cpus", type=int, choices=range(1, 5), default=1)
+    arguments = parser.parse_args()
     try:
-        raise SystemExit(run())
+        raise SystemExit(run(arguments.cpus))
     except TimeoutError as error:
         print(error, file=sys.stderr)
         raise SystemExit(1)

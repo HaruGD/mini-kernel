@@ -97,6 +97,10 @@ static int mutation_gate_enter(AddressSpace* space) {
                                         __ATOMIC_ACQUIRE)) {
             if (__atomic_load_n(&space->shootdown_timeout_count,
                                 __ATOMIC_ACQUIRE) == 0) {
+                while (__atomic_load_n(&space->active_user_accesses,
+                                       __ATOMIC_ACQUIRE) != 0) {
+                    __asm__ volatile("pause");
+                }
                 return 1;
             }
             mutation_gate_release(space);
@@ -215,7 +219,7 @@ void address_space_init(AddressSpace* space) {
     space->active_cpu_mask = 0;
     space->cached_cpu_mask = 0;
     space->shootdown_active = 0;
-    space->reserved0 = 0;
+    space->active_user_accesses = 0;
     space->shootdown_count = 0;
     space->shootdown_timeout_count = 0;
     space->quarantined_page_count = 0;
@@ -238,7 +242,7 @@ void address_space_recycle(AddressSpace* space) {
     space->active_cpu_mask = 0;
     space->cached_cpu_mask = 0;
     space->shootdown_active = 0;
-    space->reserved0 = 0;
+    space->active_user_accesses = 0;
     space->shootdown_count = 0;
     space->shootdown_timeout_count = 0;
     space->quarantined_page_count = 0;
@@ -263,12 +267,17 @@ void address_space_reset_user(AddressSpace* space) {
     if (space == 0) {
         return;
     }
+    if (!mutation_gate_enter(space)) {
+        return;
+    }
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&space->lock, &token)) {
+        mutation_gate_release(space);
         return;
     }
     reset_regions_unlocked(space);
     kernel_spinlock_release(&space->lock, &token);
+    mutation_gate_release(space);
 }
 
 void address_space_activate(const AddressSpace* const_space) {
@@ -338,8 +347,12 @@ int address_space_add_region(AddressSpace* space,
         return 0;
     }
 
+    if (!mutation_gate_enter(space)) {
+        return 0;
+    }
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&space->lock, &token)) {
+        mutation_gate_release(space);
         return 0;
     }
     for (uint32_t i = 0; i < ADDRESS_SPACE_MAX_REGIONS; i++) {
@@ -350,11 +363,13 @@ int address_space_add_region(AddressSpace* space,
         if (region->end == begin && region->rights == rights) {
             region->end = end;
             kernel_spinlock_release(&space->lock, &token);
+            mutation_gate_release(space);
             return 1;
         }
         if (region->start == end && region->rights == rights) {
             region->start = begin;
             kernel_spinlock_release(&space->lock, &token);
+            mutation_gate_release(space);
             return 1;
         }
     }
@@ -367,10 +382,12 @@ int address_space_add_region(AddressSpace* space,
             region->end = end;
             space->region_count++;
             kernel_spinlock_release(&space->lock, &token);
+            mutation_gate_release(space);
             return 1;
         }
     }
     kernel_spinlock_release(&space->lock, &token);
+    mutation_gate_release(space);
     return 0;
 }
 
@@ -382,8 +399,12 @@ void address_space_remove_region(AddressSpace* space,
     }
     const uint64_t begin = align_down_page(start);
     const uint64_t end = align_up_page(start + size);
+    if (!mutation_gate_enter(space)) {
+        return;
+    }
     KernelSpinlockToken token;
     if (!kernel_spinlock_acquire(&space->lock, &token)) {
+        mutation_gate_release(space);
         return;
     }
     for (uint32_t i = 0; i < ADDRESS_SPACE_MAX_REGIONS; i++) {
@@ -419,6 +440,7 @@ void address_space_remove_region(AddressSpace* space,
                 region->end = begin;
                 space->region_count++;
                 kernel_spinlock_release(&space->lock, &token);
+                mutation_gate_release(space);
                 return;
             }
         }
@@ -426,6 +448,7 @@ void address_space_remove_region(AddressSpace* space,
         break;
     }
     kernel_spinlock_release(&space->lock, &token);
+    mutation_gate_release(space);
 }
 
 static const AddressSpaceRegion* find_region(const AddressSpace* space,
@@ -449,7 +472,7 @@ int address_space_owns_address(const AddressSpace* space, uint64_t address) {
 
 int address_space_buffer_accessible(const AddressSpace* space,
                                     uint64_t start,
-                                    uint32_t size,
+                                    uint64_t size,
                                     int writable) {
     if (size == 0) {
         return 1;
@@ -461,17 +484,26 @@ int address_space_buffer_accessible(const AddressSpace* space,
     if (end < start) {
         return 0;
     }
+    AddressSpace* mutable_space = (AddressSpace*)space;
+    KernelSpinlockToken token;
+    if (!kernel_spinlock_acquire(&mutable_space->lock, &token)) {
+        return 0;
+    }
+    int accessible = 1;
     uint64_t address = start;
     while (1) {
         const AddressSpaceRegion* region = find_region(space, address);
         if (region == 0 ||
+            !(region->rights & ADDRESS_SPACE_REGION_READ) ||
             (writable && !(region->rights & ADDRESS_SPACE_REGION_WRITE))) {
-            return 0;
+            accessible = 0;
+            break;
         }
         const uint64_t flags = address_space_get_flags(space, address);
         if (!(flags & VM_FLAG_USER) ||
             (writable && !(flags & VM_FLAG_WRITABLE))) {
-            return 0;
+            accessible = 0;
+            break;
         }
         if ((address & ~(VM_PAGE_SIZE - 1ULL)) ==
             (end & ~(VM_PAGE_SIZE - 1ULL))) {
@@ -479,7 +511,51 @@ int address_space_buffer_accessible(const AddressSpace* space,
         }
         address = (address & ~(VM_PAGE_SIZE - 1ULL)) + VM_PAGE_SIZE;
     }
-    return address_space_owns_address(space, end);
+    if (accessible && find_region(space, end) == 0) {
+        accessible = 0;
+    }
+    kernel_spinlock_release(&mutable_space->lock, &token);
+    return accessible;
+}
+
+int address_space_user_access_begin(AddressSpace* space,
+                                    uint64_t expected_identity) {
+    if (space == 0 || expected_identity == 0 ||
+        kernel_spinlock_depth() != 0 || kernel_in_tlb_wait() ||
+        __atomic_load_n(&space->shootdown_timeout_count,
+                        __ATOMIC_ACQUIRE) != 0) {
+        return 0;
+    }
+
+    if (__atomic_load_n(&space->shootdown_active, __ATOMIC_ACQUIRE) != 0) {
+        return 0;
+    }
+    __atomic_add_fetch(&space->active_user_accesses, 1u, __ATOMIC_ACQ_REL);
+    if (__atomic_load_n(&space->shootdown_active, __ATOMIC_ACQUIRE) != 0 ||
+        __atomic_load_n(&space->identity, __ATOMIC_ACQUIRE) !=
+            expected_identity) {
+        __atomic_sub_fetch(&space->active_user_accesses, 1u, __ATOMIC_RELEASE);
+        return 0;
+    }
+    return 1;
+}
+
+void address_space_user_access_end(AddressSpace* space) {
+    if (space == 0) {
+        return;
+    }
+    uint32_t active =
+        __atomic_load_n(&space->active_user_accesses, __ATOMIC_ACQUIRE);
+    while (active != 0) {
+        if (__atomic_compare_exchange_n(&space->active_user_accesses,
+                                        &active,
+                                        active - 1u,
+                                        0,
+                                        __ATOMIC_RELEASE,
+                                        __ATOMIC_ACQUIRE)) {
+            return;
+        }
+    }
 }
 
 int address_space_map_page(AddressSpace* space,

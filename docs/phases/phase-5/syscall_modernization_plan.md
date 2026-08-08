@@ -130,6 +130,12 @@ UTF-8 where required, zero/overflow lengths, boundary-spanning buffers,
 read-only outputs, unmapped holes, kernel addresses, and mappings removed by a
 racing thread all have deterministic fail-closed results.
 
+Implementation status (2026-08-08): the schema-v3 catalog metadata, common
+checked-copy API, mapping lease, address-space mutation exclusion, and focused
+host/QEMU validation cases are implemented. P5S-R03 remains in progress because
+descriptor permission preflight, injected copy/allocation faults, and the
+complete per-call semantic audit belong to 5S-D/G.
+
 ## 5S-D: Dispatch, Permissions, And Auditability
 
 Both entry transports call one descriptor-driven dispatcher. The dispatcher

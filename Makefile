@@ -87,7 +87,7 @@ PHASE5_ASSET_DIR = ./build/assets
 PHASE5_ASSETS = $(PHASE5_ASSET_DIR)/image_demo.osimg $(PHASE5_ASSET_DIR)/image_demo.bmp $(PHASE5_ASSET_DIR)/image_demo.png
 USER_EXTRA_ARGS = $(foreach file,$(USER_BINS) $(USER_ELFS) $(ROOT_DRIVER_PACKAGES) $(PHASE5_ASSETS),--extra-file-auto $(file))
 
-.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-kernel-language-contract test-syscall-contract test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c test-terminal-model test-gui-terminal test-phase5d clean
+.PHONY: all all64 uefi uefi-diagnostic drivers driver-projects test-user-sdk test-phase1 test-shutdown test-graphics test-graphics-contracts test-graphics-demo test-gop-present test-display-contracts test-display-present test-display-handoff test-drive-free-scheduler test-window-contracts test-window-single test-window-multi-contracts test-window-multi test-window-input-contracts test-window-input test-window-sdk-contracts test-window-sdk test-gui-app test-gui-recovery test-gui-soak test-graphics-clip test-surface-backing test-surface-backing-contracts test-surface-backing-smoke test-surface-abi test-input test-input-queue test-input-event-loop test-ipc-contracts test-ipc-smoke test-ipc test-kernel-handles test-process-lifecycle test-thread-model test-thread-main test-thread-abi test-thread-waits test-thread-sync test-thread-readiness test-thread-faults test-thread-soak test-phase45-abc test-phase45 test-service-registry test-service-smoke test-service-manager-smoke test-service-supervision test-first-services test-services test-spinlocks test-concurrency test-fault-injection test-soak test-soak-hour test-kernel-language-contract test-syscall-contract test-syscall-validation test-abi-freeze test-driver-policy test-driver-layout test-driver-build test-driver-boot test-driver-regression test-driver-ownership test-driver-va test-driver-image-memory test-driver-alloc test-driver-context test-driver-mmio test-pci-mmio-va test-dma-coherent test-dma-streaming test-dma-domain test-driver-quiesce test-driver-dma-device test-driver-memory-faults test-driver-memory-soak test-phase47 test-phase4-entry test-phase4 test-uefi-smoke test-uefi-userland test-uefi-screen test-cpu-topology test-smp-topology test-percpu test-smp-emergency-entry test-ap-startup-state test-ap-bringup test-phase46-foundation test-smp-scheduler test-smp-timer test-smp-preemption test-smp-remote-wake test-smp-ipi test-smp-affinity test-smp-execution test-tlb-shootdown test-tlb-lock-order test-smp-memory test-closure test-current-closure test-desktop-layers test-desktop-session test-phase5a test-pointer-routing test-window-interaction test-phase5b test-image-codecs test-ui-rendering test-widget-sdk test-responsive-window test-phase5c test-terminal-model test-gui-terminal test-phase5d clean
 
 KERNEL64_OBJECTS = \
 	./build/kernel64_entry.o \
@@ -107,6 +107,7 @@ KERNEL64_OBJECTS = \
 	./build/process_terminal64.o \
 	./build/process_surface64.o \
 	./build/userprog64.o \
+	./build/user_memory64.o \
 	./build/syscall64.o \
 	./build/vfs_syscalls64.o \
 	./build/sdk_syscalls64.o \
@@ -351,6 +352,9 @@ test-kernel-language-contract: ./bin/kernel64.elf
 test-syscall-contract: $(SYSCALL_GENERATED)
 	python3 ./tools/syscall_contract_test.py
 
+test-syscall-validation:
+	python3 ./tools/user_memory_test.py
+
 test-abi-freeze:
 	python3 ./tools/abi_freeze_test.py
 
@@ -545,6 +549,9 @@ $(PHASE5_ASSETS) &: ./tools/build_image_fixtures.py ./tools/png_to_osimg.py
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/userprog64.o: ./kernel/process/userprog64.cpp ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/kernel/userprog64.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
+
+./build/user_memory64.o: ./kernel/syscall/user_memory.cpp ./include/kernel/syscall/user_memory.h ./include/kernel/mm/address_space.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/spinlock.h ./include/os64/result.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./kernel/syscall/vfs_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h

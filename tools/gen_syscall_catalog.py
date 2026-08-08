@@ -135,12 +135,16 @@ def descriptor_header(catalog: dict) -> str:
         "    uint32_t number;",
         "    uint8_t argument_count;",
         "    uint8_t pointer_mask;",
+        "    uint8_t readable_mask;",
         "    uint8_t writable_mask;",
+        "    uint8_t snapshot_mask;",
+        "    uint8_t nested_mask;",
         "    uint8_t flags;",
         "    uint8_t result_kind;",
         "    uint8_t success_domain;",
         "    uint8_t output_publication;",
         "    uint8_t failure_output;",
+        "    uint16_t argument_alignment[3];",
         "    const char* name;",
         "    const char* symbol;",
         "    const char* permission;",
@@ -152,12 +156,25 @@ def descriptor_header(catalog: dict) -> str:
     for call in catalog["syscalls"]:
         resolved = resolve_contract(call, defaults)
         pointer_mask = 0
+        readable_mask = 0
         writable_mask = 0
+        snapshot_mask = 0
+        nested_mask = 0
+        alignments = [1, 1, 1]
         for index, argument in enumerate(call["arguments"]):
+            alignments[index] = argument["alignment"]
             if argument["kind"] in {"cstring", "buffer", "structure"}:
                 pointer_mask |= 1 << index
+            if argument["access"] in {"read", "read_write"}:
+                readable_mask |= 1 << index
             if argument["direction"] in {"out", "inout"}:
                 writable_mask |= 1 << index
+            if argument["snapshot"] in {
+                    "kernel_before_handler",
+                    "kernel_before_handler_then_output"}:
+                snapshot_mask |= 1 << index
+            if argument["nested"] == "snapshot_then_validate":
+                nested_mask |= 1 << index
         flags = 0
         if resolved["execution"]["blocking"]:
             flags |= 1
@@ -169,10 +186,12 @@ def descriptor_header(catalog: dict) -> str:
         output = result["output"]
         lines.append(
             f"    {{{call['number']}u, {len(call['arguments'])}u, {pointer_mask}u, "
-            f"{writable_mask}u, {flags}u, {RESULT_KIND_IDS[result['kind']]}u, "
+            f"{readable_mask}u, {writable_mask}u, {snapshot_mask}u, "
+            f"{nested_mask}u, {flags}u, {RESULT_KIND_IDS[result['kind']]}u, "
             f"{SUCCESS_DOMAIN_IDS[result['success_domain']]}u, "
             f"{OUTPUT_PUBLICATION_IDS[output['publication']]}u, "
             f"{OUTPUT_FAILURE_IDS[output['failure_state']]}u, "
+            f"{{{alignments[0]}u, {alignments[1]}u, {alignments[2]}u}}, "
             f"\"{call['name']}\", \"{call['symbol']}\", "
             f"\"{resolved['permission']}\", \"{call['result']['errors']}\"}},"
         )
@@ -207,7 +226,9 @@ def reference_markdown(catalog: dict) -> str:
     for call in catalog["syscalls"]:
         resolved = resolve_contract(call, defaults)
         args = ", ".join(
-            f"`{arg['register']}:{arg['name']} {arg['direction']} {arg['type']} [{arg['size']}]`"
+            f"`{arg['register']}:{arg['name']} {arg['direction']} {arg['type']} "
+            f"[{arg['size']}; access={arg['access']}; snapshot={arg['snapshot']}; "
+            f"align={arg['alignment']}]`"
             for arg in call["arguments"]
         ) or "-"
         lines.append(

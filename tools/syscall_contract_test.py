@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression gate for the Phase 5S-A/B system-call catalog and result ABI."""
+"""Regression gate for the Phase 5S-A/B/C syscall catalog and generated ABI."""
 
 from __future__ import annotations
 
@@ -68,6 +68,24 @@ def mutation_contract(catalog: dict, failures: list[str]) -> None:
     require(any("missing field 'size'" in error
                 for error in validate_catalog(incomplete)),
             "incomplete pointer contract was accepted", failures)
+
+    incomplete_memory = copy.deepcopy(catalog)
+    del incomplete_memory["syscalls"][0]["arguments"][0]["snapshot"]
+    require(any("missing field 'snapshot'" in error
+                for error in validate_catalog(incomplete_memory)),
+            "incomplete user-memory contract was accepted", failures)
+
+    invalid_memory = copy.deepcopy(catalog)
+    invalid_memory["syscalls"][0]["arguments"][0]["access"] = "write"
+    require(any("input pointer must be read" in error
+                for error in validate_catalog(invalid_memory)),
+            "input pointer with write-only access was accepted", failures)
+
+    invalid_alignment = copy.deepcopy(catalog)
+    invalid_alignment["syscalls"][0]["arguments"][0]["alignment"] = 3
+    require(any("power of two" in error
+                for error in validate_catalog(invalid_alignment)),
+            "non-power-of-two pointer alignment was accepted", failures)
 
     unknown_errors = copy.deepcopy(catalog)
     unknown_errors["syscalls"][0]["result"]["errors"] = "not_declared"
@@ -303,8 +321,8 @@ def documentation_contract(catalog: dict, failures: list[str]) -> None:
             "syscall schema is not Draft 2020-12", failures)
     require(schema.get("additionalProperties") is False,
             "syscall schema does not reject unknown root fields", failures)
-    require(schema.get("properties", {}).get("schema_version", {}).get("const") == 2,
-            "syscall schema version did not advance for result contracts", failures)
+    require(schema.get("properties", {}).get("schema_version", {}).get("const") == 3,
+            "syscall schema version did not advance for user-memory contracts", failures)
     reference = (ROOT / "docs/reference/syscall_catalog.generated.md").read_text(
         encoding="utf-8")
     rows = re.findall(r"^\| \d+ \| `SYS_", reference, re.MULTILINE)
@@ -321,6 +339,10 @@ def documentation_contract(catalog: dict, failures: list[str]) -> None:
     require(result_contract.is_file() and
             "signed 64-bit" in result_contract.read_text(encoding="utf-8"),
             "result/output contract reference is missing", failures)
+    memory_contract = ROOT / "docs/reference/syscall_user_memory.md"
+    require(memory_contract.is_file() and
+            "UserMemoryLease" in memory_contract.read_text(encoding="utf-8"),
+            "user-memory boundary reference is missing", failures)
 
 
 def main() -> int:

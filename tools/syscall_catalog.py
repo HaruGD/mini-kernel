@@ -38,6 +38,7 @@ SYSCALL_FIELDS = {
 }
 ARGUMENT_FIELDS = {
     "name", "register", "kind", "direction", "type", "nullable", "size",
+    "alignment", "access", "snapshot", "encoding", "nested",
 }
 RESULT_FIELDS = {"kind", "success_domain", "success", "output", "errors"}
 OUTPUT_FIELDS = {"publication", "failure_state", "partial_errors", "resume"}
@@ -51,6 +52,15 @@ KERNEL_ERROR_RE = re.compile(r"^SYS_ERR_[A-Z][A-Z0-9_]*$")
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 ARGUMENT_KINDS = {"scalar", "cstring", "buffer", "structure", "handle", "address"}
 ARGUMENT_DIRECTIONS = {"value", "in", "out", "inout"}
+ARGUMENT_ACCESS = {"not_applicable", "read", "write", "read_write"}
+ARGUMENT_SNAPSHOT = {
+    "not_applicable", "kernel_before_handler", "output_after_handler",
+    "kernel_before_handler_then_output",
+}
+ARGUMENT_ENCODING = {
+    "not_applicable", "bytes", "nul_terminated_bytes", "abi_structure",
+}
+ARGUMENT_NESTED = {"none", "snapshot_then_validate"}
 SYSCALL_STATES = {"active", "reserved", "retired"}
 AUDIT_STATES = {"provisional", "audited"}
 HANDLERS = {"core", "vfs", "sdk"}
@@ -141,8 +151,8 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
     exact_fields(catalog, ROOT_FIELDS, "catalog", errors)
     if not isinstance(catalog, dict):
         return errors
-    if type(catalog.get("schema_version")) is not int or catalog.get("schema_version") != 2:
-        errors.append("catalog.schema_version: expected 2")
+    if type(catalog.get("schema_version")) is not int or catalog.get("schema_version") != 3:
+        errors.append("catalog.schema_version: expected 3")
     if type(catalog.get("catalog_version")) is not int or catalog.get("catalog_version", 0) < 1:
         errors.append("catalog.catalog_version: expected a positive integer")
 
@@ -340,6 +350,41 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
                 errors.append(f"{arg_label}.nullable: expected boolean")
             nonempty_string(argument.get("type"), f"{arg_label}.type", errors)
             nonempty_string(argument.get("size"), f"{arg_label}.size", errors)
+            alignment = argument.get("alignment")
+            if type(alignment) is not int or alignment < 1 or alignment > 4096 or \
+                    alignment & (alignment - 1):
+                errors.append(f"{arg_label}.alignment: expected a power of two in 1..4096")
+            access = argument.get("access")
+            snapshot = argument.get("snapshot")
+            encoding = argument.get("encoding")
+            nested = argument.get("nested")
+            if access not in ARGUMENT_ACCESS:
+                errors.append(f"{arg_label}.access: unknown policy")
+            if snapshot not in ARGUMENT_SNAPSHOT:
+                errors.append(f"{arg_label}.snapshot: unknown policy")
+            if encoding not in ARGUMENT_ENCODING:
+                errors.append(f"{arg_label}.encoding: unknown policy")
+            if nested not in ARGUMENT_NESTED:
+                errors.append(f"{arg_label}.nested: unknown policy")
+            if kind in {"scalar", "handle", "address"}:
+                if access != "not_applicable" or snapshot != "not_applicable" or \
+                        encoding != "not_applicable" or nested != "none":
+                    errors.append(f"{arg_label}: value argument has pointer policy")
+            elif direction == "in" and (access != "read" or
+                                         snapshot != "kernel_before_handler"):
+                errors.append(f"{arg_label}: input pointer must be read and snapshotted")
+            elif direction == "out" and (access != "write" or
+                                          snapshot != "output_after_handler"):
+                errors.append(f"{arg_label}: output pointer must be write/publication")
+            elif direction == "inout" and (access != "read_write" or
+                                            snapshot != "kernel_before_handler_then_output"):
+                errors.append(f"{arg_label}: inout pointer policy mismatch")
+            if kind == "cstring" and encoding != "nul_terminated_bytes":
+                errors.append(f"{arg_label}: cstring must declare nul_terminated_bytes")
+            if kind == "buffer" and encoding != "bytes":
+                errors.append(f"{arg_label}: buffer must declare bytes")
+            if kind == "structure" and encoding != "abi_structure":
+                errors.append(f"{arg_label}: structure must declare abi_structure")
 
         result = call.get("result")
         exact_fields(result, RESULT_FIELDS, f"{label}.result", errors)

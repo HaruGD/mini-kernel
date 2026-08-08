@@ -15,6 +15,7 @@ extern "C" {
 #include "kernel/process64.h"
 #include "kernel/process_terminal.h"
 #include "kernel/syscall64.h"
+#include "kernel/syscall/user_memory.h"
 #include "kernel/userprog64.h"
 #include "kernel/syscall/sdk_syscalls.h"
 #include "kernel/syscall/vfs_syscalls.h"
@@ -79,7 +80,6 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
     syscall_count++;
 
     if (syscall_no == SYS_WRITE) {
-        const uint8_t* user_buffer = (const uint8_t*)(uintptr_t)arg1;
         uint32_t length = (uint32_t)arg2;
         uint8_t chunk[USER_WRITE_CHUNK_MAX];
         uint32_t written = 0;
@@ -87,7 +87,7 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         if (length == 0) {
             return 0;
         }
-        if (arg2 > USER_WRITE_MAX || user_buffer == 0) {
+        if (arg2 > USER_WRITE_MAX || arg1 == 0) {
             return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
         }
 
@@ -96,8 +96,20 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
             if (chunk_size > USER_WRITE_CHUNK_MAX) {
                 chunk_size = USER_WRITE_CHUNK_MAX;
             }
-            if (!copy_user_buffer(user_buffer + written, chunk, chunk_size)) {
-                return (uint64_t)(int64_t)SYS_ERR_INVALID_ARGUMENT;
+            uint64_t chunk_address = 0;
+            OsResult copy_result = user_checked_add_u64(arg1,
+                                                        written,
+                                                        &chunk_address);
+            if (copy_result == OS_SUCCESS) {
+                copy_result = user_memory_copy_in(current_process(),
+                                                  chunk,
+                                                  chunk_address,
+                                                  chunk_size,
+                                                  1,
+                                                  0);
+            }
+            if (copy_result != OS_SUCCESS) {
+                return (uint64_t)(int64_t)copy_result;
             }
             Process* process = current_process();
             if (process_terminal_attached(process)) {

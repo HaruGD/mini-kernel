@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "catalog_version": 2,
+  "schema_version": 3,
+  "catalog_version": 3,
   "abi": {
     "name": "os64-x86_64-v1",
     "architecture": "x86_64",
@@ -259,7 +259,8 @@
       "OS_ERR_BAD_BUFFER",
       "OS_ERR_NOT_READY",
       "OS_ERR_QUEUE_FULL",
-      "OS_ERR_CANCELLED"
+      "OS_ERR_CANCELLED",
+      "OS_ERR_OVERFLOW"
     ],
     "lifecycle": [
       "OS_ERR_NOT_READY",
@@ -442,7 +443,12 @@
           "direction": "in",
           "type": "const void*",
           "nullable": false,
-          "size": "arg2 bytes"
+          "size": "arg2 bytes",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "bytes",
+          "nested": "none"
         },
         {
           "name": "length",
@@ -451,7 +457,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -484,7 +495,12 @@
           "direction": "value",
           "type": "int32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -522,7 +538,12 @@
           "direction": "value",
           "type": "uint8_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -607,7 +628,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -640,7 +666,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "PROCESS_CMDLINE_MAX"
+          "size": "PROCESS_CMDLINE_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -743,7 +774,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -799,7 +835,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -832,7 +873,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "text",
@@ -841,7 +887,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "128 bytes including NUL"
+          "size": "128 bytes including NUL",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1040,7 +1091,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1074,7 +1130,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1154,7 +1215,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1192,7 +1258,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "enabled",
@@ -1201,7 +1272,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1281,7 +1357,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1314,7 +1395,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1347,7 +1433,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "text",
@@ -1356,7 +1447,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "128 bytes including NUL"
+          "size": "128 bytes including NUL",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1412,7 +1508,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1445,7 +1546,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "PROCESS_CMDLINE_MAX"
+          "size": "PROCESS_CMDLINE_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "mode",
@@ -1454,7 +1560,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1493,7 +1604,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "buffer",
@@ -1502,7 +1618,12 @@
           "direction": "out",
           "type": "void*",
           "nullable": false,
-          "size": "arg3 bytes"
+          "size": "arg3 bytes",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "bytes",
+          "nested": "none"
         },
         {
           "name": "size",
@@ -1511,7 +1632,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1544,7 +1670,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "buffer",
@@ -1553,7 +1684,12 @@
           "direction": "in",
           "type": "const void*",
           "nullable": false,
-          "size": "arg3 bytes"
+          "size": "arg3 bytes",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "bytes",
+          "nested": "none"
         },
         {
           "name": "size",
@@ -1562,7 +1698,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1595,7 +1736,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1628,7 +1774,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "offset",
@@ -1637,7 +1788,12 @@
           "direction": "value",
           "type": "int32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "whence",
@@ -1646,7 +1802,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1679,7 +1840,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1712,7 +1878,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1745,7 +1916,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1778,7 +1954,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "info",
@@ -1787,7 +1968,12 @@
           "direction": "out",
           "type": "VFSFileInfo*",
           "nullable": false,
-          "size": "sizeof(VFSFileInfo)"
+          "size": "sizeof(VFSFileInfo)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1820,7 +2006,12 @@
           "direction": "out",
           "type": "char*",
           "nullable": false,
-          "size": "arg2 bytes"
+          "size": "arg2 bytes",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "bytes",
+          "nested": "none"
         },
         {
           "name": "capacity",
@@ -1829,7 +2020,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1862,7 +2058,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1895,7 +2096,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "PROCESS_CMDLINE_MAX"
+          "size": "PROCESS_CMDLINE_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1934,7 +2140,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "entry",
@@ -1943,7 +2154,12 @@
           "direction": "out",
           "type": "VFSDirEntry*",
           "nullable": false,
-          "size": "sizeof(VFSDirEntry)"
+          "size": "sizeof(VFSDirEntry)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -1976,7 +2192,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2009,7 +2230,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2042,7 +2268,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2075,7 +2306,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "new_path",
@@ -2084,7 +2320,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "USER_PATH_MAX"
+          "size": "USER_PATH_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2140,7 +2381,12 @@
           "direction": "value",
           "type": "uintptr_t",
           "nullable": true,
-          "size": "address"
+          "size": "address",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2219,7 +2465,12 @@
           "direction": "out",
           "type": "OsGraphicsInfo*",
           "nullable": false,
-          "size": "sizeof(OsGraphicsInfo)"
+          "size": "sizeof(OsGraphicsInfo)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2253,7 +2504,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "y",
@@ -2262,7 +2518,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "color",
@@ -2271,7 +2532,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2305,7 +2571,12 @@
           "direction": "in",
           "type": "const UserGraphicsRect*",
           "nullable": false,
-          "size": "sizeof(UserGraphicsRect)"
+          "size": "sizeof(UserGraphicsRect)",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2339,7 +2610,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2373,7 +2649,12 @@
           "direction": "out",
           "type": "OsKeyEvent*",
           "nullable": false,
-          "size": "sizeof(OsKeyEvent)"
+          "size": "sizeof(OsKeyEvent)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         },
         {
           "name": "wait",
@@ -2382,7 +2663,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "timeout_ticks",
@@ -2391,7 +2677,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2430,7 +2721,12 @@
           "direction": "out",
           "type": "OsInputEvent*",
           "nullable": false,
-          "size": "sizeof(OsInputEvent)"
+          "size": "sizeof(OsInputEvent)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2464,7 +2760,12 @@
           "direction": "out",
           "type": "OsInputEvent*",
           "nullable": false,
-          "size": "sizeof(OsInputEvent)"
+          "size": "sizeof(OsInputEvent)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         },
         {
           "name": "timeout_ticks",
@@ -2473,7 +2774,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2512,7 +2818,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "message",
@@ -2521,7 +2832,12 @@
           "direction": "in",
           "type": "const OsIpcMessage*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessage)"
+          "size": "sizeof(OsIpcMessage)",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2554,7 +2870,12 @@
           "direction": "out",
           "type": "OsIpcMessage*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessage)"
+          "size": "sizeof(OsIpcMessage)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2587,7 +2908,12 @@
           "direction": "out",
           "type": "OsIpcMessage*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessage)"
+          "size": "sizeof(OsIpcMessage)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         },
         {
           "name": "timeout_ticks",
@@ -2596,7 +2922,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2634,7 +2965,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "SERVICE_NAME_MAX"
+          "size": "SERVICE_NAME_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "flags",
@@ -2643,7 +2979,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2677,7 +3018,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "SERVICE_NAME_MAX"
+          "size": "SERVICE_NAME_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "info",
@@ -2686,7 +3032,12 @@
           "direction": "out",
           "type": "OsServiceInfo*",
           "nullable": false,
-          "size": "sizeof(OsServiceInfo)"
+          "size": "sizeof(OsServiceInfo)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2719,7 +3070,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "SERVICE_NAME_MAX"
+          "size": "SERVICE_NAME_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2753,7 +3109,12 @@
           "direction": "out",
           "type": "OsProcessIdentity*",
           "nullable": false,
-          "size": "sizeof(OsProcessIdentity)"
+          "size": "sizeof(OsProcessIdentity)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2786,7 +3147,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "target_generation",
@@ -2795,7 +3161,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "message",
@@ -2804,7 +3175,12 @@
           "direction": "in",
           "type": "const OsIpcMessage*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessage)"
+          "size": "sizeof(OsIpcMessage)",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2837,7 +3213,12 @@
           "direction": "out",
           "type": "uint32_t*",
           "nullable": false,
-          "size": "sizeof(uint32_t)"
+          "size": "sizeof(uint32_t)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         },
         {
           "name": "features",
@@ -2846,7 +3227,12 @@
           "direction": "out",
           "type": "uint32_t*",
           "nullable": false,
-          "size": "sizeof(uint32_t)"
+          "size": "sizeof(uint32_t)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2881,7 +3267,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "target_generation",
@@ -2890,7 +3281,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "message",
@@ -2899,7 +3295,12 @@
           "direction": "in",
           "type": "const OsIpcMessageV2*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessageV2)"
+          "size": "sizeof(OsIpcMessageV2)",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2932,7 +3333,12 @@
           "direction": "out",
           "type": "OsIpcMessageV2*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessageV2)"
+          "size": "sizeof(OsIpcMessageV2)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -2965,7 +3371,12 @@
           "direction": "in",
           "type": "const OsIpcReceiveFilter*",
           "nullable": false,
-          "size": "sizeof(OsIpcReceiveFilter)"
+          "size": "sizeof(OsIpcReceiveFilter)",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         },
         {
           "name": "message",
@@ -2974,7 +3385,12 @@
           "direction": "out",
           "type": "OsIpcMessageV2*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessageV2)"
+          "size": "sizeof(OsIpcMessageV2)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3007,7 +3423,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "PROCESS_CMDLINE_MAX"
+          "size": "PROCESS_CMDLINE_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "permissions",
@@ -3016,7 +3437,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3050,7 +3476,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "height",
@@ -3059,7 +3490,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "pixel_format",
@@ -3068,7 +3504,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3107,7 +3548,12 @@
           "direction": "value",
           "type": "OsSurface",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "info",
@@ -3116,7 +3562,12 @@
           "direction": "out",
           "type": "OsSurfaceInfo*",
           "nullable": false,
-          "size": "sizeof(OsSurfaceInfo)"
+          "size": "sizeof(OsSurfaceInfo)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3149,7 +3600,12 @@
           "direction": "value",
           "type": "OsSurface",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "map_flags",
@@ -3158,7 +3614,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3197,7 +3658,12 @@
           "direction": "value",
           "type": "OsSurface",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "address",
@@ -3206,7 +3672,12 @@
           "direction": "value",
           "type": "uintptr_t",
           "nullable": false,
-          "size": "address"
+          "size": "address",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3239,7 +3710,12 @@
           "direction": "value",
           "type": "OsSurface",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3272,7 +3748,12 @@
           "direction": "out",
           "type": "OsIpcMessageV2*",
           "nullable": false,
-          "size": "sizeof(OsIpcMessageV2)"
+          "size": "sizeof(OsIpcMessageV2)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         },
         {
           "name": "timeout_ticks",
@@ -3281,7 +3762,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3319,7 +3805,12 @@
           "direction": "value",
           "type": "OsSurface",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "rects",
@@ -3328,7 +3819,12 @@
           "direction": "in",
           "type": "const OsRect*",
           "nullable": false,
-          "size": "arg3 * sizeof(OsRect)"
+          "size": "arg3 * sizeof(OsRect)",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "bytes",
+          "nested": "none"
         },
         {
           "name": "rect_count",
@@ -3337,7 +3833,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3371,7 +3872,12 @@
           "direction": "value",
           "type": "OsHandle",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3404,7 +3910,12 @@
           "direction": "in",
           "type": "const char*",
           "nullable": false,
-          "size": "SERVICE_NAME_MAX"
+          "size": "SERVICE_NAME_MAX",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "nul_terminated_bytes",
+          "nested": "none"
         },
         {
           "name": "identity",
@@ -3413,7 +3924,12 @@
           "direction": "out",
           "type": "OsProcessIdentity*",
           "nullable": false,
-          "size": "sizeof(OsProcessIdentity)"
+          "size": "sizeof(OsProcessIdentity)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3446,7 +3962,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "generation",
@@ -3455,7 +3976,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3489,7 +4015,12 @@
           "direction": "value",
           "type": "OsSurface",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "info",
@@ -3498,7 +4029,12 @@
           "direction": "out",
           "type": "OsDisplaySessionInfo*",
           "nullable": false,
-          "size": "sizeof(OsDisplaySessionInfo)"
+          "size": "sizeof(OsDisplaySessionInfo)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3532,7 +4068,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3566,7 +4107,12 @@
           "direction": "out",
           "type": "OsDisplaySessionInfo*",
           "nullable": false,
-          "size": "sizeof(OsDisplaySessionInfo)"
+          "size": "sizeof(OsDisplaySessionInfo)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3599,7 +4145,12 @@
           "direction": "in",
           "type": "const OsThreadCreateRequest*",
           "nullable": false,
-          "size": "sizeof(OsThreadCreateRequest)"
+          "size": "sizeof(OsThreadCreateRequest)",
+          "alignment": 1,
+          "access": "read",
+          "snapshot": "kernel_before_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         },
         {
           "name": "identity",
@@ -3608,7 +4159,12 @@
           "direction": "out",
           "type": "OsThreadIdentity*",
           "nullable": false,
-          "size": "sizeof(OsThreadIdentity)"
+          "size": "sizeof(OsThreadIdentity)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3647,7 +4203,12 @@
           "direction": "out",
           "type": "OsThreadIdentity*",
           "nullable": false,
-          "size": "sizeof(OsThreadIdentity)"
+          "size": "sizeof(OsThreadIdentity)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3680,7 +4241,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3718,7 +4284,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "generation",
@@ -3727,7 +4298,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "status",
@@ -3736,7 +4312,12 @@
           "direction": "out",
           "type": "uint32_t*",
           "nullable": true,
-          "size": "sizeof(uint32_t)"
+          "size": "sizeof(uint32_t)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3803,7 +4384,12 @@
           "direction": "value",
           "type": "OsMutex",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "timeout_ticks",
@@ -3812,7 +4398,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3850,7 +4441,12 @@
           "direction": "value",
           "type": "OsMutex",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3883,7 +4479,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "maximum_count",
@@ -3892,7 +4493,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3931,7 +4537,12 @@
           "direction": "value",
           "type": "OsSemaphore",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "timeout_ticks",
@@ -3940,7 +4551,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -3978,7 +4594,12 @@
           "direction": "value",
           "type": "OsSemaphore",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "release_count",
@@ -3987,7 +4608,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4049,7 +4675,12 @@
           "direction": "value",
           "type": "OsCondition",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "mutex",
@@ -4058,7 +4689,12 @@
           "direction": "value",
           "type": "OsMutex",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "timeout_ticks",
@@ -4067,7 +4703,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4105,7 +4746,12 @@
           "direction": "value",
           "type": "OsCondition",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4138,7 +4784,12 @@
           "direction": "value",
           "type": "OsCondition",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4171,7 +4822,12 @@
           "direction": "value",
           "type": "void*",
           "nullable": true,
-          "size": "address"
+          "size": "address",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4204,7 +4860,12 @@
           "direction": "out",
           "type": "void**",
           "nullable": false,
-          "size": "sizeof(void*)"
+          "size": "sizeof(void*)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4237,7 +4898,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "generation",
@@ -4246,7 +4912,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "info",
@@ -4255,7 +4926,12 @@
           "direction": "out",
           "type": "OsThreadInfo*",
           "nullable": false,
-          "size": "sizeof(OsThreadInfo)"
+          "size": "sizeof(OsThreadInfo)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4288,7 +4964,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "generation",
@@ -4297,7 +4978,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "priority",
@@ -4306,7 +4992,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4339,7 +5030,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "generation",
@@ -4348,7 +5044,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "affinity_mask",
@@ -4357,7 +5058,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4390,7 +5096,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "peer_generation",
@@ -4399,7 +5110,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4432,7 +5148,12 @@
           "direction": "value",
           "type": "int32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4465,7 +5186,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "owner_generation",
@@ -4474,7 +5200,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "packet",
@@ -4483,7 +5214,12 @@
           "direction": "out",
           "type": "OsTerminalPacket*",
           "nullable": false,
-          "size": "sizeof(OsTerminalPacket)"
+          "size": "sizeof(OsTerminalPacket)",
+          "alignment": 1,
+          "access": "write",
+          "snapshot": "output_after_handler",
+          "encoding": "abi_structure",
+          "nested": "none"
         }
       ],
       "result": {
@@ -4516,7 +5252,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         },
         {
           "name": "owner_generation",
@@ -4525,7 +5266,12 @@
           "direction": "value",
           "type": "uint32_t",
           "nullable": false,
-          "size": "none"
+          "size": "none",
+          "alignment": 1,
+          "access": "not_applicable",
+          "snapshot": "not_applicable",
+          "encoding": "not_applicable",
+          "nested": "none"
         }
       ],
       "result": {

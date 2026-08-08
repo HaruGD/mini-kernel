@@ -15,7 +15,7 @@
     "syscalls"
   ],
   "properties": {
-    "schema_version": {"const": 2},
+    "schema_version": {"const": 3},
     "catalog_version": {"type": "integer", "minimum": 1},
     "abi": {
       "type": "object",
@@ -129,7 +129,7 @@
     "argument": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "register", "kind", "direction", "type", "nullable", "size"],
+      "required": ["name", "register", "kind", "direction", "type", "nullable", "size", "alignment", "access", "snapshot", "encoding", "nested"],
       "properties": {
         "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
         "register": {"enum": ["rdi", "rsi", "rdx"]},
@@ -137,7 +137,12 @@
         "direction": {"enum": ["value", "in", "out", "inout"]},
         "type": {"type": "string", "minLength": 1},
         "nullable": {"type": "boolean"},
-        "size": {"type": "string", "minLength": 1}
+        "size": {"type": "string", "minLength": 1},
+        "alignment": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "access": {"enum": ["not_applicable", "read", "write", "read_write"]},
+        "snapshot": {"enum": ["not_applicable", "kernel_before_handler", "output_after_handler", "kernel_before_handler_then_output"]},
+        "encoding": {"enum": ["not_applicable", "bytes", "nul_terminated_bytes", "abi_structure"]},
+        "nested": {"enum": ["none", "snapshot_then_validate"]}
       }
     },
     "result": {

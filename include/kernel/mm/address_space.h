@@ -47,7 +47,7 @@ struct AddressSpace {
     volatile uint32_t active_cpu_mask;
     volatile uint32_t cached_cpu_mask;
     volatile uint32_t shootdown_active;
-    uint32_t reserved0;
+    volatile uint32_t active_user_accesses;
     uint64_t shootdown_count;
     uint64_t shootdown_timeout_count;
     uint64_t quarantined_page_count;
@@ -64,7 +64,9 @@ void address_space_activate_kernel();
 int address_space_add_region(AddressSpace* space, uint64_t start, uint64_t size, uint32_t rights);
 void address_space_remove_region(AddressSpace* space, uint64_t start, uint64_t size);
 int address_space_owns_address(const AddressSpace* space, uint64_t address);
-int address_space_buffer_accessible(const AddressSpace* space, uint64_t start, uint32_t size, int writable);
+int address_space_buffer_accessible(const AddressSpace* space, uint64_t start, uint64_t size, int writable);
+int address_space_user_access_begin(AddressSpace* space, uint64_t expected_identity);
+void address_space_user_access_end(AddressSpace* space);
 
 int address_space_map_page(AddressSpace* space, uint64_t virt, uint64_t phys, uint64_t flags);
 int address_space_unmap_page(AddressSpace* space, uint64_t virt);

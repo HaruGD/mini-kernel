@@ -13,6 +13,7 @@ static uint32_t checks_failed = 0;
 static uint32_t global_counter = 7;
 static const char* global_words[] = {"alpha", "beta", "gamma"};
 static char global_bss_buffer[16];
+static const OsProcessIdentity read_only_identity = {0xA5A5A5A5u, 0x5A5A5A5Au};
 
 static void check(int condition, const char* name) {
     if (condition) {
@@ -124,7 +125,33 @@ static void test_global_data(void) {
 
 static void test_syscall_pointer_validation(void) {
     long result = raw_syscall2(LEGACY_SYS_WRITE, (long)0xFFFFFFFF80000000ULL, 4);
-    check(result == OS_ERR_INVALID_ARGUMENT, "legacy write rejects kernel pointer");
+    check(result == OS_ERR_BAD_BUFFER, "legacy write rejects kernel pointer");
+    check(raw_syscall2(LEGACY_SYS_WRITE, 1, 1) == OS_ERR_BAD_BUFFER,
+          "write rejects unmapped user hole");
+    check(raw_syscall2(LEGACY_SYS_WRITE, (long)(UINT64_MAX - 3u), 8) ==
+              OS_ERR_OVERFLOW,
+          "write rejects wrapping range");
+    check(raw_syscall1(OS_SYS_GET_PROCESS_IDENTITY,
+                       (long)(uintptr_t)&read_only_identity) ==
+              OS_ERR_BAD_BUFFER &&
+          read_only_identity.pid == 0xA5A5A5A5u &&
+          read_only_identity.generation == 0x5A5A5A5Au,
+          "output rejects read-only mapping without publication");
+
+    uint8_t* allocation = (uint8_t*)os_malloc(8192u + 4096u);
+    int cross_page_ok = allocation != 0;
+    if (allocation != 0) {
+        uintptr_t page = ((uintptr_t)allocation + 4095u) & ~(uintptr_t)4095u;
+        char* crossing = (char*)(page + 4094u);
+        crossing[0] = 'O';
+        crossing[1] = 'K';
+        crossing[2] = '\n';
+        cross_page_ok = raw_syscall2(LEGACY_SYS_WRITE,
+                                     (long)(uintptr_t)crossing,
+                                     3) == 3;
+        os_free(allocation);
+    }
+    check(cross_page_ok, "write accepts mapped cross-page input");
 }
 
 static void test_process_identity(void) {

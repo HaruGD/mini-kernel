@@ -5,6 +5,7 @@
 #include "kernel/kutil64.h"
 #include "kernel/process64.h"
 #include "kernel/userprog64.h"
+#include "kernel/syscall/user_memory.h"
 
 uint32_t parse_launch_command(char* command_line, UserLaunchInfo* launch) {
     if (command_line == 0 || launch == 0) {
@@ -463,94 +464,44 @@ uint64_t resize_user_process_heap(Process* process, uint64_t requested_break) {
     return process->heap_break;
 }
 
-static int user_address_owned(const Process* process, uint64_t address) {
-    if (process == 0 || !process->active) {
-        return 0;
-    }
-
-    return address_space_owns_address(&process->address_space, address);
-}
-
-static int user_buffer_accessible(const void* user_ptr, uint32_t size, int writable) {
-    if (size == 0) {
-        return 1;
-    }
-    if (user_ptr == 0) {
-        return 0;
-    }
-
-    uint64_t start = (uint64_t)(uintptr_t)user_ptr;
-    uint64_t end = start + size - 1;
-    if (end < start) {
-        return 0;
-    }
-
-    Process* process = current_process();
-    return process != 0 &&
-           address_space_buffer_accessible(&process->address_space, start, size, writable) &&
-           user_address_owned(process, end);
-}
-
 int copy_user_cstring(const char* user_ptr, char* kernel_buf, uint32_t max_len) {
-    if (user_ptr == 0 || kernel_buf == 0 || max_len == 0) {
-        return 0;
-    }
-
-    uint64_t checked_page = 0xFFFFFFFFFFFFFFFFULL;
-    Process* process = current_process();
-    for (uint32_t i = 0; i < max_len - 1; i++) {
-        uint64_t addr = (uint64_t)(uintptr_t)(user_ptr + i);
-        uint64_t page = addr & ~(VM_PAGE_SIZE - 1ULL);
-        if (!user_address_owned(process, addr)) {
-            return 0;
-        }
-        if (page != checked_page) {
-            uint64_t flags = address_space_get_flags(&process->address_space, addr);
-            if (!(flags & VM_FLAG_USER)) {
-                return 0;
-            }
-            checked_page = page;
-        }
-
-        char c = user_ptr[i];
-        kernel_buf[i] = c;
-        if (c == '\0') {
-            return 1;
-        }
-    }
-
-    kernel_buf[max_len - 1] = '\0';
-    return 0;
+    return user_memory_copy_cstring(current_process(),
+                                    (uint64_t)(uintptr_t)user_ptr,
+                                    kernel_buf,
+                                    max_len,
+                                    0) == OS_SUCCESS;
 }
 
 int copy_user_buffer(const uint8_t* user_ptr, uint8_t* kernel_buf, uint32_t size) {
-    if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
-        return 0;
-    }
-    if (!user_buffer_accessible(user_ptr, size, 0)) {
-        return 0;
-    }
-
-    for (uint32_t i = 0; i < size; i++) {
-        kernel_buf[i] = user_ptr[i];
-    }
-    return 1;
+    return user_memory_copy_in(current_process(),
+                               kernel_buf,
+                               (uint64_t)(uintptr_t)user_ptr,
+                               size,
+                               1,
+                               USER_MEMORY_ALLOW_EMPTY) == OS_SUCCESS;
 }
 
 int copy_kernel_to_user_buffer(uint8_t* user_ptr, const uint8_t* kernel_buf, uint32_t size) {
-    if ((size > 0 && user_ptr == 0) || (size > 0 && kernel_buf == 0)) {
-        return 0;
-    }
-    if (!user_buffer_accessible(user_ptr, size, 1)) {
-        return 0;
-    }
-
-    for (uint32_t i = 0; i < size; i++) {
-        user_ptr[i] = kernel_buf[i];
-    }
-    return 1;
+    return user_memory_copy_out(current_process(),
+                                (uint64_t)(uintptr_t)user_ptr,
+                                kernel_buf,
+                                size,
+                                1,
+                                USER_MEMORY_ALLOW_EMPTY) == OS_SUCCESS;
 }
 
 int user_buffer_writable(uint8_t* user_ptr, uint32_t size) {
-    return user_buffer_accessible(user_ptr, size, 1);
+    UserMemoryLease lease;
+    const OsResult result = user_memory_lease_begin(
+        current_process(),
+        (uint64_t)(uintptr_t)user_ptr,
+        size,
+        1,
+        USER_MEMORY_WRITE,
+        USER_MEMORY_ALLOW_EMPTY,
+        &lease);
+    if (result == OS_SUCCESS && size != 0) {
+        user_memory_lease_end(&lease);
+    }
+    return result == OS_SUCCESS;
 }

@@ -44,7 +44,7 @@ def source(cxx: bool) -> str:
 {assertions}(OS64_TERMINAL_ABI_VERSION == 1u, "terminal ABI version changed");
 {assertions}(OS64_THREAD_ABI_VERSION == 2u, "thread ABI version changed");
 {assertions}(OS64_WINDOW_ABI_VERSION == 1u, "window ABI version changed");
-{assertions}(OS64_SYSCALL_CATALOG_VERSION == 2u, "syscall catalog version changed");
+{assertions}(OS64_SYSCALL_CATALOG_VERSION == 3u, "syscall catalog version changed");
 {assertions}(OS64_SYSCALL_MAX_NUMBER == 111u, "syscall number range changed");
 {assertions}(SYS_WRITE == 1u, "first syscall number changed");
 {assertions}(SYS_TERMINAL_SESSION_CLOSE == 111u, "last syscall number changed");

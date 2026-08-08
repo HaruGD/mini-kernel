@@ -34,6 +34,7 @@ links and test references remain stable from the project root.
 - [User SDK v2](reference/user_sdk.md)
 - [Generated system-call catalog](reference/syscall_catalog.generated.md)
 - [System-call result and output contract](reference/syscall_result_contract.md)
+- [System-call user-memory boundary](reference/syscall_user_memory.md)
 
 ## Testing
 
