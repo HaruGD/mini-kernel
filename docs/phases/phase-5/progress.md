@@ -23,7 +23,7 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5B: Pointer and interactive windows | Complete | 2026-08-02 | 2026-08-02 | `be9fdff` | P5-R03, P5-R04 |
 | 5C: Graphics, fonts, images, and widget toolkit | Complete | 2026-08-02 | 2026-08-04 | `a13b5a8`, `ba15722` | P5-R05, P5-R06 |
 | 5D: GUI terminal | Complete | 2026-08-04 | 2026-08-04 | `c78b6fc` | P5-R07 |
-| 5S: System-call modernization | In progress | 2026-08-08 | - | `4e5dfa8` | P5S-R01 complete; P5S-R02 through P5S-R04 planned |
+| 5S: System-call modernization | In progress | 2026-08-08 | - | `4e5dfa8`, `4244d82` | P5S-R01 complete through 5S-B; P5S-R02 through P5S-R04 planned |
 | Memory scalability gate | Planned | - | - | - | P5-R09 |
 | 5E: Desktop shell | Planned | - | - | - | P5-R08 |
 | 5F: File manager | Planned | - | - | - | P5-R10, P5-R11 |
@@ -31,9 +31,9 @@ inherited regression, measured resource evidence, and a commit hash.
 | 5H: Installed system layout | Planned | - | - | - | P5-R13 |
 | 5I: Fault injection, soak, regression, and closure | Planned | - | - | - | P5-R14, P5-R15 |
 
-Current status: 5A through 5D are complete. Phase 5S is in progress: 5S-A and
-P5S-R01 are complete, while 5S-B is next. Phase 5S must close before Phase 5E.
-The independent memory-scalability gate remains required before Phase 5F.
+Current status: 5A through 5D are complete. Phase 5S is in progress: 5S-A/B
+and P5S-R01 are complete, while 5S-C is next. Phase 5S must close before Phase
+5E. The independent memory-scalability gate remains required before Phase 5F.
 
 ## Completed Evidence
 
@@ -158,6 +158,47 @@ mode switching to a future mode-setting display backend.
   per-call semantic audit in 5S-G or the `SYSCALL/SYSRET` entry migration in
   5S-E/F.
 
+### 5S-B: Result And Output Contract
+
+- Implementation commit: `4244d82`.
+- Catalog/schema version 2 defines a signed 64-bit public result domain,
+  reserves `-4095..-1` for cataloged errors, records `zero`, `nonnegative`,
+  `positive`, or `noreturn` success per call, and keeps scheduler control
+  tokens outside the public error range.
+- The stable result table grew additively from 18 to 22 codes with distinct
+  invalid, stale, and wrong-type handle failures plus checked arithmetic
+  overflow. Generated kernel/SDK headers and SDK strings share the same source
+  and preserve the existing `-1..-18` assignments.
+- All 111 entries now carry machine-checked output publication. Measured
+  coverage is 85 calls without output pointers, 25 atomic outputs that remain
+  unchanged on failure, and one documented partial-output call:
+  `SYS_IPC_QUERY` on `OS_ERR_BAD_BUFFER`, retried as a whole.
+- The common handle resolver returns exact malformed-token, generation,
+  object-type, and rights failures without modifying its output snapshot.
+  VFS handle calls and surface/general object inspection propagate those
+  results. Ambiguous raw numeric `-1` returns were removed from syscall
+  dispatcher sources, and unknown numbers now return `OS_ERR_UNSUPPORTED`.
+- `make test-syscall-contract`, `make test-abi-freeze`, and
+  `make test-kernel-handles` passed structured-result/output mutation tests,
+  generated SDK message execution, internal-token separation, exact handle
+  errors, and unchanged failure outputs.
+- `make test-user-sdk` passed `97/97` in QEMU, including unknown-call,
+  generated-message, malformed/stale/wrong-type handle, atomic-output, and
+  documented partial-output cases. Affected inherited regression passed:
+  `make test-kernel-language-contract` (text `215,554`, data `416`, BSS
+  `1,630,752`, two initializers, five vtables),
+  `make test-process-lifecycle`, `make test-window-sdk`, and
+  `make test-phase5d`.
+- The Window SDK QEMU run retained resources from baseline
+  `(4, 21, 1, 0, 4, 0, 1, 108966, 1946016, 1986560)` to final
+  `(4, 21, 1, 0, 4, 0, 1, 108940, 1946016, 1986560)`. The GUI terminal run
+  retained its established baseline
+  `(4, 21, 1, 0, 4, 0, 1, 107879, 4122016, 4165632)` and final
+  `(4, 21, 1, 0, 4, 0, 1, 107811, 4122016, 4165632)` values.
+- Entries remain `provisional`; 5S-B closes the shared result and output model,
+  not the common user-copy implementation in 5S-C or complete per-call audit
+  in 5S-G.
+
 ### Cross-Phase Kernel Language And Toolchain Hardening
 
 - The kernel language contract now fixes GNU C++17 as a restricted
@@ -208,9 +249,9 @@ For each subphase:
   `SYSCALL/SYSRET` migration, complete call audit, and required regression are
   defined in
   [syscall_modernization_plan.md](syscall_modernization_plan.md).
-- This was a planning-only record when written. 5S-A and P5S-R01 subsequently
-  completed in `4e5dfa8`; the remaining subphases and P5S-R02 through P5S-R04
-  still require measured exit evidence.
+- This was a planning-only record when written. 5S-A/B and P5S-R01
+  subsequently completed in `4e5dfa8` and `4244d82`; the remaining subphases
+  and P5S-R02 through P5S-R04 still require measured exit evidence.
 
 ## Planning Record
 

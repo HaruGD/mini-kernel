@@ -246,7 +246,8 @@ coherent/streaming/SG DMA, quiescent unload, QEMU EDU device evidence, fault
 rollback, and soak closure. Phase 5 desktop work may proceed while later
 hardware work adds a remapping IOMMU backend and production drivers. Phase 5A
 through 5D are complete; the mandatory Phase 5S system-call modernization gate
-is next and must close before Phase 5E desktop-shell work begins.
+is in progress, with 5S-A/B complete and 5S-C next. It must close before Phase
+5E desktop-shell work begins.
 
 Test ACPI power-off in an isolated QEMU instance:
 
