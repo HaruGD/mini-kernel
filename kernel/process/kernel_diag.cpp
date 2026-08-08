@@ -8,6 +8,7 @@
 #include "kernel/process_terminal.h"
 #include "kernel/service/service_registry.h"
 #include "kernel/spinlock.h"
+#include "kernel/syscall/dispatcher.h"
 #include "kernel/graphics/surface_backing.h"
 
 #define print process_terminal_print
@@ -94,6 +95,32 @@ const char* pause_reason_name(uint32_t reason) {
         return "wait";
     }
     return "none";
+}
+
+void print_syscall_info() {
+    SyscallDispatchDiagnostics diagnostics;
+    syscall_dispatch_get_diagnostics(&diagnostics);
+    print("\n=== SYSCALL DISPATCH ===");
+    print("\ntotal=");
+    print_hex64(diagnostics.total_calls);
+    print(" dispatched=");
+    print_hex64(diagnostics.dispatched_calls);
+    print(" rejected=");
+    print_hex64(diagnostics.rejected_calls);
+    print("\nlast_number=");
+    print_hex64(diagnostics.last_rejected_number);
+    print(" last_reason=");
+    print(syscall_reject_reason_name(diagnostics.last_rejected_reason));
+    for (uint32_t reason = 1; reason < SYSCALL_REJECT_REASON_COUNT; reason++) {
+        if (diagnostics.rejected_by_reason[reason] == 0) {
+            continue;
+        }
+        print("\n");
+        print(syscall_reject_reason_name(reason));
+        print("=");
+        print_hex64(diagnostics.rejected_by_reason[reason]);
+    }
+    print("\n========================");
 }
 
 template <typename ProcessView>

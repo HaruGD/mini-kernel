@@ -19,6 +19,7 @@ void print_ipc_info();
 void print_service_registry();
 void print_concurrency_info();
 void print_resource_info();
+void print_syscall_info();
 void print_scheduler_info(Thread* const* sched_queue,
                           uint32_t sched_queue_count,
                           uint32_t sched_queue_head,

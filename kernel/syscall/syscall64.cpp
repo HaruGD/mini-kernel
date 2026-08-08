@@ -26,12 +26,6 @@ extern "C" {
 
 extern Terminal terminal;
 
-static uint32_t syscall_count = 0;
-
-uint32_t kernel_syscall_count() {
-    return syscall_count;
-}
-
 static int pop_keyboard_character_from_events(char* out_char) {
     if (out_char == 0) {
         return 0;
@@ -76,8 +70,7 @@ extern "C" uint64_t process_fault_returnable64() {
 #define print_hex32 process_terminal_print_hex32
 #define print_hex64 process_terminal_print_hex64
 
-extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
-    syscall_count++;
+uint64_t syscall_dispatch_handler64(uint64_t syscall_no, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
 
     if (syscall_no == SYS_WRITE) {
         uint32_t length = (uint32_t)arg2;
@@ -742,8 +735,5 @@ extern "C" uint64_t syscall_dispatch64(uint64_t syscall_no, uint64_t arg1, uint6
         return reap_all_child_processes(process->pid);
     }
 
-    print("\nUnknown syscall: ");
-    print_hex32((uint32_t)syscall_no);
-    print("\n");
     return (uint64_t)(int64_t)SYS_ERR_UNSUPPORTED;
 }

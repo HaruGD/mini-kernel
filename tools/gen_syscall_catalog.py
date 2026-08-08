@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 from syscall_catalog import CATALOG_PATH, ROOT, load_catalog, resolve_contract
@@ -30,6 +31,21 @@ RESULT_KIND_IDS = {
 SUCCESS_DOMAIN_IDS = {"zero": 0, "nonnegative": 1, "positive": 2, "noreturn": 3}
 OUTPUT_PUBLICATION_IDS = {"none": 0, "atomic": 1, "partial": 2}
 OUTPUT_FAILURE_IDS = {"not_applicable": 0, "unchanged": 1, "partial": 2}
+AUTHORITY_MODE_IDS = {
+    "none": 0,
+    "permissions": 1,
+    "subsystem": 2,
+    "permissions_then_subsystem": 3,
+}
+PERMISSION_VALUES = {
+    "OS_PROCESS_PERMISSION_SERVICE_DISCOVER": 1 << 0,
+    "OS_PROCESS_PERMISSION_SERVICE_REGISTER": 1 << 1,
+    "OS_PROCESS_PERMISSION_IPC": 1 << 2,
+    "OS_PROCESS_PERMISSION_INPUT": 1 << 3,
+    "OS_PROCESS_PERMISSION_DISPLAY": 1 << 4,
+    "OS_PROCESS_PERMISSION_SHARED_SURFACE": 1 << 5,
+    "OS_PROCESS_PERMISSION_MANAGE_CHILD": 1 << 6,
+}
 
 
 def c_string(value: str) -> str:
@@ -130,11 +146,16 @@ def descriptor_header(catalog: dict) -> str:
         "#define OS64_SYSCALL_FAILURE_OUTPUT_NOT_APPLICABLE 0u",
         "#define OS64_SYSCALL_FAILURE_OUTPUT_UNCHANGED 1u",
         "#define OS64_SYSCALL_FAILURE_OUTPUT_PARTIAL 2u",
+        "#define OS64_SYSCALL_AUTHORITY_NONE 0u",
+        "#define OS64_SYSCALL_AUTHORITY_PERMISSIONS 1u",
+        "#define OS64_SYSCALL_AUTHORITY_SUBSYSTEM 2u",
+        "#define OS64_SYSCALL_AUTHORITY_PERMISSIONS_THEN_SUBSYSTEM 3u",
         "",
         "typedef struct OsSyscallCatalogDescriptor {",
         "    uint32_t number;",
         "    uint8_t argument_count;",
         "    uint8_t pointer_mask;",
+        "    uint8_t nullable_mask;",
         "    uint8_t readable_mask;",
         "    uint8_t writable_mask;",
         "    uint8_t snapshot_mask;",
@@ -144,7 +165,12 @@ def descriptor_header(catalog: dict) -> str:
         "    uint8_t success_domain;",
         "    uint8_t output_publication;",
         "    uint8_t failure_output;",
+        "    uint8_t authority_mode;",
+        "    uint8_t reserved0;",
         "    uint16_t argument_alignment[3];",
+        "    uint8_t argument_size_register[3];",
+        "    uint8_t reserved1;",
+        "    uint32_t required_permissions;",
         "    const char* name;",
         "    const char* symbol;",
         "    const char* permission;",
@@ -156,15 +182,22 @@ def descriptor_header(catalog: dict) -> str:
     for call in catalog["syscalls"]:
         resolved = resolve_contract(call, defaults)
         pointer_mask = 0
+        nullable_mask = 0
         readable_mask = 0
         writable_mask = 0
         snapshot_mask = 0
         nested_mask = 0
         alignments = [1, 1, 1]
+        size_registers = [0, 0, 0]
         for index, argument in enumerate(call["arguments"]):
             alignments[index] = argument["alignment"]
+            size_match = re.fullmatch(r"arg([123]) bytes", argument["size"])
+            if size_match is not None:
+                size_registers[index] = int(size_match.group(1))
             if argument["kind"] in {"cstring", "buffer", "structure"}:
                 pointer_mask |= 1 << index
+                if argument["nullable"]:
+                    nullable_mask |= 1 << index
             if argument["access"] in {"read", "read_write"}:
                 readable_mask |= 1 << index
             if argument["direction"] in {"out", "inout"}:
@@ -184,14 +217,21 @@ def descriptor_header(catalog: dict) -> str:
             flags |= 4
         result = call["result"]
         output = result["output"]
+        authority = resolved["authority"]
+        permission_mask = 0
+        for permission in authority["permissions"]:
+            permission_mask |= PERMISSION_VALUES[permission]
         lines.append(
             f"    {{{call['number']}u, {len(call['arguments'])}u, {pointer_mask}u, "
-            f"{readable_mask}u, {writable_mask}u, {snapshot_mask}u, "
+            f"{nullable_mask}u, {readable_mask}u, {writable_mask}u, {snapshot_mask}u, "
             f"{nested_mask}u, {flags}u, {RESULT_KIND_IDS[result['kind']]}u, "
             f"{SUCCESS_DOMAIN_IDS[result['success_domain']]}u, "
             f"{OUTPUT_PUBLICATION_IDS[output['publication']]}u, "
             f"{OUTPUT_FAILURE_IDS[output['failure_state']]}u, "
+            f"{AUTHORITY_MODE_IDS[authority['mode']]}u, 0u, "
             f"{{{alignments[0]}u, {alignments[1]}u, {alignments[2]}u}}, "
+            f"{{{size_registers[0]}u, {size_registers[1]}u, {size_registers[2]}u}}, 0u, "
+            f"{permission_mask}u, "
             f"\"{call['name']}\", \"{call['symbol']}\", "
             f"\"{resolved['permission']}\", \"{call['result']['errors']}\"}},"
         )
@@ -220,7 +260,7 @@ def reference_markdown(catalog: dict) -> str:
         "The catalog is authoritative for identifiers and declared contract metadata. "
         "Rows marked `provisional` still require the Phase 5S-G implementation audit.",
         "",
-        "| No. | Symbol | Name | Arguments | Result | Output | Errors | Permission | Blocking | Audit | Reference |",
+        "| No. | Symbol | Name | Arguments | Result | Output | Errors | Authority | Blocking | Audit | Reference |",
         "| ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for call in catalog["syscalls"]:
@@ -235,7 +275,9 @@ def reference_markdown(catalog: dict) -> str:
             f"| {call['number']} | `{call['symbol']}` | `{call['name']}` | {args} | "
             f"{call['result']['kind']}/{call['result']['success_domain']}: {call['result']['success']} | "
             f"{call['result']['output']['publication']}; failure={call['result']['output']['failure_state']} | "
-            f"`{call['result']['errors']}` | `{resolved['permission']}` | "
+            f"`{call['result']['errors']}` | `{resolved['permission']}`; "
+            f"preflight=`{resolved['authority']['mode']}` "
+            f"{','.join(resolved['authority']['permissions']) or '-'} | "
             f"{'yes' if resolved['execution']['blocking'] else 'no'} | "
             f"{call['audit_status']} | `{call['reference']}` |"
         )

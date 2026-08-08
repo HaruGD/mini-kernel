@@ -22,7 +22,7 @@ ABI_FIELDS = {
     "argument_registers", "max_number", "active_transport",
     "compatibility_transport",
 }
-DEFAULT_FIELDS = {"permission", "execution", "resources"}
+DEFAULT_FIELDS = {"permission", "authority", "execution", "resources"}
 RESULT_DOMAIN_FIELDS = {
     "width_bits", "success_min", "success_max", "error_min", "error_max",
     "unknown_syscall", "internal_control_policy",
@@ -33,7 +33,7 @@ ERROR_FIELDS = {
 }
 SYSCALL_FIELDS = {
     "number", "symbol", "sdk_symbol", "name", "state", "audit_status",
-    "handler", "arguments", "result", "permission", "execution",
+    "handler", "arguments", "result", "permission", "authority", "execution",
     "resources", "reference",
 }
 ARGUMENT_FIELDS = {
@@ -44,6 +44,7 @@ RESULT_FIELDS = {"kind", "success_domain", "success", "output", "errors"}
 OUTPUT_FIELDS = {"publication", "failure_state", "partial_errors", "resume"}
 EXECUTION_FIELDS = {"context", "blocking", "cancellation"}
 RESOURCE_FIELDS = {"input_ownership", "output_ownership", "cleanup", "limit"}
+AUTHORITY_FIELDS = {"mode", "permissions"}
 
 SYMBOL_RE = re.compile(r"^SYS_[A-Z][A-Z0-9_]*$")
 SDK_SYMBOL_RE = re.compile(r"^OS_SYS_[A-Z][A-Z0-9_]*$")
@@ -61,6 +62,16 @@ ARGUMENT_ENCODING = {
     "not_applicable", "bytes", "nul_terminated_bytes", "abi_structure",
 }
 ARGUMENT_NESTED = {"none", "snapshot_then_validate"}
+AUTHORITY_MODES = {"none", "permissions", "subsystem", "permissions_then_subsystem"}
+PERMISSION_SYMBOLS = {
+    "OS_PROCESS_PERMISSION_SERVICE_DISCOVER",
+    "OS_PROCESS_PERMISSION_SERVICE_REGISTER",
+    "OS_PROCESS_PERMISSION_IPC",
+    "OS_PROCESS_PERMISSION_INPUT",
+    "OS_PROCESS_PERMISSION_DISPLAY",
+    "OS_PROCESS_PERMISSION_SHARED_SURFACE",
+    "OS_PROCESS_PERMISSION_MANAGE_CHILD",
+}
 SYSCALL_STATES = {"active", "reserved", "retired"}
 AUDIT_STATES = {"provisional", "audited"}
 HANDLERS = {"core", "vfs", "sdk"}
@@ -138,6 +149,28 @@ def validate_resources(value: Any, label: str, errors: list[str]) -> None:
         nonempty_string(value.get(field), f"{label}.{field}", errors)
 
 
+def validate_authority(value: Any, label: str, errors: list[str]) -> None:
+    exact_fields(value, AUTHORITY_FIELDS, label, errors)
+    if not isinstance(value, dict):
+        return
+    mode = value.get("mode")
+    permissions = value.get("permissions")
+    if mode not in AUTHORITY_MODES:
+        errors.append(f"{label}.mode: unknown policy")
+    if not isinstance(permissions, list):
+        errors.append(f"{label}.permissions: expected an array")
+        return
+    if len(permissions) != len(set(permissions)):
+        errors.append(f"{label}.permissions: duplicate permission")
+    for permission in permissions:
+        if permission not in PERMISSION_SYMBOLS:
+            errors.append(f"{label}.permissions: unknown permission {permission!r}")
+    if mode in {"none", "subsystem"} and permissions:
+        errors.append(f"{label}: {mode} authority cannot carry permission bits")
+    if mode in {"permissions", "permissions_then_subsystem"} and not permissions:
+        errors.append(f"{label}: {mode} authority requires permission bits")
+
+
 def resolve_contract(call: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
     resolved = dict(call)
     for field in DEFAULT_FIELDS:
@@ -151,8 +184,8 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
     exact_fields(catalog, ROOT_FIELDS, "catalog", errors)
     if not isinstance(catalog, dict):
         return errors
-    if type(catalog.get("schema_version")) is not int or catalog.get("schema_version") != 3:
-        errors.append("catalog.schema_version: expected 3")
+    if type(catalog.get("schema_version")) is not int or catalog.get("schema_version") != 4:
+        errors.append("catalog.schema_version: expected 4")
     if type(catalog.get("catalog_version")) is not int or catalog.get("catalog_version", 0) < 1:
         errors.append("catalog.catalog_version: expected a positive integer")
 
@@ -191,6 +224,7 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
     exact_fields(defaults, DEFAULT_FIELDS, "catalog.defaults", errors)
     if isinstance(defaults, dict):
         nonempty_string(defaults.get("permission"), "catalog.defaults.permission", errors)
+        validate_authority(defaults.get("authority"), "catalog.defaults.authority", errors)
         validate_execution(defaults.get("execution"), "catalog.defaults.execution", errors)
         validate_resources(defaults.get("resources"), "catalog.defaults.resources", errors)
     else:
@@ -450,6 +484,7 @@ def validate_catalog(catalog: Any, root: Path = ROOT) -> list[str]:
 
         resolved = resolve_contract(call, defaults) if DEFAULT_FIELDS <= set(defaults) else call
         nonempty_string(resolved.get("permission"), f"{label}.permission", errors)
+        validate_authority(resolved.get("authority"), f"{label}.authority", errors)
         validate_execution(resolved.get("execution"), f"{label}.execution", errors)
         validate_resources(resolved.get("resources"), f"{label}.resources", errors)
         reference = call.get("reference")

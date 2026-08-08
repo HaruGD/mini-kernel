@@ -15,7 +15,7 @@
     "syscalls"
   ],
   "properties": {
-    "schema_version": {"const": 3},
+    "schema_version": {"const": 4},
     "catalog_version": {"type": "integer", "minimum": 1},
     "abi": {
       "type": "object",
@@ -91,11 +91,35 @@
     "defaults": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["permission", "execution", "resources"],
+      "required": ["permission", "authority", "execution", "resources"],
       "properties": {
         "permission": {"type": "string", "minLength": 1},
+        "authority": {"$ref": "#/$defs/authority"},
         "execution": {"$ref": "#/$defs/execution"},
         "resources": {"$ref": "#/$defs/resources"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "permissions"],
+      "properties": {
+        "mode": {"enum": ["none", "permissions", "subsystem", "permissions_then_subsystem"]},
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "OS_PROCESS_PERMISSION_SERVICE_DISCOVER",
+              "OS_PROCESS_PERMISSION_SERVICE_REGISTER",
+              "OS_PROCESS_PERMISSION_IPC",
+              "OS_PROCESS_PERMISSION_INPUT",
+              "OS_PROCESS_PERMISSION_DISPLAY",
+              "OS_PROCESS_PERMISSION_SHARED_SURFACE",
+              "OS_PROCESS_PERMISSION_MANAGE_CHILD"
+            ]
+          }
+        }
       }
     },
     "errorCode": {
@@ -198,6 +222,7 @@
         "arguments": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/argument"}},
         "result": {"$ref": "#/$defs/result"},
         "permission": {"type": "string", "minLength": 1},
+        "authority": {"$ref": "#/$defs/authority"},
         "execution": {"$ref": "#/$defs/execution"},
         "resources": {"$ref": "#/$defs/resources"},
         "reference": {"type": "string", "pattern": "^docs/.+\\.md$"}

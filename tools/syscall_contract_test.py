@@ -87,6 +87,20 @@ def mutation_contract(catalog: dict, failures: list[str]) -> None:
                 for error in validate_catalog(invalid_alignment)),
             "non-power-of-two pointer alignment was accepted", failures)
 
+    invalid_authority = copy.deepcopy(catalog)
+    invalid_authority["syscalls"][62]["authority"] = {
+        "mode": "permissions", "permissions": []}
+    require(any("authority requires permission bits" in error
+                for error in validate_catalog(invalid_authority)),
+            "empty permission preflight was accepted", failures)
+
+    unknown_permission = copy.deepcopy(catalog)
+    unknown_permission["syscalls"][62]["authority"] = {
+        "mode": "permissions", "permissions": ["OS_PROCESS_PERMISSION_ROOT"]}
+    require(any("unknown permission" in error
+                for error in validate_catalog(unknown_permission)),
+            "unknown permission symbol was accepted", failures)
+
     unknown_errors = copy.deepcopy(catalog)
     unknown_errors["syscalls"][0]["result"]["errors"] = "not_declared"
     require(any("unknown error set" in error
@@ -247,6 +261,7 @@ int main(void) {{ return 0; }}
     descriptor_source = f'''#include "kernel/syscall_catalog_generated.h"
 _Static_assert(OS64_SYSCALL_CATALOG_COUNT == {len(catalog['syscalls'])}u, "descriptor count");
 _Static_assert(OS64_SYSCALL_OUTPUT_PARTIAL == 2u, "output policy ABI");
+_Static_assert(OS64_SYSCALL_AUTHORITY_PERMISSIONS_THEN_SUBSYSTEM == 3u, "authority policy ABI");
 int main(void) {{ return os64_syscall_catalog[0].number == 1u ? 0 : 1; }}
 '''
     with tempfile.TemporaryDirectory(prefix="os64_syscall_headers_") as directory:
@@ -321,8 +336,8 @@ def documentation_contract(catalog: dict, failures: list[str]) -> None:
             "syscall schema is not Draft 2020-12", failures)
     require(schema.get("additionalProperties") is False,
             "syscall schema does not reject unknown root fields", failures)
-    require(schema.get("properties", {}).get("schema_version", {}).get("const") == 3,
-            "syscall schema version did not advance for user-memory contracts", failures)
+    require(schema.get("properties", {}).get("schema_version", {}).get("const") == 4,
+            "syscall schema version did not advance for authority contracts", failures)
     reference = (ROOT / "docs/reference/syscall_catalog.generated.md").read_text(
         encoding="utf-8")
     rows = re.findall(r"^\| \d+ \| `SYS_", reference, re.MULTILINE)

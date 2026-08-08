@@ -245,7 +245,7 @@ extern "C" void shell_recall_history(int direction) {
 
 static void command_help() {
     print("\nAvailable commands: help, clear, version, bootinfo, memmap, memstat, echo, write, read, fill");
-    print("\nfree, dump, sched, input, ipc, services, locks, resources, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
+    print("\nfree, dump, sched, input, ipc, services, syscalls, locks, resources, drivers, bindings, irqhooks, pci, drvinfo [path], drvcheck [path]");
     print("\ndrvload [path], drvunload [name], drvreload [path], drvautoload [dir], drvlast, gop [clear|test|partial]");
     print("\nmounts, atatest, ls [path], load, save, rm, mkdir, rmdir, pagefault, uptime, shutdown");
     print("\nklog [clear|stats], acpi, cpus, cpunmi [ap], cpuresched [ap], intctl, panic test, debugfault [case], faultinject [point after|off], faulttest");
@@ -1047,6 +1047,8 @@ static void execute_command() {
         print_ipc_info();
     } else if (strcmp64(cmd, "services") == 0) {
         print_service_registry();
+    } else if (strcmp64(cmd, "syscalls") == 0) {
+        print_syscall_info();
     } else if (strcmp64(cmd, "locks") == 0) {
         print_concurrency_info();
     } else if (strcmp64(cmd, "resources") == 0) {

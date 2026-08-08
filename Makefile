@@ -108,6 +108,7 @@ KERNEL64_OBJECTS = \
 	./build/process_surface64.o \
 	./build/userprog64.o \
 	./build/user_memory64.o \
+	./build/syscall_dispatcher64.o \
 	./build/syscall64.o \
 	./build/vfs_syscalls64.o \
 	./build/sdk_syscalls64.o \
@@ -354,6 +355,7 @@ test-syscall-contract: $(SYSCALL_GENERATED)
 
 test-syscall-validation:
 	python3 ./tools/user_memory_test.py
+	python3 ./tools/syscall_dispatch_test.py
 
 test-abi-freeze:
 	python3 ./tools/abi_freeze_test.py
@@ -552,6 +554,9 @@ $(PHASE5_ASSETS) &: ./tools/build_image_fixtures.py ./tools/png_to_osimg.py
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/user_memory64.o: ./kernel/syscall/user_memory.cpp ./include/kernel/syscall/user_memory.h ./include/kernel/mm/address_space.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/spinlock.h ./include/os64/result.h
+	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
+
+./build/syscall_dispatcher64.o: ./kernel/syscall/dispatcher.cpp ./include/kernel/syscall/dispatcher.h ./include/kernel/syscall/user_memory.h ./include/kernel/syscall_catalog_generated.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/os64/process_types.h ./include/os64/result.h
 	$(HOST64_CXX) $(HOST64_CPPFLAGS) $(KERNEL_OPT) -c $< -o $@
 
 ./build/syscall64.o: ./kernel/syscall/syscall64.cpp ./kernel/syscall/sdk_syscalls.h ./kernel/syscall/vfs_syscalls.h ./include/drivers/keyboard.h ./include/fs/vfs.h ./include/kernel/kernel_diag.h ./include/kernel/process.h ./include/kernel/process64.h ./include/kernel/thread.h ./include/kernel/syscall64.h ./include/kernel/userprog64.h

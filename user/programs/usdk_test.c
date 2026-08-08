@@ -163,6 +163,13 @@ static void test_process_identity(void) {
           "process identity");
 }
 
+static void test_dispatch_permission_preflight(void) {
+    long launch = os_run_with_permissions("usyscall_policy_c.elf", 0);
+    long status = launch == OS_SUCCESS ? os_wait() : launch;
+    check(launch == OS_SUCCESS && status == 0,
+          "descriptor permission preflight in restricted process");
+}
+
 static void test_allocator(void) {
     void* initial_break = os_brk(0);
     uint8_t* first = (uint8_t*)os_malloc(48);
@@ -407,7 +414,7 @@ static void test_graphics(void) {
                            UINT32_MAX, UINT32_MAX, OS_RGB(30, 180, 90)) == OS_SUCCESS,
           "graphics overflow-safe clipping");
     check(os_gfx_get_info((OsGraphicsInfo*)(uintptr_t)0x100000u) ==
-              OS_ERR_INVALID_ARGUMENT,
+              OS_ERR_BAD_BUFFER,
           "graphics rejects kernel pointer");
 }
 
@@ -576,6 +583,7 @@ int main(void) {
     test_global_data();
     test_syscall_pointer_validation();
     test_process_identity();
+    test_dispatch_permission_preflight();
     test_allocator();
     test_paths();
     test_text_file();
